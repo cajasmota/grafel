@@ -28,6 +28,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/embed"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 )
 
 // Registry is the on-disk registry.json describing groups and their repos.
@@ -208,11 +209,19 @@ func (l CrossRepoLink) EffectiveKind() string {
 // rebuilt only when the graph file mtime changes. This eliminates the
 // O(N) + O(R) cost per MCP query that handlers used to pay by calling
 // indexByID / buildAdjacency on every invocation (#1656).
+//
+// S8 (#2159): Reader is an mmap'd fbreader.Reader kept open for the
+// lifetime of the cached slot. MCP query paths that only need to
+// iterate entities or relationships should use Reader.IterateEntities /
+// Reader.IterateRelationships to avoid heap allocation beyond the
+// transient field-decode wrapper. Reader is nil when graph.fb is not
+// present (JSON-only fallback or old index format).
 type LoadedRepo struct {
 	Repo       string
 	Path       string
 	GraphFile  string
 	Doc        *graph.Document
+	Reader     *fbreader.Reader         // mmap zero-copy reader (S8, #2159); nil when unavailable
 	LabelIndex *LabelIndex
 	BM25       *BM25Index
 	Adjacency  *adjacency               // in/out neighbor lists (#1656)
@@ -420,6 +429,12 @@ func (s *State) reloadLocked() (int, bool, error) {
 					lr.loadErr = err.Error()
 					continue
 				}
+				// S8 (#2159): close the previous reader before replacing it so
+				// we don't leak mmap fds across reloads.
+				if lr.Reader != nil {
+					_ = lr.Reader.Close()
+					lr.Reader = nil
+				}
 				lr.Doc = doc
 				lr.mtime = fileMtime
 				lr.loadErr = ""
@@ -437,6 +452,13 @@ func (s *State) reloadLocked() (int, bool, error) {
 				// CALLS-only forward adjacency for traces.followCallsBFS, which
 				// previously rebuilt this on every traces=follow query. (#1656)
 				lr.CallsAdj = buildCallsAdjacency(doc)
+				// S8 (#2159): open the mmap reader alongside the Document.
+				// Best-effort: failures leave Reader nil; callers fall back to
+				// doc.Entities / doc.Relationships.
+				fbPath := filepath.Join(stateDir, "graph.fb")
+				if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
+					lr.Reader = rdr
+				}
 				reloaded++
 			}
 			// Refresh the semantic vector sidecar independently of the
@@ -456,8 +478,13 @@ func (s *State) reloadLocked() (int, bool, error) {
 			}
 		}
 		// Drop repos no longer in the registry.
-		for rName := range grp.Repos {
+		// S8 (#2159): close the mmap reader when evicting a repo entry.
+		for rName, lr := range grp.Repos {
 			if !seen[rName] {
+				if lr != nil && lr.Reader != nil {
+					_ = lr.Reader.Close()
+					lr.Reader = nil
+				}
 				delete(grp.Repos, rName)
 			}
 		}

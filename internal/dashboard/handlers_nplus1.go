@@ -84,13 +84,25 @@ func (s *Server) handleNPlusOne(w http.ResponseWriter, r *http.Request) {
 		ByLanguage: make(map[string]int),
 	}
 
+	// S8 (#2159): use the cached group to avoid per-request LoadGraphFromDir.
+	cachedGrp, _ := s.graphs.GetGroupCached(groupName)
+
 	for _, rp := range repoPaths {
-		// Resolve the per-repo state dir (external store; #1626).
-		stateDir := daemon.StateDirForRepo(rp.Path)
-		doc, loadErr := graph.LoadGraphFromDir(stateDir)
-		if loadErr != nil {
-			// Repo not yet indexed — skip silently.
-			continue
+		var doc *graph.Document
+		if cachedGrp != nil {
+			if dr, ok := cachedGrp.Repos[rp.Slug]; ok && dr != nil {
+				doc = dr.Doc
+			}
+		}
+		if doc == nil {
+			// Resolve the per-repo state dir (external store; #1626).
+			stateDir := daemon.StateDirForRepo(rp.Path)
+			var loadErr error
+			doc, loadErr = graph.LoadGraphFromDir(stateDir)
+			if loadErr != nil {
+				// Repo not yet indexed — skip silently.
+				continue
+			}
 		}
 
 		report := graph.DetectNPlusOne(doc)

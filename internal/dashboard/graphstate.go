@@ -25,6 +25,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/types"
 )
@@ -142,12 +143,19 @@ func dashStripScopePrefix(s string) string {
 // ---------------------------------------------------------------------------
 
 // DashRepo is a loaded repo entry for the dashboard layer.
+//
+// S8 (#2159): Reader is an mmap'd fbreader.Reader opened alongside Doc.
+// Handlers that only need to iterate entities/relationships should use
+// Reader.IterateEntities / Reader.IterateRelationships to avoid holding
+// a materialised *graph.Document in heap for the duration of the
+// request. Reader is nil when graph.fb is not present (JSON-only fallback).
 type DashRepo struct {
-	Slug  string
-	Path  string
-	Doc   *graph.Document
-	mtime time.Time
-	err   string
+	Slug   string
+	Path   string
+	Doc    *graph.Document
+	Reader *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	mtime  time.Time
+	err    string
 }
 
 // ---------------------------------------------------------------------------
@@ -287,13 +295,20 @@ func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bo
 // (called on re-index events). It also busts the pre-serialised payload
 // cache for that group so the next GET /api/graph/{group} request rebuilds
 // a fresh payload from the new graph.
+//
+// S8 (#2159): mmap readers held by DashRepo entries are closed so the OS
+// can reclaim file descriptors and page-cache pages for the old graph.fb.
 func (c *GraphCache) Invalidate(group string) {
 	prefix := group + "@"
 	c.mu.Lock()
-	delete(c.entries, group)
+	if ent, ok := c.entries[group]; ok {
+		closeDashGroupReaders(ent.group)
+		delete(c.entries, group)
+	}
 	// Also evict all per-ref entries for this group.
-	for k := range c.entries {
+	for k, ent := range c.entries {
 		if strings.HasPrefix(k, prefix) {
+			closeDashGroupReaders(ent.group)
 			delete(c.entries, k)
 		}
 	}
@@ -302,11 +317,30 @@ func (c *GraphCache) Invalidate(group string) {
 }
 
 // InvalidateAll drops every cached entry and every pre-serialised payload.
+// S8 (#2159): mmap readers are closed before clearing the map.
 func (c *GraphCache) InvalidateAll() {
 	c.mu.Lock()
+	for _, ent := range c.entries {
+		closeDashGroupReaders(ent.group)
+	}
 	c.entries = map[string]*cacheEntry{}
 	c.mu.Unlock()
 	c.Payloads.InvalidateAll()
+}
+
+// closeDashGroupReaders releases every mmap'd fbreader.Reader held by repos
+// in grp. Safe to call with nil grp. Errors are intentionally swallowed —
+// closing a reader is best-effort; a leaked fd is never worse than a crash.
+func closeDashGroupReaders(grp *DashGroup) {
+	if grp == nil {
+		return
+	}
+	for _, dr := range grp.Repos {
+		if dr != nil && dr.Reader != nil {
+			_ = dr.Reader.Close()
+			dr.Reader = nil
+		}
+	}
 }
 
 // GetGroup returns the loaded group, refreshing from disk when the TTL has
@@ -420,6 +454,14 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 				attachAlgorithmResults(doc)
 			}
 			dr.Doc = doc
+			// S8 (#2159): open a zero-copy mmap reader alongside the Document
+			// so handlers that only need to iterate entities/relationships can
+			// avoid materialising the full heap slice. Best-effort: failures
+			// leave Reader nil and callers fall back to doc.Entities.
+			fbPath := filepath.Join(stateDir, "graph.fb")
+			if rdr, rerr := fbreader.Open(fbPath); rerr == nil {
+				dr.Reader = rdr
+			}
 			// Record the newer of fb/json mtime for cache invalidation.
 			if info, e := os.Stat(filepath.Join(stateDir, "graph.fb")); e == nil {
 				dr.mtime = info.ModTime()

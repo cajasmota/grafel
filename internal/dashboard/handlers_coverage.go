@@ -93,12 +93,24 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	dirAcc := make(map[string]*dirAccum)
 	modAcc := make(map[string]*modAccum)
 
+	// S8 (#2159): use the cached group to avoid per-request LoadGraphFromDir.
+	cachedGrpCov, _ := s.graphs.GetGroupCached(groupName)
+
 	for _, rp := range repoPaths {
-		stateDir := filepath.Join(rp.Path, ".archigraph")
-		doc, loadErr := graph.LoadGraphFromDir(stateDir)
-		if loadErr != nil {
-			// Repo not yet indexed — skip silently.
-			continue
+		var doc *graph.Document
+		if cachedGrpCov != nil {
+			if dr, ok := cachedGrpCov.Repos[rp.Slug]; ok && dr != nil {
+				doc = dr.Doc
+			}
+		}
+		if doc == nil {
+			stateDir := filepath.Join(rp.Path, ".archigraph")
+			var loadErr error
+			doc, loadErr = graph.LoadGraphFromDir(stateDir)
+			if loadErr != nil {
+				// Repo not yet indexed — skip silently.
+				continue
+			}
 		}
 
 		report := graph.ComputeCoverage(doc)

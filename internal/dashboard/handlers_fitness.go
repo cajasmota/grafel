@@ -77,6 +77,9 @@ func (s *Server) handleFitness(w http.ResponseWriter, r *http.Request) {
 
 	report := FitnessGroupReport{Group: groupName}
 
+	// S8 (#2159): use the cached group to avoid per-request LoadGraphFromDir.
+	cachedGrpFit, _ := s.graphs.GetGroupCached(groupName)
+
 	for _, rp := range repoPaths {
 		if filterSlug != "" && rp.Slug != filterSlug {
 			continue
@@ -110,11 +113,20 @@ func (s *Server) handleFitness(w http.ResponseWriter, r *http.Request) {
 
 		hasConfig := len(fitCfg.Rules) > 0
 
-		// Load the graph document.
-		doc, docErr := graph.LoadGraphFromDir(stateDir)
-		if docErr != nil {
-			// Graph not indexed yet — skip silently (consistent with other handlers).
-			continue
+		// Load the graph document — prefer the cached DashRepo.Doc (S8, #2159).
+		var doc *graph.Document
+		if cachedGrpFit != nil {
+			if dr, ok := cachedGrpFit.Repos[rp.Slug]; ok && dr != nil {
+				doc = dr.Doc
+			}
+		}
+		if doc == nil {
+			var docErr error
+			doc, docErr = graph.LoadGraphFromDir(stateDir)
+			if docErr != nil {
+				// Graph not indexed yet — skip silently (consistent with other handlers).
+				continue
+			}
 		}
 
 		evalResult := fitness.Evaluate(fitCfg, doc)

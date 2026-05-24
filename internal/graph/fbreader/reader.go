@@ -264,6 +264,63 @@ func EntityEmbeddingRef(e *fb.Entity) string {
 	return string(e.EmbeddingRef())
 }
 
+// IterateEntities calls visit for every entity in the graph in vector
+// order. If visit returns false, iteration stops early. Fields are
+// decoded on demand against the mmap'd bytes — no heap allocation
+// beyond the single *fb.Entity wrapper reused across calls.
+//
+// This is the preferred hot-path for handlers that need to scan all
+// entities but do not need a materialised []graph.Entity slice (S8,
+// #2159).
+func (r *Reader) IterateEntities(visit func(e *fb.Entity) bool) {
+	if r == nil || r.root == nil {
+		return
+	}
+	var ent fb.Entity
+	for i := 0; i < r.nEnts; i++ {
+		if !r.root.Entities(&ent, i) {
+			continue
+		}
+		if !visit(&ent) {
+			return
+		}
+	}
+}
+
+// IterateRelationships calls visit for every relationship in the graph
+// in vector order. If visit returns false, iteration stops early.
+// Only the fields explicitly accessed inside visit are decoded; the
+// rest remain as lazy FlatBuffer offsets in the mmap'd buffer.
+//
+// This is the preferred hot-path for handlers that need to scan all
+// edges but do not need a materialised []graph.Relationship slice
+// (S8, #2159).
+func (r *Reader) IterateRelationships(visit func(rel *fb.Relationship) bool) {
+	if r == nil || r.root == nil {
+		return
+	}
+	var rel fb.Relationship
+	for i := 0; i < r.nRels; i++ {
+		if !r.root.Relationships(&rel, i) {
+			continue
+		}
+		if !visit(&rel) {
+			return
+		}
+	}
+}
+
+// FindEntityByID returns the entity for id and true when found, or
+// nil and false when absent. It is a convenience alias for
+// LookupEntityByID that uses the Go (value, ok) idiom instead of a
+// nil sentinel, making it easier to use in if-init expressions.
+//
+//	if e, ok := r.FindEntityByID(id); ok { ... }
+func (r *Reader) FindEntityByID(id string) (*fb.Entity, bool) {
+	e := r.LookupEntityByID(id)
+	return e, e != nil
+}
+
 func bytesEqual(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false

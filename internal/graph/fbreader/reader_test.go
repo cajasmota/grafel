@@ -7,6 +7,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbreader"
+	fbgraph "github.com/cajasmota/archigraph/internal/graph/fbgraph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	"github.com/cajasmota/archigraph/internal/types"
 )
@@ -180,6 +181,94 @@ func TestAgentPatternKindRoundTrip(t *testing.T) {
 	agentPatterns := r.FilterEntitiesByKind(string(types.EntityKindAgentPattern))
 	if len(agentPatterns) != 2 {
 		t.Errorf("FilterEntitiesByKind(AgentPattern): got %d want 2", len(agentPatterns))
+	}
+}
+
+// TestIterateEntitiesCallback verifies IterateEntities (S8 callback API).
+func TestIterateEntitiesCallback(t *testing.T) {
+	doc := &graph.Document{
+		Repo: "iter-test",
+		Entities: []graph.Entity{
+			{ID: "e1", Kind: "function", Name: "Foo"},
+			{ID: "e2", Kind: "struct", Name: "Bar"},
+			{ID: "e3", Kind: "function", Name: "Baz"},
+		},
+		Relationships: []graph.Relationship{
+			{FromID: "e1", ToID: "e2", Kind: "CALLS"},
+			{FromID: "e2", ToID: "e3", Kind: "CALLS"},
+		},
+	}
+	r := writeAndOpen(t, doc)
+
+	// Full iteration via IterateEntities callback.
+	var ids []string
+	r.IterateEntities(func(e *fbgraph.Entity) bool {
+		ids = append(ids, string(e.Id()))
+		return true
+	})
+	if len(ids) != 3 {
+		t.Errorf("IterateEntities: got %d ids, want 3", len(ids))
+	}
+
+	// Early stop.
+	count := 0
+	r.IterateEntities(func(_ *fbgraph.Entity) bool {
+		count++
+		return false // stop after first
+	})
+	if count != 1 {
+		t.Errorf("IterateEntities early-stop: visited %d, want 1", count)
+	}
+
+	// IterateRelationships full.
+	var rels int
+	r.IterateRelationships(func(_ *fbgraph.Relationship) bool {
+		rels++
+		return true
+	})
+	if rels != 2 {
+		t.Errorf("IterateRelationships: got %d, want 2", rels)
+	}
+
+	// FindEntityByID ok-idiom.
+	if e, ok := r.FindEntityByID("e2"); !ok || e == nil {
+		t.Errorf("FindEntityByID(e2): ok=%v, e=%v", ok, e)
+	}
+	if _, ok := r.FindEntityByID("missing"); ok {
+		t.Errorf("FindEntityByID(missing): expected ok=false")
+	}
+}
+
+// TestEntityIteratorPull verifies the pull-style EntityIterator (S8).
+func TestEntityIteratorPull(t *testing.T) {
+	doc := &graph.Document{
+		Repo: "pull-iter-test",
+		Entities: []graph.Entity{
+			{ID: "x1", Kind: "function", Name: "X1"},
+			{ID: "x2", Kind: "function", Name: "X2"},
+		},
+		Relationships: []graph.Relationship{
+			{FromID: "x1", ToID: "x2", Kind: "CALLS"},
+		},
+	}
+	r := writeAndOpen(t, doc)
+
+	var names []string
+	it := fbreader.NewEntityIterator(r)
+	for it.Next() {
+		names = append(names, string(it.Entity().Name()))
+	}
+	if len(names) != 2 {
+		t.Errorf("EntityIterator: got %d, want 2", len(names))
+	}
+
+	var kinds []string
+	rit := fbreader.NewRelationshipIterator(r)
+	for rit.Next() {
+		kinds = append(kinds, string(rit.Relationship().Kind()))
+	}
+	if len(kinds) != 1 || kinds[0] != "CALLS" {
+		t.Errorf("RelationshipIterator: got %v, want [CALLS]", kinds)
 	}
 }
 
