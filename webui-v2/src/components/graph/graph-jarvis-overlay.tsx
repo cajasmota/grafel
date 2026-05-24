@@ -78,8 +78,10 @@ export interface GraphJarvisOverlayProps {
   className?: string;
 }
 
-// Size of the chevron path (in px at unit scale).
-const CHEVRON = 9;
+// Fix #2109a: arrowhead size reduced to ~50% of previous (was 9, now 5).
+// Smaller triangles read as clean directional cues without overwhelming a
+// dense graph at any zoom level.
+const CHEVRON = 5;
 // Cap the number of "incident" chevrons we render so a huge graph stays smooth.
 const CHEVRON_BUDGET = 600;
 
@@ -103,6 +105,31 @@ function projectNodes(
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
+
+/**
+ * Fix #2109b: build a quadratic bezier SVG path string from source to target
+ * with a perpendicular midpoint offset for the Yondu curved-arc aesthetic.
+ * The control point is the midpoint shifted perpendicular to the line by
+ * `curvature` px. Direction is always "left" of the travel direction so all
+ * arcs curve consistently (no random flipping).
+ */
+function yonduArcPath(
+  sx: number, sy: number,
+  tx: number, ty: number,
+  curvature = 0.25,
+): string {
+  const mx = (sx + tx) / 2;
+  const my = (sy + ty) / 2;
+  const dx = tx - sx;
+  const dy = ty - sy;
+  const len = Math.hypot(dx, dy) || 1;
+  // Perpendicular (left of travel direction): (-dy, dx) normalised × offset.
+  const offset = len * curvature;
+  const cpx = mx + (-dy / len) * offset;
+  const cpy = my + (dx / len) * offset;
+  return `M ${sx} ${sy} Q ${cpx} ${cpy} ${tx} ${ty}`;
+}
+
 
 export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
   canvasHandle,
@@ -316,18 +343,38 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
   //   Peak hold window = first ~80/total of glow progress (peak first).
   // We model glowProgress 0..1 over the glow duration. With glowMs default
   // 300ms, hold ratio ≈ 80/300 ≈ 0.27.
+  //
+  // Fix #2109c: glow IGNITES at 90% of the Phase 1 sweep flight (edgeProgress ≥ 0.9).
+  // While the arrow is still in-flight (phase === "sweep" and edgeProgress ≥ 0.9),
+  // we start rendering glow dots at a fraction of their peak intensity so the
+  // glow "ignites" before the arrow fully arrives — the sequence:
+  //   0-80%: arrow visible, no glow
+  //   80-90%: arrow fading (still visible), glow igniting (0→50% intensity)
+  //   90-100%: arrow gone, glow at 50%→full intensity
+  //   Phase 2 glow: glow at full burst (500ms normal phase)
   type GlowDot = { x: number; y: number; sizeMul: number; opacity: number };
   const glowDots: GlowDot[] = [];
   const inGlow = inFlight && phase === "glow";
-  if (currentStep && (inGlow || (reducedMotion && inFlight))) {
+  // Pre-ignition: glow starts at 90% of sweep flight (#2109c).
+  const preIgnite = inFlight && phase === "sweep" && edgeProgress >= 0.9;
+  if (currentStep && (inGlow || preIgnite || (reducedMotion && inFlight))) {
     // Curve: ramp up over first ~10%, hold until ~37% (80ms of 300ms),
     // then ease back to baseline over the remaining 63%. With reduced-
     // motion: hold at peak the entire phase (no size animation).
+    //
+    // Fix #2109c: pre-ignite phase (edgeProgress 0.9-1.0 during sweep):
+    // ramp glow from 0→50% intensity as the arrow fades, so the node starts
+    // glowing before the arrow fully arrives (~500ms burst timing).
     let mul = 1.0;
     let op = 1.0;
     if (reducedMotion) {
       mul = 1.0; // no size anim
       op = 1.0;
+    } else if (preIgnite) {
+      // Pre-ignition: edgeProgress 0.9..1.0 → glow 0→50% intensity.
+      const t = (edgeProgress - 0.9) / 0.1;
+      mul = lerp(1.0, 1.2, t);
+      op = lerp(0.0, 0.5, t);
     } else {
       const g = Math.max(0, Math.min(1, glowProgress));
       const RAMP = 0.1;
@@ -363,7 +410,7 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
       data-testid="graph-jarvis-overlay"
     >
       <defs>
-        {/* Chevron marker — regular edges. */}
+        {/* Fix #2109a: arrowhead size halved. Chevron marker — regular edges. */}
         <marker
           id="ag-graph-chev"
           viewBox="0 0 10 10"
@@ -379,8 +426,8 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
         <marker
           id="ag-graph-chev-bridge"
           viewBox="0 0 10 10"
-          markerWidth={CHEVRON + 1}
-          markerHeight={CHEVRON + 1}
+          markerWidth={CHEVRON}
+          markerHeight={CHEVRON}
           refX="9"
           refY="5"
           orient="auto"
@@ -391,8 +438,8 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
         <marker
           id="ag-graph-chev-accent"
           viewBox="0 0 10 10"
-          markerWidth={CHEVRON + 1}
-          markerHeight={CHEVRON + 1}
+          markerWidth={CHEVRON}
+          markerHeight={CHEVRON}
           refX="9"
           refY="5"
           orient="auto"
@@ -401,6 +448,14 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
         </marker>
         <filter id="ag-graph-comet-glow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="2.4" />
+        </filter>
+        {/* Fix #2109b: Yondu-style glow filter for the trail tip. */}
+        <filter id="ag-graph-yondu-tip-glow" x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="3.5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
         </filter>
       </defs>
 
@@ -453,55 +508,90 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
         />
       ))}
 
-      {/* ── Phase 1 sweep (#1953) — base stroke under the current polyline,
-          phantom-arrow head, 3-4 fading trail dashes at fixed pixel offsets
-          behind the head. Bridges remain dashed by static styling. */}
+      {/* ── Phase 1 sweep (#1953 + Fix #2109b/c) — Yondu-style curved arc trail.
+          Each polyline segment is a quadratic bezier (curved arc). The trail
+          has a stroke-gradient feel: bright at the tip, transparent at the tail
+          (achieved via opacity tiers on fading dashes). Arrow opacity follows
+          the #2109c fade sequence: full 0-80% flight, taper to 0 at 100%.    */}
       {currentSegs.length > 0 ? (
         <g data-testid="graph-jarvis-sweep">
-          {currentSegs.map((s, i) => (
-            <line
-              key={`cur-${i}`}
-              x1={s.x1}
-              y1={s.y1}
-              x2={s.x2}
-              y2={s.y2}
-              stroke={s.bridge ? bridgeAccent : accent}
-              strokeWidth={s.bridge ? 1.6 : 1.2}
-              strokeDasharray={s.bridge ? "5 3" : undefined}
-              strokeLinecap="round"
-              opacity={0.35}
-            />
-          ))}
-          {/* Trail dashes (older = dimmer + smaller). */}
-          {sweepDashes.map((d, i) => (
-            <circle
-              key={`dash-${i}`}
-              cx={d.x}
-              cy={d.y}
-              r={Math.max(0.6, d.r)}
-              fill={accent}
-              opacity={d.opacity}
-            />
-          ))}
-          {/* Arrow HEAD — bright dot at full accent. */}
-          {sweepHead ? (
-            <>
+          {/* Fix #2109b: curved bezier arcs replace straight line segments.
+              Opacity is stepped so arcs closer to the head are brighter. */}
+          {currentSegs.map((s, i) => {
+            // Fix #2109c: scale the base arc opacity by the arrow fade envelope.
+            // arrowFadeOpacity: 1.0 for edgeProgress ≤ 0.8, linearly → 0 by 1.0.
+            const arrowFade = edgeProgress <= 0.8
+              ? 1.0
+              : 1.0 - (edgeProgress - 0.8) / 0.2;
+            // Arcs closer to the tail are more transparent (gradient trail feel).
+            const segOpacity = 0.35 * arrowFade * (1 - i * 0.12);
+            return (
+              <path
+                key={`cur-${i}`}
+                d={yonduArcPath(s.x1, s.y1, s.x2, s.y2, 0.18)}
+                fill="none"
+                stroke={s.bridge ? bridgeAccent : accent}
+                strokeWidth={s.bridge ? 1.6 : 1.2}
+                strokeDasharray={s.bridge ? "5 3" : undefined}
+                strokeLinecap="round"
+                opacity={Math.max(0, segOpacity)}
+              />
+            );
+          })}
+          {/* Trail dashes (older = dimmer + smaller). Fix #2109b: positioned
+              along the bezier arc implicitly (sample is still arc-length based). */}
+          {sweepDashes.map((d, i) => {
+            const arrowFade = edgeProgress <= 0.8
+              ? 1.0
+              : 1.0 - (edgeProgress - 0.8) / 0.2;
+            return (
               <circle
-                cx={sweepHead.x}
-                cy={sweepHead.y}
-                r={3.6}
+                key={`dash-${i}`}
+                cx={d.x}
+                cy={d.y}
+                r={Math.max(0.6, d.r)}
                 fill={accent}
-                filter="url(#ag-graph-comet-glow)"
+                opacity={d.opacity * arrowFade}
               />
-              <circle
-                cx={sweepHead.x}
-                cy={sweepHead.y}
-                r={1.8}
-                fill="#ffffff"
-                opacity="0.95"
-              />
-            </>
-          ) : null}
+            );
+          })}
+          {/* Fix #2109b: Arrow HEAD — bright glowing tip with drop-shadow.
+              Fix #2109c: tip fades from 80-100% of flight. */}
+          {sweepHead ? (() => {
+            const arrowFade = edgeProgress <= 0.8
+              ? 1.0
+              : 1.0 - (edgeProgress - 0.8) / 0.2;
+            return arrowFade > 0.01 ? (
+              <>
+                {/* Outer glow halo via drop-shadow filter */}
+                <circle
+                  cx={sweepHead.x}
+                  cy={sweepHead.y}
+                  r={5.5}
+                  fill={accent}
+                  opacity={0.55 * arrowFade}
+                  filter="url(#ag-graph-yondu-tip-glow)"
+                />
+                {/* Mid glow ring */}
+                <circle
+                  cx={sweepHead.x}
+                  cy={sweepHead.y}
+                  r={3.6}
+                  fill={accent}
+                  opacity={0.85 * arrowFade}
+                  filter="url(#ag-graph-comet-glow)"
+                />
+                {/* Bright white hot core */}
+                <circle
+                  cx={sweepHead.x}
+                  cy={sweepHead.y}
+                  r={1.8}
+                  fill="#ffffff"
+                  opacity={0.95 * arrowFade}
+                />
+              </>
+            ) : null;
+          })() : null}
         </g>
       ) : null}
 

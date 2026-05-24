@@ -605,29 +605,58 @@ function GraphCanvasInner(
     // Fix #1567-1: width follows the same REPO-AWARE tier as color. The
     // emphasized tier (cross-repo on multi-repo groups; cross-module on a single
     // repo) gets the thickest hair; the subtle tier sits between; intra is
-    // thinnest. So upvate's island bridges read as the distinct tier, not the
+    // thinnest. So the island bridges read as the distinct tier, not the
     // in-repo wiring.
-    // Fix #1599: on a MULTI-REPO group the rare cross-repo bridges (376 of 37k on
-    // upvate) get a distinctly thicker hair so they read as the structural tier,
-    // while intra-repo edges stay thin. There are few enough bridges that a
-    // noticeably thicker line stays tasteful (no rope). On a single-repo monorepo
-    // the cross-module emphasized tier is far more common, so keep the original
-    // gentle width gap to avoid spaghetti.
-    const W_FADED = isMultiRepo ? 0.6 : 0.8;
-    const W_SUBTLE = isMultiRepo ? 0.7 : 1.0;
-    const W_EMPH = isMultiRepo ? 1.8 : 1.3;
-    const FLOOR_FADED = isMultiRepo ? 0.6 : 0.8;
-    const FLOOR_SUBTLE = isMultiRepo ? 0.7 : 1.0;
-    const FLOOR_EMPH = isMultiRepo ? 1.7 : 1.2;
+    // Fix #1599: on a MULTI-REPO group the rare cross-repo bridges get a
+    // distinctly thicker hair so they read as the structural tier.
+    //
+    // Fix #2108: GRAPH VIEW — remove the cross-repo width override so all link
+    // tiers use uniform widths derived purely from the cross-module / intra-module
+    // split. The cross-repo emphasis (thicker + distinct accent) is preserved on
+    // the flows / paths / topology surfaces (different components). In the graph
+    // view the dense WebGL canvas makes thick cross-repo ropes visually dominant
+    // even when the count is small; uniform widths keep the hairline aesthetic.
+    const W_FADED = 0.8;
+    const W_SUBTLE = 1.0;
+    const W_EMPH = 1.3;
+    const FLOOR_FADED = 0.8;
+    const FLOOR_SUBTLE = 1.0;
+    const FLOOR_EMPH = 1.2;
+
+    // Fix #2110: ZOOM-COMPENSATED link width. At very high zoom (close-up, 5-10
+    // nodes visible) links should thin out to fine connecting threads so they
+    // don't dominate the view. At very low zoom (full-canvas density cloud) links
+    // should stay at full user-scale so they're visible against the dense field.
+    //
+    //   zoom_compensation(z):
+    //     z < 0.3         → 1.0   (full scale, zoomed out / dense cloud)
+    //     0.3 … 1.5       → smooth taper 1.0 → 0.5  (mid-range)
+    //     z > 1.5         → 0.4   (thin threads; nodes dominate at close-up)
+    //
+    // The existing Grow-nodes-on-zoom toggle (applyZoomSizing) reuses the live
+    // zoom via currentZoomRef — we read the same ref here.
+    const z = currentZoomRef.current;
+    let zoomComp: number;
+    if (z < 0.3) {
+      zoomComp = 1.0;
+    } else if (z <= 1.5) {
+      // Linear taper from 1.0 at z=0.3 to 0.5 at z=1.5
+      zoomComp = 1.0 - 0.5 * ((z - 0.3) / 1.2);
+    } else {
+      zoomComp = 0.4;
+    }
+
     for (let i = 0; i < states.length; i++) {
       const st = states[i];
-      let tier: 0 | 1 | 2;
-      if (st === 2) tier = 2;
-      else if (st === 1) tier = isMultiRepo ? 1 : 2;
-      else tier = 0;
+      // Fix #2108: treat cross-repo (st 2) the same tier as cross-module (st 1).
+      // Width only distinguishes intra-module (thin) vs cross-module/repo (slightly
+      // thicker). Colour still distinguishes the full three tiers via packLinkColors.
+      const tier: 0 | 1 | 2 = st === 0 ? 0 : st === 1 ? (isMultiRepo ? 1 : 2) : (isMultiRepo ? 1 : 2);
       const base = tier === 2 ? W_EMPH : tier === 1 ? W_SUBTLE : W_FADED;
       const floor = tier === 2 ? FLOOR_EMPH : tier === 1 ? FLOOR_SUBTLE : FLOOR_FADED;
-      out[i] = Math.max(floor, base * render.linkWidthScale);
+      // Fix #2110: apply zoom compensation on top of user scale. The floor is
+      // intentionally NOT compensated so links never fully disappear at any zoom.
+      out[i] = Math.max(floor, base * render.linkWidthScale * zoomComp);
     }
     return out;
   }, [linkData, render.showLinks, render.linkWidthScale, isMultiRepo]);
@@ -744,6 +773,9 @@ function GraphCanvasInner(
     // Fix #1607: keep point sizing in lock-step with the zoom every frame during
     // a continuous pinch/wheel/drag so the sublinear growth + cap track smoothly.
     applyZoomSizingRef.current();
+    // Fix #2110: also re-pack link widths with current zoom compensation so the
+    // zoom-aware link width tracks smoothly during continuous pan/pinch.
+    applyZoomLinkWidthsRef.current();
     rafRef.current = requestAnimationFrame(motionLoop);
   }, []);
   const startInteraction = useCallback(() => {
@@ -863,11 +895,15 @@ function GraphCanvasInner(
     // point size so the very first painted (fitted) frame already has perceptible,
     // non-overlapping nodes with no manual tuning.
     applyZoomSizingRef.current(true);
+    // Fix #2110: also apply zoom-compensated link widths at initial settle so the
+    // very first paint already reflects the fitted zoom level.
+    applyZoomLinkWidthsRef.current(true);
     scheduleLabels();
     // One more fit on the next frames in case the canvas size settled late.
     setTimeout(() => {
       fitNowRef.current();
       applyZoomSizingRef.current(true);
+      applyZoomLinkWidthsRef.current(true);
       scheduleLabels();
     }, 200);
     onSettledRef.current();
@@ -902,9 +938,40 @@ function GraphCanvasInner(
   //
   // The on-screen px of a node ≈ baseSizePx × pointSizeScale (scalePointsOnZoom is
   // off, so cosmos does NOT multiply by zoom again — we own the whole zoom curve).
+  // Fix #2110: track the live zoom level so packLinkWidths can apply zoom
+  // compensation. Updated on every onZoom event (mount-only handler reads via ref).
+  const currentZoomRef = useRef(1);
+
   const ZOOM_EXP = 0.5; // sqrt → sublinear growth
   const MIN_FACTOR = 0.62; // floor: zoomed-out dots stay perceptible
   const lastZoomScaleRef = useRef(-1);
+  // Fix #2110: a ref-stable callback to re-pack + push link widths at the
+  // current zoom level. Called from onZoom and the rAF motion loop alongside
+  // applyZoomSizing — same zoom-listener reuse pattern the node-size updater uses.
+  const packLinkWidthsRef = useRef(packLinkWidths);
+  packLinkWidthsRef.current = packLinkWidths;
+  const lastZoomWidthRef = useRef(-1);
+  const applyZoomLinkWidths = useCallback((force = false) => {
+    const g = graphRef.current;
+    if (!g) return;
+    let z = 1;
+    try {
+      z = g.getZoomLevel() || 1;
+    } catch {
+      z = 1;
+    }
+    if (!Number.isFinite(z) || z <= 0) z = 1;
+    // Only re-pack when zoom moved enough to change the compensation tier.
+    if (!force && Math.abs(z - lastZoomWidthRef.current) < 0.05) return;
+    lastZoomWidthRef.current = z;
+    currentZoomRef.current = z;
+    if (!renderRef.current.showLinks) return;
+    g.setLinkWidths(packLinkWidthsRef.current());
+    if (hasSettledRef.current) g.render();
+  }, []);
+  const applyZoomLinkWidthsRef = useRef(applyZoomLinkWidths);
+  applyZoomLinkWidthsRef.current = applyZoomLinkWidths;
+
   const applyZoomSizing = useCallback((force = false) => {
     const g = graphRef.current;
     if (!g) return;
@@ -1097,6 +1164,9 @@ function GraphCanvasInner(
         // (covers the single-shot wheel zoom that doesn't bracket start/end). The
         // rAF motion loop handles continuous zoom/pan; this catches the rest.
         applyZoomSizingRef.current();
+        // Fix #2110: also re-pack link widths with updated zoom compensation on
+        // single-shot wheel zoom events not bracketed by start/end.
+        applyZoomLinkWidthsRef.current();
         if (!interactingRef.current) scheduleLabelsLive();
       },
       onZoomEnd: () => endInteractionRef.current(),

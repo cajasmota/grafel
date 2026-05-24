@@ -34,8 +34,17 @@ const PREFIX = "archigraph.v2.layout";
  * graph re-settles with the current forces on next load instead of restoring a
  * layout baked by retired forces. Tracks the store's DEFAULTS_VERSION (=4 at the
  * time of #1581).
+ *
+ * Fix #2107: bump to 5 — DEFAULTS_VERSION was already bumped to 5 in use-graph-store
+ * (#1607 sizing model overhaul) but LAYOUT_VERSION was left at 4. The mismatch meant
+ * the store discarded stale tuning but the layout cache STILL LOADED old positions
+ * (cached under the v4 key) produced by the retired forces. Since those positions
+ * were spread enough to pass isDegenerateLayout they were accepted and the graph
+ * rendered collapsed on every reload. Keeping this in lock-step with DEFAULTS_VERSION
+ * guarantees all v4 caches are a guaranteed miss; first load re-settles with current
+ * forces (== Reset). Reload === Reset by construction.
  */
-export const LAYOUT_VERSION = 4;
+export const LAYOUT_VERSION = 5;
 
 function fnv1a32(s: string): string {
   let h = 0x811c9dc5 >>> 0;
