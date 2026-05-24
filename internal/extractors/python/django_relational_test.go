@@ -180,6 +180,155 @@ class Permit(models.Model):
 	}
 }
 
+// TestDjangoRelational_StringFKBareName covers the #2049 case: bare-name string FK
+// `ForeignKey('Building', on_delete=CASCADE)`. The extractor must stamp
+// django_fk_string="Building" on the REFERENCES edge so the late-binding
+// resolver pass (ResolveDjangoStringFKRefs) can find the real Model entity
+// via same-app byPackageComponent lookup.
+func TestDjangoRelational_StringFKBareName(t *testing.T) {
+	src := `from django.db import models
+
+class Building(models.Model):
+    address = models.CharField(max_length=200)
+
+class GroupBuildingSettings(models.Model):
+    building = models.ForeignKey('Building', on_delete=models.CASCADE)
+    capacity = models.IntegerField(default=0)
+`
+	entities := extractDjango(t, src)
+
+	buildingField := findFieldEntity(t, entities, "GroupBuildingSettings.building")
+	if buildingField.Properties["field_type"] != "ForeignKey" {
+		t.Errorf("GroupBuildingSettings.building field_type = %q, want ForeignKey", buildingField.Properties["field_type"])
+	}
+	if buildingField.Properties["kwarg.on_delete"] != "CASCADE" {
+		t.Errorf("GroupBuildingSettings.building kwarg.on_delete = %q, want CASCADE", buildingField.Properties["kwarg.on_delete"])
+	}
+	if !hasReferencesEdgeContaining(buildingField, ":Building") {
+		t.Errorf("GroupBuildingSettings.building missing REFERENCES edge to Building; rels=%+v", buildingField.Relationships)
+	}
+	// Verify django_fk_string property is stamped for bare-name string FK.
+	var fkStringProp string
+	for _, r := range buildingField.Relationships {
+		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":Building") {
+			fkStringProp = r.Properties["django_fk_string"]
+			break
+		}
+	}
+	if fkStringProp != "Building" {
+		t.Errorf("GroupBuildingSettings.building REFERENCES edge django_fk_string = %q, want Building", fkStringProp)
+	}
+}
+
+// TestDjangoRelational_StringFKDottedAppLabel covers the #2049 case: dotted
+// app-label string FK `ForeignKey("app_label.ModelName", ...)`. The extractor
+// must stamp django_fk_string="app_label.ModelName" (the full dotted form
+// before stripping) so the late-binding resolver pass can derive the app
+// directory and use it for cross-app byPackageComponent lookup.
+func TestDjangoRelational_StringFKDottedAppLabel(t *testing.T) {
+	src := `from django.db import models
+
+class GroupBuildingSettings(models.Model):
+    building = models.ForeignKey('core.Building', on_delete=models.CASCADE)
+    owner = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+`
+	entities := extractDjango(t, src)
+
+	// Verify building FK: class name "Building", django_fk_string="core.Building"
+	buildingField := findFieldEntity(t, entities, "GroupBuildingSettings.building")
+	if !hasReferencesEdgeContaining(buildingField, ":Building") {
+		t.Errorf("GroupBuildingSettings.building missing REFERENCES edge to Building; rels=%+v", buildingField.Relationships)
+	}
+	var buildingFKStr string
+	for _, r := range buildingField.Relationships {
+		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":Building") {
+			buildingFKStr = r.Properties["django_fk_string"]
+			break
+		}
+	}
+	if buildingFKStr != "core.Building" {
+		t.Errorf("building FK django_fk_string = %q, want core.Building", buildingFKStr)
+	}
+
+	// Verify owner FK: class name "User", django_fk_string="auth.User"
+	ownerField := findFieldEntity(t, entities, "GroupBuildingSettings.owner")
+	if !hasReferencesEdgeContaining(ownerField, ":User") {
+		t.Errorf("GroupBuildingSettings.owner missing REFERENCES edge to User; rels=%+v", ownerField.Relationships)
+	}
+	var ownerFKStr string
+	for _, r := range ownerField.Relationships {
+		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":User") {
+			ownerFKStr = r.Properties["django_fk_string"]
+			break
+		}
+	}
+	if ownerFKStr != "auth.User" {
+		t.Errorf("owner FK django_fk_string = %q, want auth.User", ownerFKStr)
+	}
+}
+
+// TestDjangoRelational_StringFKSelfNoFKString covers self-reference string FK
+// `ForeignKey('self', ...)`. The django_fk_string should be "self" and
+// self_ref=true, but the REFERENCES edge still points at the parent class.
+func TestDjangoRelational_StringFKSelfNoFKString(t *testing.T) {
+	src := `from django.db import models
+
+class TreeNode(models.Model):
+    name = models.CharField(max_length=100)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True)
+`
+	entities := extractDjango(t, src)
+
+	parentField := findFieldEntity(t, entities, "TreeNode.parent")
+	if !hasReferencesEdgeContaining(parentField, ":TreeNode") {
+		t.Errorf("TreeNode.parent missing self-REFERENCES edge; rels=%+v", parentField.Relationships)
+	}
+	// Self-ref: django_fk_string should be "self" and self_ref="true".
+	var foundSelf bool
+	for _, r := range parentField.Relationships {
+		if r.Kind == "REFERENCES" && r.Properties["self_ref"] == "true" {
+			foundSelf = true
+			if got := r.Properties["django_fk_string"]; got != "self" {
+				t.Errorf("self-ref edge django_fk_string = %q, want self", got)
+			}
+			break
+		}
+	}
+	if !foundSelf {
+		t.Errorf("TreeNode.parent missing self_ref=true REFERENCES edge; rels=%+v", parentField.Relationships)
+	}
+}
+
+// TestDjangoRelational_IdentifierFKNoDjangoFKString covers the class-reference
+// (non-string) FK form `ForeignKey(Building, ...)`. For identifier targets
+// django_fk_string must NOT be set (empty or absent) — these resolve via the
+// standard byLocation path without needing the late-binding pass.
+func TestDjangoRelational_IdentifierFKNoDjangoFKString(t *testing.T) {
+	src := `from django.db import models
+
+class Building(models.Model):
+    address = models.CharField(max_length=200)
+
+class Room(models.Model):
+    building = models.ForeignKey(Building, on_delete=models.CASCADE)
+`
+	entities := extractDjango(t, src)
+
+	roomField := findFieldEntity(t, entities, "Room.building")
+	if !hasReferencesEdgeContaining(roomField, ":Building") {
+		t.Errorf("Room.building missing REFERENCES edge to Building; rels=%+v", roomField.Relationships)
+	}
+	// Identifier form: django_fk_string should NOT be set.
+	for _, r := range roomField.Relationships {
+		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":Building") {
+			if got := r.Properties["django_fk_string"]; got != "" {
+				t.Errorf("identifier-form FK incorrectly set django_fk_string = %q, want empty", got)
+			}
+			break
+		}
+	}
+}
+
 // TestDjangoRelational_ManyToManyWithThrough covers M2M field declarations
 // that carry a `through=` kwarg. We assert the REFERENCES edge points at
 // the first positional (the target Model) AND that the through model name

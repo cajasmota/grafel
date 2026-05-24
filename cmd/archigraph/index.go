@@ -3079,6 +3079,15 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	}
 
 	idx := resolve.BuildIndex(merged)
+	// #2049 — Django string-FK late-binding: rewrite scope:component:ref:python:*
+	// stubs on REFERENCES edges with django_rel set, using app-label-aware
+	// byPackageComponent lookup. Runs after BuildIndex (needs the component
+	// index) and before ReferencesEmbeddedWithAllowlist (so rewritten hex IDs
+	// are seen as resolved and counted correctly).
+	djangoFKRewrites := idx.ResolveDjangoStringFKRefs(merged)
+	if djangoFKRewrites > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: django-string-fk rewrote=%d FK REFERENCES stubs\n", djangoFKRewrites)
+	}
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
 	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)

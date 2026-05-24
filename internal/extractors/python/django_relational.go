@@ -14,10 +14,22 @@
 //     Django Model class bodies were invisible: no REFERENCES edge linked
 //     the Model to its Manager, so archigraph_expand(Model) didn't list
 //     the Manager as a neighbour.
+//   - #2049 — `ForeignKey('Building', ...)` (string reference) produced a
+//     Constraint/External placeholder entity instead of resolving to the
+//     real Building Model. The root cause: the resolver's
+//     lookupUniqueRealComponentByName fallback fails when the same class
+//     name appears in multiple apps (ambiguous), and the byPackageComponent
+//     cross-file same-package fallback doesn't fire for the "ref" subtype.
+//     Fix: stamp django_fk_string on the REFERENCES edge so the graph-wide
+//     ResolveDjangoStringFKRefs pass (internal/resolve/django_fk.go) can
+//     use the app_label segment of dotted forms ("auth.User" → app="auth")
+//     to narrow the candidate set to models in that Django app's directory,
+//     and fall back to byPackageComponent for same-app cross-file FKs.
 //
-// All three are addressed in a single post-pass over the same class body
-// that extractClassFields walks, because they share the same input shape:
-// `<attr> = <call_expr>` statements at the class body's immediate scope.
+// All three original issues are addressed in a single post-pass over the
+// same class body that extractClassFields walks, because they share the
+// same input shape: `<attr> = <call_expr>` statements at the class body's
+// immediate scope.
 //
 // Design notes:
 //
@@ -28,6 +40,9 @@
 //     cross-file targets the byName fallback binds the stub (provided the
 //     target Class.Name is unique in the merged graph — when ambiguous the
 //     resolver leaves the stub unbound, which is correct).
+//   - String FK forms stamp django_fk_string on the edge (e.g. "Building"
+//     or "app_label.Building") so the resolver's late-binding pass can
+//     use the app_label hint for cross-app disambiguation.
 //   - kwargs are stored in Properties as a flat namespace: `kwarg.<name>`
 //     so consumers iterate Properties looking for the prefix. This matches
 //     the existing pattern of one-string-value-per-key on Properties
@@ -216,15 +231,24 @@ func enrichDjangoModelFieldsAndManagers(
 				stampDjangoFieldProperties(&(*out)[idx], leafType, rhs, file.Content)
 				// (1b) Relational field → REFERENCES edge.
 				if _, isRel := djangoRelationalFieldTypes[leafType]; isRel {
-					if targetName, isSelf := extractRelationalTargetName(rhs, file.Content, parentClass); targetName != "" {
+					if targetName, rawFKString, isSelf := extractRelationalTargetName(rhs, file.Content, parentClass); targetName != "" {
+						props := map[string]string{
+							"django_rel": leafType,
+							"self_ref":   boolToString(isSelf),
+						}
+						// #2049 — stamp the raw string FK value on the edge so the
+						// graph-wide ResolveDjangoStringFKRefs pass can use the
+						// app_label segment of dotted forms for cross-app resolution.
+						// Only set for string literal forms; identifier/attribute forms
+						// resolve accurately via byLocation and don't need the hint.
+						if rawFKString != "" {
+							props["django_fk_string"] = rawFKString
+						}
 						(*out)[idx].Relationships = append((*out)[idx].Relationships,
 							types.RelationshipRecord{
-								ToID: buildDjangoModelClassRef(file.Path, targetName),
-								Kind: "REFERENCES",
-								Properties: map[string]string{
-									"django_rel": leafType,
-									"self_ref":   boolToString(isSelf),
-								},
+								ToID:       buildDjangoModelClassRef(file.Path, targetName),
+								Kind:       "REFERENCES",
+								Properties: props,
 							})
 					}
 				}
@@ -322,25 +346,32 @@ func stampDjangoFieldProperties(
 
 // extractRelationalTargetName parses the first positional argument of a
 // ForeignKey/OneToOneField/ManyToManyField call and returns the referenced
-// target-model name. Supported shapes:
+// target-model name, the raw string literal value (for string-form FKs only),
+// and whether this is a self-reference. Supported shapes:
 //
-//	ForeignKey(Jurisdiction, on_delete=...)        → "Jurisdiction", false
-//	ForeignKey("Jurisdiction", ...)                → "Jurisdiction", false
-//	ForeignKey("app.Jurisdiction", ...)            → "Jurisdiction", false
-//	ForeignKey("self", ...)                        → parentClass, true
-//	ForeignKey(to=Jurisdiction, ...)               → "Jurisdiction", false  (keyword form)
-//	ForeignKey(to="self", ...)                     → parentClass, true
+//	ForeignKey(Jurisdiction, on_delete=...)        → "Jurisdiction", "", false
+//	ForeignKey("Jurisdiction", ...)                → "Jurisdiction", "Jurisdiction", false
+//	ForeignKey("app.Jurisdiction", ...)            → "Jurisdiction", "app.Jurisdiction", false
+//	ForeignKey("self", ...)                        → parentClass, "self", true
+//	ForeignKey(to=Jurisdiction, ...)               → "Jurisdiction", "", false  (keyword form)
+//	ForeignKey(to="self", ...)                     → parentClass, "self", true
+//
+// The rawString return value is non-empty only for string-literal FK forms
+// (quoted strings). It carries the unstripped value before app_label removal
+// so the caller can stamp it as Properties["django_fk_string"] and the
+// graph-wide late-binding resolver pass (ResolveDjangoStringFKRefs) can use
+// the app_label segment for cross-app disambiguation (#2049).
 //
 // String-reference forms with an `app_name.` prefix return only the trailing
-// model leaf — the resolver's byName fallback matches by bare class name
-// across files. Self-references resolve to the enclosing parent class so
-// `expand(<Model>)` lists itself as a neighbour where appropriate.
+// model leaf as className — the resolver's byName fallback matches by bare
+// class name across files. Self-references resolve to the enclosing parent
+// class so `expand(<Model>)` lists itself as a neighbour where appropriate.
 //
-// Returns ("", false) when no resolvable positional/keyword target is found.
-func extractRelationalTargetName(callNode *sitter.Node, src []byte, parentClass string) (string, bool) {
+// Returns ("", "", false) when no resolvable positional/keyword target is found.
+func extractRelationalTargetName(callNode *sitter.Node, src []byte, parentClass string) (className, rawString string, isSelf bool) {
 	argsNode := callNode.ChildByFieldName("arguments")
 	if argsNode == nil {
-		return "", false
+		return "", "", false
 	}
 	// First, look for a `to=` keyword argument (less common but valid).
 	for i := 0; i < int(argsNode.ChildCount()); i++ {
@@ -373,27 +404,37 @@ func extractRelationalTargetName(callNode *sitter.Node, src []byte, parentClass 
 		}
 		return parseTargetExpr(arg, src, parentClass)
 	}
-	return "", false
+	return "", "", false
 }
 
 // parseTargetExpr converts the AST node for a relational field's target
-// argument into a (className, isSelfReference) pair. Returns ("", false)
-// for shapes we don't recognise (callables, conditional expressions, etc.)
-// rather than emitting a malformed REFERENCES edge.
-func parseTargetExpr(node *sitter.Node, src []byte, parentClass string) (string, bool) {
+// argument into a (className, rawString, isSelfReference) triple.
+//
+// className is the leaf class name used for the structural-ref ToID.
+// rawString is non-empty only for string-literal nodes and carries the
+// original quoted value before app_label stripping — used by the caller to
+// stamp Properties["django_fk_string"] for the late-binding resolver pass
+// (#2049). For identifier and attribute forms rawString is "" because the
+// class is already uniquely identified by its Python symbol without extra
+// app-label context.
+//
+// Returns ("", "", false) for shapes we don't recognise (callables,
+// conditional expressions, etc.) rather than emitting a malformed REFERENCES
+// edge.
+func parseTargetExpr(node *sitter.Node, src []byte, parentClass string) (className, rawString string, isSelf bool) {
 	if node == nil {
-		return "", false
+		return "", "", false
 	}
 	switch node.Type() {
 	case "identifier":
-		return nodeText(node, src), false
+		return nodeText(node, src), "", false
 	case "attribute":
 		// e.g. `app.Model` as an attribute access — return the leaf.
 		txt := nodeText(node, src)
 		if dot := strings.LastIndexByte(txt, '.'); dot >= 0 {
-			return txt[dot+1:], false
+			return txt[dot+1:], "", false
 		}
-		return txt, false
+		return txt, "", false
 	case "string":
 		raw := stripQuotes(strings.TrimSpace(nodeText(node, src)))
 		if raw == "self" {
@@ -403,14 +444,14 @@ func parseTargetExpr(node *sitter.Node, src []byte, parentClass string) (string,
 			if dot := strings.LastIndexByte(bare, '.'); dot >= 0 {
 				bare = bare[dot+1:]
 			}
-			return bare, true
+			return bare, "self", true
 		}
 		if dot := strings.LastIndexByte(raw, '.'); dot >= 0 {
-			return raw[dot+1:], false
+			return raw[dot+1:], raw, false
 		}
-		return raw, false
+		return raw, raw, false
 	}
-	return "", false
+	return "", "", false
 }
 
 // buildDjangoModelClassRef returns the structural-ref ToID for a REFERENCES
