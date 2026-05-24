@@ -13,6 +13,11 @@ import (
 // directory now lives in the EXTERNAL store under ARCHIGRAPH_HOME/store,
 // NOT inside the repo working tree. This is the change that keeps repos
 // clean and breaks the fb-vs-json reindex loop.
+//
+// PH1a (#2089): StateDirForRepo now returns the per-ref sub-directory
+// (<store>/<slug>-<hash>/refs/<ref>/). The base slug-hash segment is
+// tested via StateDirForRepoRef which is the primitive; StateDirForRepo
+// is tested to be under the store and not in the repo.
 func TestStateDirForRepo_DefaultStore(t *testing.T) {
 	t.Setenv(EnvRoot, "")
 	home := t.TempDir()
@@ -28,10 +33,15 @@ func TestStateDirForRepo_DefaultStore(t *testing.T) {
 	if strings.HasPrefix(got, "/some/repo") {
 		t.Fatalf("state dir leaked into repo tree: %q", got)
 	}
-	// Segment is "<slug>-<16hex>".
+	// PH1a: path must contain a refs/ segment.
+	if !strings.Contains(got, "/refs/") {
+		t.Fatalf("PH1a: state dir %q does not contain /refs/ segment", got)
+	}
+	// Base slug segment (before /refs/) must be "<slug>-<16hex>".
 	rel, _ := filepath.Rel(filepath.Join(home, "store"), got)
-	if !regexp.MustCompile(`^[a-zA-Z0-9._-]+-[0-9a-f]{16}$`).MatchString(rel) {
-		t.Fatalf("store segment %q is not <slug>-<hash>", rel)
+	parts := strings.SplitN(rel, string(filepath.Separator), 2) // ["<slug>-<hash>", "refs/..."]
+	if !regexp.MustCompile(`^[a-zA-Z0-9._-]+-[0-9a-f]{16}$`).MatchString(parts[0]) {
+		t.Fatalf("store base segment %q is not <slug>-<hash>", parts[0])
 	}
 }
 
@@ -50,10 +60,15 @@ func TestStateDirForRepo_WithDaemonRoot(t *testing.T) {
 	if !strings.HasPrefix(got, filepath.Join(root, "state")+string(filepath.Separator)) {
 		t.Fatalf("expected DAEMON_ROOT-rooted path, got %q", got)
 	}
-	// Segment after .../state/ must be a 16-hex-char hash.
+	// PH1a: path must contain a refs/ segment.
+	if !strings.Contains(got, "/refs/") {
+		t.Fatalf("PH1a: path %q does not contain /refs/ segment", got)
+	}
+	// Base segment after .../state/ must be a 16-hex-char hash.
 	rel, _ := filepath.Rel(filepath.Join(root, "state"), got)
-	if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(rel) {
-		t.Fatalf("segment %q is not 16 hex chars", rel)
+	parts := strings.SplitN(rel, string(filepath.Separator), 2) // ["<hash>", "refs/..."]
+	if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(parts[0]) {
+		t.Fatalf("base hash segment %q is not 16 hex chars", parts[0])
 	}
 }
 
@@ -81,11 +96,18 @@ func TestStateDirForRepo_PathSafe(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(EnvRoot, root)
 	// Even with shell-metachar-laden input the hash segment must be
-	// purely [0-9a-f].
-	got := StateDirForRepo("/some path/with spaces & $weird?chars")
+	// purely [0-9a-f]. Use StateDirForRepoRef to test just the base
+	// segment without gitmeta (which won't run on a non-git path).
+	got := StateDirForRepoRef("/some path/with spaces & $weird?chars", "main")
 	rel, _ := filepath.Rel(filepath.Join(root, "state"), got)
-	if strings.ContainsAny(rel, ` /$?&*'"\`+"`") {
-		t.Fatalf("segment %q is not shell/path safe", rel)
+	// The rel now looks like "<hash>/refs/main" — check the whole thing
+	// except for the "/" separators which are path components, not
+	// embedded in names. Strip the path seps.
+	parts := strings.Split(rel, string(filepath.Separator))
+	for _, p := range parts {
+		if strings.ContainsAny(p, ` $?&*'"\`+"`") {
+			t.Fatalf("path component %q in %q is not shell/path safe", p, rel)
+		}
 	}
 }
 

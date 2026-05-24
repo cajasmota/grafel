@@ -30,6 +30,19 @@
 // manifests written by the wizard) is NOT routed through this helper —
 // it stays at `<repo>/.archigraph/group.json` so it can be discovered
 // by walking up from a CWD regardless of which daemon is running.
+//
+// Per-ref layout (PH1a of epic #2087 / issue #2089):
+// Graph artifacts are now stored under a per-branch sub-directory:
+//
+//	<store>/<slug>-<hash>/refs/<ref-safe>/graph.fb
+//
+// where <ref-safe> is the branch name with "/" replaced by "%2F"
+// (URL-percent encoding, 2-way round-trip). The sentinel "_unknown" is
+// used when no ref is available (detached HEAD, pre-metadata graphs).
+//
+// StateDirForRepo remains the single entry point for existing callers;
+// it reads the current HEAD ref via gitmeta.Capture and delegates to
+// StateDirForRepoRef.
 package daemon
 
 import (
@@ -39,6 +52,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
 
 // repoStateHash returns a deterministic, path-safe identifier for a
@@ -101,24 +116,53 @@ func repoSlug(absRepoPath string) string {
 	return base + "-" + repoStateHash(absRepoPath)
 }
 
-// StateDirForRepo returns the directory that holds per-repo state
-// (graph.fb, graph.json, repair.json, enrichment-*.json, links, …) for
-// repoPath.
+// RefSafeEncode converts a git ref name (branch/tag) into a
+// filesystem-safe directory name component. The "/" separator is
+// percent-encoded as "%2F" so the round-trip is deterministic and
+// reversible. All other characters that are legal in git ref names are
+// also legal in directory names on Linux/macOS/Windows, so no further
+// encoding is needed.
 //
-// Resolution (issue #1626):
-//   - When ARCHIGRAPH_DAEMON_ROOT is set (isolated daemons, parallel
-//     agents, tests): `$ARCHIGRAPH_DAEMON_ROOT/state/<hash>/`. This
-//     preserves the issue-#745 isolation contract.
-//   - Otherwise: the external store at
-//     `$ARCHIGRAPH_HOME (or ~/.archigraph)/store/<slug>-<hash>/`.
+// Examples:
 //
-// Graph artifacts are NO LONGER written into `<repo>/.archigraph/`.
-// Pre-existing in-repo state is relocated transparently by
-// MigrateInRepoState (called from the load path).
+//	"main"          → "main"
+//	"feat/foo-bar"  → "feat%2Ffoo-bar"
+//	""              → "_unknown"
+func RefSafeEncode(ref string) string {
+	if ref == "" {
+		return "_unknown"
+	}
+	return strings.ReplaceAll(ref, "/", "%2F")
+}
+
+// RefSafeDecode reverses RefSafeEncode. "_unknown" is returned as "".
+func RefSafeDecode(safe string) string {
+	if safe == "_unknown" {
+		return ""
+	}
+	return strings.ReplaceAll(safe, "%2F", "/")
+}
+
+// repoBaseDir returns the per-repo slot in the store (without the
+// refs/<ref-safe>/ suffix). This is the top-level directory created for
+// the repo — it holds the refs/ sub-tree and legacy flat artifacts
+// during migration.
+func repoBaseDir(absRepoPath string) string {
+	if root := os.Getenv(EnvRoot); root != "" {
+		return filepath.Join(root, "state", repoStateHash(absRepoPath))
+	}
+	return filepath.Join(StoreDir(), repoSlug(absRepoPath))
+}
+
+// StateDirForRepoRef returns the per-ref state directory for repoPath
+// and a specific git ref:
 //
+//	<store>/<slug>-<hash>/refs/<ref-safe>/
+//
+// When ref is empty the sentinel directory "refs/_unknown/" is used.
 // The directory is NOT created here; callers that write should
 // os.MkdirAll the returned path.
-func StateDirForRepo(repoPath string) string {
+func StateDirForRepoRef(repoPath, ref string) string {
 	if repoPath == "" {
 		return ""
 	}
@@ -127,11 +171,34 @@ func StateDirForRepo(repoPath string) string {
 		abs = repoPath
 	}
 	abs = filepath.Clean(abs)
+	return filepath.Join(repoBaseDir(abs), "refs", RefSafeEncode(ref))
+}
 
-	if root := os.Getenv(EnvRoot); root != "" {
-		return filepath.Join(root, "state", repoStateHash(abs))
+// StateDirForRepo returns the directory that holds per-repo state
+// (graph.fb, graph.json, repair.json, enrichment-*.json, links, …) for
+// repoPath.
+//
+// Resolution (issue #1626 + PH1a #2089):
+//   - The current HEAD ref is captured via gitmeta.Capture so the path
+//     resolves to the per-branch sub-directory introduced by PH1a.
+//   - When ARCHIGRAPH_DAEMON_ROOT is set (isolated daemons, parallel
+//     agents, tests): `$ARCHIGRAPH_DAEMON_ROOT/state/<hash>/refs/<ref>/`.
+//   - Otherwise: `$ARCHIGRAPH_HOME (or ~/.archigraph)/store/<slug>-<hash>/refs/<ref>/`.
+//
+// Graph artifacts are NO LONGER written into `<repo>/.archigraph/`.
+// Pre-existing in-repo state is relocated transparently by
+// MigrateInRepoState (called from the load path). Pre-PH1a flat stores
+// are relocated into the per-ref sub-directory by MigrateToRefStore
+// (called from daemon startup).
+//
+// The directory is NOT created here; callers that write should
+// os.MkdirAll the returned path.
+func StateDirForRepo(repoPath string) string {
+	if repoPath == "" {
+		return ""
 	}
-	return filepath.Join(StoreDir(), repoSlug(abs))
+	meta := gitmeta.Capture(repoPath)
+	return StateDirForRepoRef(repoPath, meta.Ref)
 }
 
 // LegacyInRepoStateDir returns the historical co-located state directory
@@ -156,22 +223,17 @@ func GraphFBPathForRepo(repoPath string) string {
 	return filepath.Join(StateDirForRepo(repoPath), "graph.fb")
 }
 
-// FindGraphFile checks for the newest graph file (graph.fb preferred over
-// graph.json) and returns its path and modification time. Returns ("", 0)
-// if neither file exists. The returned modtime is in nanoseconds since epoch.
-func FindGraphFile(repoPath string) (path string, modtime int64) {
-	stateDir := StateDirForRepo(repoPath)
-
-	fbPath := filepath.Join(stateDir, "graph.fb")
-	jsonPath := filepath.Join(stateDir, "graph.json")
+// findGraphFileInDir checks dir for graph.fb / graph.json and returns the
+// path + modtime of the newest one. Returns ("", 0) if neither exists.
+func findGraphFileInDir(dir string) (path string, modtime int64) {
+	fbPath := filepath.Join(dir, "graph.fb")
+	jsonPath := filepath.Join(dir, "graph.json")
 
 	fbInfo, fbErr := os.Stat(fbPath)
 	jsonInfo, jsonErr := os.Stat(jsonPath)
 
-	// Check graph.fb first (preferred)
 	if fbErr == nil {
 		fbMtime := fbInfo.ModTime().UnixNano()
-		// If both exist, return whichever is newer
 		if jsonErr == nil {
 			jsonMtime := jsonInfo.ModTime().UnixNano()
 			if fbMtime >= jsonMtime {
@@ -181,11 +243,19 @@ func FindGraphFile(repoPath string) (path string, modtime int64) {
 		}
 		return fbPath, fbMtime
 	}
-
-	// Fall back to graph.json if graph.fb doesn't exist
 	if jsonErr == nil {
 		return jsonPath, jsonInfo.ModTime().UnixNano()
 	}
-
 	return "", 0
+}
+
+// FindGraphFile checks for the newest graph file (graph.fb preferred over
+// graph.json) for repoPath and returns its path and modification time.
+// Returns ("", 0) if neither file exists. The returned modtime is in
+// nanoseconds since epoch.
+//
+// PH1a: checks the per-ref directory (StateDirForRepo → StateDirForRepoRef).
+func FindGraphFile(repoPath string) (path string, modtime int64) {
+	stateDir := StateDirForRepo(repoPath)
+	return findGraphFileInDir(stateDir)
 }

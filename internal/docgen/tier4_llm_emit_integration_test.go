@@ -18,14 +18,13 @@
 package docgen_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/docgen"
 )
 
@@ -87,16 +86,9 @@ func buildGroupForTier4EmitTest(t *testing.T) (archHome, group string, slugs []s
 		}
 		graphBytes, _ := json.Marshal(graphDoc)
 
-		// Compute the canonical daemon-root state dir hash the same way
-		// daemon.StateDirForRepo does when ARCHIGRAPH_DAEMON_ROOT is set.
-		//   $ARCHIGRAPH_DAEMON_ROOT/state/<sha256(absRepoPath)[:16]>/
-		abs, err := filepath.Abs(repoPath)
-		if err != nil {
-			abs = repoPath
-		}
-		sum := sha256.Sum256([]byte(filepath.Clean(abs)))
-		hash := hex.EncodeToString(sum[:8])
-		stateDir := filepath.Join(daemonRoot, "state", hash)
+		// Use daemon.StateDirForRepo so the path always matches what the
+		// loader calls at query time — no manual hash duplication (PH1a #2089).
+		stateDir := daemon.StateDirForRepo(repoPath)
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("mkdir stateDir %s: %v", stateDir, err)
 		}
@@ -217,13 +209,9 @@ func buildGroupForTier4EmitTestWithDatastore(t *testing.T) (archHome, group, rep
 	}
 	graphBytes, _ := json.Marshal(graphDoc)
 
-	abs, err := filepath.Abs(repoPath)
-	if err != nil {
-		abs = repoPath
-	}
-	sum := sha256.Sum256([]byte(filepath.Clean(abs)))
-	hash := hex.EncodeToString(sum[:8])
-	stateDir := filepath.Join(daemonRoot, "state", hash)
+	// Use daemon.StateDirForRepo so the path always matches what the
+	// loader calls at query time — no manual hash duplication (PH1a #2089).
+	stateDir := daemon.StateDirForRepo(repoPath)
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("mkdir stateDir: %v", err)
 	}

@@ -9,8 +9,6 @@
 package docgen_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/docgen"
 )
 
@@ -506,24 +505,15 @@ func buildMinimalGroupForEmitTests(t *testing.T) (archHome, group, entityID, rep
 // writeGraphForEmitTest writes a minimal graph.json into the canonical
 // ARCHIGRAPH_DAEMON_ROOT state dir so findGroupGraphDirs can discover it.
 //
-// The canonical state dir when ARCHIGRAPH_DAEMON_ROOT is set is:
-//
-//	$ARCHIGRAPH_DAEMON_ROOT/state/<sha256(absRepoPath)[:16]>/
-//
-// We replicate the hash logic here to place graph.json in the right place.
+// PH1a (#2089): uses daemon.StateDirForRepo directly so the path always
+// matches what the loader resolves — no manual hash duplication.
 func writeGraphForEmitTest(t *testing.T, archHome, repoPath, entityID string) {
 	t.Helper()
 
-	// Compute the canonical state dir hash the same way daemon.StateDirForRepo does.
-	abs, err := filepath.Abs(repoPath)
-	if err != nil {
-		abs = repoPath
-	}
-	sum := sha256.Sum256([]byte(filepath.Clean(abs)))
-	hash := hex.EncodeToString(sum[:8])
-
-	daemonRoot := filepath.Join(archHome, "daemon-root")
-	stateDir := filepath.Join(daemonRoot, "state", hash)
+	// daemon.StateDirForRepo honours ARCHIGRAPH_DAEMON_ROOT (set by the caller)
+	// and appends the per-ref sub-directory (PH1a). Writing here ensures
+	// the file is always found at exactly the path the loader will look.
+	stateDir := daemon.StateDirForRepo(repoPath)
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("mkdir stateDir: %v", err)
 	}

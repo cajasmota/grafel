@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -186,4 +188,143 @@ func copyPath(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// graphMetadataRef is the minimal subset of the graph metadata file we
+// need for migration — just the indexed_ref field. We read .metadata.json
+// or graph.json (whichever exists) to discover the ref so we can route
+// the legacy flat artifacts into the correct per-ref sub-directory.
+type graphMetadataRef struct {
+	IndexedRef string `json:"indexed_ref"`
+}
+
+// readIndexedRefFromDir attempts to read the indexed_ref from the
+// metadata stored inside baseDir. It tries, in order:
+//  1. graph.fb (via fbreader — avoids JSON overhead for the common path)
+//  2. graph.json (JSON fallback)
+//
+// Returns "" when no metadata is found or the file predates PH0 (#2088).
+func readIndexedRefFromDir(baseDir string) string {
+	// Try graph.json — simpler than wiring fbreader here.
+	for _, name := range []string{"graph.json"} {
+		p := filepath.Join(baseDir, name)
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
+		var m graphMetadataRef
+		if err := json.NewDecoder(f).Decode(&m); err == nil && m.IndexedRef != "" {
+			f.Close()
+			return m.IndexedRef
+		}
+		f.Close()
+	}
+	return ""
+}
+
+// MigrateToRefStore walks storeDir and moves any legacy flat-layout
+// per-repo slot (one that holds graph.fb / graph.json directly, not under
+// refs/) into the per-ref sub-directory introduced by PH1a (#2089).
+//
+// Layout before migration:
+//
+//	<store>/<slug>-<hash>/graph.fb
+//	<store>/<slug>-<hash>/graph.json
+//	<store>/<slug>-<hash>/<sidecars>
+//
+// Layout after migration:
+//
+//	<store>/<slug>-<hash>/refs/<ref-safe>/graph.fb
+//	<store>/<slug>-<hash>/refs/<ref-safe>/graph.json
+//	<store>/<slug>-<hash>/refs/<ref-safe>/<sidecars>
+//
+// The ref-safe name is derived from the indexed_ref stored in the
+// metadata; "_unknown" is used when the metadata predates PH0 (#2088)
+// or the HEAD was detached.
+//
+// Migration is idempotent: slots that already have a refs/ sub-directory
+// and no top-level graph.fb are skipped.
+//
+// Intended to be called once from daemon startup (before the first RPC
+// is served) so no caller pays the migration cost at query time.
+func MigrateToRefStore(storeDir string) error {
+	if storeDir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(storeDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // store not created yet — nothing to migrate
+		}
+		return fmt.Errorf("MigrateToRefStore: read store dir %s: %w", storeDir, err)
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		slotDir := filepath.Join(storeDir, e.Name())
+		if err := migrateSlot(slotDir); err != nil {
+			// Log but continue; partial migration leaves usable state.
+			log.Printf("migration: slot %s: %v", slotDir, err)
+		}
+	}
+	return nil
+}
+
+// migrateSlot migrates a single per-repo slot from legacy flat layout to
+// the per-ref sub-directory layout. It is idempotent.
+func migrateSlot(slotDir string) error {
+	// Fast path: slot already has a refs/ sub-directory (new layout).
+	refsDir := filepath.Join(slotDir, "refs")
+	if fi, err := os.Stat(refsDir); err == nil && fi.IsDir() {
+		// Might still have a stale flat graph.fb alongside refs/ if a
+		// previous partial migration crashed. Clean up the top-level
+		// graph files if refs/ already holds something valid.
+		if !legacyHasGraph(slotDir) {
+			return nil // already clean
+		}
+		// top-level graph.fb exists alongside refs/ — finish the move.
+	} else if !legacyHasGraph(slotDir) {
+		return nil // slot has no graph at all — skip
+	}
+
+	// Determine the target ref from metadata stored in the slot.
+	ref := readIndexedRefFromDir(slotDir)
+	refSafe := RefSafeEncode(ref) // "" → "_unknown"
+
+	targetDir := filepath.Join(refsDir, refSafe)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", targetDir, err)
+	}
+
+	// Move every graph artifact from the slot top-level to targetDir.
+	var firstErr error
+	moveOne := func(name string) {
+		src := filepath.Join(slotDir, name)
+		if _, e := os.Stat(src); e != nil {
+			return // file absent — skip
+		}
+		dst := filepath.Join(targetDir, name)
+		// Idempotency: if dst already exists, skip — the file was already moved.
+		if _, e := os.Stat(dst); e == nil {
+			// dst exists: remove src to finish the partial move.
+			_ = os.RemoveAll(src)
+			return
+		}
+		if e := movePath(src, dst); e != nil && firstErr == nil {
+			firstErr = fmt.Errorf("move %s → %s: %w", src, dst, e)
+		}
+	}
+	for _, name := range graphArtifactNames {
+		moveOne(name)
+	}
+	for _, name := range graphArtifactDirs {
+		moveOne(name)
+	}
+
+	if firstErr == nil {
+		log.Printf("migration: %s → refs/%s", slotDir, refSafe)
+	}
+	return firstErr
 }
