@@ -21,7 +21,7 @@
 //  2. Load the repo's graph.
 //  3. Enumerate page-worthy entities (PageWorthyKinds).
 //  4. Deduplicate: if an entity is already covered by another seed's slice, skip it.
-//  5. Cap at MaxSeedsPerRepo (40) with a warning.
+//  5. Cap at MaxSeedsPerRepo (150) with a warning.
 //  6. Run Tier 2 per seed; write pages into <outDir>/<repo>/.
 //  7. Generate repo-level index.md + score.json.
 //  8. Run repo-level contract checks.
@@ -49,10 +49,17 @@ import (
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
-// MaxSeedsPerRepo is the per-repo cap on page-seed count. If more page-worthy
-// entities exist than this limit, the extras are skipped and the count is
-// recorded in score.json as skipped_below_budget_count.
-const MaxSeedsPerRepo = 40
+// MaxSeedsPerRepo is the default per-repo cap on page-seed count. If more
+// page-worthy entities exist than this limit, the extras are skipped and the
+// count is recorded in score.json as skipped_below_budget_count.
+//
+// The cap was raised from 40 → 150 (issue #1830): empirical dog-food on a
+// ~60k-entity repo showed the old cap silently dropped 110 page-worthy
+// entities. 150 covers 1 page per ~400 entities at that scale while still
+// providing a safety ceiling for very large monorepos.
+//
+// Callers can override on a per-run basis via Tier3RunOpts.SeedCap.
+const MaxSeedsPerRepo = 150
 
 // PageWorthyKinds is the set of entity-kind substrings that qualify an entity
 // as "page-worthy" — i.e. worthy of its own documentation page. The check is
@@ -100,6 +107,9 @@ type Tier3RunOpts struct {
 	CacheDir string
 	// NoCache disables both cache reads and writes for all sub-runs.
 	NoCache bool
+	// SeedCap overrides the per-repo seed limit (MaxSeedsPerRepo constant).
+	// Zero or negative means use the default (MaxSeedsPerRepo = 150).
+	SeedCap int
 }
 
 // Tier3Score is the repo-level scorecard written by Tier 3.
@@ -183,7 +193,11 @@ func RunTier3(opts Tier3RunOpts) (outDir string, score Tier3Score, err error) {
 	}
 
 	// Enumerate page-worthy seeds.
-	seeds, skipped := enumerateRepoSeeds(doc, opts.Group)
+	seedCap := opts.SeedCap
+	if seedCap <= 0 {
+		seedCap = MaxSeedsPerRepo
+	}
+	seeds, skipped := enumerateRepoSeeds(doc, opts.Group, seedCap)
 	skippedCount := skipped
 
 	// Run Tier 2 for each seed, collecting all pages.
@@ -283,9 +297,9 @@ func RunTier3(opts Tier3RunOpts) (outDir string, score Tier3Score, err error) {
 // ---------------------------------------------------------------------------
 
 // enumerateRepoSeeds returns the list of entity IDs to use as Tier 2 seeds
-// for the given repo document, capped at MaxSeedsPerRepo.
+// for the given repo document, capped at cap.
 // It returns (seedIDs, skippedCount).
-func enumerateRepoSeeds(doc *graph.Document, _ string) (seeds []string, skipped int) {
+func enumerateRepoSeeds(doc *graph.Document, _ string, cap int) (seeds []string, skipped int) {
 	// Collect page-worthy entities sorted by PageRank desc (then ID for determinism).
 	type rankedEntity struct {
 		id       string
@@ -313,11 +327,11 @@ func enumerateRepoSeeds(doc *graph.Document, _ string) (seeds []string, skipped 
 		return candidates[i].id < candidates[j].id
 	})
 
-	// Cap at MaxSeedsPerRepo.
+	// Cap at the caller-supplied limit.
 	skipped = 0
-	if len(candidates) > MaxSeedsPerRepo {
-		skipped = len(candidates) - MaxSeedsPerRepo
-		candidates = candidates[:MaxSeedsPerRepo]
+	if len(candidates) > cap {
+		skipped = len(candidates) - cap
+		candidates = candidates[:cap]
 	}
 
 	seeds = make([]string, len(candidates))
@@ -358,8 +372,9 @@ func extractPageWorthyIDs(doc *graph.Document) map[string]bool {
 // ---------------------------------------------------------------------------
 
 // EnumerateRepoSeedsForTest exposes enumerateRepoSeeds for unit tests.
+// Uses MaxSeedsPerRepo as the cap so tests exercise the real default.
 func EnumerateRepoSeedsForTest(doc *graph.Document, group string) ([]string, int) {
-	return enumerateRepoSeeds(doc, group)
+	return enumerateRepoSeeds(doc, group, MaxSeedsPerRepo)
 }
 
 // IsPageWorthyForTest exposes isPageWorthy for unit tests.
