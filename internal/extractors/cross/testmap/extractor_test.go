@@ -619,6 +619,59 @@ func TestJest_E2EPath(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Playwright
+// ---------------------------------------------------------------------------
+
+func TestPlaywright_ImportHintsDetection(t *testing.T) {
+	src := `import { test, expect } from '@playwright/test';
+
+test('logs in successfully', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('input[name="user"]', 'alice');
+});`
+	recs := runExtract(t, "tests/login.spec.ts", "typescript", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected playwright entities")
+	}
+	// Import hint should win over filename match, identifying as playwright not jest
+	if recs[0].Properties["test_framework"] != "playwright" {
+		t.Errorf("framework=%q, want playwright", recs[0].Properties["test_framework"])
+	}
+	// When no direct production calls are found, fallback uses filename convention
+	// to infer the tested_file (tests/login.spec.ts -> tests/login.ts)
+	if recs[0].Properties["tested_function"] != "login" {
+		t.Errorf("tested_function=%q, want login (from filename convention)", recs[0].Properties["tested_function"])
+	}
+}
+
+func TestPlaywright_PwExtensionDetection(t *testing.T) {
+	src := `import { test } from '@playwright/test';
+test('visit home', async ({ page }) => { await page.goto('/'); });`
+	recs := runExtract(t, "e2e/home.pw.ts", "typescript", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from .pw.ts file")
+	}
+	if recs[0].Properties["test_framework"] != "playwright" {
+		t.Errorf("framework=%q, want playwright", recs[0].Properties["test_framework"])
+	}
+}
+
+func TestPlaywright_SpecFileWithoutPlaywrightImportIsJest(t *testing.T) {
+	// .spec.ts file without @playwright/test import should be detected as Jest
+	src := `import { describe, it, expect } from 'vitest';
+describe('test', () => {
+  it('works', () => { doWork(); });
+});`
+	recs := runExtract(t, "src/test.spec.ts", "typescript", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities")
+	}
+	if recs[0].Properties["test_framework"] != "jest" {
+		t.Errorf("framework=%q, want jest (not playwright)", recs[0].Properties["test_framework"])
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Ruby RSpec
 // ---------------------------------------------------------------------------
 

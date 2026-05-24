@@ -542,6 +542,14 @@ var frameworkOrder = []frameworkEntry{
 		detect: detectPytest,
 	},
 	{
+		name:        "playwright",
+		importHints: []string{"@playwright/test", "playwright"},
+		filenameHints: []*regexp.Regexp{
+			regexp.MustCompile(`\.pw\.(?:ts|tsx|js|jsx)$`),
+		},
+		detect: detectJest,
+	},
+	{
 		name:        "jest",
 		importHints: []string{"jest", "@jest", "vitest", "mocha", "chai", "jasmine"},
 		filenameHints: []*regexp.Regexp{
