@@ -81,6 +81,28 @@ type GroupsForRepoFn func(repoPath string) []string
 // job is admitted regardless of budget).
 type PredictFn func(repoPath string) int64
 
+// CloneResult carries the outcome of a clone-from-parent attempt.
+// Mirrors clone.Result without importing the clone package here to
+// avoid a circular dependency (clone imports daemon for StateDirForRepoRef).
+type CloneResult struct {
+	// Done is true when the clone succeeded and the new ref is now indexed.
+	Done bool
+	// ParentRef is the ref that was used as the seed.
+	ParentRef string
+	// ChangedFiles is the number of files that were re-extracted.
+	ChangedFiles int
+}
+
+// CloneFn attempts the PH7 clone-from-parent optimisation before the
+// full IndexFn is called. Returns (done=true) when the clone succeeded
+// and the full reindex should be skipped. Returns (done=false) on any
+// precondition failure or error — the scheduler falls through to IndexFn.
+//
+// The function is invoked only when the target ref has not been indexed
+// before; repeat invocations for an already-indexed ref are suppressed
+// by the scheduler.
+type CloneFn func(ctx context.Context, repoPath string, ref string) CloneResult
+
 // Config wires the scheduler. All function fields are required; nil
 // causes Enqueue to short-circuit with a logged warning.
 type Config struct {
@@ -123,6 +145,13 @@ type Config struct {
 	// 0 (or negative) means: auto = max(2, runtime.NumCPU()/2).
 	// Set to 1 to fully serialise algo passes.
 	AlgoCap int
+
+	// Clone, when non-nil, is attempted before IndexFn for any ref that has
+	// no existing graph on disk. If Clone returns done=true, IndexFn is
+	// skipped for that job. If Clone returns done=false (any precondition
+	// failure or error), IndexFn is called normally (full reindex fallback).
+	// This is the PH7 clone-from-parent optimisation (issue #2099).
+	Clone CloneFn
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -609,8 +638,20 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		}
 	}()
 
+	// PH7: attempt clone-from-parent before running the full index.
+	// Only tried when the Clone callback is configured AND the job carries
+	// a non-empty ref (so we know which per-ref store to check).
 	var err error
-	if s.cfg.Index != nil {
+	cloneSkipped := false
+	if s.cfg.Clone != nil && tok.ref != "" {
+		res := s.cfg.Clone(context.Background(), repoPath, tok.ref)
+		if res.Done {
+			cloneSkipped = true
+			s.logEvent("clone_ok", repoPath,
+				"from="+res.ParentRef+" changed_files="+itoa(int64(res.ChangedFiles)))
+		}
+	}
+	if !cloneSkipped && s.cfg.Index != nil {
 		err = s.cfg.Index(context.Background(), repoPath, tok.ref)
 	}
 
