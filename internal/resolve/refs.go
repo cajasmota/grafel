@@ -762,6 +762,20 @@ func BuildIndex(entities []types.EntityRecord) Index {
 				idx.byQualifiedName[refProp] = e.ID
 			}
 		}
+		// Issue #2080 — testmap coverage entity self-ref FromID.
+		// buildCollapsedEntity (testmap extractor) emits TESTS edges whose
+		// FromID is the scope:testcoverage: stub stored in Properties["ref"].
+		// Indexing that stub here lets the resolver rewrite the TESTS edge
+		// FromID to the entity's own hex ID, connecting the SCOPE.Pattern
+		// coverage node in the "touched" set so it is not classified as a
+		// degree-0 orphan. First-writer-wins: testcoverage stubs encode
+		// (file, test, prod) so they are unique per entity by construction.
+		if refProp := e.Properties["ref"]; refProp != "" && refProp != e.QualifiedName &&
+			strings.HasPrefix(refProp, "scope:testcoverage:") {
+			if _, ok := idx.byQualifiedName[refProp]; !ok {
+				idx.byQualifiedName[refProp] = e.ID
+			}
+		}
 		// Rust wave-2 (S20+) — same first-writer-wins policy for
 		// hierarchy-extractor interface stubs. The cross/hierarchy
 		// extractor emits one trait entity per `impl Trait for Foo`
