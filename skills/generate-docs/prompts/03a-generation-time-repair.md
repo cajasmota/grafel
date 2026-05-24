@@ -1,5 +1,31 @@
 # Pass 3a — Generation-time repair (in-prose hook)
 
+---
+
+## CRITICAL TOOL DISCIPLINE
+========================
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+`archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+`archigraph_clusters`, `archigraph_whoami`, (full list in SKILL.md).
+
+You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
+entity discovery, or reading source files directly to enumerate APIs.
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for reading specific
+source line ranges that `archigraph_get_source` returns, or writing output files.
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+### Pre-flight assertion -- FIRST action in this pass
+
+Call `archigraph_whoami` before doing anything else in this pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+---
+
+
 A **hook**, not a standalone pass. Every writer subagent in Passes 3, 4, 5, 6, and 12 runs this check immediately before emitting prose that describes an entity. The hook is the primary site for `bind_to_entity` resolutions — Pass 1a deliberately defers those here because the writer has full local subgraph context via `archigraph_expand`. It also catches residuals discovered late (after Pass 1a) that the earlier sweep missed.
 
 ## When the hook fires
@@ -93,3 +119,11 @@ When a pattern's recipe references an entity with unresolved outbound edges, the
 - Writes go through `archigraph_repairs(action=submit)` only. No direct file writes.
 - The hook is idempotent: running it twice on the same entity produces zero new submits because the second pass sees `total == 0` for that `from_entity.id`.
 - Source attribution: every submit from this pass uses `source="generate-docs/pass-3a"` so the audit trail distinguishes sweep-time from generation-time repairs.
+
+---
+
+**[pass-03a telemetry]** Print at end of this pass:
+```
+[pass-03a] archigraph MCP calls: X | Bash invocations: Y
+```
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."

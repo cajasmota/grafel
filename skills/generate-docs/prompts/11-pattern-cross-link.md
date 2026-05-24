@@ -1,5 +1,31 @@
 # Pass 11 — Pattern cross-link (Phase 5 of ADR-0018)
 
+---
+
+## CRITICAL TOOL DISCIPLINE
+========================
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+`archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+`archigraph_clusters`, `archigraph_whoami`, (full list in SKILL.md).
+
+You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
+entity discovery, or reading source files directly to enumerate APIs.
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for reading specific
+source line ranges that `archigraph_get_source` returns, or writing output files.
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+### Pre-flight assertion -- FIRST action in this pass
+
+Call `archigraph_whoami` before doing anything else in this pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+---
+
+
 For every pattern approved in Pass 10 (or refined in this run), populate its `documentation_url` field so the graph holds a forward pointer to the markdown emitted in Pass 12.
 
 ## Procedure
@@ -35,3 +61,11 @@ For each approved pattern `p`:
 - DO NOT write `documentation_url` for `is_candidate=true` patterns. Their docs are not generated.
 - DO NOT delete an existing `documentation_url` when re-running — refinement only overwrites it with the new computed URL.
 - DO NOT chase `SUPERSEDES` edges here. Superseded patterns keep their old documentation_url until the user runs `archigraph patterns delete` or v1.1's history surface lights up.
+
+---
+
+**[pass-11 telemetry]** Print at end of this pass:
+```
+[pass-11] archigraph MCP calls: X | Bash invocations: Y
+```
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."

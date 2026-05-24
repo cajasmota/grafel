@@ -1,5 +1,31 @@
 # Pass 1a — Residual repair sweep (pre-Q&A)
 
+---
+
+## CRITICAL TOOL DISCIPLINE
+========================
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+`archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+`archigraph_clusters`, `archigraph_whoami`, (full list in SKILL.md).
+
+You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
+entity discovery, or reading source files directly to enumerate APIs.
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for reading specific
+source line ranges that `archigraph_get_source` returns, or writing output files.
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+### Pre-flight assertion -- FIRST action in this pass
+
+Call `archigraph_whoami` before doing anything else in this pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+---
+
+
 Runs **after Pass 1 (inventory)** and **before any deeper writer passes**. Closes the gap between the static-analysis recall ceiling (~85% on cross-repo b→a) and full coverage by annotating runtime-resolved edges that the resolver structurally cannot bind.
 
 This pass is the doc skill's integration with the ADR-0015 residual-repair mechanism. The MCP tool `archigraph_repairs` is the only surface used; do **not** read or write `repair.json` directly. See `docs/specs/repair-trust-model.md` for the allowlist of resolutions and verification rules.
@@ -181,3 +207,11 @@ Before recording a `PatternCandidate` in Pass 4 / aggregating in Pass 10, the ag
 - Never invent a `target_entity_id` that doesn't appear in `inventory.json`. Trust-model rule `R2` rejects unknown targets; the rejection becomes a user question.
 - Never submit `reasoning` shorter than ~10 characters. Trust-model rule `R7` flags it; we treat <10 as effectively rejected and demote to user question.
 - Auto-resolution must be reproducible — the same `repair-templates.json` + same `inventory.json` + same residuals must produce the same submits (no time-based or random decisions). This preserves ADR-0015's determinism guarantee.
+
+---
+
+**[pass-01a telemetry]** Print at end of this pass:
+```
+[pass-01a] archigraph MCP calls: X | Bash invocations: Y
+```
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."

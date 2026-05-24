@@ -1,5 +1,31 @@
 # Pass 12 — Pattern prose generation (Phase 6 of ADR-0018)
 
+---
+
+## CRITICAL TOOL DISCIPLINE
+========================
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+`archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+`archigraph_clusters`, `archigraph_whoami`, (full list in SKILL.md).
+
+You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
+entity discovery, or reading source files directly to enumerate APIs.
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for reading specific
+source line ranges that `archigraph_get_source` returns, or writing output files.
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+### Pre-flight assertion -- FIRST action in this pass
+
+Call `archigraph_whoami` before doing anything else in this pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+---
+
+
 Emit one markdown file per approved pattern under `docs/patterns/<category>/<pattern-id>.md`. Re-runs of `/generate-docs` overwrite these files from the current pattern store, so refinements and new applies propagate automatically.
 
 > **Pass 3a hook active.** Before writing the section that names an exemplar entity, run the generation-time repair hook from `prompts/03a-generation-time-repair.md`. This prevents pattern exemplars from referencing dangling targets and implements the "patterns → repair" cross-link from #732.
@@ -139,3 +165,11 @@ Use `source: "generate-docs/pass-12"` in all candidates. Append to
 - DO NOT omit the `Status`, `Category`, `Confidence` front-matter block. Downstream tooling parses it.
 - DO NOT inline private anti-patterns under any circumstance. Tests in `internal/agentpatterns/docs_test.go` enforce this.
 - DO NOT skip Pass 11 — without `documentation_url`, the graph cannot link prose to pattern docs.
+
+---
+
+**[pass-12 telemetry]** Print at end of this pass:
+```
+[pass-12] archigraph MCP calls: X | Bash invocations: Y
+```
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."
