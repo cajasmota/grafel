@@ -254,6 +254,16 @@ func (r *Reader) LoadGraphMeta() GraphMeta {
 	}
 }
 
+// EntityEmbeddingRef returns the content-hash pointer (PH8 / #2100) for the
+// given entity, or "" when the field is absent (old graphs). Callers should
+// treat "" as "no cache ref — fall back to inline embedding or recompute".
+func EntityEmbeddingRef(e *fb.Entity) string {
+	if e == nil {
+		return ""
+	}
+	return string(e.EmbeddingRef())
+}
+
 func bytesEqual(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false

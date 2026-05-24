@@ -46,6 +46,13 @@ table Entity {
   is_god_node: bool = false;
   is_surprise_endpoint: bool = false;
   is_articulation_point: bool = false;
+
+  // PH8 (#2100): content-hash pointer into the shared embedding cache
+  // (~/.archigraph/embeddings/<shard>/<hash>.vec). When non-empty, readers
+  // load the vector from the cache instead of inlining it in graph.fb. Old
+  // graphs have this field absent (FlatBuffers defaults to "") and continue
+  // to work — their vectors are served from embeddings.bin as before.
+  embedding_ref: string;
 }
 
 // Community is one Louvain modularity community summarised for the
