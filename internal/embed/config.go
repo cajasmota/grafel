@@ -1,8 +1,16 @@
 // Package embed provides the semantic-search embedding pipeline for
-// archigraph: a pluggable embedding backend (builtin MiniLM via hugot, an
-// OpenAI-compatible HTTP backend, or disabled), AST-aware chunking, a
-// per-repo on-disk vector sidecar (embeddings.bin), and brute-force cosine
-// search used by the MCP server for RRF fusion with BM25 (#461, ADR-0019).
+// archigraph: a pluggable embedding backend (builtin MiniLM via hugot with
+// -tags simplego, an OpenAI-compatible HTTP backend, or disabled), AST-aware
+// chunking, a per-repo on-disk vector sidecar (embeddings.bin), and
+// brute-force cosine search used by the MCP server for RRF fusion with BM25
+// (#461, ADR-0019).
+//
+// Default mode (S6 / #2156): embeddings are DISABLED. BM25 search works
+// without any configuration. To enable semantic search set
+// ARCHIGRAPH_EMBEDDING_URL=http://localhost:11434/v1 (Ollama / LM Studio /
+// any OpenAI-compatible endpoint). The bundled MiniLM model is still
+// available via -tags simplego builds; set ARCHIGRAPH_EMBEDDING_BACKEND=builtin
+// to activate it.
 package embed
 
 import (
@@ -73,10 +81,13 @@ func homeDir() string {
 
 // LoadConfig reads embeddings.json (if present) and applies env overrides.
 // A missing file is NOT an error: it yields the zero-config default
-// (builtin backend). An unparseable file falls back to the default too,
+// (disabled — BM25-only). An unparseable file falls back to the default too,
 // surfacing the parse error to the caller for logging.
+//
+// To opt in to semantic embeddings set ARCHIGRAPH_EMBEDDING_URL or write
+// {"backend":"http","http":{"url":"..."}} to ~/.archigraph/embeddings.json.
 func LoadConfig() (Config, error) {
-	cfg := Config{Backend: BackendBuiltin}
+	cfg := Config{Backend: BackendDisabled}
 	var parseErr error
 
 	if data, err := os.ReadFile(ConfigPath()); err == nil {
@@ -131,7 +142,7 @@ func (cfg *Config) normalize() error {
 	cfg.Backend = strings.ToLower(strings.TrimSpace(cfg.Backend))
 	switch cfg.Backend {
 	case "":
-		cfg.Backend = BackendBuiltin
+		cfg.Backend = BackendDisabled
 	case BackendBuiltin, BackendDisabled:
 		// ok
 	case BackendHTTP:

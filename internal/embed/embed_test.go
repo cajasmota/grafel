@@ -4,6 +4,9 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,14 +52,16 @@ func TestConfig_EnvOverride(t *testing.T) {
 	}
 }
 
-func TestConfig_DefaultIsBuiltin(t *testing.T) {
+// TestConfig_DefaultIsDisabled verifies that a fresh install with no config
+// file and no env vars defaults to BM25-only mode (S6 / #2156).
+func TestConfig_DefaultIsDisabled(t *testing.T) {
 	t.Setenv("ARCHIGRAPH_HOME", t.TempDir())
 	for _, e := range []string{EnvBackend, EnvURL, EnvModel, EnvAPIKey, EnvDims} {
 		t.Setenv(e, "")
 	}
 	cfg, err := LoadConfig()
-	if err != nil || cfg.Backend != BackendBuiltin {
-		t.Fatalf("want builtin, got %+v err=%v", cfg, err)
+	if err != nil || cfg.Backend != BackendDisabled {
+		t.Fatalf("want disabled (BM25-only), got %+v err=%v", cfg, err)
 	}
 }
 
@@ -167,5 +172,180 @@ func TestFakeBackend_SemanticOrdering(t *testing.T) {
 	}
 	if dot(q[0], vs[0]) <= dot(q[0], vs[1]) {
 		t.Fatalf("auth query should match auth doc better than math doc")
+	}
+}
+
+// TestHTTPBackend_OptIn verifies that setting ARCHIGRAPH_EMBEDDING_URL routes
+// through the HTTP backend and fetches+caches embeddings (S6 / #2156).
+func TestHTTPBackend_OptIn(t *testing.T) {
+	const dims = 4
+	// Deterministic fake vectors the mock server will return.
+	fakeVecs := map[string][]float32{
+		"Login function auth": {0.1, 0.2, 0.3, 0.4},
+		"Logout function":     {0.5, 0.6, 0.7, 0.8},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req embeddingsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var resp embeddingsResponse
+		for i, inp := range req.Input {
+			v := fakeVecs[inp]
+			if v == nil {
+				v = make([]float32, dims)
+			}
+			resp.Data = append(resp.Data, struct {
+				Embedding []float32 `json:"embedding"`
+				Index     int       `json:"index"`
+			}{Embedding: v, Index: i})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	t.Setenv("ARCHIGRAPH_HOME", t.TempDir())
+	t.Setenv(EnvURL, srv.URL+"/v1")
+	t.Setenv(EnvDims, "4")
+	// Clear other env vars to test URL-only opt-in.
+	for _, e := range []string{EnvBackend, EnvModel, EnvAPIKey} {
+		t.Setenv(e, "")
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Backend != BackendHTTP {
+		t.Fatalf("want http backend via URL opt-in, got %q", cfg.Backend)
+	}
+
+	be, err := NewBackend(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewBackend: %v", err)
+	}
+	defer be.Close()
+
+	// Embed two texts; each should come back as a non-zero vector.
+	texts := []string{"Login function auth", "Logout function"}
+	vecs, err := be.Embed(context.Background(), texts)
+	if err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+	if len(vecs) != 2 {
+		t.Fatalf("want 2 vectors, got %d", len(vecs))
+	}
+	for i, v := range vecs {
+		if len(v) != dims {
+			t.Errorf("vec[%d]: want dims=%d, got %d", i, dims, len(v))
+		}
+	}
+
+	// Verify cache integration: EmbedDocument should store vectors and reuse
+	// them on a second call (0 backend calls).
+	dir := t.TempDir()
+	doc := &graph.Document{Entities: []graph.Entity{
+		{ID: "1", Name: "Login", Kind: "function", SourceFile: "auth.go"},
+		{ID: "2", Name: "Logout", Kind: "function", SourceFile: "auth.go"},
+	}}
+	cache, err := NewCache(filepath.Join(dir, "embeddings"))
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	_, r1, err := EmbedDocumentWithCache(context.Background(), doc, "", dir, be, cache)
+	if err != nil {
+		t.Fatalf("EmbedDocumentWithCache first run: %v", err)
+	}
+	if r1.Embedded != 2 {
+		t.Fatalf("first run: want 2 embedded, got %+v", r1)
+	}
+	// Second run: same doc → all served from cache (CacheHit), no backend call.
+	_, r2, err := EmbedDocumentWithCache(context.Background(), doc, "", dir, be, cache)
+	if err != nil {
+		t.Fatalf("EmbedDocumentWithCache second run: %v", err)
+	}
+	if r2.Embedded != 0 {
+		t.Fatalf("second run: want 0 embedded (all cached), got %+v", r2)
+	}
+}
+
+// TestConfig_URLOnlyOptin verifies that ARCHIGRAPH_EMBEDDING_URL alone (no
+// ARCHIGRAPH_EMBEDDING_BACKEND) is sufficient to activate HTTP mode.
+func TestConfig_URLOnlyOptin(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_HOME", t.TempDir())
+	t.Setenv(EnvURL, "http://localhost:11434/v1")
+	for _, e := range []string{EnvBackend, EnvModel, EnvAPIKey, EnvDims} {
+		t.Setenv(e, "")
+	}
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Backend != BackendHTTP {
+		t.Fatalf("want http via URL-only opt-in, got %q", cfg.Backend)
+	}
+	if cfg.HTTP.URL != "http://localhost:11434/v1" {
+		t.Fatalf("HTTP.URL mismatch: %q", cfg.HTTP.URL)
+	}
+}
+
+// TestMixedEmbeddingState verifies that a graph.fb with some entities carrying
+// embedding_ref and others without (embedding_ref="") loads cleanly when the
+// embedding backend is disabled. This is the common migration scenario where
+// a user indexed with embeddings enabled and then downgraded or switched to
+// BM25-only mode.
+func TestMixedEmbeddingState(t *testing.T) {
+	dir := t.TempDir()
+	be := &fakeBackend{dims: 8}
+
+	// Build an initial doc with 3 entities and embed it.
+	doc := &graph.Document{Entities: []graph.Entity{
+		{ID: "1", Name: "Alpha", Kind: "function", SourceFile: "a.go"},
+		{ID: "2", Name: "Beta", Kind: "function", SourceFile: "b.go"},
+		{ID: "3", Name: "Gamma", Kind: "function", SourceFile: "c.go"},
+	}}
+	_, _, err := EmbedDocument(context.Background(), doc, "", dir, be)
+	if err != nil {
+		t.Fatalf("EmbedDocument: %v", err)
+	}
+
+	// Verify all entities got an embedding_ref stamped.
+	for i, e := range doc.Entities {
+		if e.EmbeddingRef == "" {
+			t.Errorf("entity[%d] (%s): expected EmbeddingRef, got empty", i, e.Name)
+		}
+	}
+
+	// Now load the saved store — it should contain 3 vectors.
+	store, err := Load(StorePath(dir), 8)
+	if err != nil {
+		t.Fatalf("Load store: %v", err)
+	}
+	if store.Len() != 3 {
+		t.Fatalf("store should have 3 vectors, got %d", store.Len())
+	}
+
+	// Simulate "new entity added, no embedding yet" by appending an entity
+	// with an empty EmbeddingRef — as would happen when the daemon reindexes
+	// with embeddings disabled but old entities already have refs on disk.
+	doc.Entities = append(doc.Entities, graph.Entity{
+		ID: "4", Name: "Delta", Kind: "function", SourceFile: "d.go",
+	})
+
+	// Load succeeds and dim mismatch (8 vs queried 8) returns all entries.
+	store2, err := Load(StorePath(dir), 8)
+	if err != nil {
+		t.Fatalf("Load mixed store: %v", err)
+	}
+	// Original 3 vectors still readable; entity 4 has no vector — this is fine.
+	if store2.Len() != 3 {
+		t.Fatalf("mixed-state load: want 3 vectors, got %d", store2.Len())
+	}
+	// Search still works for embedded entities.
+	hits := store2.Search(l2Normalize([]float32{1, 0, 0, 0, 0, 0, 0, 0}), 3)
+	if len(hits) == 0 {
+		t.Fatal("search on mixed-state store returned no hits")
 	}
 }
