@@ -42,7 +42,15 @@ func TestMCPHandshakeBudget(t *testing.T) {
 		// feat/drop-subgraph-shims: drop archigraph_get_subgraph + archigraph_summarize_subgraph
 		// shims (0 real callers per #1742 research). Net saving: ~180 tokens.
 		// 29 tools, ceiling lowered to 3,200.
-		tokenCeiling  = 3200
+		// 2026-05-24 (#1741/#1753/#1741/#1772 token sprint bundle): +archigraph_neighbors
+		// tool (unifies find_callers + find_callees) + `fields` array param added to
+		// find/inspect/expand/search_entities/neighbors for #1741 GraphQL-style
+		// selection. Old find_callers/find_callees stay as deprecated aliases until
+		// next release (one-release deprecation policy). Net: +1 tool, +5 fields params,
+		// shorter sentinel/expand descriptions. Measured: 3,452 tokens (31 tools).
+		// Ceiling bumped to 3,500 to seat the new surface. Drops to ~3,200 next release
+		// when find_callers/find_callees aliases are removed.
+		tokenCeiling  = 3500
 		charsPerToken = 4
 		envelopeBytes = 512 // initEnvelopeBytes constant from cmd/mcp-audit
 		maxDescLen    = 80

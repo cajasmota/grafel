@@ -607,13 +607,12 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count: 29 (28 baseline + archigraph_module_analysis from #1384,
-	// + archigraph_apply_docgen_repairs from #1659,
-	// + archigraph_subgraph from #1754,
-	// - archigraph_get_subgraph shim dropped (feat/drop-subgraph-shims),
-	// - archigraph_summarize_subgraph shim dropped (feat/drop-subgraph-shims)).
-	if got := len(srv.MCP.ListTools()); got != 29 {
-		t.Errorf("expected 29 registered tools, got %d — update this count if tools are added/removed", got)
+	// Total count: 31 = 29 baseline + archigraph_neighbors (#1753 fold of
+	// find_callers + find_callees behind direction=) + archigraph_status
+	// sentinel registered as a real callable tool (#1769). find_callers /
+	// find_callees stay registered as deprecated aliases for one release.
+	if got := len(srv.MCP.ListTools()); got != 31 {
+		t.Errorf("expected 31 registered tools, got %d — update this count if tools are added/removed", got)
 	}
 }
 
@@ -3049,6 +3048,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_test_coverage":        {"group": "g"},
 		"archigraph_module_analysis":      {"group": "g"},
 		"archigraph_secrets":              {"group": "g"},
+		"archigraph_neighbors":            {"group": "g", "entity_id": "r1::a2", "direction": "both"},
+		"archigraph_status":               {"group": "g"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3093,8 +3094,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 29 {
-		t.Errorf("expected 29 registered tools, got %d — update minimalArgs if tools are added/removed", len(tools))
+	if len(tools) != 31 {
+		t.Errorf("expected 31 registered tools, got %d — update minimalArgs if tools are added/removed", len(tools))
 	}
 
 	for _, st := range tools {

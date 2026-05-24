@@ -24,7 +24,7 @@ const sentinelToolName = "archigraph_status"
 // Claude Code handshake when no registered group covers the session cwd.
 // Note: mid-session group registration is NOT reflected here; that requires
 // notifications/tools/list_changed (tracked in #1772).
-const sentinelToolDescription = "Archigraph: no indexed group covers this directory. Run `archigraph install` or `cd` into a registered repo. (Note: new groups registered mid-session are not reflected until restart — see #1772.)"
+const sentinelToolDescription = "Archigraph: no indexed group covers cwd. Run install or cd to a repo."
 
 // Config controls server construction.
 type Config struct {
@@ -95,9 +95,20 @@ func (s *Server) ServeStdio() error {
 }
 
 // reloadBeforeCall is the shared mtime-based lazy refresh hook.
+//
+// #1772: when the registry signature (group→repo set) mutated since the
+// previous reload, emit notifications/tools/list_changed so MCP clients
+// re-issue tools/list. Debounce is implicit — the signature only flips when
+// the on-disk registry actually changes, so back-to-back identical reloads
+// do not spam clients.
 func (s *Server) reloadBeforeCall() {
-	n, _ := s.State.Reload()
+	n, surfaceChanged, _ := s.State.ReloadAndSurfaceChanged()
 	s.Tel.MarkReload(n)
+	if surfaceChanged && s.MCP != nil {
+		// Best-effort: failures are silently ignored. The notification carries
+		// no payload — clients respond by re-issuing tools/list.
+		s.MCP.SendNotificationToAllClients(mcpapi.MethodNotificationToolsListChanged, nil)
+	}
 }
 
 // inferCWD returns the best available working-directory hint for a tool call.
@@ -271,7 +282,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find",
-		mcpapi.WithDescription("BM25 graph query, de-noised. verbose=true: wide. min_score=0.15 trims tail."),
+		mcpapi.WithDescription("BM25 graph query. query=. min_score>=0.15 trims tail. max_results caps at 200."),
 		mcpapi.WithString("query", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
@@ -279,8 +290,9 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
 		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
-		// verbose=true (default false) read from request map to stay under token ceiling.
-		// min_score (default 0.15) read from request map — not in JSON-Schema (#1639 pattern).
+		// verbose=true (default false), min_score (default 0.15), max_results (default 50, ceiling 200)
+		// read from request map to stay under token ceiling (#1921 / #1807).
+		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find", s.handleQueryGraph))
@@ -290,18 +302,20 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// verbose=true (default false) read from request map to stay under token ceiling.
 		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_inspect", s.handleGetNode))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_expand",
-		mcpapi.WithDescription("Return neighbors of entity_id up to depth. 'node' is a deprecated alias."),
+		mcpapi.WithDescription("Deprecated alias of archigraph_neighbors. Returns neighbors of entity_id."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// 'node' kept as a deprecated alias for one release cycle (#1916).
 		mcpapi.WithString("node"),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_expand", s.handleGetNeighbors))
@@ -455,6 +469,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(30)),
 		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
 		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_search_entities", s.handleSearchEntities))
@@ -499,9 +514,24 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
+	// archigraph_neighbors — folds find_callers + find_callees into one tool
+	// (#1753, #1742). direction=in returns callers, out returns callees, both
+	// returns the union. find_callers / find_callees stay as deprecated aliases.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_neighbors",
+		mcpapi.WithDescription("Graph neighbors of entity_id. direction=in|out|both."),
+		mcpapi.WithString("entity_id", mcpapi.Required()),
+		mcpapi.WithString("direction", mcpapi.DefaultString("both")),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
+		mcpapi.WithArray("fields"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_neighbors", s.handleNeighbors))
+
 	// verbose=true (default false) read from request map to stay under token ceiling.
+	// Deprecated alias for archigraph_neighbors(direction=in) (#1753).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callers",
-		mcpapi.WithDescription("Inbound callers up to N hops. verbose=true restores kind+repo."),
+		mcpapi.WithDescription("Deprecated: use archigraph_neighbors(direction=in). Inbound callers."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
@@ -509,9 +539,9 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_callers", s.handleFindCallers))
 
-	// verbose=true (default false) read from request map to stay under token ceiling.
+	// Deprecated alias for archigraph_neighbors(direction=out) (#1753).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callees",
-		mcpapi.WithDescription("Outbound callees up to N hops. verbose=true restores kind+repo."),
+		mcpapi.WithDescription("Deprecated: use archigraph_neighbors(direction=out). Outbound callees."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
@@ -675,6 +705,11 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 		// the same regex parser works for both paths.
 		elapsed := time.Since(start).Milliseconds()
 		if res != nil {
+			// #1741: GraphQL-style `fields=` selection. Apply BEFORE elapsed-ms
+			// injection so the envelope key always survives.
+			if fl := fieldsArg(req); fl != nil {
+				res = applyFieldsToResult(res, fl)
+			}
 			res = injectElapsedMS(res, elapsed)
 			// #1740: intern repeated entity IDs to short handles (@1, @2, …).
 			// Runs after elapsed-ms injection so the _id_table lands in the

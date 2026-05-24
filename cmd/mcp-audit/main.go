@@ -48,7 +48,12 @@ import (
 // tool (cycles|centrality|all) to minimise footprint; measured at 3085 tokens
 // (+85 above the previous ceiling, +122 above baseline). +100-token bump is the
 // smallest round number that fits with a safety margin.
-const defaultCeiling = 3100
+// 2026-05-24 (token-sprint bundle #1741/#1753): bumped to 3500 to seat
+// archigraph_neighbors (folds find_callers + find_callees) and `fields` array
+// params on find/inspect/expand/search_entities/neighbors. find_callers and
+// find_callees stay as deprecated aliases for one release; ceiling drops to
+// ~3,200 next release when the aliases are removed.
+const defaultCeiling = 3500
 
 // maxDescLen is the per-tool description character limit.
 const maxDescLen = 80

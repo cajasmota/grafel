@@ -12,6 +12,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -20,6 +21,88 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
+
+// ---------------------------------------------------------------------------
+// archigraph_neighbors (#1753) — unified callers + callees + both.
+// ---------------------------------------------------------------------------
+
+// handleNeighbors is the unified neighbors tool that subsumes find_callers and
+// find_callees behind a `direction` discriminator. It defers to the existing
+// handlers for direction=in / direction=out to preserve byte-for-byte response
+// shape, and merges the two when direction=both.
+func (s *Server) handleNeighbors(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	dir := strings.ToLower(strings.TrimSpace(argString(req, "direction", "both")))
+	switch dir {
+	case "in", "inbound", "callers":
+		return s.handleFindCallers(ctx, req)
+	case "out", "outbound", "callees":
+		return s.handleFindCallees(ctx, req)
+	case "", "both", "all":
+		// Run both and merge. We pull the JSON envelopes back as maps so the
+		// merged response carries entity_id/entity_name/repo + counts for each
+		// direction independently. Token budget is shared evenly.
+		inRes, _ := s.handleFindCallers(ctx, req)
+		outRes, _ := s.handleFindCallees(ctx, req)
+		return mergeNeighbors(inRes, outRes), nil
+	default:
+		return mcpapi.NewToolResultError("invalid direction: " + dir + " (want in|out|both)"), nil
+	}
+}
+
+// mergeNeighbors combines callers + callees JSON envelopes into one record.
+// On any parse failure it returns whichever input is non-nil first.
+func mergeNeighbors(inRes, outRes *mcpapi.CallToolResult) *mcpapi.CallToolResult {
+	parse := func(res *mcpapi.CallToolResult) map[string]any {
+		if res == nil || len(res.Content) == 0 {
+			return nil
+		}
+		tc, ok := res.Content[0].(mcpapi.TextContent)
+		if !ok {
+			return nil
+		}
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(tc.Text), &obj); err != nil {
+			return nil
+		}
+		return obj
+	}
+	in := parse(inRes)
+	out := parse(outRes)
+	if in == nil && out == nil {
+		if inRes != nil {
+			return inRes
+		}
+		return outRes
+	}
+	merged := map[string]any{}
+	pick := in
+	if pick == nil {
+		pick = out
+	}
+	for _, k := range []string{"entity_id", "entity_name", "repo", "depth"} {
+		if v, ok := pick[k]; ok {
+			merged[k] = v
+		}
+	}
+	if in != nil {
+		if v, ok := in["callers"]; ok {
+			merged["callers"] = v
+		}
+		if v, ok := in["truncation_note"]; ok {
+			merged["callers_truncation_note"] = v
+		}
+	}
+	if out != nil {
+		if v, ok := out["callees"]; ok {
+			merged["callees"] = v
+		}
+		if v, ok := out["truncation_note"]; ok {
+			merged["callees_truncation_note"] = v
+		}
+	}
+	merged["direction"] = "both"
+	return jsonResult(merged)
+}
 
 // ---------------------------------------------------------------------------
 // archigraph_find_callers

@@ -311,8 +311,23 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	verbose := argBool(req, "verbose", false)
 	includeNoise := argBool(req, "include_noise", false)
 	// min_score: undeclared in JSON-Schema (#1639 pattern). Default 0.15 trims
-	// low-signal tail noise (test helpers, unrelated handlers). Set to 0 to disable.
+	// low-signal tail noise (test helpers, unrelated handlers). #1921: floor
+	// the caller-supplied value at 0.15 so callers can't disable it implicitly;
+	// pass min_score=0 explicitly to opt out (still subject to max_results).
 	minScore := argFloat(req, "min_score", 0.15)
+	if minScore > 0 && minScore < 0.15 {
+		minScore = 0.15
+	}
+	// max_results: hard ceiling on total ranked hits returned (#1807, #1921).
+	// Default 50; cap at 200 even if caller asks for more. Prevents the
+	// 3,647-row failure mode where broad queries flooded the corpus.
+	maxResults := argInt(req, "max_results", 50)
+	if maxResults <= 0 {
+		maxResults = 50
+	}
+	if maxResults > 200 {
+		maxResults = 200
+	}
 	repoFilter := argStringSlice(req, "repo_filter")
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
 	mode := argString(req, "mode", "bfs")
@@ -417,10 +432,27 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		}
 	}
 
+	// #1807 / #1921: hard ceiling. Even with min_score=0 a broad single-token
+	// query was returning >3k rows. Cap total ranked hits and surface a note so
+	// the agent can re-query with a tighter `query=` if needed.
+	preCapTotal := len(all)
+	truncated := false
+	if len(all) > maxResults {
+		all = all[:maxResults]
+		truncated = true
+	}
+
 	if full {
-		return jsonResult(map[string]any{
+		out := map[string]any{
 			"matches": serializeHits(all, verbose),
-		}), nil
+		}
+		if truncated {
+			out["truncation_note"] = fmt.Sprintf(
+				"capped at max_results=%d; %d additional hits omitted (pass max_results up to 200 or tighten query)",
+				maxResults, preCapTotal-maxResults,
+			)
+		}
+		return jsonResult(out), nil
 	}
 
 	// Smart scoping: no filter, multiple repos -> per-repo top 3.

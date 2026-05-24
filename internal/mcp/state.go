@@ -242,6 +242,14 @@ type State struct {
 	registry *Registry
 	groups   map[string]*LoadedGroup
 	created  time.Time
+	// registryMtime tracks the on-disk mtime of registry.json so Reload()
+	// can detect mid-session mutations (group register/unregister, repo add/
+	// remove) and fire a tools/list_changed notification (#1772).
+	registryMtime time.Time
+	// registrySignature is a stable digest of group→repo names. When this
+	// changes between reloads, the visible tool surface may have changed and
+	// the server should emit notifications/tools/list_changed.
+	registrySignature string
 }
 
 // NewState constructs an empty state for the given registry.
@@ -268,12 +276,85 @@ func (s *State) Groups() []string {
 	return out
 }
 
+// computeRegistrySignature returns a stable, order-independent digest of the
+// (group → sorted repo names) mapping. Used to detect mid-session mutations
+// of the tool surface for notifications/tools/list_changed (#1772).
+func computeRegistrySignature(reg *Registry) string {
+	if reg == nil || len(reg.Groups) == 0 {
+		return ""
+	}
+	groups := make([]string, 0, len(reg.Groups))
+	for g := range reg.Groups {
+		groups = append(groups, g)
+	}
+	sort.Strings(groups)
+	var b []byte
+	for _, g := range groups {
+		b = append(b, g...)
+		b = append(b, '{')
+		repos := make([]string, 0, len(reg.Groups[g].Repos))
+		for r := range reg.Groups[g].Repos {
+			repos = append(repos, r)
+		}
+		sort.Strings(repos)
+		for _, r := range repos {
+			b = append(b, r...)
+			b = append(b, ',')
+		}
+		b = append(b, '}', ';')
+	}
+	return string(b)
+}
+
+// refreshRegistryFromDisk re-reads registry.json when its on-disk mtime is
+// newer than the last load. Returns true when the registry was actually
+// reloaded. Caller must hold s.mu.
+func (s *State) refreshRegistryFromDisk() bool {
+	if s.registry == nil || s.registry.Path == "" {
+		return false
+	}
+	fi, err := os.Stat(s.registry.Path)
+	if err != nil {
+		return false
+	}
+	if !fi.ModTime().After(s.registryMtime) {
+		return false
+	}
+	reg, err := LoadRegistry(s.registry.Path)
+	if err != nil {
+		return false
+	}
+	s.registry = reg
+	s.registryMtime = fi.ModTime()
+	return true
+}
+
 // Reload performs lazy mtime-driven reload of every repo + links file in
 // the registry. Returns the count of (re)loaded files. Safe for concurrent
 // callers — serialized through s.mu.
+//
+// #1772: when the registry file on disk has been mutated mid-session (group
+// register/unregister, repo add/remove) the registry is re-read and the
+// tool-surface signature is recomputed. Callers that want to observe surface
+// changes should use ReloadAndSurfaceChanged.
 func (s *State) Reload() (int, error) {
+	n, _, err := s.reloadLocked()
+	return n, err
+}
+
+// ReloadAndSurfaceChanged behaves like Reload but additionally reports whether
+// the visible tool surface for this session likely changed (registry
+// signature mutation). Wired into the MCP server to gate emission of
+// notifications/tools/list_changed (#1772).
+func (s *State) ReloadAndSurfaceChanged() (int, bool, error) {
+	return s.reloadLocked()
+}
+
+func (s *State) reloadLocked() (int, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	prevSig := s.registrySignature
+	registryChanged := s.refreshRegistryFromDisk()
 	reloaded := 0
 	for gName, gEntry := range s.registry.Groups {
 		grp, ok := s.groups[gName]
@@ -377,7 +458,13 @@ func (s *State) Reload() (int, error) {
 			grp.Links = nil
 		}
 	}
-	return reloaded, nil
+	// Recompute the tool-surface signature. If it differs from the previous
+	// value the caller will emit notifications/tools/list_changed (#1772).
+	newSig := computeRegistrySignature(s.registry)
+	surfaceChanged := newSig != prevSig
+	s.registrySignature = newSig
+	_ = registryChanged // retained for future telemetry
+	return reloaded, surfaceChanged, nil
 }
 
 // Group returns a loaded group by name, or nil.

@@ -80,6 +80,7 @@ below; per-tool tables omit them unless the semantics differ.
 | `group` | string | (resolved) | Explicit group override. Skips CWD inference. |
 | `cwd` | string | (resolved) | Caller working directory; if omitted, the server falls back to the configured CWD on the process. |
 | `repo_filter` | string[] | `[]` | Repos to scope to. `[]` means every loaded repo in the resolved group. `["*"]` is treated as "all". |
+| `fields` | string[] | `[]` | **#1741 — GraphQL-style narrowing.** When non-empty, every per-record object in the response is filtered to keep only the listed keys. Envelope keys (`items`, `count`, `truncation_note`, `elapsed_ms`, `result`, `note`, etc.) are always preserved. Default = full record shape. Available fields per tool are documented in each tool's "Response" section. |
 
 ### #1281 deprecation notice
 
@@ -131,8 +132,9 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_subgraph`](#archigraph_subgraph) | Nodes+edges (format=raw) or Markdown summary (format=markdown) within N hops. |
 | [`archigraph_find_paths`](#archigraph_find_paths) | Shortest path between two entities. |
 | [`archigraph_endpoints`](#archigraph_endpoints) | HTTP endpoint surface (action: definitions\|calls\|stats). |
-| [`archigraph_find_callers`](#archigraph_find_callers) | Inbound call graph up to N hops. |
-| [`archigraph_find_callees`](#archigraph_find_callees) | Outbound call graph up to N hops. |
+| `archigraph_neighbors` | Graph neighbors of `entity_id` (`direction=in\|out\|both`, default `both`). **Unifies `find_callers` + `find_callees` (#1753).** |
+| [`archigraph_find_callers`](#archigraph_find_callers) | **Deprecated alias** of `archigraph_neighbors(direction=in)`. Removed next release. |
+| [`archigraph_find_callees`](#archigraph_find_callees) | **Deprecated alias** of `archigraph_neighbors(direction=out)`. Removed next release. |
 | [`archigraph_impact_radius`](#archigraph_impact_radius) | Blast-radius analysis with per-entity risk score. |
 | [`archigraph_find_dead_code`](#archigraph_find_dead_code) | Entities with 0 inbound/outbound project edges. |
 | [`archigraph_auth_coverage`](#archigraph_auth_coverage) | Security audit: flag HTTP endpoints missing auth decorators/middleware. |
