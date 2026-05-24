@@ -83,6 +83,14 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 
 	propsVec := buildPropertyVector(b, e.Properties)
 
+	// PH8 (#2100): embedding_ref — only create string offset when non-empty
+	// to preserve bytewise identity for pre-PH8 graphs.
+	var embRefOff flatbuffers.UOffsetT
+	hasEmbRef := e.EmbeddingRef != ""
+	if hasEmbRef {
+		embRefOff = b.CreateString(e.EmbeddingRef)
+	}
+
 	fb.EntityStart(b)
 	fb.EntityAddId(b, idOff)
 	fb.EntityAddQualifiedName(b, qnOff)
@@ -117,6 +125,10 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	}
 	if e.IsArticulationPt {
 		fb.EntityAddIsArticulationPoint(b, true)
+	}
+	// PH8 (#2100): emit embedding_ref only when present (slot 16, offset 36).
+	if hasEmbRef {
+		fb.EntityAddEmbeddingRef(b, embRefOff)
 	}
 	return fb.EntityEnd(b)
 }

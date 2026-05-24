@@ -37,7 +37,7 @@ func TestCleanupDryRun(t *testing.T) {
 
 	// Run cleanup with --dry-run.
 	var buf bytes.Buffer
-	if err := runCleanup(&buf, true); err != nil {
+	if err := runCleanup(&buf, true, 0); err != nil {
 		t.Fatalf("cleanup failed: %v", err)
 	}
 
@@ -98,7 +98,7 @@ func TestCleanupRemove(t *testing.T) {
 
 	// Run cleanup without --dry-run.
 	var buf bytes.Buffer
-	if err := runCleanup(&buf, false); err != nil {
+	if err := runCleanup(&buf, false, 0); err != nil {
 		t.Fatalf("cleanup failed: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func TestCleanupNoOrphans(t *testing.T) {
 
 	// Run cleanup.
 	var buf bytes.Buffer
-	if err := runCleanup(&buf, true); err != nil {
+	if err := runCleanup(&buf, true, 0); err != nil {
 		t.Fatalf("cleanup failed: %v", err)
 	}
 

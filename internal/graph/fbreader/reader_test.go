@@ -182,3 +182,46 @@ func TestAgentPatternKindRoundTrip(t *testing.T) {
 		t.Errorf("FilterEntitiesByKind(AgentPattern): got %d want 2", len(agentPatterns))
 	}
 }
+
+// TestEmbeddingRefRoundTrip verifies that the PH8 embedding_ref field
+// survives a write → read FlatBuffers round-trip (#2100).
+//
+// Backward-compat:
+//   - an entity WITHOUT embedding_ref reads back as "".
+//   - an entity WITH embedding_ref reads back verbatim.
+//   - older graphs (without the field) continue to return "" (FlatBuffers
+//     defaults absent fields to the zero value).
+func TestEmbeddingRefRoundTrip(t *testing.T) {
+	const wantRef = "abcdef1234567890abcdef1234567890abcdef12"
+
+	doc := &graph.Document{
+		Repo:        "ph8-test",
+		GeneratedAt: time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC),
+		Entities: []graph.Entity{
+			// entity with embedding_ref
+			{ID: "e1", Kind: "function", Name: "Foo", EmbeddingRef: wantRef},
+			// entity without embedding_ref (pre-PH8 style)
+			{ID: "e2", Kind: "function", Name: "Bar"},
+		},
+	}
+
+	r := writeAndOpen(t, doc)
+
+	// Check entity with ref.
+	e1 := r.LookupEntityByID("e1")
+	if e1 == nil {
+		t.Fatal("entity e1 not found")
+	}
+	if got := fbreader.EntityEmbeddingRef(e1); got != wantRef {
+		t.Errorf("e1 EmbeddingRef: got %q want %q", got, wantRef)
+	}
+
+	// Check entity without ref — should return "".
+	e2 := r.LookupEntityByID("e2")
+	if e2 == nil {
+		t.Fatal("entity e2 not found")
+	}
+	if got := fbreader.EntityEmbeddingRef(e2); got != "" {
+		t.Errorf("e2 EmbeddingRef: got %q want empty", got)
+	}
+}

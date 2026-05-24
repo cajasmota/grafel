@@ -62,6 +62,12 @@ type Entity struct {
 	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 	Properties    map[string]string      `json:"properties,omitempty"`
 
+	// PH8 (#2100): content-hash pointer into the shared embedding cache.
+	// When non-empty, readers load the vector from Cache instead of
+	// computing it inline. Old graphs have this absent; omitempty preserves
+	// byte-identical output for graphs written before PH8.
+	EmbeddingRef string `json:"embedding_ref,omitempty"`
+
 	// Pass 4 (graph algorithm) attributes. Pointers + omitempty so that
 	// documents written with --skip-pass=graph-algo stay byte-identical to
 	// the pre-PORT-4 schema.
