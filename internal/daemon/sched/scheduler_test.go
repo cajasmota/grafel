@@ -56,6 +56,8 @@ func TestEnqueueDedups(t *testing.T) {
 // TestAlgoDebounceCancelOnWrite verifies that a new Enqueue during the
 // algo debounce window cancels the pending algo pass.
 func TestAlgoDebounceCancelOnWrite(t *testing.T) {
+	// This test validates debounce behaviour which requires the eager algo path.
+	t.Setenv("ARCHIGRAPH_EAGER_ALGO", "true")
 	var indexCalls atomic.Int32
 	var algoCalls atomic.Int32
 	s := New(Config{
@@ -219,6 +221,8 @@ func TestPerRepoIndexerMutex(t *testing.T) {
 // run simultaneously. We use 10 repos and cap at 2 — the concurrently-active
 // count must never exceed 2.
 func TestAlgoCapLimitsConcurrency(t *testing.T) {
+	// Cap test requires the eager path so the scheduler actually fires passes.
+	t.Setenv("ARCHIGRAPH_EAGER_ALGO", "true")
 	const numRepos = 10
 	const cap = 2
 

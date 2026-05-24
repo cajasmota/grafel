@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	daemonalgo "github.com/cajasmota/archigraph/internal/daemon/algo"
 	daemonmcp "github.com/cajasmota/archigraph/internal/daemon/mcp"
 )
 
@@ -24,8 +25,13 @@ func repoGraphFBPath(repoPath string) string {
 
 // invalidateAfterIndex is the post-index hook: it drops any cached
 // reader for repoPath's graph.fb so the next MCP query re-mmap's the
-// new file. Safe to call on the error path too — the cache simply
-// returns false when there's nothing to evict.
+// new file. It also invalidates the algo_results.fb sidecar (S2 of #2149)
+// so the next rank-sensitive MCP query triggers a fresh algorithm pass.
+// Safe to call on the error path too.
 func invalidateAfterIndex(repoPath string) {
 	daemonMCPCache.Invalidate(repoGraphFBPath(repoPath))
+	// S2: invalidate the on-demand algo cache so ranking tools recompute
+	// against the newly written graph.fb on next query.
+	stateDir := daemon.StateDirForRepo(repoPath)
+	_ = daemonalgo.Invalidate(stateDir) // non-fatal; log is inside Invalidate
 }

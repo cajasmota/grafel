@@ -4,12 +4,13 @@
 // pool, then schedules:
 //
 //   - a debounced cross-repo link recompute per group (10s),
-//   - a debounced graph-algorithm pass per repo (30s),
+//   - optionally, a debounced graph-algorithm pass per repo (30s) — only
+//     when ARCHIGRAPH_EAGER_ALGO=true (S2 of #2149). By default the algo
+//     pass is suppressed here; rank-sensitive MCP tools trigger it on-demand
+//     via the algo.Cache path instead.
 //
-// both of which are cancelled and rescheduled if new write activity
-// arrives during the window. The link recompute and algorithm pass
-// run via caller-supplied callbacks so the scheduler stays free of
-// extractor + graph package dependencies.
+// The link recompute and algorithm pass run via caller-supplied callbacks so
+// the scheduler stays free of extractor + graph package dependencies.
 //
 // Concurrency cap (post-#644): the scheduler now applies RSS-budget
 // admission control on top of the worker pool. Before a queued job
@@ -744,10 +745,30 @@ func (s *Scheduler) runLinks(group string) {
 	s.logEvent("links_ok", "", group+" "+time.Since(t0).Truncate(time.Millisecond).String())
 }
 
+// eagerAlgoEnabled reports whether the post-reindex automatic algorithm pass
+// is enabled. By default (S2 of #2149) the pass is suppressed; set
+// ARCHIGRAPH_EAGER_ALGO=true to restore pre-S2 behaviour.
+func eagerAlgoEnabled() bool {
+	v := os.Getenv("ARCHIGRAPH_EAGER_ALGO")
+	return v == "1" || v == "true" || v == "yes"
+}
+
 // scheduleAlgo (re)arms the per-repo algorithm pass timer. Any pending
 // pass is cancelled first; a new pass starts the 30s window over.
+//
+// S2 (#2152): the automatic post-reindex pass is suppressed unless
+// ARCHIGRAPH_EAGER_ALGO=true. Rank-sensitive MCP tools trigger the pass
+// on-demand via the algo.Cache path so the post-reindex CPU cost is zero.
 func (s *Scheduler) scheduleAlgo(repoPath string) {
 	if s.cfg.Algorithms == nil {
+		return
+	}
+	if !eagerAlgoEnabled() {
+		// S2: cancel any pending pass (new write invalidates a previously
+		// scheduled run) but do NOT schedule a new one.
+		s.mu.Lock()
+		s.cancelAlgoLocked(repoPath)
+		s.mu.Unlock()
 		return
 	}
 	s.mu.Lock()
