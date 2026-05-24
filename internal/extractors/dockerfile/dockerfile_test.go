@@ -2,6 +2,7 @@ package dockerfile_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -95,10 +96,12 @@ func TestDockerfileExtractor_NilTree(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Single-stage Dockerfile
+// #2063 — single entity per Dockerfile (no orphan instruction entities)
 // ---------------------------------------------------------------------------
 
-func TestDockerfileExtractor_SingleStage(t *testing.T) {
+// TestDockerfileExtractor_SingleEntity_SingleStage verifies that a single-stage
+// Dockerfile emits exactly one entity of subtype "dockerfile".
+func TestDockerfileExtractor_SingleEntity_SingleStage(t *testing.T) {
 	src := `FROM ubuntu:22.04
 RUN apt-get update
 EXPOSE 8080
@@ -109,54 +112,28 @@ CMD ["/app/server"]
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	bySubtype := make(map[string][]string)
-	for _, e := range entities {
-		bySubtype[e.Subtype] = append(bySubtype[e.Subtype], e.Name)
+	if len(entities) != 1 {
+		t.Fatalf("expected exactly 1 entity, got %d: %+v", len(entities), entities)
 	}
-
-	if len(bySubtype["stage"]) != 1 {
-		t.Errorf("expected 1 stage, got %v", bySubtype["stage"])
+	e := entities[0]
+	if e.Kind != "SCOPE.Component" {
+		t.Errorf("expected Kind=SCOPE.Component, got %q", e.Kind)
 	}
-	if len(bySubtype["stage"]) > 0 && bySubtype["stage"][0] != "ubuntu:22.04" {
-		t.Errorf("expected stage 'ubuntu:22.04', got %q", bySubtype["stage"][0])
-	}
-	if len(bySubtype["run"]) != 1 {
-		t.Errorf("expected 1 run entity, got %v", bySubtype["run"])
-	}
-	if len(bySubtype["port"]) != 1 {
-		t.Errorf("expected 1 port entity, got %v", bySubtype["port"])
-	}
-	if len(bySubtype["port"]) > 0 && bySubtype["port"][0] != "8080" {
-		t.Errorf("expected port '8080', got %q", bySubtype["port"][0])
-	}
-	if len(bySubtype["variable"]) != 1 {
-		t.Errorf("expected 1 env variable, got %v", bySubtype["variable"])
-	}
-	if len(bySubtype["variable"]) > 0 && bySubtype["variable"][0] != "PORT" {
-		t.Errorf("expected env var 'PORT', got %q", bySubtype["variable"][0])
-	}
-	if len(bySubtype["build_arg"]) != 1 {
-		t.Errorf("expected 1 build_arg, got %v", bySubtype["build_arg"])
-	}
-	if len(bySubtype["build_arg"]) > 0 && bySubtype["build_arg"][0] != "BUILD_VERSION" {
-		t.Errorf("expected build_arg 'BUILD_VERSION', got %q", bySubtype["build_arg"][0])
-	}
-	if len(bySubtype["entrypoint"]) != 1 {
-		t.Errorf("expected 1 entrypoint entity, got %v", bySubtype["entrypoint"])
-	}
-	if len(bySubtype["entrypoint"]) > 0 && bySubtype["entrypoint"][0] != "CMD" {
-		t.Errorf("expected entrypoint name 'CMD', got %q", bySubtype["entrypoint"][0])
+	if e.Subtype != "dockerfile" {
+		t.Errorf("expected Subtype=dockerfile, got %q", e.Subtype)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Multi-stage Dockerfile — stage tagging (AC #2)
-// ---------------------------------------------------------------------------
+// TestDockerfileExtractor_SingleEntity_MultiStage is the regression test for
+// #2063: a 3-stage Dockerfile must emit exactly 1 entity, not 3+ instruction
+// entities. This was the root cause of ~118 orphans in polyglot-platform.
+func TestDockerfileExtractor_SingleEntity_MultiStage(t *testing.T) {
+	src := `FROM golang:1.22 AS deps
+RUN go mod download
 
-func TestDockerfileExtractor_MultiStage(t *testing.T) {
-	src := `FROM golang:1.22 AS builder
-RUN go build ./...
-COPY . /src
+FROM golang:1.22 AS builder
+COPY --from=deps /go/pkg /go/pkg
+RUN go build -o /app/bin ./...
 
 FROM ubuntu:22.04 AS runtime
 COPY --from=builder /app/bin /usr/local/bin
@@ -166,94 +143,88 @@ ENTRYPOINT ["/usr/local/bin/server"]
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	// Collect stage aliases from FROM entities.
-	stages := make(map[string]bool)
-	for _, e := range entities {
-		if e.Subtype == "stage" {
-			if e.Properties != nil {
-				if alias, ok := e.Properties["alias"]; ok && alias != "" {
-					stages[alias] = true
-				}
-			}
-		}
-	}
-	for _, want := range []string{"builder", "runtime"} {
-		if !stages[want] {
-			t.Errorf("expected stage alias %q in FROM entities", want)
-		}
-	}
-
-	// Entities after the second FROM should have stage="runtime".
-	for _, e := range entities {
-		if e.Subtype == "port" && e.Name == "9090" {
-			if e.Properties == nil || e.Properties["stage"] != "runtime" {
-				t.Errorf("EXPOSE 9090: expected stage='runtime', got %q", e.Properties["stage"])
-			}
-		}
-		if e.Subtype == "run" {
-			if e.Properties == nil || e.Properties["stage"] != "builder" {
-				t.Errorf("RUN: expected stage='builder', got %q", e.Properties["stage"])
-			}
-		}
+	if len(entities) != 1 {
+		t.Fatalf("#2063 regression: expected exactly 1 entity for 3-stage Dockerfile, got %d: %+v",
+			len(entities), entities)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// COPY and ADD instructions
+// Properties encoding
 // ---------------------------------------------------------------------------
 
-func TestDockerfileExtractor_CopyAndAdd(t *testing.T) {
-	src := `FROM alpine:3.18
-COPY src/ /app/src/
-ADD config.tar.gz /app/config/
+// TestDockerfileExtractor_Properties_Stages verifies stages property.
+func TestDockerfileExtractor_Properties_Stages(t *testing.T) {
+	src := `FROM golang:1.22 AS builder
+FROM ubuntu:22.04 AS runtime
 `
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
-
-	copyNames := make(map[string]bool)
-	for _, e := range entities {
-		if e.Subtype == "copy" {
-			copyNames[e.Name] = true
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(entities))
+	}
+	e := entities[0]
+	if e.Properties["stages"] == "" {
+		t.Error("expected non-empty stages property")
+	}
+	stages := strings.Split(e.Properties["stages"], ",")
+	wantStages := map[string]bool{"golang:1.22": false, "ubuntu:22.04": false}
+	for _, s := range stages {
+		if _, ok := wantStages[s]; ok {
+			wantStages[s] = true
 		}
 	}
-	if !copyNames["COPY"] {
-		t.Error("expected COPY entity")
-	}
-	if !copyNames["ADD"] {
-		t.Error("expected ADD entity")
+	for img, found := range wantStages {
+		if !found {
+			t.Errorf("expected stage %q in properties.stages=%q", img, e.Properties["stages"])
+		}
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ENTRYPOINT instruction
-// ---------------------------------------------------------------------------
-
-func TestDockerfileExtractor_Entrypoint(t *testing.T) {
-	src := `FROM alpine:3.18
-ENTRYPOINT ["/entrypoint.sh"]
+// TestDockerfileExtractor_Properties_RunCommands verifies run_commands property.
+func TestDockerfileExtractor_Properties_RunCommands(t *testing.T) {
+	src := `FROM ubuntu:22.04
+RUN apt-get update
+RUN apt-get install -y curl
 `
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
-
-	found := false
-	for _, e := range entities {
-		if e.Subtype == "entrypoint" && e.Name == "ENTRYPOINT" {
-			found = true
-			if e.Kind != "SCOPE.Operation" {
-				t.Errorf("expected Kind=SCOPE.Operation, got %q", e.Kind)
-			}
-		}
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(entities))
 	}
-	if !found {
-		t.Error("expected ENTRYPOINT entity")
+	e := entities[0]
+	if e.Properties["run_commands"] == "" {
+		t.Error("expected non-empty run_commands property")
+	}
+	// Should be a JSON array with 2 entries.
+	if !strings.Contains(e.Properties["run_commands"], "apt-get update") {
+		t.Errorf("run_commands missing apt-get update: %q", e.Properties["run_commands"])
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ARG / ENV extraction
-// ---------------------------------------------------------------------------
+// TestDockerfileExtractor_Properties_ExposedPorts verifies exposed_ports property.
+func TestDockerfileExtractor_Properties_ExposedPorts(t *testing.T) {
+	src := `FROM ubuntu:22.04
+EXPOSE 8080
+EXPOSE 9090
+`
+	tree := parseForTest(t, src)
+	entities := extractEntities(t, "Dockerfile", src, tree)
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(entities))
+	}
+	e := entities[0]
+	ports := e.Properties["exposed_ports"]
+	if !strings.Contains(ports, "8080") {
+		t.Errorf("expected 8080 in exposed_ports, got %q", ports)
+	}
+	if !strings.Contains(ports, "9090") {
+		t.Errorf("expected 9090 in exposed_ports, got %q", ports)
+	}
+}
 
-func TestDockerfileExtractor_ArgAndEnv(t *testing.T) {
+// TestDockerfileExtractor_Properties_EnvAndArgs verifies env_vars and build_args.
+func TestDockerfileExtractor_Properties_EnvAndArgs(t *testing.T) {
 	src := `FROM python:3.11
 ARG APP_VERSION=latest
 ARG TARGETPLATFORM
@@ -262,33 +233,37 @@ ENV LOG_LEVEL=info
 `
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
-
-	args := make(map[string]bool)
-	envVars := make(map[string]bool)
-	for _, e := range entities {
-		switch e.Subtype {
-		case "build_arg":
-			args[e.Name] = true
-			if e.Kind != "SCOPE.Schema" {
-				t.Errorf("ARG %q: expected Kind=SCOPE.Schema, got %q", e.Name, e.Kind)
-			}
-		case "variable":
-			envVars[e.Name] = true
-			if e.Kind != "SCOPE.Schema" {
-				t.Errorf("ENV %q: expected Kind=SCOPE.Schema, got %q", e.Name, e.Kind)
-			}
-		}
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(entities))
 	}
-
+	e := entities[0]
+	args := e.Properties["build_args"]
 	for _, want := range []string{"APP_VERSION", "TARGETPLATFORM"} {
-		if !args[want] {
-			t.Errorf("expected build_arg %q", want)
+		if !strings.Contains(args, want) {
+			t.Errorf("expected build_arg %q in properties.build_args=%q", want, args)
 		}
 	}
+	envs := e.Properties["env_vars"]
 	for _, want := range []string{"PYTHONUNBUFFERED", "LOG_LEVEL"} {
-		if !envVars[want] {
-			t.Errorf("expected env variable %q", want)
+		if !strings.Contains(envs, want) {
+			t.Errorf("expected env var %q in properties.env_vars=%q", want, envs)
 		}
+	}
+}
+
+// TestDockerfileExtractor_Properties_Entrypoint verifies entrypoint property.
+func TestDockerfileExtractor_Properties_Entrypoint(t *testing.T) {
+	src := `FROM alpine:3.18
+ENTRYPOINT ["/entrypoint.sh"]
+`
+	tree := parseForTest(t, src)
+	entities := extractEntities(t, "Dockerfile", src, tree)
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(entities))
+	}
+	e := entities[0]
+	if e.Properties["entrypoint"] == "" {
+		t.Error("expected non-empty entrypoint property")
 	}
 }
 
@@ -336,35 +311,6 @@ func TestDockerfileExtractor_LanguageField(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Acceptance criteria: at least one entity per distinct instruction type (AC #1)
-// ---------------------------------------------------------------------------
-
-func TestDockerfileExtractor_AllInstructionTypes(t *testing.T) {
-	src := `FROM ubuntu:22.04
-RUN apt-get install -y curl
-COPY src/ /app/src/
-EXPOSE 80
-ENV HOME=/root
-ARG DEBIAN_FRONTEND=noninteractive
-CMD ["/bin/bash"]
-ENTRYPOINT ["/entrypoint.sh"]
-`
-	tree := parseForTest(t, src)
-	entities := extractEntities(t, "Dockerfile", src, tree)
-
-	subtypes := make(map[string]bool)
-	for _, e := range entities {
-		subtypes[e.Subtype] = true
-	}
-
-	for _, want := range []string{"stage", "run", "copy", "port", "variable", "build_arg", "entrypoint"} {
-		if !subtypes[want] {
-			t.Errorf("expected at least one entity with subtype=%q", want)
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
 // SourceFile propagation
 // ---------------------------------------------------------------------------
 
@@ -389,21 +335,29 @@ func TestDockerfileExtractor_FromScratch(t *testing.T) {
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	// Issue #384: in addition to the FROM stage entity, the extractor emits a
-	// file-level SCOPE.Component carrying CONTAINS edges. Filter to the stage.
-	var stages []types.EntityRecord
-	for _, e := range entities {
-		if e.Subtype == "stage" {
-			stages = append(stages, e)
-		}
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(entities))
 	}
-	if len(stages) != 1 {
-		t.Fatalf("expected 1 stage entity, got %d (all=%d)", len(stages), len(entities))
+	e := entities[0]
+	if e.Subtype != "dockerfile" {
+		t.Errorf("expected Subtype='dockerfile', got %q", e.Subtype)
 	}
-	if stages[0].Name != "scratch" {
-		t.Errorf("expected Name='scratch', got %q", stages[0].Name)
+	if !strings.Contains(e.Properties["stages"], "scratch") {
+		t.Errorf("expected stages to contain 'scratch', got %q", e.Properties["stages"])
 	}
-	if stages[0].Subtype != "stage" {
-		t.Errorf("expected Subtype='stage', got %q", stages[0].Subtype)
+}
+
+// ---------------------------------------------------------------------------
+// Degenerate: no FROM instruction
+// ---------------------------------------------------------------------------
+
+func TestDockerfileExtractor_NoFromInstruction(t *testing.T) {
+	// A Dockerfile with only comments and no FROM → 0 entities.
+	src := "# only a comment\n"
+	tree := parseForTest(t, src)
+	entities := extractEntities(t, "Dockerfile", src, tree)
+
+	if len(entities) != 0 {
+		t.Errorf("expected 0 entities for Dockerfile with no FROM, got %d", len(entities))
 	}
 }

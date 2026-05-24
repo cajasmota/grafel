@@ -1,23 +1,24 @@
 // Package dockerfile implements the tree-sitter–based extractor for Dockerfile source files.
 //
-// Extracted entities:
-//   - from_instruction   → Kind="SCOPE.Component",   Subtype="stage"      (image base + optional AS alias)
-//   - run_instruction    → Kind="SCOPE.Operation",   Subtype="run"
-//   - copy_instruction   → Kind="SCOPE.Operation",   Subtype="copy"
-//   - add_instruction    → Kind="SCOPE.Operation",   Subtype="copy"
-//   - expose_instruction → Kind="SCOPE.Pattern",     Subtype="port"
-//   - env_instruction    → Kind="SCOPE.Schema",      Subtype="variable"
-//   - arg_instruction    → Kind="SCOPE.Schema",       Subtype="build_arg"
-//   - entrypoint/cmd     → Kind="SCOPE.Operation",   Subtype="entrypoint"
+// # Entity model (post-#2063 refactor)
 //
-// Multi-stage builds: each entity is tagged with the stage name (from the
-// nearest preceding FROM AS alias) in the Qualifier (Properties["stage"]).
+// A single SCOPE.Component/dockerfile entity is emitted per Dockerfile file.
+// All instruction details (RUN, COPY, EXPOSE, ENV, ARG, ENTRYPOINT/CMD) are
+// folded into properties on that one entity to avoid degree-0 orphans. Edges:
+//
+//   - IMPORTS (file → base-image) — one per FROM instruction
+//   - CONTAINS (file → stage structural-ref) — one per FROM instruction
+//   - USES (file → stage structural-ref) — for COPY --from=<stage>
+//
+// Multi-stage builds: stage images are captured in properties.stages (CSV) and
+// individual stage details in properties.stage_<i>_* keys.
 //
 // Registers itself via init() and is imported by registry_gen.go.
 package dockerfile
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -40,9 +41,8 @@ type Extractor struct{}
 // Language returns the canonical language key.
 func (e *Extractor) Language() string { return "dockerfile" }
 
-// Extract walks the tree-sitter CST and returns entity records.
-// On nil tree or empty src, returns empty slice with nil error.
-// Node parse errors are skipped — never panic.
+// Extract walks the tree-sitter CST and returns a single EntityRecord for the
+// Dockerfile file. On nil tree or empty src, returns empty slice with nil error.
 func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("extractor.dockerfile")
 	ctx, span := tracer.Start(ctx, "indexer.extract.dockerfile",
@@ -72,103 +72,319 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	}
 
 	lineCount := strings.Count(string(file.Content), "\n") + 1
-	entities, stageCount := walkDockerfile(tree.RootNode(), file)
+	entity, stageCount := buildDockerfileEntity(tree.RootNode(), file)
 
-	// Issue #384 — language tag for resolver dynamic-pattern dispatch on
-	// IMPORTS / CONTAINS / USES edges.
-	extractor.TagRelationshipsLanguage(entities, "dockerfile")
+	// Issue #384 — language tag for resolver dynamic-pattern dispatch.
+	extractor.TagRelationshipsLanguage([]types.EntityRecord{entity}, "dockerfile")
 
 	span.SetAttributes(
 		attribute.Int("file_line_count", lineCount),
-		attribute.Int("entity_count", len(entities)),
+		attribute.Int("entity_count", 1),
 		attribute.Int("stage_count", stageCount),
 	)
-	return entities, nil
-}
 
-// walkDockerfile traverses the root node and emits EntityRecords.
-// Returns entities and stage count (number of FROM instructions).
-func walkDockerfile(root *sitter.Node, file extractor.FileInput) ([]types.EntityRecord, int) {
-	if root == nil {
-		return nil, 0
+	// Return no entities for Dockerfiles with no FROM instructions (degenerate).
+	if stageCount == 0 {
+		return nil, nil
 	}
 
-	var entities []types.EntityRecord
-	stageCount := 0
-	currentStage := "" // alias of the current FROM stage
+	return []types.EntityRecord{entity}, nil
+}
 
-	// Track stage image names in order (for the file-level CONTAINS component)
-	// and an alias→imageName map (for COPY --from=<alias> USES edges).
-	var stageImages []string
-	aliasToImage := map[string]string{}
+// dockerfileData collects all instruction details during the walk.
+type dockerfileData struct {
+	// stageImages is the list of base-image names (one per FROM).
+	stageImages []string
+	// stageAliases mirrors stageImages with the AS alias (empty if no alias).
+	stageAliases []string
+	// aliasToImage maps AS alias → base-image for --from resolution.
+	aliasToImage map[string]string
+
+	runCommands      []string
+	copyInstructions []string
+	exposedPorts     []string
+	envVars          []string
+	buildArgs        []string
+	entrypoints      []string
+
+	// relationships accumulated across all instructions.
+	relationships []types.RelationshipRecord
+}
+
+// buildDockerfileEntity walks the CST and returns a single file-level entity.
+func buildDockerfileEntity(root *sitter.Node, file extractor.FileInput) (types.EntityRecord, int) {
+	if root == nil {
+		return types.EntityRecord{}, 0
+	}
+
+	d := &dockerfileData{aliasToImage: map[string]string{}}
+	currentStage := ""
 
 	for i := range root.ChildCount() {
 		node := root.Child(int(i))
 		if node == nil {
 			continue
 		}
-
 		switch node.Type() {
 		case "from_instruction":
-			if rec, ok := buildFrom(node, file, &currentStage); ok {
-				entities = append(entities, rec)
-				stageCount++
-				stageImages = append(stageImages, rec.Name)
-				if currentStage != "" {
-					aliasToImage[currentStage] = rec.Name
-				}
-			}
-
+			collectFrom(node, file, &currentStage, d)
 		case "run_instruction":
-			if rec, ok := buildRun(node, file, currentStage); ok {
-				entities = append(entities, rec)
-			}
-
+			collectRun(node, file, d)
 		case "copy_instruction":
-			if rec, ok := buildCopyLike(node, file, currentStage, "COPY"); ok {
-				attachCopyFromUses(node, file, &rec, aliasToImage)
-				entities = append(entities, rec)
-			}
-
+			collectCopy(node, file, currentStage, d)
 		case "add_instruction":
-			if rec, ok := buildCopyLike(node, file, currentStage, "ADD"); ok {
-				entities = append(entities, rec)
-			}
-
+			collectAdd(node, file, d)
 		case "expose_instruction":
-			if rec, ok := buildExpose(node, file, currentStage); ok {
-				entities = append(entities, rec)
-			}
-
+			collectExpose(node, file, d)
 		case "env_instruction":
-			recs := buildEnv(node, file, currentStage)
-			entities = append(entities, recs...)
-
+			collectEnv(node, file, d)
 		case "arg_instruction":
-			if rec, ok := buildArg(node, file, currentStage); ok {
-				entities = append(entities, rec)
-			}
-
+			collectArg(node, file, d)
 		case "entrypoint_instruction":
-			if rec, ok := buildEntrypointOrCmd(node, file, currentStage, "ENTRYPOINT"); ok {
-				entities = append(entities, rec)
-			}
-
+			collectEntrypointOrCmd(node, file, "ENTRYPOINT", d)
 		case "cmd_instruction":
-			if rec, ok := buildEntrypointOrCmd(node, file, currentStage, "CMD"); ok {
-				entities = append(entities, rec)
-			}
+			collectEntrypointOrCmd(node, file, "CMD", d)
 		}
 	}
 
-	// Issue #384 — emit a file-level SCOPE.Component carrying CONTAINS edges
-	// to every stage. Skipped when there are no FROM instructions.
-	if len(stageImages) > 0 {
-		entities = append(entities, buildFileComponent(file, stageImages))
+	stageCount := len(d.stageImages)
+	if stageCount == 0 {
+		return types.EntityRecord{}, 0
 	}
 
-	return entities, stageCount
+	// Build CONTAINS edges (file → stage structural-refs).
+	for _, img := range d.stageImages {
+		d.relationships = append(d.relationships, types.RelationshipRecord{
+			ToID: extractor.BuildOperationStructuralRef("dockerfile", file.Path, img),
+			Kind: "CONTAINS",
+		})
+	}
+
+	// Filename for display.
+	name := file.Path
+	if slash := strings.LastIndexByte(file.Path, '/'); slash >= 0 {
+		name = file.Path[slash+1:]
+	}
+
+	props := buildProperties(d)
+
+	return types.EntityRecord{
+		Name:          name,
+		Kind:          "SCOPE.Component",
+		Subtype:       "dockerfile",
+		SourceFile:    file.Path,
+		Language:      "dockerfile",
+		Relationships: d.relationships,
+		Properties:    props,
+		QualityScore:  0.8,
+	}, stageCount
 }
+
+// buildProperties serialises all collected instruction data into the flat
+// map[string]string properties bag.
+func buildProperties(d *dockerfileData) map[string]string {
+	props := map[string]string{}
+
+	if len(d.stageImages) > 0 {
+		props["stages"] = strings.Join(d.stageImages, ",")
+	}
+	if len(d.stageAliases) > 0 {
+		aliases := make([]string, len(d.stageAliases))
+		for i, a := range d.stageAliases {
+			if a == "" {
+				aliases[i] = d.stageImages[i]
+			} else {
+				aliases[i] = a
+			}
+		}
+		props["stage_aliases"] = strings.Join(aliases, ",")
+	}
+	if len(d.runCommands) > 0 {
+		if b, err := json.Marshal(d.runCommands); err == nil {
+			props["run_commands"] = string(b)
+		}
+	}
+	if len(d.copyInstructions) > 0 {
+		if b, err := json.Marshal(d.copyInstructions); err == nil {
+			props["copy_instructions"] = string(b)
+		}
+	}
+	if len(d.exposedPorts) > 0 {
+		props["exposed_ports"] = strings.Join(d.exposedPorts, ",")
+	}
+	if len(d.envVars) > 0 {
+		props["env_vars"] = strings.Join(d.envVars, ",")
+	}
+	if len(d.buildArgs) > 0 {
+		props["build_args"] = strings.Join(d.buildArgs, ",")
+	}
+	if len(d.entrypoints) > 0 {
+		props["entrypoint"] = strings.Join(d.entrypoints, ";")
+	}
+	return props
+}
+
+// ── instruction collectors ────────────────────────────────────────────────────
+
+// collectFrom processes a FROM instruction: accumulates stage metadata and
+// emits an IMPORTS edge (file → base-image).
+func collectFrom(node *sitter.Node, file extractor.FileInput, currentStage *string, d *dockerfileData) {
+	spec := childByType(node, "image_spec")
+	if spec == nil {
+		return
+	}
+	nameNode := childByField(spec, "name")
+	if nameNode == nil {
+		return
+	}
+	imageName := nodeText(nameNode, file.Content)
+	if imageName == "" {
+		return
+	}
+
+	// Tag includes the colon prefix — strip it.
+	tagNode := childByField(spec, "tag")
+	if tagNode != nil {
+		raw := nodeText(tagNode, file.Content)
+		tag := strings.TrimPrefix(raw, ":")
+		if tag != "" {
+			imageName = imageName + ":" + tag
+		}
+	}
+
+	// Alias (AS name).
+	aliasNode := childByField(node, "as")
+	alias := ""
+	if aliasNode != nil {
+		alias = nodeText(aliasNode, file.Content)
+	}
+	*currentStage = alias
+
+	d.stageImages = append(d.stageImages, imageName)
+	d.stageAliases = append(d.stageAliases, alias)
+	if alias != "" {
+		d.aliasToImage[alias] = imageName
+	}
+
+	// IMPORTS edge: file → base image (external dependency).
+	importProps := map[string]string{
+		"import_kind":   "from",
+		"source_module": imageName,
+		"imported_name": imageName,
+	}
+	if alias != "" {
+		importProps["local_name"] = alias
+	}
+	d.relationships = append(d.relationships, types.RelationshipRecord{
+		FromID:     file.Path,
+		ToID:       imageName,
+		Kind:       "IMPORTS",
+		Properties: importProps,
+	})
+}
+
+func collectRun(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+	sig := strings.TrimSpace(nodeText(node, file.Content))
+	if sig != "" {
+		d.runCommands = append(d.runCommands, sig)
+	}
+}
+
+func collectCopy(node *sitter.Node, file extractor.FileInput, currentStage string, d *dockerfileData) {
+	sig := strings.TrimSpace(nodeText(node, file.Content))
+	if sig != "" {
+		d.copyInstructions = append(d.copyInstructions, sig)
+	}
+	// Check for --from=<stage> and emit a USES edge.
+	for i := range node.ChildCount() {
+		ch := node.Child(int(i))
+		if ch == nil || ch.Type() != "param" {
+			continue
+		}
+		raw := nodeText(ch, file.Content)
+		eq := strings.IndexByte(raw, '=')
+		if eq < 0 {
+			continue
+		}
+		key := strings.TrimSpace(strings.TrimPrefix(raw[:eq], "--"))
+		if key != "from" {
+			continue
+		}
+		stageRef := strings.TrimSpace(raw[eq+1:])
+		if stageRef == "" {
+			continue
+		}
+		target := stageRef
+		if img, ok := d.aliasToImage[stageRef]; ok {
+			target = img
+		}
+		d.relationships = append(d.relationships, types.RelationshipRecord{
+			FromID: file.Path,
+			ToID:   extractor.BuildOperationStructuralRef("dockerfile", file.Path, target),
+			Kind:   "USES",
+			Properties: map[string]string{
+				"from_stage": stageRef,
+			},
+		})
+		_ = currentStage // stage context retained for future enrichment
+	}
+}
+
+func collectAdd(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+	sig := strings.TrimSpace(nodeText(node, file.Content))
+	if sig != "" {
+		d.copyInstructions = append(d.copyInstructions, sig)
+	}
+}
+
+func collectExpose(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+	portNode := childByType(node, "expose_port")
+	if portNode == nil {
+		return
+	}
+	port := strings.TrimSpace(nodeText(portNode, file.Content))
+	if port != "" {
+		d.exposedPorts = append(d.exposedPorts, port)
+	}
+}
+
+func collectEnv(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+	for i := range node.ChildCount() {
+		ch := node.Child(int(i))
+		if ch == nil || ch.Type() != "env_pair" {
+			continue
+		}
+		keyNode := childByField(ch, "name")
+		if keyNode == nil {
+			continue
+		}
+		key := strings.TrimSpace(nodeText(keyNode, file.Content))
+		if key != "" {
+			d.envVars = append(d.envVars, key)
+		}
+	}
+}
+
+func collectArg(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+	nameNode := childByField(node, "name")
+	if nameNode == nil {
+		return
+	}
+	name := strings.TrimSpace(nodeText(nameNode, file.Content))
+	if name != "" {
+		d.buildArgs = append(d.buildArgs, name)
+	}
+}
+
+func collectEntrypointOrCmd(node *sitter.Node, file extractor.FileInput, instruction string, d *dockerfileData) {
+	sig := strings.TrimSpace(nodeText(node, file.Content))
+	if sig == "" {
+		sig = instruction
+	}
+	d.entrypoints = append(d.entrypoints, sig)
+}
+
+// ── tree-sitter helpers ───────────────────────────────────────────────────────
 
 // nodeText returns the UTF-8 text span of a node in the source.
 func nodeText(node *sitter.Node, src []byte) string {
@@ -197,332 +413,4 @@ func childByType(node *sitter.Node, t string) *sitter.Node {
 		}
 	}
 	return nil
-}
-
-// stageProps builds the shared properties map for an entity in a stage.
-func stageProps(stage string) map[string]string {
-	if stage == "" {
-		return nil
-	}
-	return map[string]string{"stage": stage}
-}
-
-// buildFrom builds a SCOPE.Component entity for a FROM instruction.
-// Updates currentStage to the AS alias (if any).
-func buildFrom(node *sitter.Node, file extractor.FileInput, currentStage *string) (types.EntityRecord, bool) {
-	spec := childByType(node, "image_spec")
-	if spec == nil {
-		return types.EntityRecord{}, false
-	}
-	nameNode := childByField(spec, "name")
-	if nameNode == nil {
-		return types.EntityRecord{}, false
-	}
-	imageName := nodeText(nameNode, file.Content)
-	if imageName == "" {
-		return types.EntityRecord{}, false
-	}
-
-	// Tag includes the colon prefix — strip it.
-	tagNode := childByField(spec, "tag")
-	tag := ""
-	if tagNode != nil {
-		raw := nodeText(tagNode, file.Content)
-		tag = strings.TrimPrefix(raw, ":")
-	}
-	if tag != "" {
-		imageName = imageName + ":" + tag
-	}
-
-	// Alias (AS name).
-	aliasNode := childByField(node, "as")
-	alias := ""
-	if aliasNode != nil {
-		alias = nodeText(aliasNode, file.Content)
-	}
-	*currentStage = alias
-
-	props := map[string]string{}
-	if alias != "" {
-		props["alias"] = alias
-	}
-	if tag != "" {
-		props["tag"] = tag
-	}
-
-	// Issue #384 — IMPORTS edge file→image (base image as external dependency).
-	importProps := map[string]string{
-		"import_kind":   "from",
-		"source_module": imageName,
-		"imported_name": imageName,
-	}
-	if alias != "" {
-		importProps["local_name"] = alias
-	}
-	rels := []types.RelationshipRecord{
-		{
-			FromID:     file.Path,
-			ToID:       imageName,
-			Kind:       "IMPORTS",
-			Properties: importProps,
-		},
-	}
-
-	return types.EntityRecord{
-		Name:          imageName,
-		Kind:          "SCOPE.Component",
-		Subtype:       "stage",
-		SourceFile:    file.Path,
-		Language:      "dockerfile",
-		StartLine:     int(node.StartPoint().Row) + 1,
-		EndLine:       int(node.EndPoint().Row) + 1,
-		Signature:     "FROM " + imageName,
-		Properties:    props,
-		Relationships: rels,
-		QualityScore:  0.8,
-	}, true
-}
-
-// buildRun builds a SCOPE.Operation entity for a RUN instruction.
-func buildRun(node *sitter.Node, file extractor.FileInput, stage string) (types.EntityRecord, bool) {
-	// Extract first token of the shell command.
-	name := "RUN"
-	sc := childByType(node, "shell_command")
-	if sc != nil {
-		sf := childByType(sc, "shell_fragment")
-		if sf != nil {
-			raw := strings.TrimSpace(nodeText(sf, file.Content))
-			if raw != "" {
-				// First token: take up to first space or &&.
-				tok := raw
-				if idx := strings.IndexAny(raw, " \t&|;"); idx > 0 {
-					tok = raw[:idx]
-				}
-				if tok != "" {
-					name = tok
-				}
-			}
-		}
-	}
-
-	props := stageProps(stage)
-	return types.EntityRecord{
-		Name:         name,
-		Kind:         "SCOPE.Operation",
-		Subtype:      "run",
-		SourceFile:   file.Path,
-		Language:     "dockerfile",
-		StartLine:    int(node.StartPoint().Row) + 1,
-		EndLine:      int(node.EndPoint().Row) + 1,
-		Signature:    strings.TrimSpace(nodeText(node, file.Content)),
-		Properties:   props,
-		QualityScore: 0.7,
-	}, true
-}
-
-// buildCopyLike builds a SCOPE.Operation entity for COPY or ADD.
-func buildCopyLike(node *sitter.Node, file extractor.FileInput, stage, instruction string) (types.EntityRecord, bool) {
-	var paths []string
-	for i := range node.ChildCount() {
-		ch := node.Child(int(i))
-		if ch != nil && ch.Type() == "path" {
-			paths = append(paths, nodeText(ch, file.Content))
-		}
-	}
-
-	qualifier := ""
-	if len(paths) >= 2 {
-		qualifier = paths[0] + " -> " + paths[len(paths)-1]
-	} else if len(paths) == 1 {
-		qualifier = paths[0]
-	}
-
-	props := stageProps(stage)
-	if qualifier != "" {
-		if props == nil {
-			props = map[string]string{}
-		}
-		props["qualifier"] = qualifier
-	}
-
-	return types.EntityRecord{
-		Name:         instruction,
-		Kind:         "SCOPE.Operation",
-		Subtype:      "copy",
-		SourceFile:   file.Path,
-		Language:     "dockerfile",
-		StartLine:    int(node.StartPoint().Row) + 1,
-		EndLine:      int(node.EndPoint().Row) + 1,
-		Signature:    strings.TrimSpace(nodeText(node, file.Content)),
-		Properties:   props,
-		QualityScore: 0.7,
-	}, true
-}
-
-// buildExpose builds a SCOPE.Pattern entity for an EXPOSE instruction.
-func buildExpose(node *sitter.Node, file extractor.FileInput, stage string) (types.EntityRecord, bool) {
-	portNode := childByType(node, "expose_port")
-	if portNode == nil {
-		return types.EntityRecord{}, false
-	}
-	port := strings.TrimSpace(nodeText(portNode, file.Content))
-	if port == "" {
-		return types.EntityRecord{}, false
-	}
-
-	props := stageProps(stage)
-	return types.EntityRecord{
-		Name:         port,
-		Kind:         "SCOPE.Pattern",
-		Subtype:      "port",
-		SourceFile:   file.Path,
-		Language:     "dockerfile",
-		StartLine:    int(node.StartPoint().Row) + 1,
-		EndLine:      int(node.EndPoint().Row) + 1,
-		Signature:    "EXPOSE " + port,
-		Properties:   props,
-		QualityScore: 0.75,
-	}, true
-}
-
-// buildEnv builds SCOPE.Schema entities for each key in an ENV instruction.
-func buildEnv(node *sitter.Node, file extractor.FileInput, stage string) []types.EntityRecord {
-	var recs []types.EntityRecord
-	for i := range node.ChildCount() {
-		ch := node.Child(int(i))
-		if ch == nil || ch.Type() != "env_pair" {
-			continue
-		}
-		keyNode := childByField(ch, "name")
-		if keyNode == nil {
-			continue
-		}
-		key := strings.TrimSpace(nodeText(keyNode, file.Content))
-		if key == "" {
-			continue
-		}
-		props := stageProps(stage)
-		recs = append(recs, types.EntityRecord{
-			Name:         key,
-			Kind:         "SCOPE.Schema",
-			Subtype:      "variable",
-			SourceFile:   file.Path,
-			Language:     "dockerfile",
-			StartLine:    int(node.StartPoint().Row) + 1,
-			EndLine:      int(node.EndPoint().Row) + 1,
-			Signature:    "ENV " + key,
-			Properties:   props,
-			QualityScore: 0.65,
-		})
-	}
-	return recs
-}
-
-// buildArg builds a SCOPE.Schema entity for an ARG instruction.
-func buildArg(node *sitter.Node, file extractor.FileInput, stage string) (types.EntityRecord, bool) {
-	nameNode := childByField(node, "name")
-	if nameNode == nil {
-		return types.EntityRecord{}, false
-	}
-	name := strings.TrimSpace(nodeText(nameNode, file.Content))
-	if name == "" {
-		return types.EntityRecord{}, false
-	}
-
-	props := stageProps(stage)
-	return types.EntityRecord{
-		Name:         name,
-		Kind:         "SCOPE.Schema",
-		Subtype:      "build_arg",
-		SourceFile:   file.Path,
-		Language:     "dockerfile",
-		StartLine:    int(node.StartPoint().Row) + 1,
-		EndLine:      int(node.EndPoint().Row) + 1,
-		Signature:    "ARG " + name,
-		Properties:   props,
-		QualityScore: 0.65,
-	}, true
-}
-
-// buildEntrypointOrCmd builds a SCOPE.Operation entity for ENTRYPOINT or CMD.
-func buildEntrypointOrCmd(node *sitter.Node, file extractor.FileInput, stage, instruction string) (types.EntityRecord, bool) {
-	props := stageProps(stage)
-	return types.EntityRecord{
-		Name:         instruction,
-		Kind:         "SCOPE.Operation",
-		Subtype:      "entrypoint",
-		SourceFile:   file.Path,
-		Language:     "dockerfile",
-		StartLine:    int(node.StartPoint().Row) + 1,
-		EndLine:      int(node.EndPoint().Row) + 1,
-		Signature:    strings.TrimSpace(nodeText(node, file.Content)),
-		Properties:   props,
-		QualityScore: 0.8,
-	}, true
-}
-
-// buildFileComponent emits a single file-level SCOPE.Component carrying one
-// CONTAINS edge per stage in stageImages. Issue #384 — multi-stage Dockerfile
-// CONTAINS each stage. The structural-ref shape mirrors every Format A
-// emitter via BuildOperationStructuralRef.
-func buildFileComponent(file extractor.FileInput, stageImages []string) types.EntityRecord {
-	name := file.Path
-	if slash := strings.LastIndexByte(file.Path, '/'); slash >= 0 {
-		name = file.Path[slash+1:]
-	}
-	rels := make([]types.RelationshipRecord, 0, len(stageImages))
-	for _, img := range stageImages {
-		rels = append(rels, types.RelationshipRecord{
-			ToID: extractor.BuildOperationStructuralRef("dockerfile", file.Path, img),
-			Kind: "CONTAINS",
-		})
-	}
-	return types.EntityRecord{
-		Name:          name,
-		Kind:          "SCOPE.Component",
-		Subtype:       "dockerfile",
-		SourceFile:    file.Path,
-		Language:      "dockerfile",
-		Relationships: rels,
-		QualityScore:  0.7,
-	}
-}
-
-// attachCopyFromUses inspects a copy_instruction node for a `--from=<stage>`
-// param and, if found, attaches a USES relationship to rec pointing at the
-// referenced stage's structural-ref. The stage may be referenced by alias
-// (resolved via aliasToImage) or by raw image name (passed through).
-func attachCopyFromUses(node *sitter.Node, file extractor.FileInput, rec *types.EntityRecord, aliasToImage map[string]string) {
-	for i := range node.ChildCount() {
-		ch := node.Child(int(i))
-		if ch == nil || ch.Type() != "param" {
-			continue
-		}
-		raw := nodeText(ch, file.Content)
-		// raw is e.g. "--from=builder". Split on '='.
-		eq := strings.IndexByte(raw, '=')
-		if eq < 0 {
-			continue
-		}
-		key := strings.TrimSpace(strings.TrimPrefix(raw[:eq], "--"))
-		if key != "from" {
-			continue
-		}
-		stageRef := strings.TrimSpace(raw[eq+1:])
-		if stageRef == "" {
-			continue
-		}
-		target := stageRef
-		if img, ok := aliasToImage[stageRef]; ok {
-			target = img
-		}
-		rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
-			FromID: file.Path,
-			ToID:   extractor.BuildOperationStructuralRef("dockerfile", file.Path, target),
-			Kind:   "USES",
-			Properties: map[string]string{
-				"from_stage": stageRef,
-			},
-		})
-	}
 }

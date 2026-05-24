@@ -8,8 +8,8 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// collectRels returns all relationships across entities matching the kind.
-func collectRels(entities []types.EntityRecord, kind string) []types.RelationshipRecord {
+// collectRelsByKind returns all relationships across all entities matching kind.
+func collectRelsByKind(entities []types.EntityRecord, kind string) []types.RelationshipRecord {
 	var out []types.RelationshipRecord
 	for _, e := range entities {
 		for _, r := range e.Relationships {
@@ -33,7 +33,7 @@ EXPOSE 8080
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	imports := collectRels(entities, "IMPORTS")
+	imports := collectRelsByKind(entities, "IMPORTS")
 	wantImages := map[string]bool{"golang:1.22": false, "ubuntu:22.04": false}
 	for _, r := range imports {
 		if r.FromID != "Dockerfile" {
@@ -56,8 +56,8 @@ EXPOSE 8080
 	}
 }
 
-// TestDockerfile_Contains_Stages asserts a file-level SCOPE.Component is
-// emitted carrying one CONTAINS edge per FROM stage.
+// TestDockerfile_Contains_Stages asserts the single file-level SCOPE.Component
+// carries one CONTAINS edge per FROM stage.
 func TestDockerfile_Contains_Stages(t *testing.T) {
 	src := `FROM golang:1.22 AS builder
 RUN go build ./...
@@ -68,7 +68,7 @@ EXPOSE 8080
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	contains := collectRels(entities, "CONTAINS")
+	contains := collectRelsByKind(entities, "CONTAINS")
 	if len(contains) != 2 {
 		t.Fatalf("expected 2 CONTAINS edges, got %d: %+v", len(contains), contains)
 	}
@@ -89,25 +89,21 @@ EXPOSE 8080
 	}
 }
 
-// TestDockerfile_Contains_NoStagesNoComponent asserts no file-level component
-// is emitted when there are no FROM instructions (degenerate input).
+// TestDockerfile_Contains_NoStagesNoComponent asserts no entity is emitted when
+// there are no FROM instructions (degenerate input).
 func TestDockerfile_Contains_NoStagesNoComponent(t *testing.T) {
 	src := `# only a comment
 `
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	for _, e := range entities {
-		for _, r := range e.Relationships {
-			if r.Kind == "CONTAINS" {
-				t.Errorf("unexpected CONTAINS edge: %+v", r)
-			}
-		}
+	if len(entities) != 0 {
+		t.Errorf("expected 0 entities for Dockerfile with no FROM, got %d: %+v", len(entities), entities)
 	}
 }
 
 // TestDockerfile_Uses_CopyFromStage asserts COPY --from=<stage> emits a USES
-// edge to the referenced stage structural-ref.
+// edge to the referenced stage structural-ref on the single file entity.
 func TestDockerfile_Uses_CopyFromStage(t *testing.T) {
 	src := `FROM golang:1.22 AS builder
 RUN go build -o /app/bin ./...
@@ -118,7 +114,7 @@ COPY --from=builder /app/bin /usr/local/bin
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	uses := collectRels(entities, "USES")
+	uses := collectRelsByKind(entities, "USES")
 	if len(uses) != 1 {
 		t.Fatalf("expected 1 USES edge, got %d: %+v", len(uses), uses)
 	}
@@ -141,7 +137,7 @@ func TestDockerfile_Imports_SingleStageNoAlias(t *testing.T) {
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	imports := collectRels(entities, "IMPORTS")
+	imports := collectRelsByKind(entities, "IMPORTS")
 	if len(imports) != 1 {
 		t.Fatalf("expected 1 IMPORTS edge, got %d: %+v", len(imports), imports)
 	}
