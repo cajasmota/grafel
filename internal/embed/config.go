@@ -5,12 +5,12 @@
 // brute-force cosine search used by the MCP server for RRF fusion with BM25
 // (#461, ADR-0019).
 //
-// Default mode (S6 / #2156): embeddings are DISABLED. BM25 search works
-// without any configuration. To enable semantic search set
+// Default mode (S6 / #2156): embeddings use bundled MiniLM (via -tags simplego
+// builds). BM25 search works without any configuration; semantic search is
+// automatic. Power users can opt into an HTTP endpoint via
 // ARCHIGRAPH_EMBEDDING_URL=http://localhost:11434/v1 (Ollama / LM Studio /
-// any OpenAI-compatible endpoint). The bundled MiniLM model is still
-// available via -tags simplego builds; set ARCHIGRAPH_EMBEDDING_BACKEND=builtin
-// to activate it.
+// any OpenAI-compatible endpoint), or opt out entirely with
+// ARCHIGRAPH_EMBEDDING_DISABLE=true.
 package embed
 
 import (
@@ -31,11 +31,12 @@ const (
 
 // Env override variables (ADR-0019). Env always wins over the config file.
 const (
-	EnvBackend = "ARCHIGRAPH_EMBEDDING_BACKEND"
-	EnvURL     = "ARCHIGRAPH_EMBEDDING_URL"
-	EnvModel   = "ARCHIGRAPH_EMBEDDING_MODEL"
-	EnvAPIKey  = "ARCHIGRAPH_EMBEDDING_API_KEY"
-	EnvDims    = "ARCHIGRAPH_EMBEDDING_DIMS"
+	EnvBackend  = "ARCHIGRAPH_EMBEDDING_BACKEND"
+	EnvURL      = "ARCHIGRAPH_EMBEDDING_URL"
+	EnvModel    = "ARCHIGRAPH_EMBEDDING_MODEL"
+	EnvAPIKey   = "ARCHIGRAPH_EMBEDDING_API_KEY"
+	EnvDims     = "ARCHIGRAPH_EMBEDDING_DIMS"
+	EnvDisable  = "ARCHIGRAPH_EMBEDDING_DISABLE"
 )
 
 // DefaultBuiltinModel is the bundled-by-download MiniLM model. hugot fetches
@@ -81,13 +82,14 @@ func homeDir() string {
 
 // LoadConfig reads embeddings.json (if present) and applies env overrides.
 // A missing file is NOT an error: it yields the zero-config default
-// (disabled — BM25-only). An unparseable file falls back to the default too,
+// (builtin — bundled MiniLM). An unparseable file falls back to the default too,
 // surfacing the parse error to the caller for logging.
 //
-// To opt in to semantic embeddings set ARCHIGRAPH_EMBEDDING_URL or write
+// To opt in to an HTTP backend set ARCHIGRAPH_EMBEDDING_URL or write
 // {"backend":"http","http":{"url":"..."}} to ~/.archigraph/embeddings.json.
+// To opt out entirely set ARCHIGRAPH_EMBEDDING_DISABLE=true.
 func LoadConfig() (Config, error) {
-	cfg := Config{Backend: BackendDisabled}
+	cfg := Config{Backend: BackendBuiltin}
 	var parseErr error
 
 	if data, err := os.ReadFile(ConfigPath()); err == nil {
@@ -113,6 +115,12 @@ func LoadConfig() (Config, error) {
 }
 
 func applyEnvOverrides(cfg *Config) {
+	// ARCHIGRAPH_EMBEDDING_DISABLE overrides everything: if set to true/1, force disabled.
+	if v := os.Getenv(EnvDisable); v != "" && (v == "true" || v == "1" || v == "yes") {
+		cfg.Backend = BackendDisabled
+		return
+	}
+
 	if v := os.Getenv(EnvBackend); v != "" {
 		cfg.Backend = v
 	}
@@ -142,7 +150,7 @@ func (cfg *Config) normalize() error {
 	cfg.Backend = strings.ToLower(strings.TrimSpace(cfg.Backend))
 	switch cfg.Backend {
 	case "":
-		cfg.Backend = BackendDisabled
+		cfg.Backend = BackendBuiltin
 	case BackendBuiltin, BackendDisabled:
 		// ok
 	case BackendHTTP:

@@ -1,8 +1,9 @@
 # Semantic Embeddings
 
-> **Default since S6 (#2156):** embeddings are **disabled**. BM25 keyword
-> search works out of the box with no configuration. To add semantic (vector)
-> search, follow the opt-in instructions below.
+> **Default since S6 (#2156):** embeddings use **bundled MiniLM** (via
+> `-tags simplego` builds). Semantic (vector) search works out of the box with
+> no configuration. Power users can opt into an HTTP endpoint or opt out
+> entirely — see below.
 
 ---
 
@@ -83,32 +84,40 @@ The model weights (~23 MB) are downloaded from HuggingFace on first use into
 
 ---
 
-## Disabling embeddings explicitly
+## Opt-out: disable embeddings
 
-To confirm BM25-only mode (e.g. to override a config file):
+To use BM25-only mode and skip embeddings entirely:
 
 ```bash
-export ARCHIGRAPH_EMBEDDING_BACKEND=disabled
+export ARCHIGRAPH_EMBEDDING_DISABLE=true
 ```
+
+or in `~/.archigraph/embeddings.json`:
+
+```json
+{ "backend": "disabled" }
+```
+
+The `ARCHIGRAPH_EMBEDDING_DISABLE` env var always takes precedence, even if
+other settings are configured.
 
 ---
 
-## Migration: upgrading from a pre-S6 install
+## Migration: no breaking changes
 
-Versions before S6 defaulted to `backend: builtin`. After upgrading:
+S6 / #2156 restored the bundled MiniLM default. Users upgrading from older
+versions with embeddings already cached will see no changes — the daemon
+reuses existing per-repo `embeddings.bin` sidecars and cross-ref cache
+(`~/.archigraph/embeddings/`).
 
-1. **If you had embeddings working** and want to keep them, add the env var or
-   config file shown above. The existing per-repo `embeddings.bin` sidecars and
-   cross-ref cache (`~/.archigraph/embeddings/`) are fully compatible — the
-   daemon will reuse cached vectors on the next reindex and only fetch new ones
-   from the backend.
+If you prefer BM25-only search:
 
-2. **If embeddings were broken** (non-simplego build) or you don't need them,
-   no action is needed. BM25 search works without changes and the `embedding_ref`
-   field in `graph.fb` simply stays empty.
+```bash
+export ARCHIGRAPH_EMBEDDING_DISABLE=true
+```
 
-3. The `~/.archigraph/embeddings.json` config file is optional. Delete it to
-   reset to the disabled default.
+This disables all embedding operations while keeping the daemon and search
+fully functional.
 
 ---
 
@@ -116,8 +125,9 @@ Versions before S6 defaulted to `backend: builtin`. After upgrading:
 
 | Variable                        | Default    | Description                              |
 |---------------------------------|------------|------------------------------------------|
+| `ARCHIGRAPH_EMBEDDING_DISABLE`  | _(unset)_  | Set to `true`/`1` to force BM25-only mode (overrides all other settings) |
 | `ARCHIGRAPH_EMBEDDING_URL`      | _(unset)_  | HTTP endpoint; sets `backend=http` automatically |
-| `ARCHIGRAPH_EMBEDDING_BACKEND`  | `disabled` | `disabled` / `http` / `builtin`          |
+| `ARCHIGRAPH_EMBEDDING_BACKEND`  | `builtin`  | `builtin` / `http` / `disabled`          |
 | `ARCHIGRAPH_EMBEDDING_MODEL`    | _(unset)_  | Model name sent in the request body      |
 | `ARCHIGRAPH_EMBEDDING_API_KEY`  | _(unset)_  | Bearer token for authenticated endpoints |
 | `ARCHIGRAPH_EMBEDDING_DIMS`     | `384`      | Vector dimensionality (HTTP backend)     |

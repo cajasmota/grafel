@@ -52,16 +52,37 @@ func TestConfig_EnvOverride(t *testing.T) {
 	}
 }
 
-// TestConfig_DefaultIsDisabled verifies that a fresh install with no config
-// file and no env vars defaults to BM25-only mode (S6 / #2156).
-func TestConfig_DefaultIsDisabled(t *testing.T) {
+// TestConfig_DefaultIsBuiltin verifies that a fresh install with no config
+// file and no env vars defaults to bundled MiniLM mode (S6 / #2156).
+func TestConfig_DefaultIsBuiltin(t *testing.T) {
 	t.Setenv("ARCHIGRAPH_HOME", t.TempDir())
-	for _, e := range []string{EnvBackend, EnvURL, EnvModel, EnvAPIKey, EnvDims} {
+	for _, e := range []string{EnvBackend, EnvURL, EnvModel, EnvAPIKey, EnvDims, EnvDisable} {
 		t.Setenv(e, "")
 	}
 	cfg, err := LoadConfig()
+	if err != nil || cfg.Backend != BackendBuiltin {
+		t.Fatalf("want builtin (MiniLM), got %+v err=%v", cfg, err)
+	}
+}
+
+// TestConfig_DisableEnvOverrides verifies that ARCHIGRAPH_EMBEDDING_DISABLE
+// overrides any other settings and forces BM25-only mode.
+func TestConfig_DisableEnvOverrides(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_HOME", t.TempDir())
+	t.Setenv(EnvDisable, "true")
+	t.Setenv(EnvBackend, "builtin")
+	t.Setenv(EnvURL, "http://example.test/v1")
+	// Even with builtin and URL set, DISABLE should take precedence.
+	cfg, err := LoadConfig()
 	if err != nil || cfg.Backend != BackendDisabled {
-		t.Fatalf("want disabled (BM25-only), got %+v err=%v", cfg, err)
+		t.Fatalf("want disabled (override), got %+v err=%v", cfg, err)
+	}
+
+	// Also test with "1" (common shell true value).
+	t.Setenv(EnvDisable, "1")
+	cfg, err = LoadConfig()
+	if err != nil || cfg.Backend != BackendDisabled {
+		t.Fatalf("want disabled (override with 1), got %+v err=%v", cfg, err)
 	}
 }
 
