@@ -49,6 +49,13 @@ type Entry struct {
 	refs  int32 // outstanding Borrow callers; eviction waits for zero
 }
 
+// AccessHook is an optional callback invoked after a successful
+// GetForRepoRef call. It receives (repoPath, ref) so the PH2 tier manager
+// can update lastAccessedAt without creating an import cycle between
+// internal/daemon/mcp and internal/daemon/tier. cmd/archigraph wires them
+// together via SetAccessHook.
+type AccessHook func(repoPath, ref string)
+
 // Cache is a concurrent-safe LRU of mmap'd graph.fb readers, keyed by
 // absolute graph.fb path. Multiple goroutines may hold readers for the
 // same path simultaneously (FlatBuffers reads are pure); the LRU evicts
@@ -64,6 +71,28 @@ type Cache struct {
 
 	// Stats — read with Stats() for benches/observability.
 	stats Stats
+
+	// accessHook is the optional PH2 idle-tracker callback. Set via
+	// SetAccessHook; nil means no-op. Guarded by accessHookMu.
+	accessHookMu sync.RWMutex
+	accessHook   AccessHook
+}
+
+// SetAccessHook registers (or replaces) the PH2 idle-tracker callback.
+// Safe to call at any time; the previous hook is discarded atomically.
+func (c *Cache) SetAccessHook(h AccessHook) {
+	c.accessHookMu.Lock()
+	c.accessHook = h
+	c.accessHookMu.Unlock()
+}
+
+func (c *Cache) fireAccessHook(repoPath, ref string) {
+	c.accessHookMu.RLock()
+	h := c.accessHook
+	c.accessHookMu.RUnlock()
+	if h != nil {
+		h(repoPath, ref)
+	}
 }
 
 // Stats captures cumulative cache behaviour. Snapshots are returned by
@@ -190,11 +219,18 @@ open:
 // are unchanged. When ref is "" the resolved path is
 // refs/_unknown/graph.fb — same sentinel as StateDirForRepo.
 //
+// PH2 (#2090): fires the AccessHook (if set) with (repoPath, ref) so the
+// tier manager can update lastAccessedAt for idle-TTL tracking.
+//
 // Returns (nil, noop, ErrCacheClosed) when the cache has been closed.
 func (c *Cache) GetForRepoRef(repoPath, ref string) (*fbreader.Reader, func(), error) {
 	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
 	fbPath := filepath.Join(stateDir, "graph.fb")
-	return c.Get(fbPath)
+	r, release, err := c.Get(fbPath)
+	if err == nil {
+		c.fireAccessHook(repoPath, ref)
+	}
+	return r, release, err
 }
 
 // InvalidateForRepoRef drops the cached handle for (repoPath, ref).

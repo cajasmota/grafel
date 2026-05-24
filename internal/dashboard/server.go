@@ -110,6 +110,12 @@ type Server struct {
 	// used by the v2 async rebuild/reset endpoints (#1512). Test-only injection
 	// point so the async job lifecycle can run without a live daemon.
 	rebuildRunner rebuildRunner
+
+	// tierQuerier provides HOT/WARM/COLD tier status for the
+	// GET /api/v2/groups/:group/refs endpoint (PH2 of epic #2087 #2090).
+	// Optional: when nil, the endpoint falls back to the pre-PH2 hot/cold
+	// heuristic (current ref = hot, others = cold).
+	tierQuerier TierQuerier
 }
 
 // watcherForceRescan is the subset of the watch.Watcher surface used by
@@ -239,6 +245,23 @@ func (s *Server) SetWatcher(w watcherForceRescan) {
 // Call from the daemon entrypoint before Serve (#1341).
 func (s *Server) SetWebhookDispatcher(d webhookDispatcherIface) {
 	s.webhookDispatcher = d
+}
+
+// TierQuerier is the narrow interface the dashboard uses to read the
+// tiered-hibernation state (PH2 of epic #2087 / issue #2090). The narrow
+// interface keeps the dashboard package free of a direct dependency on
+// internal/daemon/tier.
+type TierQuerier interface {
+	// TierForRef returns the tier string ("hot"/"warm"/"cold"/"expired")
+	// for the given (repoPath, ref) pair. Returns "cold" for unknown slots.
+	TierForRef(repoPath, ref string) string
+}
+
+// SetTierQuerier wires the PH2 tiered-hibernation state machine so that
+// GET /api/v2/groups/:group/refs returns real HOT/WARM/COLD status. Call
+// from the daemon entrypoint before Serve.
+func (s *Server) SetTierQuerier(q TierQuerier) {
+	s.tierQuerier = q
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is

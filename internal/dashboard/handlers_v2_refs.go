@@ -122,11 +122,19 @@ func (s *Server) handleV2GroupRefs(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			refSafe := e.Name()
-			ref := daemon.RefSafeDecode(refSafe)
+			refName := daemon.RefSafeDecode(refSafe)
 
-			tier := "cold"
-			if refSafe == hotRefSafe {
-				tier = "hot"
+			// PH2 (#2090): use the real tier state machine when available.
+			// Fall back to the pre-PH2 hot/cold heuristic when the tier
+			// manager is not wired (tests, standalone dashboard mode).
+			var tierStr string
+			if s.tierQuerier != nil {
+				tierStr = s.tierQuerier.TierForRef(r.Path, refName)
+			} else {
+				tierStr = "cold"
+				if refSafe == hotRefSafe {
+					tierStr = "hot"
+				}
 			}
 
 			// Check for a graph.fb in this ref slot.
@@ -152,18 +160,21 @@ func (s *Server) handleV2GroupRefs(w http.ResponseWriter, r *http.Request) {
 			}
 
 			refs = append(refs, v2RefEntry{
-				Ref:       ref,
+				Ref:       refName,
 				RefSafe:   refSafe,
-				Tier:      tier,
+				Tier:      tierStr,
 				IndexedAt: indexedAt,
 				Entities:  entityCount,
 			})
 		}
 
-		// Sort: hot first, then by ref name alphabetically.
+		// Sort: HOT first, then WARM, then COLD/EXPIRED, then alphabetical.
+		tierOrder := map[string]int{"hot": 0, "warm": 1, "cold": 2, "expired": 3}
 		sort.Slice(refs, func(i, j int) bool {
-			if refs[i].Tier != refs[j].Tier {
-				return refs[i].Tier == "hot"
+			oi := tierOrder[refs[i].Tier]
+			oj := tierOrder[refs[j].Tier]
+			if oi != oj {
+				return oi < oj
 			}
 			return refs[i].Ref < refs[j].Ref
 		})
