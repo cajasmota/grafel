@@ -629,15 +629,17 @@ func extractCallRelationships(
 		if target == "" {
 			continue
 		}
-		// Self-recursion check on the bare leaf name. Dotted targets
-		// with a leaf equal to callerName still skip — they can't be
-		// the caller because the caller is a method, not a static call
-		// on a same-named identifier.
-		leaf := target
-		if dot := strings.LastIndexByte(target, '.'); dot >= 0 {
-			leaf = target[dot+1:]
-		}
-		if leaf == callerName {
+		// Self-recursion check: skip bare-name targets that match the
+		// caller's own leaf name (e.g. `create()` calling itself without
+		// a receiver). Dotted targets (e.g. "UsersService.create") are
+		// cross-type calls and MUST NOT be filtered even when the leaf
+		// matches the caller's name — "UsersController.create" calling
+		// "UsersService.create" is a legitimate outbound call, not
+		// recursion (#2111). The previous check applied the leaf match
+		// to all dotted targets, which incorrectly dropped every CALLS
+		// edge where the callee method shared its name with the enclosing
+		// JAX-RS / REST controller method (create, update, delete, …).
+		if strings.IndexByte(target, '.') < 0 && target == callerName {
 			continue
 		}
 		if seen[target] {
