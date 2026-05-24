@@ -116,6 +116,11 @@ type Server struct {
 	// Optional: when nil, the endpoint falls back to the pre-PH2 hot/cold
 	// heuristic (current ref = hot, others = cold).
 	tierQuerier TierQuerier
+
+	// worktreeQuerier reports which (repoPath, ref) pairs originated from a
+	// linked git worktree (PH3 of epic #2087 #2091). Optional: when nil,
+	// all refs report source="branch".
+	worktreeQuerier WorktreeQuerier
 }
 
 // watcherForceRescan is the subset of the watch.Watcher surface used by
@@ -262,6 +267,23 @@ type TierQuerier interface {
 // from the daemon entrypoint before Serve.
 func (s *Server) SetTierQuerier(q TierQuerier) {
 	s.tierQuerier = q
+}
+
+// WorktreeQuerier is the narrow interface the dashboard uses to identify
+// which (repoPath, ref) pairs originated from a linked git worktree (PH3
+// of epic #2087 #2091). The narrow interface avoids a direct import of
+// internal/daemon/worktree.
+type WorktreeQuerier interface {
+	// IsWorktreeRef returns true when the (repoPath, ref) pair corresponds to
+	// a linked git worktree discovered by the PH3 watcher.
+	IsWorktreeRef(repoPath, ref string) bool
+}
+
+// SetWorktreeQuerier wires the PH3 worktree store so that
+// GET /api/v2/groups/:group/refs can annotate worktree-derived refs with
+// source="worktree". Call from the daemon entrypoint before Serve.
+func (s *Server) SetWorktreeQuerier(q WorktreeQuerier) {
+	s.worktreeQuerier = q
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is

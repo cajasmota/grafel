@@ -211,7 +211,8 @@ type CWDResolution struct {
 	IsWorktree bool
 	// ParentRepoPath is the parent repo path when IsWorktree is true.
 	ParentRepoPath string
-	// Source is "cwd_registry", "worktree", "cwd", "singleton", "explicit", or "none".
+	// Source is "worktree_registry" (PH3 ephemeral child), "cwd_registry",
+	// "worktree" (PH1c sibling match), "cwd", "singleton", "explicit", or "none".
 	Source string
 }
 
@@ -239,6 +240,31 @@ func ResolveCWD(s *State, cwd string) CWDResolution {
 		abs = cwd
 	}
 	abs = filepath.Clean(abs)
+
+	// Step 0 (PH3 #2091): check the ephemeral worktree-child registry first.
+	// If cwd is inside a registered worktree entry, return that entry directly
+	// so the caller queries the per-worktree ref graph rather than the parent's
+	// default ref.
+	s.mu.Lock()
+	wl := s.worktreeLookup
+	s.mu.Unlock()
+	if wl != nil {
+		// Walk up to the git toplevel for this cwd, then look up that path.
+		wtMeta := gitmeta.Capture(abs)
+		if wtMeta.IsWorktree && wtMeta.TopLevel != "" {
+			wtTop := filepath.Clean(wtMeta.TopLevel)
+			if gname, slug, branch := wl.LookupPath(wtTop); gname != "" {
+				return CWDResolution{
+					Group:      gname,
+					RepoSlug:   slug,
+					Ref:        branch,
+					SHA:        wtMeta.SHA,
+					IsWorktree: true,
+					Source:     "worktree_registry",
+				}
+			}
+		}
+	}
 
 	// Step 1: direct registry containment (existing behaviour).
 	group, _ := groupFromRegistryWithCandidates(s, abs)

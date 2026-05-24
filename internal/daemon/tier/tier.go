@@ -1,5 +1,5 @@
 // Package tier implements the HOT/WARM/COLD/EXPIRED state machine for loaded
-// graphs (PH2 of epic #2087 / issue #2090).
+// graphs (PH2 of epic #2087 / issue #2090, extended by PH3 #2091).
 //
 // # Tier definitions
 //
@@ -172,8 +172,44 @@ func envDays(name string) time.Duration {
 // internal slot
 // ---------------------------------------------------------------------------
 
+// SlotKind is a discriminator that controls which TTL policy applies to a
+// graph slot.  Imported from internal/daemon/worktree to avoid a circular
+// dependency; duplicated here as a thin alias so callers need only import
+// internal/daemon/tier for TTL decisions.
+//
+// PH3 (#2091): the Manager now selects WARM→COLD and COLD→EXPIRED windows
+// based on SlotKind, giving worktree graphs the aggressive 30 min / 48 h
+// TTLs specified in ADR-0018.
+type SlotKind int8
+
+const (
+	// SlotKindBranchMain is the default branch of a registered repo (disk-pinned;
+	// COLD→EXPIRED suppressed).
+	SlotKindBranchMain SlotKind = iota
+	// SlotKindBranchFeature is a feature/topic branch of a registered repo.
+	SlotKindBranchFeature
+	// SlotKindWorktree is a linked git worktree.  Uses the aggressive
+	// ColdWindowWorktree / ExpiredWindowWorktree TTLs from TTLConfig.
+	SlotKindWorktree
+)
+
+// String returns the lowercase JSON-safe kind name.
+func (k SlotKind) String() string {
+	switch k {
+	case SlotKindBranchMain:
+		return "branch_main"
+	case SlotKindBranchFeature:
+		return "branch_feature"
+	case SlotKindWorktree:
+		return "worktree"
+	default:
+		return "unknown"
+	}
+}
+
 type slot struct {
 	tier           Tier
+	kind           SlotKind
 	lastAccessedAt time.Time
 	isPinnedMain   bool // disk-pinned: COLD→EXPIRED suppressed
 }
@@ -233,8 +269,10 @@ func NewManagerForTest(ttl TTLConfig, clock func() time.Time, onEvict EvictionCa
 // ---------------------------------------------------------------------------
 
 // Register declares (or re-activates) a slot as HOT. isPinnedMain should be
-// true for the repository's default branch.
-func (m *Manager) Register(key SlotKey, isPinnedMain bool) {
+// true for the repository's default branch. kind selects the TTL policy:
+// SlotKindWorktree uses the aggressive 30-min/48-h windows; others use the
+// standard branch windows.
+func (m *Manager) Register(key SlotKey, isPinnedMain bool, kind SlotKind) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s, ok := m.slots[key]
@@ -243,6 +281,7 @@ func (m *Manager) Register(key SlotKey, isPinnedMain bool) {
 		m.slots[key] = s
 	}
 	s.tier = TierHot
+	s.kind = kind
 	s.lastAccessedAt = m.clock()
 	s.isPinnedMain = isPinnedMain
 }
@@ -302,6 +341,7 @@ func (m *Manager) TierForRef(repoPath, ref string) string {
 type SlotSnapshot struct {
 	Key            SlotKey
 	Tier           Tier
+	Kind           SlotKind
 	LastAccessedAt time.Time
 	IsPinnedMain   bool
 }
@@ -312,7 +352,7 @@ func (m *Manager) Snapshot() []SlotSnapshot {
 	defer m.mu.Unlock()
 	out := make([]SlotSnapshot, 0, len(m.slots))
 	for k, s := range m.slots {
-		out = append(out, SlotSnapshot{Key: k, Tier: s.tier, LastAccessedAt: s.lastAccessedAt, IsPinnedMain: s.isPinnedMain})
+		out = append(out, SlotSnapshot{Key: k, Tier: s.tier, Kind: s.kind, LastAccessedAt: s.lastAccessedAt, IsPinnedMain: s.isPinnedMain})
 	}
 	return out
 }
@@ -344,23 +384,33 @@ func (m *Manager) scan() {
 	var toEvict []SlotKey
 	for k, s := range m.slots {
 		idle := now.Sub(s.lastAccessedAt)
+
+		// PH3 (#2091): select TTL windows based on SlotKind.
+		// Worktree slots use the aggressive windows; others use the branch windows.
+		coldWindow := m.ttl.ColdWindow
+		expiredWindow := m.ttl.ExpiredWindow
+		if s.kind == SlotKindWorktree {
+			coldWindow = m.ttl.ColdWindowWorktree
+			expiredWindow = m.ttl.ExpiredWindowWorktree
+		}
+
 		switch s.tier {
 		case TierHot:
 			if idle >= m.ttl.HotWindow {
 				s.tier = TierWarm
-				m.logger.Printf("tier: %s@%s HOT→WARM (idle %s)", k.RepoPath, k.Ref, idle.Round(time.Second))
+				m.logger.Printf("tier: %s@%s HOT→WARM (idle %s, kind=%s)", k.RepoPath, k.Ref, idle.Round(time.Second), s.kind)
 			}
 		case TierWarm:
-			if idle >= m.ttl.ColdWindow {
+			if idle >= coldWindow {
 				s.tier = TierCold
 				toEvict = append(toEvict, k)
-				m.logger.Printf("tier: %s@%s WARM→COLD (idle %s)", k.RepoPath, k.Ref, idle.Round(time.Second))
+				m.logger.Printf("tier: %s@%s WARM→COLD (idle %s, kind=%s)", k.RepoPath, k.Ref, idle.Round(time.Second), s.kind)
 			}
 		case TierCold:
 			// COLD→EXPIRED: log eligibility but do not delete disk artifacts (PH6).
-			if !s.isPinnedMain && idle >= m.ttl.ExpiredWindow {
-				m.logger.Printf("tier: %s@%s COLD→EXPIRED eligible (idle %s, pinned=%v) — disk eviction deferred to PH6",
-					k.RepoPath, k.Ref, idle.Round(time.Hour), s.isPinnedMain)
+			if !s.isPinnedMain && idle >= expiredWindow {
+				m.logger.Printf("tier: %s@%s COLD→EXPIRED eligible (idle %s, kind=%s, pinned=%v) — disk eviction deferred to PH6",
+					k.RepoPath, k.Ref, idle.Round(time.Hour), s.kind, s.isPinnedMain)
 			}
 		}
 	}

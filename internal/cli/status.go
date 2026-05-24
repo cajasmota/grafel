@@ -6,11 +6,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon/client"
+	"github.com/cajasmota/archigraph/internal/daemon/worktree"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
@@ -169,8 +171,67 @@ func runStatus(w io.Writer, filter string) error {
 		// Compute rich statistics for this group.
 		summary := ComputeStatusSummary(g.Name, cfg.Repos)
 		PrintStatusSummary(w, summary)
+
+		// PH3 (#2091): show linked worktree children indented under their parent.
+		if cfg.Features.TrackWorktrees {
+			printWorktreeChildren(w, g.Name)
+		}
 	}
 	return nil
+}
+
+// printWorktreeChildren prints the ephemeral worktree-child entries for the
+// given group, indented under their parent repo slug. Reads the worktrees.json
+// store from the archigraph home directory. Silently skips when the file does
+// not exist (no worktrees discovered yet).
+func printWorktreeChildren(w io.Writer, groupName string) {
+	h, err := registry.HomeDir()
+	if err != nil {
+		return
+	}
+	storePath := filepath.Join(h, "worktrees.json")
+	store := worktree.NewStore(storePath)
+	if err := store.Load(); err != nil {
+		return
+	}
+	active := store.Active()
+	if len(active) == 0 {
+		return
+	}
+
+	// Group children by parentSlug.
+	bySlug := make(map[string][]*worktree.WorktreeChild)
+	for _, c := range active {
+		if c.GroupName != groupName {
+			continue
+		}
+		bySlug[c.ParentSlug] = append(bySlug[c.ParentSlug], c)
+	}
+	if len(bySlug) == 0 {
+		return
+	}
+
+	slugs := make([]string, 0, len(bySlug))
+	for s := range bySlug {
+		slugs = append(slugs, s)
+	}
+	sort.Strings(slugs)
+
+	for _, slug := range slugs {
+		children := bySlug[slug]
+		// Sort children by branch for deterministic output.
+		sort.Slice(children, func(i, j int) bool {
+			return children[i].Branch < children[j].Branch
+		})
+		for _, c := range children {
+			name := filepath.Base(c.Path)
+			branch := c.Branch
+			if branch == "" {
+				branch = "(detached)"
+			}
+			fmt.Fprintf(w, "  └─ worktree: %s @ %s\n", name, branch)
+		}
+	}
 }
 
 // humanBytes formats a byte count as a short human-readable string. We

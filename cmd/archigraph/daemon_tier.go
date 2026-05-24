@@ -48,12 +48,29 @@ func startDaemonTierManager(ctx context.Context, logger *log.Logger) {
 
 // tierAfterIndex is called after every successful index pass to register
 // (or re-activate) the slot as HOT. Detects default branch for isPinnedMain.
+// PH3 (#2091): slots are now annotated with SlotKind so the tier manager can
+// apply the correct TTL policy.  Worktree slots are registered separately via
+// tierAfterIndexWorktree.
 func tierAfterIndex(repoPath, ref string) {
 	if daemonTierMgr == nil {
 		return
 	}
 	isPinned := tier.IsDefaultBranch(repoPath, ref)
-	daemonTierMgr.Register(tier.SlotKey{RepoPath: repoPath, Ref: ref}, isPinned)
+	kind := tier.SlotKindBranchFeature
+	if isPinned {
+		kind = tier.SlotKindBranchMain
+	}
+	daemonTierMgr.Register(tier.SlotKey{RepoPath: repoPath, Ref: ref}, isPinned, kind)
+}
+
+// tierAfterIndexWorktree is like tierAfterIndex but uses SlotKindWorktree
+// so the tier manager applies the aggressive 30-min WARM→COLD window.
+// Called after indexing a linked worktree (discovered by PH3).
+func tierAfterIndexWorktree(repoPath, ref string) {
+	if daemonTierMgr == nil {
+		return
+	}
+	daemonTierMgr.Register(tier.SlotKey{RepoPath: repoPath, Ref: ref}, false, tier.SlotKindWorktree)
 }
 
 // tierTouchRepoRef records an access for (repoPath, ref). If the slot is

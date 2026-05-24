@@ -33,6 +33,10 @@ type v2RefEntry struct {
 	// Entities is the entity count from the graph-stats.json sidecar.
 	// Zero when the sidecar is absent or unreadable.
 	Entities int `json:"entities,omitempty"`
+	// Source indicates where this ref originated: "worktree" for linked git
+	// worktrees discovered by PH3, "branch" for regular branches. Added in
+	// PH3 (#2091) so the WebUI can visually distinguish worktree entries.
+	Source string `json:"source,omitempty"`
 }
 
 // v2RepoRefs bundles a repo's slug and its available refs.
@@ -159,12 +163,19 @@ func (s *Server) handleV2GroupRefs(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+			// PH3 (#2091): annotate worktree-derived refs.
+			srcStr := "branch"
+			if s.worktreeQuerier != nil && s.worktreeQuerier.IsWorktreeRef(r.Path, refName) {
+				srcStr = "worktree"
+			}
+
 			refs = append(refs, v2RefEntry{
 				Ref:       refName,
 				RefSafe:   refSafe,
 				Tier:      tierStr,
 				IndexedAt: indexedAt,
 				Entities:  entityCount,
+				Source:    srcStr,
 			})
 		}
 

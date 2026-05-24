@@ -131,6 +131,14 @@ type GroupConfig struct {
 		// coding agents that the repo is indexed, where the dashboard is, and
 		// which MCP endpoints to query. Default false — opt-in only.
 		AutoInjectAgentsMD bool `json:"auto_inject_agents_md,omitempty"`
+		// TrackWorktrees, when true, enables PH3 worktree auto-discovery for
+		// this group. The daemon polls `git worktree list` every 5 minutes for
+		// each repo in the group and registers linked worktrees as ephemeral
+		// children. Default false — opt-in to preserve existing behaviour.
+		//
+		// Example fleet JSON:
+		//   "features": { "track_worktrees": true }
+		TrackWorktrees bool `json:"track_worktrees,omitempty"`
 	} `json:"features"`
 	// ExtraStdlibFilter is a user-extensible map from language tag to a list
 	// of bare-name symbols that should be suppressed as if they were stdlib

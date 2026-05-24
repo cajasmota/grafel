@@ -39,7 +39,7 @@ func TestHotToWarm(t *testing.T) {
 	clock, advance := makeClock()
 	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict, noopReload)
 	key := tier.SlotKey{RepoPath: "/repo/a", Ref: "main"}
-	m.Register(key, true)
+	m.Register(key, true, tier.SlotKindBranchMain)
 
 	if got := m.Get(key); got != tier.TierHot {
 		t.Fatalf("want HOT, got %s", got)
@@ -59,7 +59,7 @@ func TestWarmToCold(t *testing.T) {
 		noopReload,
 	)
 	key := tier.SlotKey{RepoPath: "/repo/b", Ref: "feat/x"}
-	m.Register(key, false)
+	m.Register(key, false, tier.SlotKindBranchFeature)
 
 	advance(6 * time.Minute)
 	m.Scan()
@@ -84,7 +84,7 @@ func TestColdWakeOnDemand(t *testing.T) {
 		func(k tier.SlotKey) error { reloadCount.Add(1); return nil },
 	)
 	key := tier.SlotKey{RepoPath: "/repo/c", Ref: "main"}
-	m.Register(key, true)
+	m.Register(key, true, tier.SlotKindBranchMain)
 
 	// Drive to COLD.
 	advance(6 * time.Minute)
@@ -111,7 +111,7 @@ func TestPinnedMainNeverExpired(t *testing.T) {
 	clock, advance := makeClock()
 	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict, noopReload)
 	key := tier.SlotKey{RepoPath: "/repo/d", Ref: "main"}
-	m.Register(key, true)
+	m.Register(key, true, tier.SlotKindBranchMain)
 
 	// Advance 8 days — past the 7-day EXPIRED window.
 	advance(8 * 24 * time.Hour)
@@ -152,7 +152,7 @@ func TestTouchHotSlotNoReload(t *testing.T) {
 		func(k tier.SlotKey) error { reloadCount.Add(1); return nil },
 	)
 	key := tier.SlotKey{RepoPath: "/repo/hot", Ref: "main"}
-	m.Register(key, true)
+	m.Register(key, true, tier.SlotKindBranchMain)
 	if err := m.Touch(key); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestHeapEviction(t *testing.T) {
 	}, noopReload)
 
 	key := tier.SlotKey{RepoPath: "/repo/evict", Ref: "feat/evict"}
-	m.Register(key, false)
+	m.Register(key, false, tier.SlotKindBranchFeature)
 
 	advance(2 * time.Minute)
 	m.Scan() // HOT→WARM
@@ -236,6 +236,75 @@ func TestTierString(t *testing.T) {
 	for _, c := range cases {
 		if got := c.t.String(); got != c.want {
 			t.Errorf("Tier(%d).String() = %q, want %q", c.t, got, c.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PH3: worktree SlotKind uses aggressive TTLs
+// ---------------------------------------------------------------------------
+
+// TestWorktreeSlotUsesAggressiveColdWindow verifies that a SlotKindWorktree
+// slot transitions WARM→COLD at ColdWindowWorktree (30 min) not the standard
+// branch ColdWindow (60 min).
+func TestWorktreeSlotUsesAggressiveColdWindow(t *testing.T) {
+	clock, advance := makeClock()
+	var evictCount atomic.Int32
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock,
+		func(k tier.SlotKey) { evictCount.Add(1) },
+		noopReload,
+	)
+	key := tier.SlotKey{RepoPath: "/tmp/repo/.worktrees/feat-x", Ref: "feat/x"}
+	m.Register(key, false, tier.SlotKindWorktree)
+
+	// After 6 min: HOT→WARM (same for all kinds)
+	advance(6 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierWarm {
+		t.Fatalf("prereq: want WARM, got %s", got)
+	}
+
+	// After 31 min total (25 more): should be COLD (worktree window = 30 min)
+	advance(25 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierCold {
+		t.Fatalf("worktree slot should be COLD at 31 min idle, got %s", got)
+	}
+	if evictCount.Load() != 1 {
+		t.Fatalf("want 1 eviction, got %d", evictCount.Load())
+	}
+}
+
+// TestBranchSlotStaysWarmAt31Min verifies that a standard branch slot is
+// still WARM at 31 min idle (it needs 60 min for WARM→COLD).
+func TestBranchSlotStaysWarmAt31Min(t *testing.T) {
+	clock, advance := makeClock()
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict, noopReload)
+	key := tier.SlotKey{RepoPath: "/tmp/repo", Ref: "feat/branch"}
+	m.Register(key, false, tier.SlotKindBranchFeature)
+
+	advance(6 * time.Minute)
+	m.Scan() // HOT→WARM
+	advance(25 * time.Minute)
+	m.Scan() // should stay WARM (31 min total, branch needs 60 min)
+	if got := m.Get(key); got != tier.TierWarm {
+		t.Fatalf("branch slot should still be WARM at 31 min idle, got %s", got)
+	}
+}
+
+// TestSlotKindStrings verifies SlotKind.String() returns expected values.
+func TestSlotKindStrings(t *testing.T) {
+	cases := []struct {
+		k    tier.SlotKind
+		want string
+	}{
+		{tier.SlotKindBranchMain, "branch_main"},
+		{tier.SlotKindBranchFeature, "branch_feature"},
+		{tier.SlotKindWorktree, "worktree"},
+	}
+	for _, c := range cases {
+		if got := c.k.String(); got != c.want {
+			t.Errorf("SlotKind(%d).String() = %q, want %q", c.k, got, c.want)
 		}
 	}
 }

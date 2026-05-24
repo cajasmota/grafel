@@ -235,6 +235,15 @@ type LoadedGroup struct {
 	MemoryDir string
 }
 
+// WorktreeLookup is the narrow interface ResolveCWD uses to query the PH3
+// ephemeral worktree-child registry.  The interface avoids a direct import
+// of internal/daemon/worktree from the mcp package.
+type WorktreeLookup interface {
+	// LookupPath returns the (groupName, parentSlug, branch) for a worktree
+	// whose absolute path matches wtPath, or ("","","") if not found.
+	LookupPath(wtPath string) (group, slug, branch string)
+}
+
 // State is the long-lived in-memory model. All accesses go through Reload()
 // which is safe to call from any goroutine.
 type State struct {
@@ -250,6 +259,18 @@ type State struct {
 	// changes between reloads, the visible tool surface may have changed and
 	// the server should emit notifications/tools/list_changed.
 	registrySignature string
+	// worktreeLookup is the optional PH3 ephemeral registry.  When non-nil,
+	// ResolveCWD checks it before falling through to the parent-repo logic so
+	// that a cwd inside a linked worktree returns the worktree-specific entry.
+	worktreeLookup WorktreeLookup
+}
+
+// SetWorktreeLookup wires the PH3 ephemeral worktree registry.  Call from
+// cmd/archigraph after the worktree.Store is loaded.
+func (s *State) SetWorktreeLookup(wl WorktreeLookup) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.worktreeLookup = wl
 }
 
 // NewState constructs an empty state for the given registry.
