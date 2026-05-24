@@ -92,6 +92,10 @@ type v2GraphResponse struct {
 }
 
 // handleV2Graph — GET /api/v2/graph/{group}
+//
+// PH1c (#2087): accepts optional ?ref= query parameter to load the graph
+// for a specific git ref (branch/tag). When ref is omitted the handler
+// uses the current HEAD ref (same as before PH1c).
 func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
 	if group == "" {
@@ -104,8 +108,10 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	includeModules := r.URL.Query().Get("view") == "modules" ||
 		r.URL.Query().Get("include") == "modules"
 	lodParam := r.URL.Query().Get("lod")
+	// PH1c: optional ref parameter.
+	refParam := r.URL.Query().Get("ref")
 
-	grp, err := s.graphs.GetGroup(group)
+	grp, err := s.graphs.GetGroupForRef(group, refParam)
 	if err != nil {
 		writeV2Err(w, http.StatusNotFound, "not_found", err.Error())
 		return
@@ -114,7 +120,8 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	// Payload cache + strong ETag/304. A "v2:" prefix keeps the v2 payload
 	// cache entries distinct from v1's for the same (group, params) tuple.
 	// The lod suffix is appended so each LoD level has its own cache entry.
-	cacheKey := "v2:" + payloadCacheKey(group, filterKind, "", reposParam, includeExternal, includeModules) + ":lod=" + lodParam
+	// PH1c: refParam is included via the variadic payloadCacheKey overload.
+	cacheKey := "v2:" + payloadCacheKey(group, filterKind, "", reposParam, includeExternal, includeModules, refParam) + ":lod=" + lodParam
 	if entry, hit := s.graphs.Payloads.Get(cacheKey); hit {
 		w.Header().Set("ETag", entry.etag)
 		w.Header().Set("Vary", "Accept-Encoding")

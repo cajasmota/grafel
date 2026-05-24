@@ -49,6 +49,10 @@ type RepoStatus struct {
 	IndexedRef string // branch name, or "" for detached HEAD / non-git
 	IndexedSHA string // 12-char abbreviated commit hash, or ""
 	IsWorktree bool   // true when the repo was a linked git worktree at index time
+
+	// PH1c (#2087): cold refs — other refs that have a graph on disk but
+	// are not the currently active (hot) ref. Nil when none exist.
+	ColdRefs []string
 }
 
 // ComputeStatusSummary loads the per-repo graph-stats.json files and enrichment
@@ -141,6 +145,29 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 		s.EnrichmentCandidates += enrichSubjects
 		s.RepairCandidates += repairCount
 
+		// PH1c (#2087): discover cold refs — ref directories that have a
+		// graph.fb on disk but are not the currently-active (hot) ref.
+		// stateDir already points at the hot ref slot; its parent is refs/.
+		refsDir := filepath.Dir(stateDir)
+		if entries, dirErr := os.ReadDir(refsDir); dirErr == nil {
+			hotRefSafe := filepath.Base(stateDir)
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				refSafe := entry.Name()
+				if refSafe == hotRefSafe {
+					continue // skip the hot ref
+				}
+				// Only include slots that actually have a graph.
+				fbPath := filepath.Join(refsDir, refSafe, "graph.fb")
+				if _, statErr := os.Stat(fbPath); statErr == nil {
+					rs.ColdRefs = append(rs.ColdRefs, daemon.RefSafeDecode(refSafe))
+				}
+			}
+			sort.Strings(rs.ColdRefs)
+		}
+
 		s.RepoStats[r.Slug] = rs
 	}
 
@@ -194,6 +221,29 @@ func formatGitRef(ref, sha string, isWorktree bool) string {
 	return s
 }
 
+// formatColdRefs builds a " [+ feat-X, feat-Y cold]" suffix listing cold refs.
+// Returns "" when there are no cold refs.
+func formatColdRefs(refs []string) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	// Show at most 3 names to keep lines readable; append "…" when truncated.
+	shown := refs
+	suffix := ""
+	if len(refs) > 3 {
+		shown = refs[:3]
+		suffix = fmt.Sprintf(", +%d more", len(refs)-3)
+	}
+	names := ""
+	for i, r := range shown {
+		if i > 0 {
+			names += ", "
+		}
+		names += r
+	}
+	return fmt.Sprintf(" [+ %s%s cold]", names, suffix)
+}
+
 // PrintStatusSummary writes the per-group and per-repo statistics to w.
 // The format includes per-repo statistics aligned in columns, followed by aggregated totals.
 func PrintStatusSummary(w io.Writer, s *StatusSummary) {
@@ -222,13 +272,15 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	for _, slug := range slugs {
 		rs := s.RepoStats[slug]
 		gitSuffix := formatGitRef(rs.IndexedRef, rs.IndexedSHA, rs.IsWorktree)
-		fmt.Fprintf(w, "  %-*s  %5s files  %6s entities  %6s rels  indexed %s%s\n",
+		coldSuffix := formatColdRefs(rs.ColdRefs)
+		fmt.Fprintf(w, "  %-*s  %5s files  %6s entities  %6s rels  indexed %s%s%s\n",
 			maxSlugLen, slug,
 			fmtInt(rs.Files),
 			fmtInt(rs.Entities),
 			fmtInt(rs.Relationships),
 			rs.LastIndexedAge,
-			gitSuffix)
+			gitSuffix,
+			coldSuffix)
 	}
 
 	// Print aggregated totals.

@@ -587,7 +587,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups/{group}/export", s.handleV2GraphExport)
 	// Graph — the WebUI v2 hero surface payload (nodes/edges/communities/repos).
 	// Carries pagerank + source_file for cosmos.gl node sizing + module group-by.
+	// PH1c (#2087): accepts ?ref= to query a specific git ref's graph.
 	mux.HandleFunc("GET /api/v2/graph/{group}", s.handleV2Graph)
+
+	// PH1c (#2087): list available refs (branches/tags) for each repo in the group.
+	// Returns which refs have an indexed graph on disk and their tier (hot/cold).
+	mux.HandleFunc("GET /api/v2/groups/{group}/refs", s.handleV2GroupRefs)
 
 	// Settings screen — per-group management surface (#1436, epic #1432).
 	mux.HandleFunc("GET /api/v2/groups/{group}", s.handleV2GetGroup)

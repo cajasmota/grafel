@@ -268,9 +268,10 @@ func (s *Server) fullToolList() ([]MCPToolEntry, error) {
 // Dropped (HTTP-only, ≤3k optimization): archigraph_license_audit (#1334, HTTP API still available).
 func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_whoami",
-		mcpapi.WithDescription("Return inferred group + repo for the caller session."),
+		mcpapi.WithDescription("Infer group/repo/ref for caller (cwd_resolved_to, indexed_ref, is_worktree)."),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("group"),
+		mcpapi.WithAny("ref"),
 	), s.wrap("archigraph_whoami", s.handleWhoami))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
@@ -295,16 +296,18 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref; defaults to CWD HEAD ref
 	), s.wrap("archigraph_find", s.handleQueryGraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_inspect",
-		mcpapi.WithDescription("Look up entity by id/qname/label. verbose=true restores all fields."),
+		mcpapi.WithDescription("Look up entity by id/qname/label. verbose=true shows all fields."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// verbose=true (default false) read from request map to stay under token ceiling.
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref; defaults to CWD HEAD ref
 	), s.wrap("archigraph_inspect", s.handleGetNode))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_expand",
@@ -318,6 +321,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_expand", s.handleGetNeighbors))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_trace",
@@ -327,6 +331,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_trace", s.handleShortestPath))
 
 	// archigraph_traces — process-flow query surface (#724).
@@ -344,6 +349,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_traces", s.handleTraces))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_clusters",
@@ -351,6 +357,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_clusters", s.handleListCommunities))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_stats",
@@ -359,6 +366,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithString("breakdown", mcpapi.Description("Taxonomy breakdown. Supported: \"unresolved_imports\".")),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_stats", s.handleGraphStats))
 
 	// archigraph_enrichments — action: list|submit|reject.
@@ -493,6 +501,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("max_hops", mcpapi.DefaultNumber(5)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 
 	// archigraph_endpoints — HTTP surface (#1281, overhaul #1650, filter+dedupe #1745).
@@ -512,6 +521,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
 	// archigraph_neighbors — folds find_callers + find_callees into one tool
@@ -526,6 +536,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_neighbors", s.handleNeighbors))
 
 	// verbose=true (default false) read from request map to stay under token ceiling.
@@ -537,6 +548,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_find_callers", s.handleFindCallers))
 
 	// Deprecated alias for archigraph_neighbors(direction=out) (#1753).
@@ -547,6 +559,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_find_callees", s.handleFindCallees))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_impact_radius",
@@ -555,6 +568,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_impact_radius", s.handleImpactRadius))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_dead_code",
@@ -564,6 +578,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_find_dead_code", s.handleFindDeadCode))
 
 	// archigraph_quality_cycles — import cycle detection (#1312).
@@ -574,6 +589,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_quality_cycles", s.handleQualityCycles))
 
 	// archigraph_auth_coverage — security audit (#1314).
@@ -586,6 +602,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_auth_coverage", s.handleAuthCoverage))
 
 	// #1323: test-coverage graph — link Test entities to the code they exercise.
@@ -599,6 +616,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithBoolean("top_directories", mcpapi.DefaultBool(false)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_test_coverage", s.handleTestCoverage))
 
 	// archigraph_module_analysis — module-level GDS (#1384, epic #1380).
@@ -612,6 +630,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("action", mcpapi.DefaultString("all")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_module_analysis", s.handleModuleAnalysis))
 
 	// archigraph_secrets — hardcoded secret detector (#1322).
