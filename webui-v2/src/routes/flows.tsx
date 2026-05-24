@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { useFlows, useFlowDeadEnds, useFlowTruncated, useFlowDetail } from "@/hooks/use-flows";
 import type {
   Process, ProcessStep, FlowDeadEnd, EntryKind, StepKind, EntryKindGroup,
+  ChainStep,
 } from "@/data/types";
 import { cn } from "@/lib/utils";
 import { RepoChip as SharedRepoChip } from "@/lib/repo-color";
@@ -276,6 +277,19 @@ function FlowRow({
           {typeof flow.complexity_score === "number" && (
             <span className="font-mono text-[10px] text-text-4">
               complexity {flow.complexity_score.toFixed(1)}
+            </span>
+          )}
+          {/* DAG chip in list row (#2027) */}
+          {flow.is_dag && (
+            <span
+              className="inline-flex items-center h-[18px] px-1.5 rounded-xs font-mono text-[10px] font-semibold"
+              style={{
+                color: "var(--ag-flow-branch, #f59e0b)",
+                background: "color-mix(in srgb, var(--ag-flow-branch, #f59e0b) 12%, transparent)",
+              }}
+              title="Branched DAG flow"
+            >
+              branched
             </span>
           )}
           <PriorityDot hint={flow.priority_hint} />
@@ -876,6 +890,80 @@ function layoutDAG(steps: ProcessStep[], userLayout: UserLayout = "auto") {
   return { positions, totalHeight, totalWidth, perLane: effectivePerLane, mode };
 }
 
+// ─── Branch-DAG helpers (#2027) ───────────────────────────────────────────────
+//
+// When a Process has `is_dag=true` the `branches_dag` JSON field carries a
+// ChainStep tree that encodes all fan-out paths.  The helpers below:
+//   1. Parse + validate the JSON (graceful fallback to null on bad data).
+//   2. Collect the set of "fan-out step indices" — steps whose corresponding
+//      ChainStep node has branches.length > 1.
+//   3. For each fan-out step, collect the indices of the immediate branch
+//      children (first step of each branch arm).
+//   4. Collect all step-index pairs that form *branch* edges (not already in
+//      the linear chain) so the SVG renderer can draw them.
+
+function parseBranchesDag(raw?: string): ChainStep | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (v && typeof v === "object" && typeof v.step_index === "number") {
+      return v as ChainStep;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Recursively walk the ChainStep tree and call `visit` on every node.
+function walkDag(node: ChainStep, visit: (n: ChainStep) => void): void {
+  visit(node);
+  for (const b of node.branches ?? []) walkDag(b, visit);
+}
+
+/**
+ * Returns a Map from fan-out step_index → array of IMMEDIATE branch-child
+ * step_indices.  Only includes nodes where branches.length > 1 AND
+ * reason !== "fanout_cap" (overflow sentinel → skip).
+ */
+function buildFanOutMap(root: ChainStep | null): Map<number, number[]> {
+  const m = new Map<number, number[]>();
+  if (!root) return m;
+  walkDag(root, (node) => {
+    if ((node.branches?.length ?? 0) > 1) {
+      const children = node.branches
+        .filter((b) => b.reason !== "fanout_cap")
+        .map((b) => b.step_index);
+      if (children.length > 1) m.set(node.step_index, children);
+    }
+  });
+  return m;
+}
+
+/**
+ * Collects all EXTRA edges introduced by the DAG structure — i.e. edges whose
+ * target step is NOT the `from+1` linear successor.  These are the branch arms
+ * that need their own SVG paths.
+ *
+ * Returns pairs [fromIdx, toIdx] referencing indices into the steps array.
+ */
+function collectBranchEdges(root: ChainStep | null): Array<[number, number]> {
+  const pairs: Array<[number, number]> = [];
+  if (!root) return pairs;
+  // DFS: for each node, if it has >1 branch child, emit edges to all children
+  // except the one that continues the linear chain (which the existing edge
+  // rendering already handles via sequential i-1 → i edges). In practice all
+  // branch arms need explicit edges drawn from the fan-out node.
+  walkDag(root, (node) => {
+    if ((node.branches?.length ?? 0) < 1) return;
+    for (const child of node.branches) {
+      if (child.reason === "fanout_cap") continue;
+      pairs.push([node.step_index, child.step_index]);
+    }
+  });
+  return pairs;
+}
+
 // ─── FlowDag ──────────────────────────────────────────────────────────────────
 
 function FlowDag({
@@ -1071,6 +1159,15 @@ function FlowDag({
     );
   }
 
+  // ── Parse branches_dag for fan-out awareness (#2027) ────────────────────
+  const dagRoot = useMemo(
+    () => (flow.is_dag ? parseBranchesDag(flow.branches_dag) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [flow.is_dag, flow.branches_dag],
+  );
+  const fanOutMap = useMemo(() => buildFanOutMap(dagRoot), [dagRoot]);
+  const branchEdgePairs = useMemo(() => collectBranchEdges(dagRoot), [dagRoot]);
+
   // Horizontal edges: exit right edge of node i-1, enter left edge of node i.
   // When the chain wraps to the next lane, route down-then-across.
   //
@@ -1087,19 +1184,39 @@ function FlowDag({
     labelX: number;
     labelY: number;
     path: string;
+    /** Target step index (into steps[]). For branch edges this is > fromIdx+1. */
+    targetIdx: number;
+    /** True for branch-arm edges (not the linear i-1→i edges). */
+    isBranchEdge?: boolean;
   };
-  const edges: EdgeRec[] = [];
-  for (let i = 1; i < steps.length; i++) {
-    const a = positions[i - 1];
-    const b = positions[i];
-    const wrap = i % perLane === 0; // first node of a new lane
+
+  function buildEdgeRec(fromIdx: number, toIdx: number, isBranch = false): EdgeRec {
+    const a = positions[fromIdx];
+    const b = positions[toIdx];
+    const wrap = !isBranch && (toIdx % perLane === 0); // wrap only for linear edges
     const from: Pt = { x: a.x + mode.nodeW, y: a.y + mode.nodeH / 2 };
     const to: Pt = { x: b.x, y: b.y + mode.nodeH / 2 };
-    const xrepo = steps[i].repo !== steps[i - 1].repo;
+    const xrepo = steps[toIdx].repo !== steps[fromIdx].repo;
 
     let polyline: Pt[];
     let labelX: number, labelY: number;
-    if (wrap) {
+
+    if (isBranch) {
+      // Branch edges: draw a curved arc from the fan-out node to the branch
+      // child.  We use a short S-curve via two midpoints so the branch paths
+      // fan out visually rather than collapsing on top of each other.
+      const dy = to.y - from.y;
+      const dx = to.x - from.x;
+      const absOff = Math.min(48, Math.abs(dx) * 0.3 + Math.abs(dy) * 0.2);
+      polyline = [
+        from,
+        { x: from.x + absOff, y: from.y },
+        { x: to.x - absOff, y: to.y },
+        to,
+      ];
+      labelX = (from.x + to.x) / 2;
+      labelY = (from.y + to.y) / 2 - 10;
+    } else if (wrap) {
       const downY = (from.y + to.y) / 2;
       polyline = [
         from,
@@ -1122,18 +1239,40 @@ function FlowDag({
       labelX = midX - 4;
       labelY = (from.y + to.y) / 2 - 6;
     }
-    const path =
-      "M " + polyline.map((p) => `${p.x} ${p.y}`).join(" L ");
-
-    edges.push({
+    const path = "M " + polyline.map((p) => `${p.x} ${p.y}`).join(" L ");
+    return {
       from, to,
-      kind: steps[i].edge_kind,
+      kind: steps[toIdx].edge_kind,
       xrepo,
       wrap,
       polyline,
       labelX, labelY, path,
-    });
+      targetIdx: toIdx,
+      isBranchEdge: isBranch || undefined,
+    };
   }
+
+  // Linear chain edges (i-1 → i).
+  const edges: EdgeRec[] = [];
+  for (let i = 1; i < steps.length; i++) {
+    edges.push(buildEdgeRec(i - 1, i, false));
+  }
+
+  // Branch arm edges: fan-out node → each branch child. We deduplicate
+  // against the linear edges so we don't draw a doubled path on the
+  // i-1→i edge that happens to also be a branch arm.
+  const linearEdgeKeys = new Set(edges.map((e) => `${e.targetIdx - 1}->${e.targetIdx}`));
+  const branchEdges: EdgeRec[] = [];
+  for (const [fromIdx, toIdx] of branchEdgePairs) {
+    const key = `${fromIdx}->${toIdx}`;
+    if (linearEdgeKeys.has(key)) continue; // already drawn by linear edges
+    if (fromIdx >= steps.length || toIdx >= steps.length) continue;
+    branchEdges.push(buildEdgeRec(fromIdx, toIdx, true));
+  }
+
+  // Build a lookup: for each fan-out step index, what are the branch-child
+  // step indices?  Used to fire parallel comets.
+  // fanOutMap already has this: Map<fromIdx, toIdx[]>.
 
   // Publish the bridge-edge map to the parent so the animation controller
   // knows which edges to traverse slower (~450ms vs ~300ms).
@@ -1142,8 +1281,8 @@ function FlowDag({
   useEffect(() => {
     if (!onBridgeMap) return;
     const map: boolean[] = new Array(steps.length).fill(false);
-    edges.forEach((e, i) => {
-      map[i + 1] = e.xrepo;
+    edges.forEach((e) => {
+      map[e.targetIdx] = e.xrepo;
     });
     onBridgeMap(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1288,9 +1427,22 @@ function FlowDag({
             >
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ag-flow-accent, #60a5fa)" />
             </marker>
+            {/* Branch-arm chevron — amber tint (#2027) */}
+            <marker
+              id="ag-chev-branch"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ag-flow-branch, #f59e0b)" />
+            </marker>
           </defs>
+          {/* Linear chain edges */}
           {edges.map((ed, i) => {
-            const targetIdx = i + 1; // step index this edge arrives at
+            const targetIdx = ed.targetIdx;
             const isTraversed = traversedSet.has(targetIdx);
             const isCurrent = currentTarget === targetIdx && (anim?.running || anim?.paused);
             const isDecaying = decayEdges.has(targetIdx);
@@ -1355,11 +1507,87 @@ function FlowDag({
               </g>
             );
           })}
+          {/* Branch arm edges — fan-out paths (#2027).
+              Rendered in a distinct amber tint so they're visually
+              distinguishable from the primary linear chain. */}
+          {branchEdges.map((ed, i) => {
+            const targetIdx = ed.targetIdx;
+            const isTraversed = traversedSet.has(targetIdx);
+            const branchStroke = isTraversed
+              ? "var(--ag-flow-accent, #60a5fa)"
+              : "var(--ag-flow-branch, #f59e0b)";
+            const branchOpacity = isTraversed ? 0.85 : 0.35;
+            const markerId = isTraversed ? "ag-chev-traversed" : "ag-chev-branch";
+            return (
+              <g key={`br-${i}`}>
+                <path
+                  d={ed.path}
+                  fill="none"
+                  stroke={branchStroke}
+                  strokeOpacity={branchOpacity}
+                  strokeWidth={1.4}
+                  strokeDasharray="5 3"
+                  markerEnd={`url(#${markerId})`}
+                  className="fx-edge-decay"
+                />
+              </g>
+            );
+          })}
           {/* Comet — only when a current edge is being traversed and the
-              user has not requested reduced motion. */}
+              user has not requested reduced motion.
+              (#2027) At fan-out steps, fire parallel comets — one per branch arm.
+              All comets share the same edgeProgress scalar (they diverge from
+              the same fan-out node so they start simultaneously). */}
           {!reducedMotion && anim && anim.running && !anim.paused
             && currentTarget > 0 && currentTarget < steps.length && (() => {
-              const ed = edges[currentTarget - 1];
+              // Determine which edges carry comets.
+              // At a fan-out point: the fan-out node index is currentTarget-1
+              // (since currentTarget is the DESTINATION). We check if the
+              // SOURCE (currentTarget-1) is a fan-out node.
+              const sourceIdx = currentTarget - 1;
+              const branchChildren = fanOutMap.get(sourceIdx);
+              const isFanOut = branchChildren && branchChildren.length > 1;
+
+              if (isFanOut) {
+                // Parallel comets: one per branch child INCLUDING the linear
+                // successor that is already in `edges`.
+                const targetIndices = branchChildren!;
+                // Collect edge polys for each branch arm.
+                const allEdgeMap = new Map<number, EdgeRec>();
+                edges.forEach((e) => allEdgeMap.set(e.targetIdx, e));
+                branchEdges.forEach((e) => allEdgeMap.set(e.targetIdx, e));
+                return (
+                  <g className="fx-comet" pointerEvents="none">
+                    {targetIndices.map((tIdx) => {
+                      const ed = allEdgeMap.get(tIdx);
+                      if (!ed) return null;
+                      const head = pointAt(ed.polyline, edgeProgress);
+                      const trail = [0.04, 0.08, 0.13, 0.19]
+                        .map((d) => Math.max(0, edgeProgress - d))
+                        .map((p) => pointAt(ed.polyline, p));
+                      const accent = "var(--ag-flow-accent, #60a5fa)";
+                      return (
+                        <g key={tIdx}>
+                          {trail.map((pt, ti) => (
+                            <circle
+                              key={ti}
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={2.2 - ti * 0.35}
+                              fill={accent}
+                              opacity={0.55 - ti * 0.12}
+                            />
+                          ))}
+                          <circle cx={head.x} cy={head.y} r={3.6} fill={accent} />
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              }
+
+              // Linear comet (no fan-out at this edge).
+              const ed = edges.find((e) => e.targetIdx === currentTarget);
               if (!ed) return null;
               const head = pointAt(ed.polyline, edgeProgress);
               // Trail: 4 fading dots behind the head along the same path.
@@ -1387,10 +1615,50 @@ function FlowDag({
                 </g>
               );
             })()}
-          {/* Paused comet — frozen mid-edge so it's still visible. */}
+          {/* Paused comet — frozen mid-edge so it's still visible.
+              (#2027) At fan-out steps, show all branch comets frozen. */}
           {!reducedMotion && anim && anim.paused
             && currentTarget > 0 && currentTarget < steps.length && (() => {
-              const ed = edges[currentTarget - 1];
+              const sourceIdx = currentTarget - 1;
+              const branchChildren = fanOutMap.get(sourceIdx);
+              const isFanOut = branchChildren && branchChildren.length > 1;
+
+              if (isFanOut) {
+                const targetIndices = branchChildren!;
+                const allEdgeMap = new Map<number, EdgeRec>();
+                edges.forEach((e) => allEdgeMap.set(e.targetIdx, e));
+                branchEdges.forEach((e) => allEdgeMap.set(e.targetIdx, e));
+                return (
+                  <g pointerEvents="none">
+                    {targetIndices.map((tIdx) => {
+                      const ed = allEdgeMap.get(tIdx);
+                      if (!ed) return null;
+                      const head = pointAt(ed.polyline, edgeProgress);
+                      return (
+                        <g key={tIdx}>
+                          <circle
+                            cx={head.x}
+                            cy={head.y}
+                            r={3.6}
+                            fill="var(--ag-flow-accent, #60a5fa)"
+                            opacity={0.85}
+                          />
+                          <circle
+                            cx={head.x}
+                            cy={head.y}
+                            r={6}
+                            fill="none"
+                            stroke="var(--ag-flow-accent, #60a5fa)"
+                            strokeOpacity={0.4}
+                          />
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              }
+
+              const ed = edges.find((e) => e.targetIdx === currentTarget);
               if (!ed) return null;
               const head = pointAt(ed.polyline, edgeProgress);
               return (
@@ -1439,12 +1707,28 @@ function FlowDag({
           // Node arrival bounce — applied when this node was the most
           // recent forward arrival in the replay. Reduced-motion suppresses
           // it via the global @media rule.
+          // (#2027) Also bounce ALL sibling destinations simultaneously when
+          // the playhead arrives at a fan-out point.  We detect this by
+          // checking if our index is in the branchChildren of the SOURCE step
+          // of the most recent arrival.
+          const recentArrivalSource =
+            anim != null && anim.lastScrubDir !== "backward" && anim.playhead > 0
+              ? anim.playhead - 2  // source step index of most recent arrival
+              : -1;
           const justArrivedNode =
             !reducedMotion &&
             anim != null &&
             anim.lastScrubDir !== "backward" &&
-            anim.playhead - 1 === i &&
-            i > 0;
+            i > 0 &&
+            (
+              anim.playhead - 1 === i ||
+              // Fan-out sibling: source is a fan-out step AND i is one of its children
+              (recentArrivalSource >= 0 &&
+               fanOutMap.has(recentArrivalSource) &&
+               (fanOutMap.get(recentArrivalSource) ?? []).includes(i))
+            );
+          // Is this step a fan-out node?
+          const isFanOutNode = fanOutMap.has(i);
           const isInTrail =
             anim != null && i < anim.playhead;
           return (
@@ -1486,6 +1770,16 @@ function FlowDag({
                   style={{ background: meta.color, color: "var(--bg)" }}
                 >
                   {isEntry ? "Entry" : isPhantom ? "Phantom" : "Terminal"}
+                </span>
+              )}
+              {/* Fan-out badge (#2027) — marks steps that fire multiple branches */}
+              {isFanOutNode && (
+                <span
+                  className="absolute -top-2 right-3 inline-flex items-center h-4 px-1.5 rounded-xs text-[9px] font-bold uppercase tracking-wide"
+                  style={{ background: "var(--ag-flow-branch, #f59e0b)", color: "var(--bg)" }}
+                  title={`Fan-out: ${fanOutMap.get(i)?.length ?? 0} branches`}
+                >
+                  fork ×{fanOutMap.get(i)?.length ?? 0}
                 </span>
               )}
               <div className="flex items-center gap-1.5 min-w-0">
@@ -1615,6 +1909,23 @@ function FlowDag({
           </svg>
           cross-repo
         </span>
+        {/* Branch-arm legend entry — only shown for DAG flows (#2027) */}
+        {flow.is_dag && (
+          <span className="inline-flex items-center gap-1 text-[9px] text-text-3">
+            <svg width="14" height="10">
+              <line
+                x1="0"
+                y1="5"
+                x2="14"
+                y2="5"
+                stroke="#f59e0b"
+                strokeWidth="1.5"
+                strokeDasharray="5 3"
+              />
+            </svg>
+            branch
+          </span>
+        )}
       </div>
     </div>
   );
@@ -2589,6 +2900,19 @@ function DetailPanel({
           {typeof flow.complexity_score === "number" && (
             <span className="inline-flex h-[22px] px-2 rounded-sm bg-surface-2 border border-border font-mono text-[10px] text-text-2">
               complexity {flow.complexity_score.toFixed(1)}
+            </span>
+          )}
+          {/* DAG chip — shown when the flow has branch points (#2027) */}
+          {flow.is_dag && (
+            <span
+              className="inline-flex items-center gap-1 h-[22px] px-2 rounded-sm font-mono text-[10px] font-semibold"
+              style={{
+                color: "var(--ag-flow-branch, #f59e0b)",
+                background: "color-mix(in srgb, var(--ag-flow-branch, #f59e0b) 14%, transparent)",
+              }}
+              title="This flow has fan-out branch points"
+            >
+              DAG / branched
             </span>
           )}
           {flow.docgen_status === "enriched" && (

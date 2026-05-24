@@ -33,6 +33,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.0.17",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
