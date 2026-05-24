@@ -20,6 +20,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/transport"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
 
 // Config configures Run. Fields are required unless documented otherwise.
@@ -35,9 +36,9 @@ type Config struct {
 	// repo returned by ReposToWatch. The Index field above remains
 	// the synchronous RPC entrypoint; the scheduler uses
 	// SchedulerIndex for fast (algo-skipped) reactive reindexes.
-	ReposToWatch   func() []string                              // repos to subscribe at startup
-	GroupsForRepo  func(repoPath string) []string               // for cross-repo link debounce
-	SchedulerIndex func(ctx context.Context, repo string) error // fast reindex (skip algo pass)
+	ReposToWatch   func() []string                                       // repos to subscribe at startup
+	GroupsForRepo  func(repoPath string) []string                        // for cross-repo link debounce
+	SchedulerIndex func(ctx context.Context, repo string, ref string) error // fast reindex (skip algo pass); ref is the git branch captured at enqueue time
 	SchedulerLinks func(ctx context.Context, group string) error
 	SchedulerAlgo  func(ctx context.Context, repo string) error
 
@@ -139,6 +140,20 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("ensure layout: %w", err)
 	}
 
+	// PH1b: one-time migration of legacy flat-layout store slots into the
+	// per-ref sub-directory layout introduced by PH1a (#2089). Called here
+	// (after EnsureLayout, before accepting RPCs) so every read path sees
+	// the new layout. Idempotent: already-migrated stores are skipped.
+	if storeDir := StoreDir(); storeDir != "" {
+		if err := MigrateToRefStore(storeDir); err != nil {
+			// Non-fatal: log and continue; the daemon can still serve the
+			// old layout (callers fall back gracefully).
+			logger.Printf("startup: MigrateToRefStore: %v (non-fatal)", err)
+		} else {
+			logger.Printf("startup: MigrateToRefStore complete store=%s", storeDir)
+		}
+	}
+
 	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath)
 	if err != nil {
 		return err
@@ -192,6 +207,12 @@ func Run(ctx context.Context, cfg Config) error {
 			BudgetMB:      cfg.MaxRSSBudgetMB,
 			Predict:       sched.PredictRSS,
 			History:       history,
+			// PH1b: capture the HEAD ref at enqueue time so debounced
+			// batches index against the branch that was active when the
+			// file-change event fired, not the branch at dispatch time.
+			RefCapture: func(repoPath string) string {
+				return gitmeta.Capture(repoPath).Ref
+			},
 		})
 		if cfg.MaxRSSBudgetMB > 0 {
 			logger.Printf("scheduler: RSS-budget admission control enabled budget=%dMB history=%s",
@@ -213,21 +234,26 @@ func Run(ctx context.Context, cfg Config) error {
 		} else {
 			svc.watcher = watcher
 			defer watcher.Stop()
-			// #1456: subscribe repos OFF the critical boot path. Each
-			// AddRepo recursively walks the repo tree and issues an
-			// fsnotify (kqueue/inotify) Add per directory. On a grown
-			// multi-repo fixture this is thousands of filesystem syscalls,
-			// and a single stalled stat/Add (slow mount, FD pressure,
-			// firmlink/snapshot dir, kqueue contention from sibling watch
-			// processes) used to block Run() before it ever bound the RPC
-			// socket or dashboard — the daemon would sit at 0% CPU and
-			// never serve. Live boot logs showed 10/328 boots stalling here
-			// between "scheduler: RSS-budget" and "pattern decay started",
-			// having registered 0–3 of 27 repos. Doing the walk in a
-			// goroutine lets boot reach "ready" + acceptLoop promptly; the
-			// graph is served from the on-disk .fb regardless, and reactive
-			// reindex simply becomes live once each repo finishes
-			// subscribing.
+
+			// PH1b (Option B): start the .git/HEAD poller alongside the
+			// fsnotify watcher. .git/ remains in SkipDirs (no fsnotify
+			// noise from git internal object/pack writes), and the poller
+			// detects branch switches by reading gitmeta.Capture every 2s.
+			//
+			// When a branch switch is detected:
+			//   1. A synthetic EnqueueRef is sent to the scheduler with the
+			//      new ref captured at detection time.
+			//   2. The scheduler writes the new index into refs/<new-ref>/,
+			//      leaving the old ref's graph untouched on disk.
+			headPoller := watch.NewGitHeadPoller(0, func(ev watch.BranchSwitchEvent) {
+				logger.Printf("branch-switch detected: %s %s@%s -> %s@%s",
+					ev.RepoPath, ev.OldRef, ev.OldSHA, ev.NewRef, ev.NewSHA)
+				scheduler.EnqueueRef(ev.RepoPath, ev.NewRef)
+			}, logger)
+			headPoller.Start()
+			defer headPoller.Stop()
+
+			// #1456: subscribe repos OFF the critical boot path.
 			if cfg.ReposToWatch != nil {
 				go func() {
 					t0 := time.Now()
@@ -236,6 +262,9 @@ func Run(ctx context.Context, cfg Config) error {
 						if _, err := watcher.AddRepo(r); err != nil {
 							logger.Printf("watcher: add repo %s: %v", r, err)
 						}
+						// Also register with the HEAD poller so branch
+						// switches in every watched repo are detected.
+						headPoller.AddRepo(r)
 					}
 					logger.Printf("watcher: subscription complete repos=%d took=%s",
 						len(repos), time.Since(t0).Truncate(time.Millisecond))

@@ -50,7 +50,7 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 			return nil
 		},
 		GroupsForRepo:  func(_ string) []string { return nil },
-		SchedulerIndex: func(_ context.Context, _ string) error { return nil },
+		SchedulerIndex: func(_ context.Context, _ string, _ string) error { return nil },
 		SchedulerLinks: func(_ context.Context, _ string) error { return nil },
 		SchedulerAlgo:  func(_ context.Context, _ string) error { return nil },
 	}
