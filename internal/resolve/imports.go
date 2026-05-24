@@ -2110,6 +2110,30 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						rel.Properties["language"] == "python" {
 						id, ok = tbl.ResolvePythonModuleImport(normalized)
 					}
+					// #1991 — Python __init__.py re-exports of module
+					// bindings. `from .celery import app` is normalised by
+					// the extractor (#2026) to ToID="upvate_core.celery.app"
+					// where `app` is a module-level binding (the
+					// `app = Celery(...)` assignment), not a top-level
+					// function/class entity. The base (module, leaf) lookup
+					// misses because no entity named "app" exists in module
+					// "upvate_core.celery". The whole-path fallback above
+					// also misses because moduleFileEntity is keyed on
+					// "upvate_core.celery", not the synthetic ".app" tail.
+					// Strip the leaf and rebind to the parent module entity
+					// — the re-export refers to a symbol *defined inside*
+					// that module, and the module is the closest live
+					// in-graph anchor we have. Without this the edge falls
+					// through to the external-synthesis pass and produces
+					// an unresolved EXTERNAL synthetic node, breaking the
+					// re-export chain and the dead-imports detector.
+					if !ok && rel.Properties != nil &&
+						rel.Properties["language"] == "python" {
+						if dot := strings.LastIndexByte(normalized, '.'); dot > 0 {
+							parent := normalized[:dot]
+							id, ok = tbl.ResolvePythonModuleImport(parent)
+						}
+					}
 				}
 				if !ok {
 					continue

@@ -76,6 +76,65 @@ func TestResolvePythonModuleImport_ResolveImports(t *testing.T) {
 	}
 }
 
+// TestResolvePythonModuleImport_InitReExportsModuleBinding reproduces #1991.
+// `from .celery import app` inside upvate_core/__init__.py is normalised
+// (post-#2026 relative-import resolution) to ToID="upvate_core.celery.app".
+// `app` is a module-level *binding* (`app = Celery(...)`) rather than a
+// top-level function/class entity, so the (module, leaf) lookup returns
+// nothing. The whole-path probe also misses because moduleFileEntity
+// indexes the module path "upvate_core.celery", not the ".app" tail.
+// Without #1991 the edge then falls through to external-synthesis and
+// produces an unresolved EXTERNAL synthetic — breaking the re-export chain.
+// After the fix the resolver strips the leaf and binds the IMPORTS edge to
+// the celery module's file entity ID, keeping the re-export chain in-graph.
+func TestResolvePythonModuleImport_InitReExportsModuleBinding(t *testing.T) {
+	records := []types.EntityRecord{
+		// Target module: upvate_core/celery.py.
+		{
+			ID:         "celery-module-id",
+			Name:       "upvate_core/celery.py",
+			SourceFile: "upvate_core/celery.py",
+			Kind:       "SCOPE.Component",
+			Language:   "python",
+		},
+		// The `__init__.py` carrier with the re-export IMPORTS edge.
+		{
+			ID:         "init-id",
+			Name:       "upvate_core/__init__.py",
+			SourceFile: "upvate_core/__init__.py",
+			Kind:       "SCOPE.Component",
+			Language:   "python",
+			Relationships: []types.RelationshipRecord{
+				{
+					Kind:   "IMPORTS",
+					ToID:   "upvate_core.celery.app",
+					FromID: "init-id",
+					Properties: map[string]string{
+						"source_module": "upvate_core.celery",
+						"imported_name": "app",
+						"local_name":    "app",
+						"language":      "python",
+					},
+				},
+			},
+		},
+	}
+	tbl := BuildImportTable(records)
+	ResolveImports(records, tbl)
+	for i := range records {
+		e := &records[i]
+		for j := range e.Relationships {
+			r := &e.Relationships[j]
+			if r.Kind != "IMPORTS" {
+				continue
+			}
+			if r.ToID != "celery-module-id" {
+				t.Errorf("expected IMPORTS edge rewritten to celery module entity, got ToID=%q", r.ToID)
+			}
+		}
+	}
+}
+
 // TestResolvePythonModuleImport_OnlyPython verifies that a non-Python IMPORTS
 // edge with the same dotted ToID is NOT rewritten by the Python module path
 // (the language gate prevents it).

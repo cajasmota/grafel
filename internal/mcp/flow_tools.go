@@ -208,8 +208,32 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			if id == target {
 				continue
 			}
+			dk := discoveredVia[id]
+			isFileRefEdge := dk == "REFERENCES" || dk == "IMPORTS"
 			e := byID[id]
 			if e == nil {
+				// #2015: previously a nil byID lookup silently dropped the
+				// caller. In production this hides legitimate file-level
+				// callers whose IMPORTS/REFERENCES edge FromID never got
+				// rewritten from the raw file path to the stamped FileEntity
+				// hex ID (cross-repo linker / resolver rewrite gap). When the
+				// discovering edge is REFERENCES or IMPORTS the source IS a
+				// file or module — emit a synthetic caller using the id as
+				// both id and name so the signal reaches the agent. Without
+				// this, find_callers returns N-1 callers for any model whose
+				// admin.py / __init__.py source isn't an indexed entity.
+				if !isFileRefEdge {
+					continue
+				}
+				name := id
+				if i := strings.LastIndexByte(name, '/'); i >= 0 {
+					name = name[i+1:]
+				}
+				callers = append(callers, caller{
+					EntityID: prefixedID(r.Repo, id),
+					Name:     name,
+					HopCount: d,
+				})
 				continue
 			}
 			// #1614: drop file/module CONTAINER components and inferred
@@ -219,13 +243,21 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			// #2039: exception — when the discovering inbound edge is
 			// REFERENCES or IMPORTS, a file/module container IS the legitimate
 			// caller (file-level reference / import edges live on the file
-			// entity post-#2020). Keep noiseShadow filtered unconditionally.
+			// entity post-#2020).
+			//
+			// #2015 (this PR): noiseShadow was previously dropped
+			// unconditionally; in practice the bodiless-component classifier
+			// (StartLine==0 && QualifiedName=="") can capture *real* file or
+			// module containers whose subtype property got dropped during
+			// fb-load / record-conversion. When the discovering edge is
+			// REFERENCES or IMPORTS the source is a real referencer — keep it.
 			switch classifyNoise(e) {
 			case noiseShadow:
-				continue
+				if !isFileRefEdge {
+					continue
+				}
 			case noiseContainer:
-				dk := discoveredVia[id]
-				if dk != "REFERENCES" && dk != "IMPORTS" {
+				if !isFileRefEdge {
 					continue
 				}
 			}
