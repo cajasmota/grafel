@@ -3,9 +3,16 @@
 // Option B implementation: keep .git/ in SkipDirs (no fsnotify noise from
 // git object/pack writes) and poll .git/HEAD content for each registered
 // repo on a configurable interval (default 2 s). When the poller detects a
-// branch switch (HEAD ref OR commit SHA changes) it emits a synthetic event
-// via the BranchSwitchSink callback so the scheduler can trigger a new index
-// pass targeted at the new ref.
+// branch switch (HEAD ref OR commit SHA changes) it runs a lightweight
+// "git diff --name-only OLD NEW" and emits a BranchSwitchEvent only when
+// at least one indexed-source file changed (S4 of #2149, fixes #2154).
+//
+// Reindex policy (set in BranchSwitchEvent.ReindexHint):
+//
+//	NoSourceChanges  → skip reindex entirely
+//	SmallDiff        → incremental if S3 available, else full
+//	LargeDiff        → full reindex
+//	Unknown          → full reindex (diff failed or SHAs unavailable)
 //
 // Design notes
 //   - Polling is deliberately coarse (2 s) — sub-second precision is not
@@ -26,11 +33,36 @@ package watch
 import (
 	"log"
 	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
+
+// ReindexHint classifies how much source changed between two commits,
+// guiding the scheduler's reindex strategy.
+type ReindexHint int
+
+const (
+	// ReindexUnknown means the diff could not be computed (missing SHAs,
+	// git error). The scheduler should do a full reindex to be safe.
+	ReindexUnknown ReindexHint = iota
+	// ReindexNone means git diff showed zero source-file changes. The
+	// scheduler should skip reindexing entirely.
+	ReindexNone
+	// ReindexSmall means ≤20 indexed-source files changed. The scheduler
+	// may use incremental reindex if S3 is available.
+	ReindexSmall
+	// ReindexFull means >20 indexed-source files changed. The scheduler
+	// should do a full reindex.
+	ReindexFull
+)
+
+// smallDiffThreshold is the maximum number of changed source files before
+// we recommend a full reindex instead of an incremental one.
+const smallDiffThreshold = 20
 
 // HeadSnapshot is the last-seen HEAD state for one repo.
 type HeadSnapshot struct {
@@ -38,13 +70,19 @@ type HeadSnapshot struct {
 	SHA string // abbreviated commit SHA (12 chars)
 }
 
-// BranchSwitchEvent is emitted by the poller when it detects a HEAD change.
+// BranchSwitchEvent is emitted by the poller when it detects a HEAD change
+// that involves at least one indexed-source file change (or when the diff
+// cannot be computed). Events where only non-source files changed are
+// suppressed (ReindexHint == ReindexNone is never emitted to the sink;
+// those are logged and discarded instead).
 type BranchSwitchEvent struct {
-	RepoPath string
-	OldRef   string
-	OldSHA   string
-	NewRef   string
-	NewSHA   string
+	RepoPath     string
+	OldRef       string
+	OldSHA       string
+	NewRef       string
+	NewSHA       string
+	ReindexHint  ReindexHint // scheduling guidance for the caller
+	ChangedFiles []string    // source files changed (capped at smallDiffThreshold+1)
 }
 
 // BranchSwitchSink is the callback invoked for each detected branch switch.
@@ -144,6 +182,60 @@ func (p *GitHeadPoller) loop() {
 	}
 }
 
+// classifyRefChange runs "git diff --name-only OLD NEW" in repoPath and
+// filters the result to indexed-source paths using ShouldSkipPath. It returns
+// a ReindexHint and the list of changed source files (capped at
+// smallDiffThreshold+1 to bound memory).
+//
+// If either SHA is empty or the git command fails, ReindexUnknown is returned.
+func classifyRefChange(repoPath, oldSHA, newSHA string, logger *log.Logger) (ReindexHint, []string) {
+	if oldSHA == "" || newSHA == "" {
+		return ReindexUnknown, nil
+	}
+	// Same SHA (pure ref change, e.g. "git checkout -b newbranch"): the
+	// working tree has not changed but the ref name has. Emit as Unknown so
+	// the scheduler re-indexes under the new ref name.
+	if oldSHA == newSHA {
+		return ReindexUnknown, nil
+	}
+
+	// git diff --name-only <old>..<new>
+	cmd := exec.Command("git", "diff", "--name-only", oldSHA+".."+newSHA)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		logger.Printf("classifyRefChange: git diff failed in %s: %v", repoPath, err)
+		return ReindexUnknown, nil
+	}
+
+	// Filter to indexed-source paths.
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	var sourcePaths []string
+	for _, rel := range lines {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		// Build an absolute-style path for ShouldSkipPath (it checks basenames
+		// against SkipDirs and extensions against SkipExts).
+		abs := repoPath + "/" + rel
+		if !ShouldSkipPath(abs) {
+			sourcePaths = append(sourcePaths, rel)
+			if len(sourcePaths) > smallDiffThreshold {
+				break // cap — we only need to know "large"
+			}
+		}
+	}
+
+	if len(sourcePaths) == 0 {
+		return ReindexNone, nil
+	}
+	if len(sourcePaths) <= smallDiffThreshold {
+		return ReindexSmall, sourcePaths
+	}
+	return ReindexFull, sourcePaths
+}
+
 // poll captures the current HEAD for every registered repo and calls the
 // sink for any that changed.
 func (p *GitHeadPoller) poll() {
@@ -179,8 +271,22 @@ func (p *GitHeadPoller) poll() {
 				NewRef:   current.Ref,
 				NewSHA:   current.SHA,
 			}
-			p.logger.Printf("branch-switch detected: %s %s@%s -> %s@%s",
-				repoPath, ev.OldRef, ev.OldSHA, ev.NewRef, ev.NewSHA)
+
+			// S4 git-diff validation: compute source-change set before
+			// forwarding to the sink so we can suppress no-op reindexes.
+			hint, changedFiles := classifyRefChange(repoPath, prev.SHA, current.SHA, p.logger)
+			ev.ReindexHint = hint
+			ev.ChangedFiles = changedFiles
+
+			if hint == ReindexNone {
+				// No indexed-source files changed — suppress reindex entirely.
+				p.logger.Printf("ref-change: %s %s..%s no-source-changes — skipping reindex",
+					repoPath, prev.SHA, current.SHA)
+				continue
+			}
+
+			p.logger.Printf("branch-switch detected: %s %s@%s -> %s@%s hint=%d changed_files=%d",
+				repoPath, ev.OldRef, ev.OldSHA, ev.NewRef, ev.NewSHA, hint, len(changedFiles))
 			p.sink(ev)
 		}
 	}

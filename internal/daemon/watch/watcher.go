@@ -218,6 +218,11 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 // subscribeRepo walks the repo tree and adds every non-skipped dir to
 // the fsnotify instance. Separated from AddRepo so the restart path
 // can call it without the idempotency guard.
+//
+// Three-layer skip check (S4 #2154):
+//  1. Hard-coded SkipDirs / walk.IsHardcodedSkip (ShouldSkipDir)
+//  2. Per-instance ExcludeDirs (extraSkip)
+//  3. .gitignore + .archigraph/watch.json (ShouldSkipDirGitignore)
 func (w *Watcher) subscribeRepo(abs string) (int, error) {
 	added := 0
 	walkErr := filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
@@ -227,9 +232,21 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		if !d.IsDir() {
 			return nil
 		}
-		base := filepath.Base(p)
-		if p != abs && w.shouldSkipDir(base) {
-			return filepath.SkipDir
+		if p != abs {
+			base := filepath.Base(p)
+			// Layer 1 + 2: hard-coded + per-instance excludes.
+			if w.shouldSkipDir(base) {
+				return filepath.SkipDir
+			}
+			// Layer 3: .gitignore + per-repo watch.json.
+			relPath, relErr := filepath.Rel(abs, p)
+			if relErr == nil {
+				relPath = filepath.ToSlash(relPath)
+				if skip, reason := ShouldSkipDirGitignore(abs, p, relPath); skip {
+					w.logger.Printf("watcher: skip %s (%s)", p, reason)
+					return filepath.SkipDir
+				}
+			}
 		}
 		if err := w.fs.Add(p); err != nil {
 			w.logger.Printf("watcher: add %s: %v", p, err)
@@ -265,6 +282,8 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 			delete(w.dirToRepo, d)
 		}
 	}
+	// Evict gitignore cache so a re-add picks up any .gitignore changes.
+	evictRepoIgnoreState(abs)
 }
 
 // Repos returns a snapshot of the currently watched repos.
