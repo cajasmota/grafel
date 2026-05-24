@@ -205,10 +205,12 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 		reply.PendingAlgo = snap.PendingAlgo
 		reply.PendingLinks = snap.PendingLinks
 		reply.RSSBudgetMB = snap.BudgetMB
-		// RSSUsedMB reports actual measured daemon RSS (in MB), not predicted
-		// sum of in-flight jobs. This ensures the budget display shows the
-		// real memory pressure (#803).
+		// RSSUsedMB reports actual measured daemon process RSS (informational).
 		reply.RSSUsedMB = int64(reply.RSSBytes / (1024 * 1024))
+		// AdmissionUsedMB is the scheduler's delta ledger: sum of predicted
+		// MB reserved by currently-admitted jobs. This is what the admission
+		// logic compares against BudgetMB — not the process RSS.
+		reply.AdmissionUsedMB = snap.UsedMB
 		reply.BlockedJobs = snap.BlockedJobs
 		for _, j := range snap.InFlight {
 			reply.IndexInFlight = append(reply.IndexInFlight, j.Path)

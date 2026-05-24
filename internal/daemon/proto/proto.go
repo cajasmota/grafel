@@ -51,14 +51,22 @@ type StatusReply struct {
 	RecentLog      []SchedLogEntry    `json:"recent_log,omitempty"`
 
 	// Concurrency-cap additions. BudgetMB=0 means admission control is
-	// disabled. UsedMB is the sum of predicted RSS reserved by jobs
-	// currently running. InFlightJobs duplicates IndexInFlight with
-	// per-job predicted-MB so the status formatter can print headroom.
+	// disabled.
+	//
+	// RSSUsedMB is the ACTUAL daemon process RSS in MB — informational
+	// only; it is NOT used in admission math.
+	//
+	// AdmissionUsedMB is the sum of predicted MB reserved by currently-
+	// admitted jobs; this is what the scheduler compares against
+	// RSSBudgetMB (delta-based accounting).
+	//
+	// InFlightJobs duplicates IndexInFlight with per-job predicted-MB.
 	// BlockedJobs lists repos waiting for the budget to free.
-	RSSBudgetMB  int64              `json:"rss_budget_mb,omitempty"`
-	RSSUsedMB    int64              `json:"rss_used_mb,omitempty"`
-	InFlightJobs []InFlightJobState `json:"in_flight_jobs,omitempty"`
-	BlockedJobs  []string           `json:"blocked_jobs,omitempty"`
+	RSSBudgetMB     int64              `json:"rss_budget_mb,omitempty"`
+	RSSUsedMB       int64              `json:"rss_used_mb,omitempty"`
+	AdmissionUsedMB int64              `json:"admission_used_mb,omitempty"`
+	InFlightJobs    []InFlightJobState `json:"in_flight_jobs,omitempty"`
+	BlockedJobs     []string           `json:"blocked_jobs,omitempty"`
 
 	// DashboardPort is the TCP port the daemon's embedded dashboard HTTP
 	// server is bound to. Zero means the dashboard is not running.

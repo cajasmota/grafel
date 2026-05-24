@@ -19,6 +19,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/agents"
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/process"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -42,11 +43,38 @@ var daemonProgressBroker = progress.NewBroker()
 // defaultDashboardPort is the default TCP port for the embedded dashboard.
 const defaultDashboardPort = 47274
 
-// defaultRSSBudgetMB is the production default for the concurrency
-// cap. Chosen to match the post-#639 single-reindex peak (343MB) plus
-// headroom for one small concurrent reindex: targets the 500MB cap
-// from the real-fixture benchmark.
-const defaultRSSBudgetMB = 500
+// defaultRSSBudgetMB returns the production default for the admission-control
+// budget (in MB). It auto-tunes based on available system memory so that
+// the daemon's idle RSS (heap inflation after graph load) does not cause the
+// scheduler to wedge when the user's repos are large.
+//
+// Formula: min(2048, systemMemoryMB / 8).  On a 16 GB machine this gives
+// 2 GB; on an 8 GB machine 1 GB; on a 4 GB machine 512 MB.  The env var
+// ARCHIGRAPH_MAX_RSS_BUDGET_MB and the --max-rss-budget flag both override
+// the result, so operators can tune down on constrained hardware.
+//
+// NOTE: this budget is for the ADDITIONAL predicted RSS of concurrently
+// running index jobs only — the daemon's idle RSS is never subtracted from
+// it (delta-based accounting).  See internal/daemon/sched for the admission
+// logic.
+func defaultRSSBudgetMB() int64 {
+	sysMB := systemTotalMemoryMB()
+	if sysMB <= 0 {
+		return 500 // safe fallback when sysinfo is unavailable
+	}
+	budget := sysMB / 8
+	const cap = 2048
+	if budget > cap {
+		budget = cap
+	}
+	return budget
+}
+
+// systemTotalMemoryMB returns total host physical memory in MB via the
+// process package's platform-specific sysinfo implementation.
+func systemTotalMemoryMB() int64 {
+	return process.TotalMemoryMB()
+}
 
 // defaultMaxConcurrentGroups is the production default for parallel group
 // indexing during a Rebuild RPC (#1276). With 2 concurrent group slots a
@@ -87,7 +115,7 @@ func runDaemon(argv []string) error {
 	// with a clear error rather than being silently ignored.
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
 	var maxRSSBudget int64
-	envBudget := int64(defaultRSSBudgetMB)
+	envBudget := defaultRSSBudgetMB()
 	if v := os.Getenv("ARCHIGRAPH_MAX_RSS_BUDGET_MB"); v != "" {
 		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil && parsed >= 0 {
 			envBudget = parsed

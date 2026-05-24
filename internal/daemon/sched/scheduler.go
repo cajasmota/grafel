@@ -84,6 +84,12 @@ type Config struct {
 	History *RSSHistory
 }
 
+// deadManTimeout is how long the scheduler waits with a non-empty pending
+// queue and zero admitted jobs before force-admitting the smallest queued
+// job. This is the relief valve for admission-control wedge scenarios
+// (e.g. inflated RSS history predictions that exceed the budget).
+const deadManTimeout = 2 * time.Minute
+
 // Scheduler is constructed once per daemon. It owns:
 //   - a bounded job channel (per-repo dedup happens before enqueue),
 //   - a worker pool,
@@ -112,6 +118,11 @@ type Scheduler struct {
 	algoCancel   map[string]context.CancelFunc
 	indexedRepos map[string]repoStats
 	recentLog    []LogEntry
+
+	// deadManAt tracks when the pending queue became non-empty with no
+	// admitted jobs. The dead-man goroutine force-admits a job when this
+	// exceeds deadManTimeout. Zero means the clock is not running.
+	deadManAt time.Time
 }
 
 // jobToken couples a repo path with the predicted MB that admission
@@ -176,13 +187,15 @@ func New(cfg Config) *Scheduler {
 	}
 }
 
-// Start spins up the dedup goroutine + admission loop + worker pool.
-// Stop reverses it.
+// Start spins up the dedup goroutine + admission loop + worker pool +
+// dead-man switch. Stop reverses it.
 func (s *Scheduler) Start() {
 	s.wg.Add(1)
 	go s.dedupLoop()
 	s.wg.Add(1)
 	go s.admitLoop()
+	s.wg.Add(1)
+	go s.deadManLoop()
 	for i := 0; i < s.cfg.Workers; i++ {
 		s.wg.Add(1)
 		go s.workerLoop()
@@ -240,6 +253,11 @@ func (s *Scheduler) dedupLoop() {
 			s.pendingIndex[p] = true
 			s.pendingQ = append(s.pendingQ, p)
 			s.queueLen++
+			// Start the dead-man clock if nothing is currently
+			// running — otherwise there will be a poke on completion.
+			if len(s.inflight) == 0 && s.deadManAt.IsZero() {
+				s.deadManAt = time.Now()
+			}
 			s.mu.Unlock()
 			s.poke()
 		}
@@ -271,6 +289,84 @@ func (s *Scheduler) admitLoop() {
 		}
 		s.tryAdmit()
 	}
+}
+
+// deadManLoop runs a periodic check: if the pending queue has been non-empty
+// with zero admitted jobs for longer than deadManTimeout, it force-admits the
+// smallest predicted job so the daemon cannot wedge indefinitely. The
+// force-admit overrides the budget — it is the last-resort relief valve.
+//
+// The dead-man clock (deadManAt) is set when a job enters the pending queue
+// while the inflight map is empty, and cleared when any job is admitted.
+func (s *Scheduler) deadManLoop() {
+	defer s.wg.Done()
+	tick := time.NewTicker(30 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-tick.C:
+			s.checkDeadMan()
+		}
+	}
+}
+
+// checkDeadMan inspects the dead-man state and force-admits the smallest
+// pending job if the timeout has elapsed with no admitted jobs.
+func (s *Scheduler) checkDeadMan() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.pendingQ) == 0 || len(s.inflight) > 0 {
+		// Queue is clear OR jobs are running — reset the clock.
+		s.deadManAt = time.Time{}
+		return
+	}
+
+	now := time.Now()
+	if s.deadManAt.IsZero() {
+		// Start the clock: queue has jobs but nothing is running.
+		s.deadManAt = now
+		return
+	}
+
+	if now.Sub(s.deadManAt) < deadManTimeout {
+		return // not yet timed out
+	}
+
+	// Timeout elapsed: find the smallest predicted job and force-admit it.
+	// "Smallest" minimises the memory spike from the override.
+	smallestIdx := 0
+	smallestMB := s.predictedFor(s.pendingQ[0])
+	for i := 1; i < len(s.pendingQ); i++ {
+		if mb := s.predictedFor(s.pendingQ[i]); mb < smallestMB {
+			smallestMB = mb
+			smallestIdx = i
+		}
+	}
+	repo := s.pendingQ[smallestIdx]
+	// Remove from queue (preserve order for remaining entries).
+	s.pendingQ = append(s.pendingQ[:smallestIdx], s.pendingQ[smallestIdx+1:]...)
+	s.inflight[repo] = smallestMB
+	s.usedMB += smallestMB
+	stuckFor := now.Sub(s.deadManAt).Truncate(time.Second)
+	s.deadManAt = time.Time{} // reset clock; the job is now admitted
+	s.logEventLocked("admit_deadman", repo,
+		"force-admitted after "+stuckFor.String()+" with no progress; predicted="+formatMB(smallestMB))
+	s.logger.Printf("sched: dead-man: force-admitting %s (predicted=%dMB) after queue stuck %s",
+		repo, smallestMB, stuckFor)
+
+	tok := jobToken{repoPath: repo, predictedMB: smallestMB}
+	// Dispatch asynchronously so we don't hold the lock while blocking on
+	// the jobs channel. The worker pool is guaranteed to drain the channel
+	// because the pool size >= 1.
+	go func() {
+		select {
+		case s.jobs <- tok:
+		case <-s.stop:
+		}
+	}()
 }
 
 // tryAdmit walks the pending queue head-first and dispatches every job
@@ -307,6 +403,7 @@ func (s *Scheduler) tryAdmit() {
 		s.pendingQ = s.pendingQ[1:]
 		s.inflight[repo] = predicted
 		s.usedMB += predicted
+		s.deadManAt = time.Time{} // job admitted — reset dead-man clock
 		s.logEventLocked("admit_ok", repo,
 			"predicted="+formatMB(predicted)+" used="+formatMB(s.usedMB))
 		tok := jobToken{repoPath: repo, predictedMB: predicted}
