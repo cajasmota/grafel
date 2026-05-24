@@ -109,6 +109,43 @@ func (s *Server) resolveAndGroup(req mcpapi.CallToolRequest) (string, *LoadedGro
 	return g, lg, nil
 }
 
+// resolveAndGroupWithRef resolves the group and additionally returns the
+// CWDResolution (which carries the inferred ref, SHA, and worktree flag)
+// for the caller. This is the PH1c entry-point for tools that expose ref
+// context to agents (archigraph_whoami, archigraph_inspect, etc.).
+func (s *Server) resolveAndGroupWithRef(req mcpapi.CallToolRequest) (string, *LoadedGroup, CWDResolution, *mcpapi.CallToolResult) {
+	cwd := s.inferCWD(req)
+	cwdRes := ResolveCWD(s.State, cwd)
+
+	explicit := argString(req, "group", "")
+	g, _, err := resolveGroup(s.State, explicit, cwd)
+	if err != nil {
+		return "", nil, cwdRes, mcpapi.NewToolResultError(err.Error())
+	}
+	// Backfill group in cwdRes when the resolution came from explicit param or singleton.
+	if cwdRes.Group == "" {
+		cwdRes.Group = g
+	}
+	lg := s.State.Group(g)
+	if lg == nil {
+		return g, nil, cwdRes, mcpapi.NewToolResultError(fmt.Sprintf("group %q not loaded", g))
+	}
+	return g, lg, cwdRes, nil
+}
+
+// refForRequest returns the ref to use for a request. Resolution order:
+//  1. Explicit "ref=" argument in the request.
+//  2. CWD-inferred ref from gitmeta.Capture on the cwd (via ResolveCWD).
+//  3. "" (caller decides what empty means).
+func (s *Server) refForRequest(req mcpapi.CallToolRequest) string {
+	if explicit := argString(req, "ref", ""); explicit != "" {
+		return explicit
+	}
+	cwd := s.inferCWD(req)
+	res := ResolveCWD(s.State, cwd)
+	return res.Ref
+}
+
 // reposToConsider applies repo_filter to a group's repo set. Empty filter
 // returns all loaded repos. "*" is treated as "all".
 func reposToConsider(lg *LoadedGroup, filter []string) []*LoadedRepo {
@@ -164,6 +201,10 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 	cwd := s.inferCWD(req)
 	explicit := argString(req, "group", "")
 	group, source, err := resolveGroup(s.State, explicit, cwd)
+
+	// PH1c: resolve CWD to (group, repo, ref) triple.
+	cwdRes := ResolveCWD(s.State, cwd)
+
 	if err != nil {
 		return jsonResult(map[string]any{
 			"group":         "",
@@ -175,14 +216,41 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 		}), nil
 	}
 	repo := repoFromCWD(cwd)
+	if repo == "" {
+		repo = cwdRes.RepoSlug
+	}
+
+	// Derive "cwd_resolved_to" label: "<group> / <slug> / <ref>".
+	cwdResolvedTo := group
+	if cwdRes.RepoSlug != "" {
+		cwdResolvedTo = group + " / " + cwdRes.RepoSlug
+		if cwdRes.Ref != "" {
+			cwdResolvedTo += " / " + cwdRes.Ref
+		}
+	}
 
 	// Base response.
 	resp := map[string]any{
-		"group":         group,
-		"repo":          repo,
-		"source":        source,
-		"registry_path": s.State.registry.Path,
-		"wire_version":  mcpWireVersion,
+		"group":           group,
+		"repo":            repo,
+		"source":          source,
+		"registry_path":   s.State.registry.Path,
+		"wire_version":    mcpWireVersion,
+		// PH1c ref fields.
+		"cwd_resolved_to": cwdResolvedTo,
+		"is_worktree":     cwdRes.IsWorktree,
+		"indexed_ref":     cwdRes.Ref,
+		"indexed_sha":     cwdRes.SHA,
+	}
+	if cwdRes.IsWorktree && cwdRes.ParentRepoPath != "" {
+		resp["parent_repo"] = cwdRes.ParentRepoPath
+	} else {
+		resp["parent_repo"] = nil
+	}
+	if cwdRes.Source == "worktree" {
+		resp["tier"] = "cold" // worktree refs may not be hot-loaded yet
+	} else {
+		resp["tier"] = "hot"
 	}
 
 	// Nudge suppression: ARCHIGRAPH_WHOAMI_NUDGE=quiet disables doc-state fields.
@@ -665,13 +733,13 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	if key == "" {
 		return mcpapi.NewToolResultError("missing required argument: entity_id"), nil
 	}
-	_, lg, errRes := s.resolveAndGroup(req)
+	// PH1c: use ref-aware resolution to capture CWD resolution context.
+	g, lg, cwdRes, errRes := s.resolveAndGroupWithRef(req)
 	if errRes != nil {
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 	verbose := argBool(req, "verbose", false)
-	g, _, _ := s.resolveAndGroup(req)
 	allFindings := loadFindings(findingsMemDir(g, lg))
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
@@ -683,9 +751,12 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				if agentEdges := agentResolvedEdgesForEntity(r.Doc, r.Repo, e.ID, scopeIsOne); len(agentEdges) > 0 {
 					out["agent_resolved_edges"] = agentEdges
 				}
-				// Phase 0 git metadata (#2088).
+				// Phase 0 git metadata (#2088) + PH1c ref context.
 				if gm := graphMetaForInspect(r); gm != nil {
 					out["graph_meta"] = gm
+				}
+				if rm := cwdRefMetaForInspect(cwdRes); rm != nil {
+					out["cwd_ref_meta"] = rm
 				}
 				return jsonResult(out), nil
 			}
@@ -734,15 +805,18 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	if agentEdges := agentResolvedEdgesForEntity(m.repo.Doc, m.repo.Repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
 		out["agent_resolved_edges"] = agentEdges
 	}
-	// Phase 0 git metadata (#2088).
+	// Phase 0 git metadata (#2088) + PH1c ref context.
 	if gm := graphMetaForInspect(m.repo); gm != nil {
 		out["graph_meta"] = gm
+	}
+	if rm := cwdRefMetaForInspect(cwdRes); rm != nil {
+		out["cwd_ref_meta"] = rm
 	}
 	return jsonResult(out), nil
 }
 
-// graphMetaForInspect returns the Phase-0 git metadata (#2088) for a loaded
-// repo as a map suitable for embedding in the archigraph_inspect reply.
+// graphMetaForInspect returns the Phase-0/PH1c git metadata (#2088, #2087) for
+// a loaded repo as a map suitable for embedding in the archigraph_inspect reply.
 // Returns nil when the document carries no git metadata (pre-#2088 graph or
 // non-git repo), so callers can omit the key entirely.
 func graphMetaForInspect(lr *LoadedRepo) map[string]any {
@@ -757,6 +831,25 @@ func graphMetaForInspect(lr *LoadedRepo) map[string]any {
 		m["indexed_ref"] = lr.Doc.IndexedRef
 	} else {
 		m["indexed_ref"] = "detached"
+	}
+	return m
+}
+
+// cwdRefMetaForInspect returns PH1c CWD-resolution ref metadata to append
+// to an archigraph_inspect reply when the caller's cwd has been resolved.
+// Returns nil when the resolution was not possible (Source "none").
+func cwdRefMetaForInspect(res CWDResolution) map[string]any {
+	if res.Source == "none" || res.Group == "" {
+		return nil
+	}
+	m := map[string]any{
+		"cwd_ref":     res.Ref,
+		"cwd_sha":     res.SHA,
+		"cwd_source":  res.Source,
+		"is_worktree": res.IsWorktree,
+	}
+	if res.IsWorktree && res.ParentRepoPath != "" {
+		m["parent_repo"] = res.ParentRepoPath
 	}
 	return m
 }

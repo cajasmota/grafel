@@ -66,9 +66,17 @@ func newGraphPayloadCache() *graphPayloadCache {
 // payloadCacheKey returns a stable, collision-resistant key for the given
 // (group, params) combination.  The params fingerprint is a truncated
 // SHA-256 of the sorted param string so the map key stays short.
-func payloadCacheKey(group, filterKind, filterRepo, reposParam string, includeExternal, includeModules bool) string {
-	params := fmt.Sprintf("fk=%s&fr=%s&repos=%s&ext=%v&mod=%v",
-		filterKind, filterRepo, reposParam, includeExternal, includeModules)
+//
+// PH1c (#2087): the ref is included in the fingerprint so that two
+// requests for the same group but different refs get distinct cache slots.
+// Passing ref="" preserves the pre-PH1c behaviour (all refs share a slot).
+func payloadCacheKey(group, filterKind, filterRepo, reposParam string, includeExternal, includeModules bool, ref ...string) string {
+	refVal := ""
+	if len(ref) > 0 {
+		refVal = ref[0]
+	}
+	params := fmt.Sprintf("fk=%s&fr=%s&repos=%s&ext=%v&mod=%v&ref=%s",
+		filterKind, filterRepo, reposParam, includeExternal, includeModules, refVal)
 	sum := sha256.Sum256([]byte(params))
 	return group + "::" + fmt.Sprintf("%x", sum[:8])
 }
@@ -251,8 +259,17 @@ func NewGraphCache(ttl time.Duration) *GraphCache {
 // must not block on a cold or slow group (#1478).  A best-effort warm is
 // kicked off in the background so a subsequent request finds it ready.
 func (c *GraphCache) GetGroupCached(groupName string) (*DashGroup, bool) {
+	return c.GetGroupCachedForRef(groupName, "")
+}
+
+// GetGroupCachedForRef is the ref-scoped variant of GetGroupCached (PH1c).
+func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bool) {
+	cacheKey := groupName
+	if ref != "" {
+		cacheKey = groupName + "@" + ref
+	}
 	c.mu.Lock()
-	ent, ok := c.entries[groupName]
+	ent, ok := c.entries[cacheKey]
 	if ok && time.Since(ent.loadedAt) < c.ttl {
 		grp := ent.group
 		c.mu.Unlock()
@@ -261,16 +278,24 @@ func (c *GraphCache) GetGroupCached(groupName string) (*DashGroup, bool) {
 	c.mu.Unlock()
 	// Not warm (or stale): trigger an async warm so the next caller is fast,
 	// but return immediately so we never block first paint.
-	go func() { _, _ = c.GetGroup(groupName) }()
+	go func() { _, _ = c.GetGroupForRef(groupName, ref) }()
 	return nil, false
 }
 
-// Invalidate drops the cached entry for group (called on re-index events).
-// It also busts the pre-serialised payload cache for that group so the next
-// GET /api/graph/{group} request rebuilds a fresh payload from the new graph.
+// Invalidate drops the cached entry for group and all per-ref variants
+// (called on re-index events). It also busts the pre-serialised payload
+// cache for that group so the next GET /api/graph/{group} request rebuilds
+// a fresh payload from the new graph.
 func (c *GraphCache) Invalidate(group string) {
+	prefix := group + "@"
 	c.mu.Lock()
 	delete(c.entries, group)
+	// Also evict all per-ref entries for this group.
+	for k := range c.entries {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.entries, k)
+		}
+	}
 	c.mu.Unlock()
 	c.Payloads.InvalidateGroup(group)
 }
@@ -286,9 +311,24 @@ func (c *GraphCache) InvalidateAll() {
 // GetGroup returns the loaded group, refreshing from disk when the TTL has
 // elapsed or when graph files have changed on disk.
 func (c *GraphCache) GetGroup(groupName string) (*DashGroup, error) {
+	return c.GetGroupForRef(groupName, "")
+}
+
+// GetGroupForRef returns the loaded group for a specific git ref.
+// When ref is "" it behaves identically to GetGroup (reads the current
+// HEAD ref via daemon.StateDirForRepo for each repo).
+//
+// PH1c (#2087): passing a non-empty ref scopes the graph read to that
+// ref's state directory (refs/<ref-safe>/graph.fb). The cache key
+// includes groupName+ref so different refs coexist in the cache.
+func (c *GraphCache) GetGroupForRef(groupName, ref string) (*DashGroup, error) {
+	cacheKey := groupName
+	if ref != "" {
+		cacheKey = groupName + "@" + ref
+	}
 	c.mu.Lock()
 	now := time.Now()
-	if ent, ok := c.entries[groupName]; ok && now.Sub(ent.loadedAt) < c.ttl {
+	if ent, ok := c.entries[cacheKey]; ok && now.Sub(ent.loadedAt) < c.ttl {
 		grp := ent.group
 		c.mu.Unlock()
 		return grp, nil
@@ -302,22 +342,22 @@ func (c *GraphCache) GetGroup(groupName string) (*DashGroup, error) {
 	// EVERY other group + the cheap cached-read fast path behind it — the
 	// exact wedge that made first-paint endpoints (and thus the dashboard)
 	// return 000 with a large group registered (#1478).
-	if g, ok := c.loading[groupName]; ok {
+	if g, ok := c.loading[cacheKey]; ok {
 		c.mu.Unlock()
 		<-g.done
 		return g.grp, g.err
 	}
 	gate := &loadGate{done: make(chan struct{})}
-	c.loading[groupName] = gate
+	c.loading[cacheKey] = gate
 	c.mu.Unlock()
 
-	grp, err := c.loadGroup(groupName)
+	grp, err := c.loadGroupForRef(groupName, ref)
 
 	c.mu.Lock()
 	if err == nil {
-		c.entries[groupName] = &cacheEntry{group: grp, loadedAt: time.Now()}
+		c.entries[cacheKey] = &cacheEntry{group: grp, loadedAt: time.Now()}
 	}
-	delete(c.loading, groupName)
+	delete(c.loading, cacheKey)
 	c.mu.Unlock()
 
 	gate.grp, gate.err = grp, err
@@ -329,6 +369,14 @@ func (c *GraphCache) GetGroup(groupName string) (*DashGroup, error) {
 // It runs WITHOUT c.mu held (see GetGroup) so a slow load never blocks the
 // rest of the cache.
 func (c *GraphCache) loadGroup(groupName string) (*DashGroup, error) {
+	return c.loadGroupForRef(groupName, "")
+}
+
+// loadGroupForRef loads the group graph for a specific ref. When ref is ""
+// it delegates to daemon.StateDirForRepo (which reads the current HEAD via
+// gitmeta). When ref is non-empty it reads from daemon.StateDirForRepoRef.
+// It runs WITHOUT c.mu held (see GetGroupForRef).
+func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) {
 	groups, err := registry.Groups()
 	if err != nil {
 		return nil, err
@@ -353,7 +401,12 @@ func (c *GraphCache) loadGroup(groupName string) (*DashGroup, error) {
 	}
 	for _, r := range cfg.Repos {
 		dr := &DashRepo{Slug: r.Slug, Path: r.Path}
-		stateDir := daemon.StateDirForRepo(r.Path)
+		var stateDir string
+		if ref != "" {
+			stateDir = daemon.StateDirForRepoRef(r.Path, ref)
+		} else {
+			stateDir = daemon.StateDirForRepo(r.Path)
+		}
 		doc, err := graph.LoadGraphFromDir(stateDir)
 		if err != nil {
 			dr.err = err.Error()

@@ -6,6 +6,12 @@
 // query handlers (which want zero-copy reads). It does NOT load graphs
 // eagerly; the first query that targets a repo opens the mmap, and an
 // LRU bound caps the number of resident handles.
+//
+// PH1c (epic #2087): the cache key is now the absolute graph.fb path,
+// which already encodes (repoPath, ref) via the per-ref store layout
+// introduced in PH1a. GetForRepoRef resolves the canonical fbPath using
+// daemon.StateDirForRepoRef so callers can address a specific ref without
+// reconstructing the path themselves.
 package mcp
 
 import (
@@ -13,9 +19,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 )
 
@@ -172,6 +180,30 @@ open:
 	}
 
 	return reader, c.releaser(ent), nil
+}
+
+// GetForRepoRef is a ref-aware entry point that resolves the canonical
+// graph.fb path from (repoPath, ref) via daemon.StateDirForRepoRef and
+// then delegates to Get. This is the preferred call-site for PH1c
+// consumers: the cache key remains the absolute fbPath (which already
+// encodes the ref via the per-ref store layout), so hit/miss semantics
+// are unchanged. When ref is "" the resolved path is
+// refs/_unknown/graph.fb — same sentinel as StateDirForRepo.
+//
+// Returns (nil, noop, ErrCacheClosed) when the cache has been closed.
+func (c *Cache) GetForRepoRef(repoPath, ref string) (*fbreader.Reader, func(), error) {
+	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
+	fbPath := filepath.Join(stateDir, "graph.fb")
+	return c.Get(fbPath)
+}
+
+// InvalidateForRepoRef drops the cached handle for (repoPath, ref).
+// Returns true when an entry was actually evicted. Callers that only
+// know the ref should prefer this over Invalidate(path).
+func (c *Cache) InvalidateForRepoRef(repoPath, ref string) bool {
+	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
+	fbPath := filepath.Join(stateDir, "graph.fb")
+	return c.Invalidate(fbPath)
 }
 
 // Invalidate forces removal of the cached handle for path. Called by

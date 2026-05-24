@@ -283,6 +283,87 @@ func TestLoadCandidateCountsArray(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// PH1c cold-refs tests (#2087)
+// ---------------------------------------------------------------------------
+
+func TestFormatColdRefs_NoneReturnsEmpty(t *testing.T) {
+	if got := formatColdRefs(nil); got != "" {
+		t.Errorf("formatColdRefs(nil) = %q, want empty", got)
+	}
+	if got := formatColdRefs([]string{}); got != "" {
+		t.Errorf("formatColdRefs([]) = %q, want empty", got)
+	}
+}
+
+func TestFormatColdRefs_OneRef(t *testing.T) {
+	got := formatColdRefs([]string{"feat/foo"})
+	if got != " [+ feat/foo cold]" {
+		t.Errorf("unexpected: %q", got)
+	}
+}
+
+func TestFormatColdRefs_ThreeRefs(t *testing.T) {
+	got := formatColdRefs([]string{"alpha", "beta", "gamma"})
+	if got != " [+ alpha, beta, gamma cold]" {
+		t.Errorf("unexpected: %q", got)
+	}
+}
+
+func TestFormatColdRefs_TruncatesAfterThree(t *testing.T) {
+	got := formatColdRefs([]string{"a", "b", "c", "d", "e"})
+	want := " [+ a, b, c, +2 more cold]"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestComputeStatusSummary_ColdRefs verifies that ColdRefs is populated when
+// a second (non-active) ref slot exists alongside the hot slot.
+func TestComputeStatusSummary_ColdRefs(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmpDir)
+
+	repoPath := filepath.Join(tmpDir, "myrepo")
+	os.MkdirAll(repoPath, 0o755)
+
+	// The hot stateDir is what StateDirForRepo returns (uses _unknown since
+	// tmpDir is not a git repo).
+	hotStateDir := daemon.StateDirForRepo(repoPath)
+	os.MkdirAll(hotStateDir, 0o755)
+
+	// Write a graph-stats.json for the hot slot so it's counted.
+	side := graph.GraphStatsSidecar{
+		Version:       1,
+		ComputedAt:    time.Now().Add(-2 * time.Minute),
+		TotalEntities: 100,
+	}
+	sideData, _ := json.Marshal(side)
+	os.WriteFile(filepath.Join(hotStateDir, "graph-stats.json"), sideData, 0o644)
+
+	// Add a cold ref slot alongside the hot one: refs/develop/graph.fb.
+	// The hot slot lives at hotStateDir = <base>/refs/<hotRefSafe>/
+	refsDir := filepath.Dir(hotStateDir)
+	coldRefDir := filepath.Join(refsDir, "develop")
+	os.MkdirAll(coldRefDir, 0o755)
+	os.WriteFile(filepath.Join(coldRefDir, "graph.fb"), []byte("FAKE"), 0o644)
+
+	// Also add a slot without a graph.fb to ensure it's NOT included.
+	emptySlotDir := filepath.Join(refsDir, "feat%2Fno-graph")
+	os.MkdirAll(emptySlotDir, 0o755)
+
+	repos := []registry.Repo{{Slug: "myrepo", Path: repoPath}}
+	summary := ComputeStatusSummary("grp", repos)
+
+	rs, ok := summary.RepoStats["myrepo"]
+	if !ok {
+		t.Fatal("myrepo not found in RepoStats")
+	}
+	if len(rs.ColdRefs) != 1 || rs.ColdRefs[0] != "develop" {
+		t.Errorf("ColdRefs = %v, want [develop]", rs.ColdRefs)
+	}
+}
+
 func TestLoadCandidateCountsMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 	stateDir := filepath.Join(tmpDir, ".archigraph")

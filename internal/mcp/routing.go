@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
 
 // resolveGroup implements the ADR-0008 cascade (#1746):
@@ -189,4 +191,161 @@ func repoFromCWD(dir string) string {
 		}
 		cur = parent
 	}
+}
+
+// CWDResolution carries the result of resolving a cwd to a (group, repo, ref)
+// triple. It is the canonical output of ResolveCWD (PH1c, epic #2087).
+type CWDResolution struct {
+	// Group is the archigraph group name, or "" if unresolved.
+	Group string
+	// RepoSlug is the slug of the repo within the group whose path contains cwd.
+	RepoSlug string
+	// Ref is the git HEAD ref of the repo (or worktree). Empty string means
+	// detached HEAD or non-git directory.
+	Ref string
+	// SHA is the abbreviated (12-char) commit hash at the resolved HEAD.
+	SHA string
+	// IsWorktree is true when cwd is inside a linked git worktree (not the
+	// main checkout). The Ref then belongs to the worktree's HEAD, not the
+	// parent's HEAD.
+	IsWorktree bool
+	// ParentRepoPath is the parent repo path when IsWorktree is true.
+	ParentRepoPath string
+	// Source is "cwd_registry", "worktree", "cwd", "singleton", "explicit", or "none".
+	Source string
+}
+
+// ResolveCWD is the PH1c entry point that maps a cwd to a full
+// (group, repo, ref) triple. It extends groupFromRegistryWithCandidates
+// with worktree-sibling resolution:
+//
+//  1. First it tries direct path containment (today's behaviour).
+//  2. If no registered repo path contains cwd, it runs gitmeta.Capture
+//     to find the git toplevel. If that toplevel is itself a linked
+//     worktree, it walks every registered repo and checks whether the
+//     worktree's parent repo (git-common-dir) matches a registered path.
+//     On a match it returns (group, repo, worktree-HEAD-ref) so MCP
+//     tools query the per-ref graph for that worktree.
+//
+// If cwd is empty or nothing matches the function returns a zero-value
+// CWDResolution with Source "none".
+func ResolveCWD(s *State, cwd string) CWDResolution {
+	if cwd == "" || s == nil {
+		return CWDResolution{Source: "none"}
+	}
+
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		abs = cwd
+	}
+	abs = filepath.Clean(abs)
+
+	// Step 1: direct registry containment (existing behaviour).
+	group, _ := groupFromRegistryWithCandidates(s, abs)
+	if group != "" {
+		// Determine which repo slug contains cwd (longest-prefix match).
+		slug, repoPath := repoSlugForCWD(s, group, abs)
+		meta := gitmeta.Capture(repoPath)
+		return CWDResolution{
+			Group:      group,
+			RepoSlug:   slug,
+			Ref:        meta.Ref,
+			SHA:        meta.SHA,
+			IsWorktree: meta.IsWorktree,
+			Source:     "cwd_registry",
+		}
+	}
+
+	// Step 2: worktree-sibling resolution.
+	// Ask git for the toplevel of whatever repo cwd is inside.
+	meta := gitmeta.Capture(abs)
+	if meta.TopLevel == "" || !meta.IsWorktree {
+		// Not inside a git repo at all, or not a linked worktree.
+		return CWDResolution{Source: "none"}
+	}
+
+	wtTopLevel := filepath.Clean(meta.TopLevel)
+
+	// Find a registered repo whose worktrees include wtTopLevel.
+	// We do this by looking up each registered repo's git-common-dir and
+	// comparing it against the worktree's git-common-dir (they are equal
+	// when the worktree belongs to that repo).
+	wtCommonDir := gitCommonDir(wtTopLevel)
+	if wtCommonDir == "" {
+		return CWDResolution{Source: "none"}
+	}
+
+	for gname, gentry := range s.registry.Groups {
+		for rname, rentry := range gentry.Repos {
+			if rentry.Path == "" {
+				continue
+			}
+			parentCommon := gitCommonDir(rentry.Path)
+			if parentCommon == "" {
+				continue
+			}
+			if filepath.Clean(parentCommon) != filepath.Clean(wtCommonDir) {
+				continue
+			}
+			// Match: wtTopLevel is a worktree of rentry.Path.
+			return CWDResolution{
+				Group:          gname,
+				RepoSlug:       rname,
+				Ref:            meta.Ref,
+				SHA:            meta.SHA,
+				IsWorktree:     true,
+				ParentRepoPath: rentry.Path,
+				Source:         "worktree",
+			}
+		}
+	}
+
+	return CWDResolution{Source: "none"}
+}
+
+// repoSlugForCWD returns the slug and path of the repo in group whose path
+// is the longest prefix of abs. Returns ("", "") when no match.
+func repoSlugForCWD(s *State, group, abs string) (slug, repoPath string) {
+	gentry, ok := s.registry.Groups[group]
+	if !ok {
+		return "", ""
+	}
+	best := ""
+	for rname, rentry := range gentry.Repos {
+		if rentry.Path == "" {
+			continue
+		}
+		rp := filepath.Clean(rentry.Path)
+		if !pathContains(rp, abs) {
+			continue
+		}
+		if len(rp) > len(best) {
+			best = rp
+			slug = rname
+			repoPath = rentry.Path
+		}
+	}
+	return slug, repoPath
+}
+
+// gitCommonDir runs `git rev-parse --git-common-dir` in dir and returns the
+// absolute, cleaned, symlink-resolved result. Returns "" on any error
+// (non-git dir, timeout, …).
+// The returned path is made absolute relative to dir when git outputs a
+// relative path (which it does for the main checkout: ".git").
+// Symlinks are resolved so that /var/folders/… and /private/var/folders/…
+// (macOS) compare equal.
+func gitCommonDir(dir string) string {
+	out := gitmeta.RunGit(dir, "rev-parse", "--git-common-dir")
+	if out == "" {
+		return ""
+	}
+	if !filepath.IsAbs(out) {
+		out = filepath.Join(dir, out)
+	}
+	out = filepath.Clean(out)
+	if resolved, err := filepath.EvalSymlinks(out); err == nil {
+		out = resolved
+	}
+	return out
 }
