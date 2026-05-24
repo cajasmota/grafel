@@ -76,17 +76,65 @@ func systemTotalMemoryMB() int64 {
 	return process.TotalMemoryMB()
 }
 
-// defaultMaxConcurrentGroups is the production default for parallel group
-// indexing during a Rebuild RPC (#1276). With 2 concurrent group slots a
-// 4-group cold-start completes in approximately half the serial time.
-const defaultMaxConcurrentGroups = 2
+// computeRebuildConcurrency applies the auto-tune formula to an explicit
+// memory size (in MB). This is the pure, testable core of defaultRebuildConcurrency.
+// Formula: min(8, sysMB/4096), floored at 2.
+//
+//   - sysMB ≤ 0 → 2 (sysinfo unavailable)
+//   - < 8 GB    → 2 (floor)
+//   -  8 GB     → 2
+//   - 16 GB     → 4
+//   - 32 GB     → 8
+//   - ≥ 32 GB   → 8 (ceiling; above this, file-I/O contention outweighs the gain)
+func computeRebuildConcurrency(sysMB int64) int {
+	if sysMB <= 0 {
+		return 2
+	}
+	n := int(sysMB / 4096)
+	if n < 2 {
+		n = 2
+	}
+	if n > 8 {
+		n = 8
+	}
+	return n
+}
+
+// defaultRebuildConcurrency auto-tunes the parallel rebuild cap based on
+// available system memory (#2127). Delegates to computeRebuildConcurrency
+// with the live system total so the logic is independently testable.
+//
+// The env var ARCHIGRAPH_REBUILD_CONCURRENCY and the --max-concurrent-groups
+// flag both override the result.
+func defaultRebuildConcurrency() int {
+	return computeRebuildConcurrency(systemTotalMemoryMB())
+}
+
+// resolveEnvRebuildConcurrency reads ARCHIGRAPH_REBUILD_CONCURRENCY (then
+// ARCHIGRAPH_MAX_CONCURRENT_GROUPS as a legacy fallback) and returns the
+// effective concurrency value, falling back to the auto-tuned default when
+// the env var is absent or invalid. This mirrors the parsing logic in
+// runDaemon and is exposed for unit testing.
+func resolveEnvRebuildConcurrency() int {
+	if v := os.Getenv("ARCHIGRAPH_REBUILD_CONCURRENCY"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil && parsed >= 1 {
+			return parsed
+		}
+	}
+	if v := os.Getenv("ARCHIGRAPH_MAX_CONCURRENT_GROUPS"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil && parsed >= 1 {
+			return parsed
+		}
+	}
+	return defaultRebuildConcurrency()
+}
 
 // rebuildConcurrency is the package-level concurrency cap used by
 // daemonRebuildFunc. It is set once by runDaemon before the RPC server
 // starts accepting connections. Concurrent calls to daemonRebuildFunc
 // each get their own semaphore, so different group rebuilds do not share
 // the cap — the cap applies to repos within a single group rebuild.
-var rebuildConcurrency = defaultMaxConcurrentGroups
+var rebuildConcurrency = defaultRebuildConcurrency()
 
 // rebuildIndexFunc is the per-repo index entrypoint used by daemonRebuildFunc.
 // It defaults to the package-level Index function but can be replaced in tests
@@ -125,14 +173,10 @@ func runDaemon(argv []string) error {
 		"max predicted RSS (MB) for concurrent index jobs; 0 disables admission control")
 
 	var maxConcurrentGroups int
-	envConcGroups := defaultMaxConcurrentGroups
-	if v := os.Getenv("ARCHIGRAPH_MAX_CONCURRENT_GROUPS"); v != "" {
-		if parsed, perr := strconv.Atoi(v); perr == nil && parsed >= 1 {
-			envConcGroups = parsed
-		}
-	}
+	// Priority: ARCHIGRAPH_REBUILD_CONCURRENCY > ARCHIGRAPH_MAX_CONCURRENT_GROUPS > auto-tune.
+	envConcGroups := resolveEnvRebuildConcurrency()
 	fs.IntVar(&maxConcurrentGroups, "max-concurrent-groups", envConcGroups,
-		"max groups indexed in parallel during rebuild (default 2; 1 = serial)")
+		"max repos indexed in parallel during rebuild (auto-tuned from memory; floor=2 cap=8)")
 
 	if err := fs.Parse(argv); err != nil {
 		return err

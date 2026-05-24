@@ -206,6 +206,7 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	reply.InFlight = int(atomic.LoadInt64(&s.inFlight))
 	reply.RebuildInFlight = int(atomic.LoadInt64(&s.rebuildInFlight))
 	reply.RebuildGroupsActive = int(atomic.LoadInt64(&s.groupsActiveCount))
+	reply.RebuildConcurrencyCap = s.maxConcurrentGroups
 	reply.StartedAt = s.startedAt.UTC().Format(time.RFC3339)
 	reply.SocketPath = s.socketPath
 	// Report the binary path so clients can detect stale daemons (#855).

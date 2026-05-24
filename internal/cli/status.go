@@ -85,6 +85,10 @@ func runStatus(w io.Writer, filter string) error {
 				fmt.Fprintf(w, "  admission: queued=%d admitted=%d predicted=%dMB / budget=%dMB (headroom=%dMB)\n",
 					len(st.BlockedJobs), len(st.InFlightJobs),
 					st.AdmissionUsedMB, st.RSSBudgetMB, admHeadroom)
+				if st.RebuildConcurrencyCap > 0 {
+					fmt.Fprintf(w, "  rebuild: in_flight=%d / cap=%d\n",
+						st.RebuildInFlight, st.RebuildConcurrencyCap)
+				}
 				if len(st.InFlightJobs) > 0 {
 					for _, j := range st.InFlightJobs {
 						fmt.Fprintf(w, "    admitted: %s (predicted=%dMB)\n", j.Path, j.PredictedMB)
