@@ -185,6 +185,12 @@ func probeGroup(cfg *registry.GroupConfig, topN int) GroupResult {
 			if _, ok := connected[e.ID]; ok {
 				continue
 			}
+			// Exclude synthetic empty-SourceFile Module entities from orphan count.
+			// These are structural grouping nodes created by the module-grouping pass
+			// and don't represent real code constructs (Issue #2064).
+			if e.Kind == "Module" && e.SourceFile == "" {
+				continue
+			}
 			nOrphans++
 			allOrphans = append(allOrphans, orphanEntry{
 				id:       e.ID,
