@@ -34,6 +34,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
 	"github.com/cajasmota/archigraph/internal/install/detect"
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 	"github.com/cajasmota/archigraph/internal/module"
 	"github.com/cajasmota/archigraph/internal/progress"
 	"github.com/cajasmota/archigraph/internal/resolve"
@@ -347,6 +348,27 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	doc, err := idx.Run(context.Background(), absRepo)
 	if err != nil {
 		return err
+	}
+
+	// Phase 0 git metadata (#2088). Capture HEAD ref + SHA + worktree flag
+	// and stamp them onto the document BEFORE the rename-detect pass so
+	// all on-disk representations (graph.fb and graph.json) carry them.
+	// Non-git directories return a zero-value Info; the Document fields stay
+	// empty, which is the correct default for old readers.
+	{
+		gi := gitmeta.Capture(absRepo)
+		doc.IndexedRef = gi.Ref
+		doc.IndexedSHA = gi.SHA
+		doc.IsWorktree = gi.IsWorktree
+		if gi.SHA != "" {
+			fmt.Fprintf(os.Stderr, "archigraph: git HEAD %s @ %s (worktree=%v)\n",
+				gi.SHA, func() string {
+					if gi.Ref == "" {
+						return "detached"
+					}
+					return gi.Ref
+				}(), gi.IsWorktree)
+		}
 	}
 
 	// Pass 5.5 — rename detection (#1344). Load the previous graph from disk

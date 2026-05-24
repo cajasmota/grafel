@@ -683,6 +683,10 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				if agentEdges := agentResolvedEdgesForEntity(r.Doc, r.Repo, e.ID, scopeIsOne); len(agentEdges) > 0 {
 					out["agent_resolved_edges"] = agentEdges
 				}
+				// Phase 0 git metadata (#2088).
+				if gm := graphMetaForInspect(r); gm != nil {
+					out["graph_meta"] = gm
+				}
 				return jsonResult(out), nil
 			}
 		}
@@ -730,7 +734,31 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	if agentEdges := agentResolvedEdgesForEntity(m.repo.Doc, m.repo.Repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
 		out["agent_resolved_edges"] = agentEdges
 	}
+	// Phase 0 git metadata (#2088).
+	if gm := graphMetaForInspect(m.repo); gm != nil {
+		out["graph_meta"] = gm
+	}
 	return jsonResult(out), nil
+}
+
+// graphMetaForInspect returns the Phase-0 git metadata (#2088) for a loaded
+// repo as a map suitable for embedding in the archigraph_inspect reply.
+// Returns nil when the document carries no git metadata (pre-#2088 graph or
+// non-git repo), so callers can omit the key entirely.
+func graphMetaForInspect(lr *LoadedRepo) map[string]any {
+	if lr == nil || lr.Doc == nil || lr.Doc.IndexedSHA == "" {
+		return nil
+	}
+	m := map[string]any{
+		"indexed_sha": lr.Doc.IndexedSHA,
+		"is_worktree": lr.Doc.IsWorktree,
+	}
+	if lr.Doc.IndexedRef != "" {
+		m["indexed_ref"] = lr.Doc.IndexedRef
+	} else {
+		m["indexed_ref"] = "detached"
+	}
+	return m
 }
 
 // agentResolvedEdgesForEntity returns the outgoing relationships from entity e

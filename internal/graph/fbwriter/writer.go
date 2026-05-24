@@ -101,6 +101,11 @@ func Marshal(doc *graph.Document) ([]byte, error) {
 	computedAt := b.CreateString(doc.GeneratedAt.UTC().Format("2006-01-02T15:04:05Z"))
 	repoTag := b.CreateString(doc.Repo)
 
+	// Phase 0 git metadata (#2088). Strings must be created before the table
+	// is opened (FlatBuffers ordering rule).
+	indexedRef := b.CreateString(doc.IndexedRef)
+	indexedSHA := b.CreateString(doc.IndexedSHA)
+
 	fb.GraphStart(b)
 	fb.GraphAddVersion(b, int32(FormatVersion))
 	fb.GraphAddComputedAt(b, computedAt)
@@ -116,6 +121,15 @@ func Marshal(doc *graph.Document) ([]byte, error) {
 		fb.GraphAddNumSurpriseEdges(b, int32(st.NumSurpriseEdges))
 		fb.GraphAddAlgoRuntimeMs(b, st.RuntimeMS)
 		fb.GraphAddDenoisedCommunities(b, int32(st.DenoisedCommunities))
+	}
+	// Phase 0 git metadata (#2088). Always add both string offsets (already
+	// created above); the FB runtime writes them as zero-length strings when
+	// the values are empty, which is indistinguishable from "not set" to
+	// older readers that don't know about these slots.
+	fb.GraphAddIndexedRef(b, indexedRef)
+	fb.GraphAddIndexedSha(b, indexedSHA)
+	if doc.IsWorktree {
+		fb.GraphAddIsWorktree(b, true)
 	}
 	root := fb.GraphEnd(b)
 	fb.FinishGraphBuffer(b, root)

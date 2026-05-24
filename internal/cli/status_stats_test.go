@@ -12,6 +12,29 @@ import (
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
+func TestFormatGitRef(t *testing.T) {
+	tests := []struct {
+		ref        string
+		sha        string
+		isWorktree bool
+		want       string
+	}{
+		{"main", "abc12345678", false, " @ main (abc12345678)"},
+		{"feat/my-feature", "def56789012", false, " @ feat/my-feature (def56789012)"},
+		{"", "abc12345678", false, " @ detached (abc12345678)"},
+		{"main", "abc12345678", true, " @ main (abc12345678) [worktree]"},
+		{"", "", false, ""},
+		{"main", "", false, ""},
+	}
+	for _, tt := range tests {
+		got := formatGitRef(tt.ref, tt.sha, tt.isWorktree)
+		if got != tt.want {
+			t.Errorf("formatGitRef(%q, %q, %v) = %q, want %q",
+				tt.ref, tt.sha, tt.isWorktree, got, tt.want)
+		}
+	}
+}
+
 func TestComputeStatusSummary(t *testing.T) {
 	// Create temporary directory structure for testing.
 	tmpDir := t.TempDir()

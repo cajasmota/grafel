@@ -178,6 +178,12 @@ type GraphMeta struct {
 	Version    int
 	ComputedAt string
 	RepoTag    string
+
+	// Phase 0 git metadata (#2088). Empty/false for graphs written before
+	// this field was added (FlatBuffers defaults new fields to zero-value).
+	IndexedRef string
+	IndexedSHA string
+	IsWorktree bool
 }
 
 // CommunityCount returns the number of aggregate Louvain communities
@@ -230,7 +236,8 @@ func (r *Reader) LoadAlgoStats() AlgoStats {
 }
 
 // LoadGraphMeta returns the (cheap) header fields of the graph: schema
-// version, computed-at timestamp, repo tag. No vectors are touched.
+// version, computed-at timestamp, repo tag, and Phase 0 git metadata (#2088).
+// No vectors are touched; all strings are copied out of the mmap'd bytes.
 func (r *Reader) LoadGraphMeta() GraphMeta {
 	if r == nil || r.root == nil {
 		return GraphMeta{}
@@ -239,6 +246,11 @@ func (r *Reader) LoadGraphMeta() GraphMeta {
 		Version:    int(r.root.Version()),
 		ComputedAt: string(r.root.ComputedAt()),
 		RepoTag:    string(r.root.RepoTag()),
+		// Phase 0 git metadata (#2088). Defaults to "" / false for graphs
+		// written before these fields were added.
+		IndexedRef: string(r.root.IndexedRef()),
+		IndexedSHA: string(r.root.IndexedSha()),
+		IsWorktree: r.root.IsWorktree(),
 	}
 }
 

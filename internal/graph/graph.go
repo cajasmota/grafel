@@ -29,6 +29,14 @@ type Document struct {
 	Communities    []CommunityResult `json:"communities,omitempty"`
 	SurpriseEdges  []SurpriseEdge    `json:"surprise_edges,omitempty"`
 	AlgorithmStats *AlgorithmStats   `json:"algorithm_stats,omitempty"`
+
+	// Phase 0 git metadata (#2088). Populated at index time by
+	// internal/gitmeta.Capture. Empty/false for non-git repos or when the
+	// graph was loaded from an older graph.fb written before this field was
+	// added (FlatBuffers defaults to "" / false for missing fields).
+	IndexedRef string `json:"indexed_ref,omitempty"`
+	IndexedSHA string `json:"indexed_sha,omitempty"`
+	IsWorktree bool   `json:"is_worktree,omitempty"`
 }
 
 // Stats summarises a Document.

@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
@@ -79,6 +80,12 @@ type v2SettingsRepo struct {
 	Entities  int             `json:"entities"`
 	IndexedAt *int64          `json:"indexedAt"`
 	Monorepo  *v2MonorepoInfo `json:"monorepo"`
+
+	// Phase 0 git metadata (#2088). Omitted when the graph predates this
+	// feature or the repo is not a git repository.
+	IndexedRef string `json:"indexed_ref,omitempty"`
+	IndexedSHA string `json:"indexed_sha,omitempty"`
+	IsWorktree bool   `json:"is_worktree,omitempty"`
 }
 
 // v2MonorepoInfo matches the SettingsRepo.monorepo shape.
@@ -186,6 +193,8 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 			ms := idxAt.UnixMilli()
 			sr.IndexedAt = &ms
 		}
+		// Phase 0 git metadata (#2088). Read cheaply from graph.fb header.
+		sr.IndexedRef, sr.IndexedSHA, sr.IsWorktree = repoGitMeta(stateDir)
 		// Monorepo: if the repo has Modules, surface them as a stub MonorepoInfo.
 		if len(r.Modules) > 0 {
 			pkgs := make([]v2MonorepoPkg, 0, len(r.Modules))
@@ -231,6 +240,20 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 
 // repoStats reads graph-stats.json for a repo's state dir and returns
 // (files, entities, lastIndexed). Zero values on any read error.
+// repoGitMeta reads the Phase-0 git metadata from graph.fb cheaply using
+// fbreader (no entity/relationship decode). Returns zero values for non-git
+// repos or graphs written before #2088.
+func repoGitMeta(stateDir string) (ref, sha string, isWorktree bool) {
+	fbPath := filepath.Join(stateDir, "graph.fb")
+	r, err := fbreader.Open(fbPath)
+	if err != nil {
+		return "", "", false
+	}
+	defer r.Close()
+	meta := r.LoadGraphMeta()
+	return meta.IndexedRef, meta.IndexedSHA, meta.IsWorktree
+}
+
 func repoStats(stateDir string) (files, entities int, lastIndexed time.Time) {
 	type statsShape struct {
 		TotalEntities int       `json:"total_entities"`

@@ -43,6 +43,12 @@ type RepoStatus struct {
 	Files          int
 	LastIndexed    time.Time
 	LastIndexedAge string // formatted duration like "5m ago"
+
+	// Phase 0 git metadata (#2088). Empty when the graph predates this
+	// feature or was built from a non-git directory.
+	IndexedRef string // branch name, or "" for detached HEAD / non-git
+	IndexedSHA string // 12-char abbreviated commit hash, or ""
+	IsWorktree bool   // true when the repo was a linked git worktree at index time
 }
 
 // ComputeStatusSummary loads the per-repo graph-stats.json files and enrichment
@@ -106,6 +112,10 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			doc, err := graph.LoadGraphFromDir(stateDir)
 			if err == nil && doc != nil {
 				rs.Files = doc.Stats.Files
+				// Phase 0 git metadata (#2088).
+				rs.IndexedRef = doc.IndexedRef
+				rs.IndexedSHA = doc.IndexedSHA
+				rs.IsWorktree = doc.IsWorktree
 				for _, e := range doc.Entities {
 					// #1217: count all three http endpoint kind strings.
 					if e.Kind == "http_endpoint" || e.Kind == "http_endpoint_definition" || e.Kind == "http_endpoint_call" {
@@ -167,6 +177,23 @@ func formatTimeSince(t time.Time) string {
 	return fmt.Sprintf("%dd ago", d)
 }
 
+// formatGitRef builds the "@ main (abc12345)" suffix for a repo status line.
+// Returns "" when no SHA is available (pre-#2088 graph or non-git repo).
+func formatGitRef(ref, sha string, isWorktree bool) string {
+	if sha == "" {
+		return ""
+	}
+	label := ref
+	if label == "" {
+		label = "detached"
+	}
+	s := fmt.Sprintf(" @ %s (%s)", label, sha)
+	if isWorktree {
+		s += " [worktree]"
+	}
+	return s
+}
+
 // PrintStatusSummary writes the per-group and per-repo statistics to w.
 // The format includes per-repo statistics aligned in columns, followed by aggregated totals.
 func PrintStatusSummary(w io.Writer, s *StatusSummary) {
@@ -194,12 +221,14 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	// Print each repo on one line.
 	for _, slug := range slugs {
 		rs := s.RepoStats[slug]
-		fmt.Fprintf(w, "  %-*s  %5s files  %6s entities  %6s rels  indexed %s\n",
+		gitSuffix := formatGitRef(rs.IndexedRef, rs.IndexedSHA, rs.IsWorktree)
+		fmt.Fprintf(w, "  %-*s  %5s files  %6s entities  %6s rels  indexed %s%s\n",
 			maxSlugLen, slug,
 			fmtInt(rs.Files),
 			fmtInt(rs.Entities),
 			fmtInt(rs.Relationships),
-			rs.LastIndexedAge)
+			rs.LastIndexedAge,
+			gitSuffix)
 	}
 
 	// Print aggregated totals.

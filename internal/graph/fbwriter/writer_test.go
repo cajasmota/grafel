@@ -165,6 +165,60 @@ func TestRoundtripCommunityAttrs(t *testing.T) {
 	}
 }
 
+// TestRoundtripGitMeta verifies that Phase-0 git metadata (#2088) survives a
+// write→read cycle through graph.fb, and that an old graph written without
+// these fields reads back with the zero-value defaults (empty string / false).
+func TestRoundtripGitMeta(t *testing.T) {
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Date(2026, 5, 24, 0, 0, 0, 0, time.UTC),
+		Repo:        "fixture-gitmeta",
+		Entities:    []graph.Entity{{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "a.go"}},
+		// Phase 0 fields.
+		IndexedRef: "feat/my-feature",
+		IndexedSHA: "abc123def456",
+		IsWorktree: true,
+	}
+	doc.Stats.Entities = 1
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got.IndexedRef != "feat/my-feature" {
+		t.Errorf("IndexedRef: got %q want %q", got.IndexedRef, "feat/my-feature")
+	}
+	if got.IndexedSHA != "abc123def456" {
+		t.Errorf("IndexedSHA: got %q want %q", got.IndexedSHA, "abc123def456")
+	}
+	if !got.IsWorktree {
+		t.Error("IsWorktree: got false want true")
+	}
+
+	// Test zero-value defaults: write a doc WITHOUT git meta, verify "" / false.
+	docNoMeta := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Now().UTC(),
+		Repo:        "fixture-nometa",
+		Entities:    []graph.Entity{{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "a.go"}},
+	}
+	docNoMeta.Stats.Entities = 1
+	out2 := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out2, docNoMeta); err != nil {
+		t.Fatalf("write no-meta: %v", err)
+	}
+	got2, err := graph.LoadGraphFromDir(filepath.Dir(out2))
+	if err != nil {
+		t.Fatalf("load no-meta: %v", err)
+	}
+	if got2.IndexedRef != "" || got2.IndexedSHA != "" || got2.IsWorktree {
+		t.Errorf("zero-value defaults: ref=%q sha=%q wt=%v", got2.IndexedRef, got2.IndexedSHA, got2.IsWorktree)
+	}
+}
+
 // TestRoundtripNoAlgoData verifies a graph written with NO community data
 // (the --skip-pass=graph-algo case) reads back with zero communities, nil
 // AlgorithmStats, and un-annotated entities (#1620 — old-file compatibility).

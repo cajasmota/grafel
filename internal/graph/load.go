@@ -135,6 +135,11 @@ func loadFBDocument(path string) (*Document, error) {
 			Entities:      len(entities),
 			Relationships: len(rels),
 		},
+		// Phase 0 git metadata (#2088). Defaults to "" / false for graphs
+		// written before these fields were added.
+		IndexedRef: meta.IndexedRef,
+		IndexedSHA: meta.IndexedSHA,
+		IsWorktree: meta.IsWorktree,
 	}
 
 	// AlgorithmStats: only attach when the algo pass actually ran. We treat

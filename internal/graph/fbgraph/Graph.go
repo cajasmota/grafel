@@ -210,8 +210,36 @@ func (rcv *Graph) MutateDenoisedCommunities(n int32) bool {
 	return rcv._tab.MutateInt32Slot(26, n)
 }
 
+func (rcv *Graph) IndexedRef() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
+func (rcv *Graph) IndexedSha() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
+func (rcv *Graph) IsWorktree() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(32))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *Graph) MutateIsWorktree(n bool) bool {
+	return rcv._tab.MutateBoolSlot(32, n)
+}
+
 func GraphStart(builder *flatbuffers.Builder) {
-	builder.StartObject(12)
+	builder.StartObject(15)
 }
 func GraphAddVersion(builder *flatbuffers.Builder, version int32) {
 	builder.PrependInt32Slot(0, version, 2)
@@ -257,6 +285,15 @@ func GraphAddAlgoRuntimeMs(builder *flatbuffers.Builder, algoRuntimeMs int64) {
 }
 func GraphAddDenoisedCommunities(builder *flatbuffers.Builder, denoisedCommunities int32) {
 	builder.PrependInt32Slot(11, denoisedCommunities, 0)
+}
+func GraphAddIndexedRef(builder *flatbuffers.Builder, indexedRef flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(12, flatbuffers.UOffsetT(indexedRef), 0)
+}
+func GraphAddIndexedSha(builder *flatbuffers.Builder, indexedSha flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(13, flatbuffers.UOffsetT(indexedSha), 0)
+}
+func GraphAddIsWorktree(builder *flatbuffers.Builder, isWorktree bool) {
+	builder.PrependBoolSlot(14, isWorktree, false)
 }
 func GraphEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

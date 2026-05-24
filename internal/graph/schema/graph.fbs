@@ -85,6 +85,18 @@ table Graph {
   num_surprise_edges: int = 0;
   algo_runtime_ms: long = 0;
   denoised_communities: int = 0;
+
+  // Phase 0 git metadata (#2088). Appended after the Pass-4 aggregates so
+  // existing field IDs are unchanged and old graph.fb files read back with
+  // these defaulted to "" / false. All three fields are populated at index
+  // time by internal/gitmeta.Capture.
+  //
+  // indexed_ref   — branch name ("main", "feat/X") or "" for detached HEAD.
+  // indexed_sha   — 12-char abbreviated commit hash, or "" if not a git repo.
+  // is_worktree   — true when the repo is a linked git worktree.
+  indexed_ref: string;
+  indexed_sha: string;
+  is_worktree: bool = false;
 }
 
 root_type Graph;
