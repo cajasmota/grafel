@@ -619,6 +619,69 @@ func TestJest_E2EPath(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Cypress
+// ---------------------------------------------------------------------------
+
+func TestCypress_CyTsFileDetection(t *testing.T) {
+	src := `import { HomePage } from '../pages/HomePage'
+
+describe('Home page', () => {
+  it('loads successfully', () => {
+    cy.visit('/')
+    HomePage.assertTitle()
+  })
+})`
+	recs := runExtract(t, "cypress/e2e/login.cy.ts", "typescript", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected cypress entities")
+	}
+	if recs[0].Properties["test_framework"] != "cypress" {
+		t.Errorf("framework=%q, want cypress", recs[0].Properties["test_framework"])
+	}
+	if recs[0].Properties["test_type"] != "e2e" {
+		t.Errorf("test_type=%q, want e2e", recs[0].Properties["test_type"])
+	}
+}
+
+func TestCypress_DirectCallToProduction(t *testing.T) {
+	src := `import { getUser } from '../app/user';
+describe('User page', () => {
+  it('should load user data', () => {
+    const u = getUser(1);
+    cy.wrap(u).should('exist');
+  })
+})`
+	recs := runExtract(t, "cypress/e2e/user.cy.ts", "typescript", src)
+	found := false
+	for _, r := range recs {
+		if r.Properties["tested_function"] == "getUser" && r.Properties["confidence"] == "high" {
+			found = true
+			if r.Properties["test_framework"] != "cypress" {
+				t.Errorf("framework=%q, want cypress", r.Properties["test_framework"])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected getUser high-confidence entity from cypress test")
+	}
+}
+
+func TestCypress_CyGlobalNotATarget(t *testing.T) {
+	src := `describe('App', () => {
+  it('navigates', () => {
+    cy.visit('/');
+    cy.get('.button').click();
+  })
+})`
+	recs := runExtract(t, "cypress/e2e/app.cy.ts", "typescript", src)
+	for _, r := range recs {
+		if strings.HasPrefix(r.Properties["tested_function"], "cy.") {
+			t.Errorf("cy.* call should be filtered as stopword: %q", r.Properties["tested_function"])
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Playwright
 // ---------------------------------------------------------------------------
 

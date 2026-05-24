@@ -82,6 +82,8 @@ var stopwords = map[string]bool{
 	"jest.fn": true, "jest.mock": true, "jest.spyon": true,
 	"beforeeach": true, "aftereach": true, "beforeall": true, "afterall": true,
 	"it": true, "test": true, "describe": true,
+	// Cypress
+	"cy": true,
 	// JUnit
 	"assertions.assertequals": true, "assertequals": true,
 	"assertnull": true, "assertnotnull": true,
@@ -112,6 +114,10 @@ func isStopword(id string) bool {
 	// Any identifier that starts with "test" or "mock" is not a production
 	// call for mapping purposes.
 	if strings.HasPrefix(low, "test") || strings.HasPrefix(low, "mock") {
+		return true
+	}
+	// Cypress global object — cy.visit(), cy.get(), etc.
+	if strings.HasPrefix(low, "cy.") {
 		return true
 	}
 	// Anything that looks like an assertion on a method (`.should`, `.toBe`,

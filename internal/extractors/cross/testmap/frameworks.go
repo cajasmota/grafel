@@ -542,6 +542,16 @@ var frameworkOrder = []frameworkEntry{
 		detect: detectPytest,
 	},
 	{
+		name:        "cypress",
+		importHints: []string{"cypress", "cy.", "@cypress/"},
+		filenameHints: []*regexp.Regexp{
+			regexp.MustCompile(`\.cy\.(?:ts|tsx|js|jsx)$`),
+			regexp.MustCompile(`cypress/e2e/`),
+			regexp.MustCompile(`cypress/integration/`),
+		},
+		detect: detectJest,
+	},
+	{
 		name:        "playwright",
 		importHints: []string{"@playwright/test", "playwright"},
 		filenameHints: []*regexp.Regexp{
