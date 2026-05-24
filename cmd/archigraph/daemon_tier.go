@@ -2,8 +2,8 @@ package main
 
 // daemon_tier.go wires the tiered hibernation state machine (PH2 of epic
 // #2087 / issue #2090, extended by PH3 #2091, PH2a #2096, PH6 #2094,
-// S1 #2151, P0.3 #2141), and the watcher pause/resume integration into
-// the daemon process.
+// S1 #2151, P0.3 #2141, M2 #2179), and the watcher pause/resume integration
+// into the daemon process.
 //
 // Process-global daemonTierMgr tracks HOT/WARM/COLD/EXPIRED state for every
 // indexed (repoPath, ref) pair.  Integrations:
@@ -17,6 +17,14 @@ package main
 //     graph.fb, so idle RSS at startup with 5 registered groups is <100 MB.
 //     The first MCP query on a cold group triggers Touch → cold-wake.
 //
+//   - M2 (#2179) lazy fsnotify subscription: the daemon boots with ZERO
+//     fsnotify subscriptions. onWatcherReady does NOT eagerly subscribe any
+//     repos. The first MCP query for a group triggers SubscribeGroupWatcher
+//     which calls watch.DefaultManager.SubscribeGroup → watcher.AddRepo.
+//     The tier WARM→COLD path already calls wh.Pause → watcher.RemoveRepo,
+//     making the idle-unsubscribe half automatic. Re-query after idle pause
+//     calls wh.Resume → watcher.AddRepo (lazy re-subscribe).
+//
 //   - MCP graph-cache AccessHook: wired in startDaemonTierManager; every
 //     GetForRepoRef call updates lastAccessedAt via tierTouchRepoRef so
 //     actively-queried graphs don't get prematurely evicted.
@@ -27,7 +35,8 @@ package main
 //
 //   - Cold wake (COLD→HOT): the reload callback re-mmap's graph.fb by
 //     calling daemonMCPCache.Get; the dashboard cache reloads lazily on the
-//     next HTTP request. PH2a: watcher subscription is resumed before reload.
+//     next HTTP request. PH2a/M2: watcher subscription is resumed before
+//     reload (Resume lazily calls AddRepo if refCount was 0).
 //
 //   - Disk eviction (COLD→EXPIRED, PH6): tierDiskEvictCallback deletes the
 //     refs/<ref>/ sub-directory for the expired slot and logs freed bytes.
@@ -160,28 +169,50 @@ func registerKnownGroupsCold(logger *log.Logger) {
 	}
 }
 
-// onWatcherReady is called by daemon.Run once the fsnotify watcher is up and
-// all repos have been subscribed. It creates the DefaultManager, wires it
-// into the tier state machine, and registers all already-subscribed repos so
-// reference counts are correct from the start.
+// onWatcherReady is called by daemon.Run once the fsnotify watcher is up.
+// It creates the DefaultManager and wires it into the tier state machine.
 //
-// PH2a (#2096): daemon startup policy — all slots start active (no pausing at
-// boot). The watcher subscription stays alive until the first WARM→COLD tick.
+// M2 (#2179): unlike the PH2a boot policy, onWatcherReady does NOT eagerly
+// register repos or call AddRepo. The daemon boots with ZERO fsnotify
+// subscriptions. The first MCP query for a group calls SubscribeGroupWatcher
+// which lazily subscribes that group's repos. This means the watcher manager
+// starts with an empty slots map and a zero subscription count.
 func onWatcherReady(w *watch.Watcher, logger *log.Logger) {
 	mgr := watch.NewDefaultManager(w, logger)
 	daemonWatcherMgr = mgr
 
-	// Register every currently-watched repo with the "unknown" sentinel ref
-	// so the ref-count accounting starts at 1-per-repo. Real per-ref slots
-	// are added by tierAfterIndex as index passes complete.
-	for _, repoPath := range w.Repos() {
-		mgr.Register(repoPath, "")
-	}
+	// M2: do NOT register or subscribe any repos here. The watcher is created
+	// idle. Repos are subscribed on-demand by SubscribeGroupWatcher (called on
+	// first MCP query per group) or by the Resume path on COLD→HOT transitions.
 
 	if daemonTierMgr != nil {
 		daemonTierMgr.SetWatcherHook(mgr)
-		logger.Printf("tier: watcher pause/resume hook wired (PH2a)")
+		logger.Printf("tier: watcher pause/resume hook wired (M2 lazy-subscribe — 0 subscriptions at boot)")
 	}
+}
+
+// SubscribeGroupWatcher lazily subscribes the fsnotify watcher for all repos
+// in a named group. This is the M2 entry point called on the first MCP query
+// that touches a group. It is idempotent: re-calling for an already-subscribed
+// group is a no-op (refCounts prevent double-subscription).
+//
+// groupName is the registry group name (e.g. "myapp").
+// repoPaths is the list of absolute repo paths in the group.
+//
+// Returns the total number of directories added to fsnotify.
+func SubscribeGroupWatcher(groupName string, repoPaths []string) int {
+	if daemonWatcherMgr == nil {
+		return 0
+	}
+	n := daemonWatcherMgr.SubscribeGroup(groupName, repoPaths)
+	if n > 0 {
+		// Also register each repo/ref slot so Pause/Resume reference counts are
+		// accurate. Use the sentinel ref "" so the accounting is per-repo.
+		for _, rp := range repoPaths {
+			daemonWatcherMgr.Register(rp, "")
+		}
+	}
+	return n
 }
 
 // tierAfterIndex is called after every successful index pass to register
@@ -189,6 +220,12 @@ func onWatcherReady(w *watch.Watcher, logger *log.Logger) {
 // PH3 (#2091): slots are now annotated with SlotKind so the tier manager can
 // apply the correct TTL policy.  Worktree slots are registered separately via
 // tierAfterIndexWorktree.
+//
+// M2 (#2179): after a fresh index we also ensure the repo's fsnotify
+// subscription is active so future file-change events are captured. We call
+// Resume rather than Register so that the lazy-subscribe logic in
+// DefaultManager.Resume triggers watcher.AddRepo if the repo was not yet
+// subscribed (first index ever) or was previously unsubscribed (idle eviction).
 func tierAfterIndex(repoPath, ref string) {
 	if daemonTierMgr == nil {
 		return
@@ -200,10 +237,11 @@ func tierAfterIndex(repoPath, ref string) {
 	}
 	daemonTierMgr.Register(tier.SlotKey{RepoPath: repoPath, Ref: ref}, isPinned, kind)
 
-	// PH2a (#2096): ensure the watcher manager also has an entry for this
-	// (repoPath, ref) so reference counts are accurate for future Pause calls.
+	// M2 (#2179): use Resume instead of Register so the watcher subscription is
+	// established (or re-established) on the first index. Resume is idempotent
+	// when the slot is already active.
 	if daemonWatcherMgr != nil {
-		daemonWatcherMgr.Register(repoPath, ref)
+		daemonWatcherMgr.Resume(repoPath, ref)
 	}
 }
 
@@ -216,10 +254,10 @@ func tierAfterIndexWorktree(repoPath, ref string) {
 	}
 	daemonTierMgr.Register(tier.SlotKey{RepoPath: repoPath, Ref: ref}, false, tier.SlotKindWorktree)
 
-	// PH2a (#2096): ensure the watcher manager also has an entry for this
-	// worktree (repoPath, ref) so reference counts are accurate for future Pause calls.
+	// M2 (#2179): use Resume to lazily subscribe the watcher (same reasoning as
+	// tierAfterIndex above).
 	if daemonWatcherMgr != nil {
-		daemonWatcherMgr.Register(repoPath, ref)
+		daemonWatcherMgr.Resume(repoPath, ref)
 	}
 }
 

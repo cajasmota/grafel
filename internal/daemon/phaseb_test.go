@@ -180,7 +180,13 @@ func TestPhaseB_RapidWritesCoalesce(t *testing.T) {
 }
 
 // TestPhaseB_StatusRPCReflectsWatcher dials the daemon and verifies
-// the Status reply includes the watcher count after AddRepo runs.
+// the Status reply shows zero watcher repos immediately after boot.
+//
+// M2 (#2179): the daemon now boots with ZERO fsnotify subscriptions. Repos
+// are subscribed lazily on the first MCP query for their group. The watcher
+// is created (watcher!=nil) but AddRepo is never called at boot, so
+// WatcherRepos must be 0 and WatcherDirs must be 0 when the Status RPC is
+// called immediately after daemon startup.
 func TestPhaseB_StatusRPCReflectsWatcher(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
@@ -212,7 +218,13 @@ func TestPhaseB_StatusRPCReflectsWatcher(t *testing.T) {
 	if err != nil {
 		t.Fatalf("status: %v", err)
 	}
-	if st.WatcherRepos != 1 {
-		t.Errorf("expected WatcherRepos=1, got %d (Dirs=%d)", st.WatcherRepos, st.WatcherDirs)
+	// M2: at boot, no repos are subscribed to fsnotify (lazy subscription).
+	// WatcherRepos == 0 is the expected idle-boot state.
+	if st.WatcherRepos != 0 {
+		t.Errorf("M2: expected WatcherRepos=0 at boot (lazy-subscribe), got %d (Dirs=%d)",
+			st.WatcherRepos, st.WatcherDirs)
+	}
+	if st.WatcherDirs != 0 {
+		t.Errorf("M2: expected WatcherDirs=0 at boot, got %d", st.WatcherDirs)
 	}
 }

@@ -280,27 +280,32 @@ func Run(ctx context.Context, cfg Config) error {
 			headPoller.Start()
 			defer headPoller.Stop()
 
-			// #1456: subscribe repos OFF the critical boot path.
+			// M2 (#2179): lazy fsnotify subscription — do NOT call watcher.AddRepo
+			// at boot. The daemon starts with zero fsnotify subscriptions. Repos
+			// are subscribed on the first MCP query for their group (via
+			// SubscribeGroupWatcher → watch.DefaultManager.SubscribeGroup →
+			// watcher.AddRepo). This eliminates per-repo directory-tree walks at
+			// startup, saving ~O(dirs×groups) inotify watch descriptors on idle daemons.
+			//
+			// We still call ReposToWatch (exactly once) to:
+			//   (a) register repos with the HEAD poller (branch-switch detection; no fd cost)
+			//   (b) run the case-collision store audit (#2086)
+			// Both happen off the critical boot path in a goroutine, same as before.
 			if cfg.ReposToWatch != nil {
 				capturedStore := StoreDir()
 				go func() {
 					t0 := time.Now()
 					repos := cfg.ReposToWatch()
 					for _, r := range repos {
-						if _, err := watcher.AddRepo(r); err != nil {
-							logger.Printf("watcher: add repo %s: %v", r, err)
-						}
-						// Also register with the HEAD poller so branch
-						// switches in every watched repo are detected.
+						// M2: skip watcher.AddRepo here — subscriptions are lazy.
+						// Register with the HEAD poller only (reads .git/HEAD; no
+						// fsnotify watch descriptors consumed).
 						headPoller.AddRepo(r)
 					}
-					logger.Printf("watcher: subscription complete repos=%d took=%s",
+					logger.Printf("watcher: boot-path repos=%d registered with HEAD poller (fsnotify lazy — 0 AddRepo calls) took=%s",
 						len(repos), time.Since(t0).Truncate(time.Millisecond))
 
-					// #2086: now that we have the full repo list, check for
-					// case-collision store dirs produced before canonicalizePath
-					// was introduced. Run here (inside the watcher goroutine)
-					// so ReposToWatch is called exactly once.
+					// #2086: case-collision audit — unchanged.
 					if capturedStore != "" {
 						if dups := WarnCaseCollisions(capturedStore, repos); len(dups) > 0 {
 							for _, pair := range dups {

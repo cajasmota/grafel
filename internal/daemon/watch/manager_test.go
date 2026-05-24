@@ -23,30 +23,44 @@ func newNopWatcher(t *testing.T) *Watcher {
 
 // TestManagerPauseResume verifies the basic Pause/Resume lifecycle.
 // Uses a real tmp directory so AddRepo can walk real paths.
+//
+// M2 semantics: Register declares a slot as paused (not subscribed). A
+// subsequent Resume or SubscribeGroup call activates the fsnotify subscription.
 func TestManagerPauseResume(t *testing.T) {
 	w := newNopWatcher(t)
 	m := NewDefaultManager(w, nil)
 
 	dir := t.TempDir()
 
-	// Register and verify active.
+	// M2: Register declares the slot as paused (not subscribed at boot).
 	m.Register(dir, "main")
+	if !m.IsPaused(dir, "main") {
+		t.Fatal("M2: want paused after Register (no eager subscribe at boot)")
+	}
+	if m.ActiveCount() != 0 {
+		t.Fatalf("M2: want ActiveCount=0 after Register, got %d", m.ActiveCount())
+	}
+	if m.PausedCount() != 1 {
+		t.Fatalf("M2: want PausedCount=1 after Register, got %d", m.PausedCount())
+	}
+
+	// Activate via Resume (simulates first MCP query / cold-wake).
+	// Resume lazily calls AddRepo since refCount was 0.
+	elapsed := m.Resume(dir, "main")
 	if m.IsPaused(dir, "main") {
-		t.Fatal("want not paused after Register")
+		t.Fatal("want not paused after Resume")
 	}
 	if m.ActiveCount() != 1 {
-		t.Fatalf("want ActiveCount=1, got %d", m.ActiveCount())
+		t.Fatalf("want ActiveCount=1 after Resume, got %d", m.ActiveCount())
 	}
 	if m.PausedCount() != 0 {
-		t.Fatalf("want PausedCount=0, got %d", m.PausedCount())
+		t.Fatalf("want PausedCount=0 after Resume, got %d", m.PausedCount())
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("resume took unexpectedly long: %s", elapsed)
 	}
 
-	// First add the repo so Pause will remove a real subscription.
-	if _, err := w.AddRepo(dir); err != nil {
-		t.Fatalf("AddRepo: %v", err)
-	}
-
-	// Pause.
+	// Pause — removes fsnotify subscription (idle eviction).
 	m.Pause(dir, "main")
 	if !m.IsPaused(dir, "main") {
 		t.Fatal("want paused after Pause")
@@ -64,16 +78,10 @@ func TestManagerPauseResume(t *testing.T) {
 		t.Fatal("double-pause must be idempotent")
 	}
 
-	// Resume.
-	elapsed := m.Resume(dir, "main")
-	if m.IsPaused(dir, "main") {
-		t.Fatal("want not paused after Resume")
-	}
+	// Resume again — re-subscribes.
+	m.Resume(dir, "main")
 	if m.ActiveCount() != 1 {
-		t.Fatalf("want ActiveCount=1 after resume, got %d", m.ActiveCount())
-	}
-	if elapsed > 2*time.Second {
-		t.Errorf("resume took unexpectedly long: %s", elapsed)
+		t.Fatalf("want ActiveCount=1 after second Resume, got %d", m.ActiveCount())
 	}
 
 	// Resume again — idempotent.
@@ -85,23 +93,27 @@ func TestManagerPauseResume(t *testing.T) {
 
 // TestManagerMultiRefRefcount verifies that the fsnotify subscription stays
 // alive while at least one ref is active.
+//
+// M2 semantics: Register declares slots as paused. Resume activates them and
+// creates the fsnotify subscription. RefCount tracks active refs; the
+// subscription is removed only when all refs are paused.
 func TestManagerMultiRefRefcount(t *testing.T) {
 	w := newNopWatcher(t)
 	m := NewDefaultManager(w, nil)
 
 	dir := t.TempDir()
-	if _, err := w.AddRepo(dir); err != nil {
-		t.Fatalf("AddRepo: %v", err)
-	}
 
-	// Register two refs.
+	// M2: Register two refs (declares slots, no subscribe).
 	m.Register(dir, "main")
 	m.Register(dir, "feat/x")
 
-	// Pause one — repo should still be subscribed.
+	// Activate both refs via Resume (simulates first query / cold-wake).
+	// The first Resume triggers AddRepo; the second finds refCount > 0 and skips.
+	m.Resume(dir, "main")
+	m.Resume(dir, "feat/x")
+
+	// Pause one — repo should still be subscribed (feat/x still active).
 	m.Pause(dir, "main")
-	// The repo is still active because feat/x is active.
-	// We can verify indirectly: watcher should still list the repo.
 	repos := w.Repos()
 	found := false
 	for _, r := range repos {
