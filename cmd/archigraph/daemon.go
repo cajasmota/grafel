@@ -229,6 +229,11 @@ func runDaemon(argv []string) error {
 	}
 
 	ctx := context.Background()
+
+	// PH2 (#2090): start the tiered hibernation state machine before the daemon
+	// begins serving requests. The scanner goroutine runs until ctx is cancelled.
+	startDaemonTierManager(ctx, logger)
+
 	return daemon.Run(ctx, cfg)
 }
 
@@ -313,6 +318,8 @@ func daemonSchedulerIndex(_ context.Context, repoPath string, ref string) error 
 	// freshly written graph.fb. Done on both success and failure paths
 	// — a stale handle is worse than a cold miss.
 	invalidateAfterIndex(repoPath)
+	// PH2 (#2090): register / re-activate the tier slot as HOT after index.
+	tierAfterIndex(repoPath, ref)
 	return err
 }
 
@@ -335,6 +342,10 @@ func daemonSchedulerAlgo(_ context.Context, repoPath string) error {
 	// config slug (e.g. upvate_core vs upvate-core), dropping cross-repo edges.
 	err := Index(repoPath, "", configSlugForPath(repoPath), nil, false, false)
 	invalidateAfterIndex(repoPath)
+	// PH2 (#2090): re-activate the tier slot as HOT. ref="" here — the algo
+	// pass runs after the fast-index which already registered the slot; this
+	// just refreshes lastAccessedAt.
+	tierAfterIndex(repoPath, "")
 	return err
 }
 
@@ -867,6 +878,12 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 		// Wire the recall runner so POST /api/quality/recall can run the
 		// in-process indexer against golden fixtures (#1198).
 		srv.SetRecallRunner(daemonRecallFunc)
+
+		// PH2 (#2090): wire the tier manager into the dashboard so that
+		// GET /api/v2/groups/:g/refs returns real HOT/WARM/COLD status.
+		if daemonTierMgr != nil {
+			srv.SetTierQuerier(daemonTierMgr)
+		}
 
 		// Wire the enrichment job queue (#1244). Jobs persist to
 		// ~/.archigraph/jobs.jsonl so history survives daemon restarts.

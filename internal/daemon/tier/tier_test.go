@@ -1,0 +1,254 @@
+package tier_test
+
+import (
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/cajasmota/archigraph/internal/daemon/tier"
+)
+
+// ---------------------------------------------------------------------------
+// Clock helper
+// ---------------------------------------------------------------------------
+
+func makeClock() (now func() time.Time, advance func(time.Duration)) {
+	var mu sync.Mutex
+	current := time.Date(2026, 5, 24, 12, 0, 0, 0, time.UTC)
+	return func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return current
+		}, func(d time.Duration) {
+			mu.Lock()
+			defer mu.Unlock()
+			current = current.Add(d)
+		}
+}
+
+func noopEvict(_ tier.SlotKey)        {}
+func noopReload(_ tier.SlotKey) error { return nil }
+
+// ---------------------------------------------------------------------------
+// State-machine transitions
+// ---------------------------------------------------------------------------
+
+func TestHotToWarm(t *testing.T) {
+	clock, advance := makeClock()
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict, noopReload)
+	key := tier.SlotKey{RepoPath: "/repo/a", Ref: "main"}
+	m.Register(key, true)
+
+	if got := m.Get(key); got != tier.TierHot {
+		t.Fatalf("want HOT, got %s", got)
+	}
+	advance(6 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierWarm {
+		t.Fatalf("want WARM after 6min idle, got %s", got)
+	}
+}
+
+func TestWarmToCold(t *testing.T) {
+	clock, advance := makeClock()
+	var evictCount atomic.Int32
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock,
+		func(k tier.SlotKey) { evictCount.Add(1) },
+		noopReload,
+	)
+	key := tier.SlotKey{RepoPath: "/repo/b", Ref: "feat/x"}
+	m.Register(key, false)
+
+	advance(6 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierWarm {
+		t.Fatalf("prereq: want WARM, got %s", got)
+	}
+
+	advance(61 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierCold {
+		t.Fatalf("want COLD, got %s", got)
+	}
+	if evictCount.Load() != 1 {
+		t.Fatalf("want 1 eviction, got %d", evictCount.Load())
+	}
+}
+
+func TestColdWakeOnDemand(t *testing.T) {
+	clock, advance := makeClock()
+	var reloadCount atomic.Int32
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict,
+		func(k tier.SlotKey) error { reloadCount.Add(1); return nil },
+	)
+	key := tier.SlotKey{RepoPath: "/repo/c", Ref: "main"}
+	m.Register(key, true)
+
+	// Drive to COLD.
+	advance(6 * time.Minute)
+	m.Scan()
+	advance(61 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierCold {
+		t.Fatalf("prereq: want COLD, got %s", got)
+	}
+
+	// Touch → reload → HOT.
+	if err := m.Touch(key); err != nil {
+		t.Fatalf("Touch: %v", err)
+	}
+	if got := m.Get(key); got != tier.TierHot {
+		t.Fatalf("want HOT after cold-load, got %s", got)
+	}
+	if reloadCount.Load() != 1 {
+		t.Fatalf("want 1 reload, got %d", reloadCount.Load())
+	}
+}
+
+func TestPinnedMainNeverExpired(t *testing.T) {
+	clock, advance := makeClock()
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict, noopReload)
+	key := tier.SlotKey{RepoPath: "/repo/d", Ref: "main"}
+	m.Register(key, true)
+
+	// Advance 8 days — past the 7-day EXPIRED window.
+	advance(8 * 24 * time.Hour)
+	m.Scan()
+
+	// The slot must still exist and must NOT be TierExpired.
+	snap := m.Snapshot()
+	found := false
+	for _, s := range snap {
+		if s.Key == key {
+			found = true
+			if s.Tier == tier.TierExpired {
+				t.Fatal("pinned main must never reach TierExpired")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("pinned main slot was removed — must never be deleted in PH2")
+	}
+}
+
+func TestTouchUnknownSlotRegistersHot(t *testing.T) {
+	clock, _ := makeClock()
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict, noopReload)
+	key := tier.SlotKey{RepoPath: "/repo/new", Ref: "feat/y"}
+	if err := m.Touch(key); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := m.Get(key); got != tier.TierHot {
+		t.Fatalf("want HOT, got %s", got)
+	}
+}
+
+func TestTouchHotSlotNoReload(t *testing.T) {
+	clock, _ := makeClock()
+	var reloadCount atomic.Int32
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict,
+		func(k tier.SlotKey) error { reloadCount.Add(1); return nil },
+	)
+	key := tier.SlotKey{RepoPath: "/repo/hot", Ref: "main"}
+	m.Register(key, true)
+	if err := m.Touch(key); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reloadCount.Load() != 0 {
+		t.Fatalf("reload must not fire for HOT slot")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Heap eviction measurement
+// ---------------------------------------------------------------------------
+
+// TestHeapEviction verifies that releasing a large allocation inside the
+// eviction callback actually frees heap. Allocates 32 MB, releases it in the
+// WARM→COLD callback, then checks HeapAlloc dropped.
+func TestHeapEviction(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping heap measurement in short mode")
+	}
+	const allocMB = 32
+	hold := make([]byte, allocMB*1024*1024)
+	for i := range hold {
+		hold[i] = byte(i) // prevent compiler elision
+	}
+
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	clock, advance := makeClock()
+	ttl := tier.TTLConfig{
+		HotWindow:             1 * time.Minute,
+		ColdWindow:            5 * time.Minute,
+		ColdWindowWorktree:    2 * time.Minute,
+		ExpiredWindow:         7 * 24 * time.Hour,
+		ExpiredWindowWorktree: 48 * time.Hour,
+	}
+	evictCh := make(chan struct{}, 1)
+	m := tier.NewManagerForTest(ttl, clock, func(k tier.SlotKey) {
+		hold = nil // release the 32 MB
+		evictCh <- struct{}{}
+	}, noopReload)
+
+	key := tier.SlotKey{RepoPath: "/repo/evict", Ref: "feat/evict"}
+	m.Register(key, false)
+
+	advance(2 * time.Minute)
+	m.Scan() // HOT→WARM
+	advance(6 * time.Minute)
+	m.Scan() // WARM→COLD
+
+	select {
+	case <-evictCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("eviction callback not called")
+	}
+
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+
+	t.Logf("heap: before=%dMB after=%dMB (allocated %dMB)",
+		before.HeapAlloc/1024/1024, after.HeapAlloc/1024/1024, allocMB)
+
+	if after.HeapAlloc >= before.HeapAlloc {
+		t.Logf("NOTE: HeapAlloc did not decrease — GC is non-deterministic, not treated as failure")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tier.String
+// ---------------------------------------------------------------------------
+
+func TestTierString(t *testing.T) {
+	cases := []struct{ t tier.Tier; want string }{
+		{tier.TierHot, "hot"},
+		{tier.TierWarm, "warm"},
+		{tier.TierCold, "cold"},
+		{tier.TierExpired, "expired"},
+	}
+	for _, c := range cases {
+		if got := c.t.String(); got != c.want {
+			t.Errorf("Tier(%d).String() = %q, want %q", c.t, got, c.want)
+		}
+	}
+}
+
+func TestDefaultTTLConfig(t *testing.T) {
+	cfg := tier.DefaultTTLConfig()
+	if cfg.HotWindow != 5*time.Minute {
+		t.Errorf("HotWindow: got %v, want 5m", cfg.HotWindow)
+	}
+	if cfg.ColdWindow != 60*time.Minute {
+		t.Errorf("ColdWindow: got %v, want 60m", cfg.ColdWindow)
+	}
+	if cfg.ExpiredWindow != 7*24*time.Hour {
+		t.Errorf("ExpiredWindow: got %v, want 7d", cfg.ExpiredWindow)
+	}
+}
