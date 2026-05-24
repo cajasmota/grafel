@@ -174,3 +174,42 @@ func TestCacheClosedRejects(t *testing.T) {
 		t.Fatalf("expected ErrCacheClosed, got %v", err)
 	}
 }
+
+// TestGetForRepoRef_UnknownRefRefused verifies that GetForRepoRef returns
+// ErrUnknownRef when the resolved state-dir falls under refs/_unknown/ (#2141
+// root-cause D). The _unknown artifact should stay on disk but never be loaded
+// into heap through the ref-aware entry point.
+func TestGetForRepoRef_UnknownRefRefused(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_HOME", t.TempDir())
+	// Calling with ref="" causes StateDirForRepoRef to return …/refs/_unknown/
+	c := NewCache(4)
+	defer c.Close()
+
+	_, _, err := c.GetForRepoRef("/some/repo", "")
+	if err != ErrUnknownRef {
+		t.Fatalf("GetForRepoRef with empty ref: want ErrUnknownRef, got %v", err)
+	}
+}
+
+// TestGetForRepoRef_KnownRefLoads verifies that GetForRepoRef with a known ref
+// proceeds to the normal Get path (returns ErrCacheMiss / open error rather
+// than ErrUnknownRef). This ensures the guard does not block legitimate refs.
+func TestGetForRepoRef_KnownRefLoads(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_HOME", t.TempDir())
+	c := NewCache(4)
+	defer c.Close()
+
+	_, _, err := c.GetForRepoRef("/some/repo", "main")
+	// We expect either a stat/open error (file doesn't exist in the temp store)
+	// but NOT ErrUnknownRef and NOT ErrCacheClosed.
+	if err == ErrUnknownRef {
+		t.Fatalf("GetForRepoRef with ref=main must not return ErrUnknownRef")
+	}
+	if err == ErrCacheClosed {
+		t.Fatalf("GetForRepoRef with ref=main must not return ErrCacheClosed")
+	}
+	// An open/stat error is expected since the file doesn't exist.
+	if err == nil {
+		t.Fatalf("GetForRepoRef with non-existent path should return an error")
+	}
+}

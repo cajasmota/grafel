@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -35,6 +36,20 @@ const DefaultCapacity = 10
 
 // ErrCacheClosed is returned by Get / Invalidate after Close.
 var ErrCacheClosed = errors.New("graph cache: closed")
+
+// ErrUnknownRef is returned by GetForRepoRef when the resolved path
+// falls under the refs/_unknown/ sentinel directory. Callers should
+// treat this as "no graph available for this ref" rather than an error
+// worth logging loudly. Loading _unknown graphs eagerly at startup was
+// identified as root-cause D in #2141: the stale pre-PH1b artifact
+// consumes heap while the live ref's graph is also resident, doubling
+// the effective working set. By refusing to auto-load _unknown paths,
+// callers are forced to resolve the real HEAD ref before querying.
+//
+// _unknown paths can still be loaded via the direct Get(path) call if
+// a caller knows exactly what it wants; this guard only applies to the
+// ref-aware entry point.
+var ErrUnknownRef = errors.New("graph cache: refusing to load refs/_unknown sentinel")
 
 // Entry holds one open mmap handle plus the mtime captured when it was
 // opened. The mtime lets the daemon detect stale handles after an
@@ -219,12 +234,28 @@ open:
 // are unchanged. When ref is "" the resolved path is
 // refs/_unknown/graph.fb — same sentinel as StateDirForRepo.
 //
+// Fix #2141 root-cause D: when the resolved path falls under
+// refs/_unknown/, GetForRepoRef returns ErrUnknownRef without touching
+// the cache. This prevents the stale pre-PH1b sentinel artifact from
+// being loaded into heap while a valid per-ref graph is already resident
+// (which would double steady-state RSS). Callers should resolve the
+// real HEAD ref before calling and fall back to re-indexing on ErrUnknownRef.
+// On-demand load via Get(path) still works for callers that know what they
+// want; only the ref-aware entry point refuses to load _unknown paths.
+//
 // PH2 (#2090): fires the AccessHook (if set) with (repoPath, ref) so the
 // tier manager can update lastAccessedAt for idle-TTL tracking.
 //
 // Returns (nil, noop, ErrCacheClosed) when the cache has been closed.
+// Returns (nil, noop, ErrUnknownRef) when ref resolves to refs/_unknown/.
 func (c *Cache) GetForRepoRef(repoPath, ref string) (*fbreader.Reader, func(), error) {
 	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
+	// Refuse to eagerly load the _unknown sentinel into heap (#2141 root-cause D).
+	// The sentinel dir is created for repos indexed before PH1b; its graph.fb is
+	// stale once a real-ref graph exists. Callers must resolve HEAD before calling.
+	if strings.Contains(filepath.ToSlash(stateDir), "/refs/_unknown") {
+		return nil, func() {}, ErrUnknownRef
+	}
 	fbPath := filepath.Join(stateDir, "graph.fb")
 	r, release, err := c.Get(fbPath)
 	if err == nil {

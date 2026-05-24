@@ -3,6 +3,7 @@ package sched
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -162,5 +163,158 @@ func TestIndexErrorRecorded(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected snapshot to record error for /x, got %+v", snap.IndexedRepos)
+	}
+}
+
+// TestPerRepoIndexerMutex verifies that 10 simultaneous enqueues for the same
+// repo collapse to at most 1 active + 1 pending indexer goroutine (#2141
+// root-cause C / #2140 hyp-3). This is the per-repo dedup invariant.
+func TestPerRepoIndexerMutex(t *testing.T) {
+	var calls atomic.Int32
+	gate := make(chan struct{})
+	started := make(chan struct{}, 1)
+
+	s := New(Config{
+		Workers: 10, // unlimited workers so all enqueues are eligible
+		Index: func(_ context.Context, _ string, _ string) error {
+			if calls.Add(1) == 1 {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+			}
+			<-gate
+			return nil
+		},
+	})
+	s.Start()
+	defer s.Stop()
+
+	// Wait until the first index is in-flight, then flood with enqueues.
+	s.Enqueue("/same")
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first enqueue never started")
+	}
+
+	// Send 9 more enqueues for the same repo while the first is blocked.
+	for i := 0; i < 9; i++ {
+		s.Enqueue("/same")
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	// Release the gate and let all deduped enqueues drain.
+	close(gate)
+	time.Sleep(300 * time.Millisecond)
+
+	// At most 2: the original in-flight + one dedup'd pending. The other
+	// 8 enqueues must have been collapsed by the pending-dedup logic.
+	if got := calls.Load(); got > 2 {
+		t.Errorf("per-repo dedup violated: %d index calls for same repo (want ≤ 2)", got)
+	}
+}
+
+// TestAlgoCapLimitsConcurrency verifies that at most AlgoCap algorithm passes
+// run simultaneously. We use 10 repos and cap at 2 — the concurrently-active
+// count must never exceed 2.
+func TestAlgoCapLimitsConcurrency(t *testing.T) {
+	const numRepos = 10
+	const cap = 2
+
+	var (
+		mu            sync.Mutex
+		activeAlgo    int
+		maxActiveAlgo int
+	)
+
+	// Gate channel: algo passes block until the test releases them.
+	gate := make(chan struct{})
+	// Count down: when all algo passes have started, close startedAll.
+	startedAll := make(chan struct{})
+	var started atomic.Int32
+
+	s := New(Config{
+		Workers:      numRepos, // allow all indexers to run in parallel
+		AlgoDebounce: 10 * time.Millisecond,
+		AlgoCap:      cap,
+		Index: func(_ context.Context, _ string, _ string) error {
+			return nil
+		},
+		Algorithms: func(ctx context.Context, _ string) error {
+			mu.Lock()
+			activeAlgo++
+			if activeAlgo > maxActiveAlgo {
+				maxActiveAlgo = activeAlgo
+			}
+			mu.Unlock()
+
+			if started.Add(1) == numRepos {
+				close(startedAll)
+			}
+
+			// Block until the gate opens or the context is cancelled.
+			select {
+			case <-gate:
+			case <-ctx.Done():
+			}
+
+			mu.Lock()
+			activeAlgo--
+			mu.Unlock()
+			return nil
+		},
+	})
+	s.Start()
+	defer s.Stop()
+
+	repos := []string{
+		"/repo1", "/repo2", "/repo3", "/repo4", "/repo5",
+		"/repo6", "/repo7", "/repo8", "/repo9", "/repo10",
+	}
+	for _, r := range repos {
+		s.Enqueue(r)
+	}
+
+	// Wait for all algo passes to at least begin, with a generous timeout.
+	select {
+	case <-startedAll:
+	case <-time.After(5 * time.Second):
+		// Not all passes started within timeout — still check the cap.
+	}
+
+	mu.Lock()
+	got := maxActiveAlgo
+	mu.Unlock()
+
+	// Release the gate so the scheduler can drain.
+	close(gate)
+
+	if got > cap {
+		t.Errorf("algo cap violated: max concurrent algo passes = %d, want ≤ %d", got, cap)
+	}
+	if got < 1 {
+		t.Errorf("no algo passes ran; test may be misconfigured")
+	}
+}
+
+// TestResolveAlgoCap verifies the auto-tune formula.
+func TestResolveAlgoCap(t *testing.T) {
+	// Explicit cap: use as-is.
+	if got := resolveAlgoCap(4); got != 4 {
+		t.Errorf("resolveAlgoCap(4) = %d, want 4", got)
+	}
+	if got := resolveAlgoCap(1); got != 1 {
+		t.Errorf("resolveAlgoCap(1) = %d, want 1", got)
+	}
+
+	// Auto-tune: floor at 2.
+	auto := resolveAlgoCap(0)
+	expected := runtime.NumCPU() / 2
+	if expected < 2 {
+		expected = 2
+	}
+	if auto != expected {
+		t.Errorf("resolveAlgoCap(0) = %d, want %d (NumCPU=%d)", auto, expected, runtime.NumCPU())
 	}
 }

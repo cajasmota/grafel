@@ -37,9 +37,12 @@ package sched
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -110,6 +113,16 @@ type Config struct {
 	// not when the debounced job eventually runs. When nil, ref is always
 	// captured as "" (which callers should treat as "unknown / use HEAD").
 	RefCapture RefCaptureFn
+
+	// AlgoCap limits how many per-repo algorithm passes (Louvain/PageRank/
+	// articulation) may run concurrently. This is the fix for #2141 root
+	// cause C and #2140 hyp-2: each algo pass is CPU- and heap-intensive;
+	// running N simultaneously on an N-core host saturates all cores and
+	// spikes RSS proportionally.
+	//
+	// 0 (or negative) means: auto = max(2, runtime.NumCPU()/2).
+	// Set to 1 to fully serialise algo passes.
+	AlgoCap int
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -140,6 +153,12 @@ type Scheduler struct {
 	wake   chan struct{}       // poked when a worker frees budget
 	stop   chan struct{}
 	wg     sync.WaitGroup
+
+	// algoSem limits the number of concurrent algorithm passes (#2141
+	// root-cause C / #2140 hyp-2). Capacity = max(2, NumCPU/2) unless
+	// Config.AlgoCap is set. Nil means unbounded (legacy; not used in
+	// production).
+	algoSem chan struct{}
 
 	mu           sync.Mutex
 	inflight     map[string]int64         // repo → predicted MB charged against the ledger
@@ -194,6 +213,22 @@ type LogEntry struct {
 
 const maxRecentLog = 32
 
+// resolveAlgoCap returns the effective concurrency cap for algorithm passes.
+// If cfg.AlgoCap > 0 it is returned as-is. Otherwise it is auto-tuned to
+// max(2, runtime.NumCPU()/2) so that on an 8-core machine only 4 algo
+// passes run in parallel, leaving headroom for the watcher, indexers, and
+// the Go runtime itself.
+func resolveAlgoCap(cap int) int {
+	if cap > 0 {
+		return cap
+	}
+	n := runtime.NumCPU() / 2
+	if n < 2 {
+		n = 2
+	}
+	return n
+}
+
 // New constructs a scheduler. Start must be called before Enqueue.
 func New(cfg Config) *Scheduler {
 	if cfg.Workers <= 0 {
@@ -208,6 +243,7 @@ func New(cfg Config) *Scheduler {
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(os.Stderr, "sched: ", log.LstdFlags)
 	}
+	algoCap := resolveAlgoCap(cfg.AlgoCap)
 	return &Scheduler{
 		cfg:          cfg,
 		logger:       cfg.Logger,
@@ -215,6 +251,7 @@ func New(cfg Config) *Scheduler {
 		jobs:         make(chan jobToken, cfg.Workers),
 		wake:         make(chan struct{}, 1),
 		stop:         make(chan struct{}),
+		algoSem:      make(chan struct{}, algoCap),
 		inflight:     map[string]int64{},
 		pendingIndex: map[string]bool{},
 		pendingRefs:  map[string]string{},
@@ -542,6 +579,10 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 	t0 := time.Now()
 	s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB)+" ref="+tok.ref)
+	// Observability: log goroutine identity + ref so concurrent-indexer
+	// regressions are diagnosable without a pprof trace (#2141).
+	s.logger.Printf("indexer: starting repo=%s ref=%s goroutine_id=%d",
+		repoPath, tok.ref, goroutineID())
 
 	// Spawn RSS sampler so we capture the peak the daemon hit during
 	// this job. Records into history on completion.
@@ -612,8 +653,12 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		s.logger.Printf("sched: index %s failed: %v (took %s)", repoPath, err, time.Since(t0))
 		return
 	}
+	dur := time.Since(t0).Truncate(time.Millisecond)
+	allocDiff := observedPeakMB - tok.predictedMB
 	s.logEvent("index_ok", repoPath,
-		time.Since(t0).Truncate(time.Millisecond).String()+" peak="+formatMB(observedPeakMB))
+		dur.String()+" peak="+formatMB(observedPeakMB))
+	s.logger.Printf("indexer: completed repo=%s took=%s peak_heap=%dMB alloc_diff=%dMB",
+		repoPath, dur, observedPeakMB, allocDiff)
 
 	// Schedule downstream passes.
 	s.scheduleAlgo(repoPath)
@@ -699,7 +744,25 @@ func (s *Scheduler) cancelAlgoLocked(repoPath string) {
 }
 
 func (s *Scheduler) runAlgo(ctx context.Context, repoPath string) {
-	s.logEvent("algo_start", repoPath, "")
+	// Acquire the concurrency semaphore before starting the CPU/heap-intensive
+	// algorithm pass. This enforces the AlgoCap and prevents all N repos from
+	// running Louvain/PageRank/articulation simultaneously (#2141 root-cause C
+	// / #2140 hyp-2). The acquire is interruptible via ctx so a cancellation
+	// (new write arrives for this repo) doesn't block forever.
+	cap := cap(s.algoSem)
+	s.logger.Printf("algo-pass: starting repo=%s cap=%d goroutines", repoPath, cap)
+	select {
+	case s.algoSem <- struct{}{}:
+		// acquired
+	case <-ctx.Done():
+		s.logEvent("algo_cancelled", repoPath, "waiting for algo-sem slot")
+		return
+	case <-s.stop:
+		return
+	}
+	defer func() { <-s.algoSem }()
+
+	s.logEvent("algo_start", repoPath, fmt.Sprintf("cap=%d", cap))
 	t0 := time.Now()
 	err := s.cfg.Algorithms(ctx, repoPath)
 	if err != nil {
@@ -825,6 +888,29 @@ func (s *Scheduler) logEventLocked(kind, repo, msg string) {
 	if len(s.recentLog) > maxRecentLog {
 		s.recentLog = s.recentLog[len(s.recentLog)-maxRecentLog:]
 	}
+}
+
+// goroutineID extracts the current goroutine's numeric ID from the stack
+// header. Used only for diagnostic log lines — never relied upon for
+// correctness. Returns 0 on any parse failure.
+func goroutineID() uint64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	// Stack header format: "goroutine <N> [..."
+	s := string(buf[:n])
+	const prefix = "goroutine "
+	if !strings.HasPrefix(s, prefix) {
+		return 0
+	}
+	s = s[len(prefix):]
+	var id uint64
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			break
+		}
+		id = id*10 + uint64(c-'0')
+	}
+	return id
 }
 
 // formatMB is a tiny helper so the recent-log strings stay short.
