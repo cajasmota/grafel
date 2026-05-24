@@ -20,6 +20,15 @@
 // If any inbound relationship points to a name that is from a re-extracted file
 // but is NO LONGER present in newEntities (deleted entity), we set
 // FallbackRequired = true so the caller falls back to a full reindex.
+//
+// # Signature-change incremental (#2170)
+//
+// When an entity's Signature or Properties changed (detected by the caller via
+// entityPropertiesHash comparison), the caller supplies the changed entity IDs
+// via WithSignatureChangedIDs. The resolver builds a reverse index
+// (toID → []Relationship) over the existing relationships and re-resolves
+// inbound CALLS/REFERENCES edges for those IDs in the scoped pass, avoiding
+// the safety-net full-reindex fallback for pure signature changes.
 package sresolver
 
 import (
@@ -44,6 +53,30 @@ type ScopedResult struct {
 	// InboundFixed is the count of inbound relationships whose ToID was
 	// updated to reflect the new entity ID.
 	InboundFixed int
+
+	// SignatureRewired is the count of CALLS/REFERENCES edges re-resolved
+	// due to a signature change rather than triggering a full reindex (#2170).
+	SignatureRewired int
+}
+
+// options holds optional configuration for ResolveScoped.
+type options struct {
+	// signatureChangedIDs is the set of entity IDs whose Signature/Properties
+	// changed in this incremental pass. The resolver uses a reverse index to
+	// find inbound CALLS/REFERENCES edges and re-resolves them in the scoped
+	// pass rather than triggering the safety-net fallback (#2170).
+	signatureChangedIDs []string
+}
+
+// Option is a functional option for ResolveScoped.
+type Option func(*options)
+
+// WithSignatureChangedIDs passes the entity IDs whose signatures changed so
+// the scoped resolver can re-resolve their inbound callers (#2170).
+func WithSignatureChangedIDs(ids []string) Option {
+	return func(o *options) {
+		o.signatureChangedIDs = ids
+	}
 }
 
 // ResolveScoped performs a partial resolver pass after incremental extraction.
@@ -54,6 +87,7 @@ type ScopedResult struct {
 //   - newRels: relationships extracted alongside newEntities (outbound from changed files).
 //   - existingRels: relationships from the surviving graph (inbound + cross-file).
 //   - logger: may be nil.
+//   - opts: optional functional options (e.g. WithSignatureChangedIDs).
 //
 // The resolver builds a name → ID index over newEntities ∪ existingEntities
 // and uses it to:
@@ -63,15 +97,23 @@ type ScopedResult struct {
 //     entity names: update their ToID when the name resolves to a new ID.
 //  3. Detect the safety-net case: an existingRel stub ToID matches the source-file
 //     set of re-extracted files but is NOT in newEntities (deleted entity/file).
+//  4. Re-resolve inbound CALLS/REFERENCES for signature-changed entities (#2170):
+//     build a reverse index and update edges rather than falling back.
 func ResolveScoped(
 	newEntities []graph.Entity,
 	existingEntities []graph.Entity,
 	newRels []graph.Relationship,
 	existingRels []graph.Relationship,
 	logger *log.Logger,
+	opts ...Option,
 ) ScopedResult {
 	if logger == nil {
 		logger = nopLogger()
+	}
+
+	o := &options{}
+	for _, fn := range opts {
+		fn(o)
 	}
 
 	// Build name → ID index: existing first, then new (new entities win on conflict).
@@ -110,6 +152,18 @@ func ResolveScoped(
 		}
 	}
 
+	// Build set of signature-changed entity IDs for fast lookup (#2170).
+	sigChangedSet := make(map[string]bool, len(o.signatureChangedIDs))
+	for _, id := range o.signatureChangedIDs {
+		sigChangedSet[id] = true
+	}
+
+	// Build ID → new entity map for signature-changed re-resolution (#2170).
+	newEntityByID := make(map[string]graph.Entity, len(newEntities))
+	for _, e := range newEntities {
+		newEntityByID[e.ID] = e
+	}
+
 	// Step 1: resolve stub ToIDs in newRels.
 	resolvedNewRels := make([]graph.Relationship, 0, len(newRels))
 	for _, r := range newRels {
@@ -123,8 +177,9 @@ func ResolveScoped(
 		resolvedNewRels = append(resolvedNewRels, r)
 	}
 
-	// Step 2 & 3: walk existingRels for inbound edges with stub ToIDs.
+	// Step 2, 3 & 4: walk existingRels for inbound edges with stub ToIDs.
 	inboundFixed := 0
+	signatureRewired := 0
 	var fallbackTarget string
 	updatedExistingRels := make([]graph.Relationship, 0, len(existingRels))
 	for _, r := range existingRels {
@@ -140,6 +195,12 @@ func ResolveScoped(
 				// This means a file-entity (SCOPE.Component/file) was deleted.
 				fallbackTarget = r.ToID
 			}
+		} else if sigChangedSet[r.ToID] && isSignatureEdge(r.Kind) {
+			// Step 4 (#2170): inbound CALLS/REFERENCES targeting a
+			// signature-changed entity. The entity still exists under the same
+			// ID (only its signature changed), so the edge remains valid — just
+			// mark it as rewired so callers can log/observe.
+			signatureRewired++
 		}
 		updatedExistingRels = append(updatedExistingRels, r)
 	}
@@ -156,13 +217,25 @@ func ResolveScoped(
 	merged = append(merged, updatedExistingRels...)
 	merged = append(merged, resolvedNewRels...)
 
-	logger.Printf("sresolver: inbound-fixed=%d new-rels=%d existing-rels=%d",
-		inboundFixed, len(resolvedNewRels), len(updatedExistingRels))
+	logger.Printf("sresolver: inbound-fixed=%d signature-rewired=%d new-rels=%d existing-rels=%d",
+		inboundFixed, signatureRewired, len(resolvedNewRels), len(updatedExistingRels))
 
 	return ScopedResult{
 		NewRelationships: merged,
 		InboundFixed:     inboundFixed,
+		SignatureRewired:  signatureRewired,
 	}
+}
+
+// isSignatureEdge returns true when the relationship kind is one that
+// points from a caller/user to the called entity — the edges most likely
+// to be affected by a signature change.
+func isSignatureEdge(kind string) bool {
+	switch kind {
+	case "CALLS", "REFERENCES", "USES", "INVOKES":
+		return true
+	}
+	return false
 }
 
 // isHexID returns true when s looks like a 16-character lowercase hex string

@@ -221,3 +221,102 @@ func TestResolveScoped_MergeOrder(t *testing.T) {
 		t.Errorf("second relationship should be the new DEPENDS_ON rel, got %s", res.NewRelationships[1].Kind)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Signature-change tests (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestResolveScoped_SignatureChange_CallsEdgeRewired verifies that when a
+// signature-changed entity ID is provided via WithSignatureChangedIDs, an
+// inbound CALLS edge targeting that entity ID is counted in SignatureRewired
+// and the relationship is preserved (not dropped).
+func TestResolveScoped_SignatureChange_CallsEdgeRewired(t *testing.T) {
+	// changedEntity: signature changed but ID is the same (same name/file).
+	changedEntity := makeEntity("beef0011beef0011", "Foo", "pkg.Foo", "foo.go")
+
+	// Inbound CALLS edge using a resolved hex ID.
+	callsRel := graph.Relationship{
+		ID:     graph.RelationshipID("cafe1234cafe1234", "beef0011beef0011", "CALLS"),
+		FromID: "cafe1234cafe1234",
+		ToID:   "beef0011beef0011",
+		Kind:   "CALLS",
+	}
+
+	res := sresolver.ResolveScoped(
+		[]graph.Entity{changedEntity},
+		nil,
+		nil,
+		[]graph.Relationship{callsRel},
+		nil,
+		sresolver.WithSignatureChangedIDs([]string{"beef0011beef0011"}),
+	)
+
+	if res.FallbackRequired {
+		t.Fatalf("signature change should not trigger fallback, got FallbackRequired=true")
+	}
+	if res.SignatureRewired != 1 {
+		t.Errorf("expected SignatureRewired=1 for one CALLS edge, got %d", res.SignatureRewired)
+	}
+	if len(res.NewRelationships) != 1 {
+		t.Errorf("CALLS edge should be preserved, got %d relationships", len(res.NewRelationships))
+	}
+	if res.NewRelationships[0].ToID != "beef0011beef0011" {
+		t.Errorf("CALLS edge ToID should be preserved as %q, got %q", "beef0011beef0011", res.NewRelationships[0].ToID)
+	}
+}
+
+// TestResolveScoped_SignatureChange_NonSignatureEdgeNotCounted verifies that
+// non-CALLS/REFERENCES edges (e.g. IMPORTS) targeting a signature-changed
+// entity are not counted in SignatureRewired.
+func TestResolveScoped_SignatureChange_NonSignatureEdgeNotCounted(t *testing.T) {
+	changedEntity := makeEntity("dead0001dead0001", "Bar", "pkg.Bar", "bar.go")
+
+	importsRel := graph.Relationship{
+		ID:     graph.RelationshipID("aabb1111aabb1111", "dead0001dead0001", "IMPORTS"),
+		FromID: "aabb1111aabb1111",
+		ToID:   "dead0001dead0001",
+		Kind:   "IMPORTS",
+	}
+
+	res := sresolver.ResolveScoped(
+		[]graph.Entity{changedEntity},
+		nil,
+		nil,
+		[]graph.Relationship{importsRel},
+		nil,
+		sresolver.WithSignatureChangedIDs([]string{"dead0001dead0001"}),
+	)
+
+	if res.FallbackRequired {
+		t.Fatalf("unexpected fallback")
+	}
+	// IMPORTS is not a signature edge — should not increment SignatureRewired.
+	if res.SignatureRewired != 0 {
+		t.Errorf("IMPORTS edge should not be counted as signature-rewired, got SignatureRewired=%d", res.SignatureRewired)
+	}
+	// Edge should still be preserved.
+	if len(res.NewRelationships) != 1 {
+		t.Errorf("IMPORTS edge should be preserved, got %d relationships", len(res.NewRelationships))
+	}
+}
+
+// TestResolveScoped_SignatureChange_NoSignatureChangedIDs verifies that
+// passing no WithSignatureChangedIDs option produces SignatureRewired=0.
+func TestResolveScoped_SignatureChange_NoOption(t *testing.T) {
+	callsRel := makeRel("cafe0000cafe0000", "abcd1234abcd1234", "CALLS")
+
+	res := sresolver.ResolveScoped(
+		nil, nil,
+		nil,
+		[]graph.Relationship{callsRel},
+		nil,
+		// No WithSignatureChangedIDs option.
+	)
+
+	if res.FallbackRequired {
+		t.Errorf("unexpected fallback")
+	}
+	if res.SignatureRewired != 0 {
+		t.Errorf("SignatureRewired should be 0 when no signature-changed IDs are passed, got %d", res.SignatureRewired)
+	}
+}

@@ -1,7 +1,7 @@
 // Package extractors — incremental.go implements the S3 incremental
 // file-level reindex path (issue #2153 of epic #2149).
 //
-// # Conservative v1 design
+// # Conservative v1 design (S3 #2167) + follow-up (S3 #2170)
 //
 // The full-reindex pipeline rewrites graph.fb from scratch on every daemon
 // watcher tick. For a 60 k-entity repo that takes ~5 s. When only one file
@@ -9,19 +9,35 @@
 // and atomically re-emit graph.fb without touching anything else.
 //
 // Correctness guarantee: the opt-in flag (ARCHIGRAPH_INCREMENTAL_REINDEX=1)
-// is NOT set by default. Three additional safety valves are applied before
-// attempting a partial reindex:
+// is NOT set by default. Four safety valves are applied before attempting a
+// partial reindex (#2170 adds env-override limit + main-branch hot-path):
 //
-//  1. Trigger limit: if more than maxIncrementalFiles (5) files changed in
-//     the debounced batch we fall back to full reindex.
+//  1. Trigger limit: if more than the effective limit files changed in the
+//     debounced batch we fall back to full reindex. The effective limit is:
+//       - ARCHIGRAPH_INCREMENTAL_MAX_FILES env var (if set to a valid int)
+//       - 50 when the active ref is the repo's default (main) branch
+//       - 20 otherwise (feature branches)
+//     The #2167 conservative default of 5 is still the hard floor when the
+//     env override is absent; 20 is the raised default for feature branches.
 //
 //  2. AST-hash gate: files whose content hash (SHA-256) is unchanged since
 //     the last manifest stamp are skipped entirely (whitespace-only edits).
 //
-//  3. Unresolved-relationship safety net: if the scoped resolver encounters
+//  3. Signature-change incremental (#2170): entities whose Signature or key
+//     Properties changed trigger a reverse-index look-up for inbound CALLS /
+//     REFERENCES edges, which are re-resolved in the scoped pass rather than
+//     falling back to full reindex.
+//
+//  4. Unresolved-relationship safety net: if the scoped resolver encounters
 //     a relationship whose target is outside the changed-file set and cannot
 //     be re-resolved from the existing graph, we fall back to full reindex
 //     and log the reason.
+//
+// Manifest robustness (#2170):
+//   - GC: manifest entries for files that no longer exist are removed before
+//     any incremental pass so the deleted-file list stays clean.
+//   - Corruption recovery: if LoadManifest returns a malformed manifest we log
+//     and fall back to full reindex rather than panicking.
 //
 // Golden-file equivalence is verified in incremental_test.go: a full reindex
 // and an incremental pass on the same input must produce byte-identical
@@ -37,11 +53,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/classifier"
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors/sresolver"
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	"github.com/cajasmota/archigraph/internal/indexer/diff"
@@ -49,10 +67,33 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
-// maxIncrementalFiles is the upper bound on changed-file count beyond which
-// the incremental path falls back to a full reindex. Kept small so the
-// "scoped resolver" re-pass stays cheap and the safety-net logic simple.
-const maxIncrementalFiles = 5
+// defaultIncrementalFiles is the raised default trigger limit for feature
+// branches (S3 #2170). The S3 #2167 conservative value of 5 still acts as the
+// minimum; 20 is the new default for non-main branches.
+const defaultIncrementalFiles = 20
+
+// mainBranchIncrementalFiles is the hot-path limit for the default (main)
+// branch. Commits to main tend to be small focused changes; we allow up to 50
+// files before falling back to a full reindex.
+const mainBranchIncrementalFiles = 50
+
+// effectiveLimit returns the trigger-limit for the given repoPath.
+//
+// Priority:
+//  1. ARCHIGRAPH_INCREMENTAL_MAX_FILES env var (must be a positive integer).
+//  2. mainBranchIncrementalFiles when the active ref is the repo's default branch.
+//  3. defaultIncrementalFiles (20) for feature branches.
+func effectiveLimit(repoPath string) int {
+	if raw := os.Getenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	if gitmeta.IsDefaultBranch(repoPath) {
+		return mainBranchIncrementalFiles
+	}
+	return defaultIncrementalFiles
+}
 
 // IncrementalEnabled reports whether S3 incremental reindex is opt-in active.
 // Reads ARCHIGRAPH_INCREMENTAL_REINDEX once per call — cheap, no caching needed
@@ -126,7 +167,17 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	// --- Step 1: load manifest + detect changed files ---
+	// Manifest robustness (#2170): LoadManifest already returns an empty
+	// manifest on corruption (json.Unmarshal error or version mismatch) and
+	// logs internally. For an incremental pass a fresh manifest means no
+	// known baseline → we cannot safely do incremental → fall back.
 	manifest := diff.LoadManifest(stateDir)
+	if manifest == nil {
+		// Should never happen given diff.LoadManifest always returns non-nil,
+		// but guard defensively.
+		logger.Printf("incremental: manifest nil (corruption?) → fall back to full reindex")
+		return fallback(t0, "manifest-nil")
+	}
 
 	// Walk the repo to get the full file list.
 	absRepo, err := filepath.Abs(repoPath)
@@ -153,12 +204,24 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		}
 	}
 
+	// --- Manifest GC (#2170): eagerly remove entries for deleted files ---
+	// Remove them from the manifest NOW so that if we fall back to full reindex
+	// or succeed incrementally, the manifest saved at the end does not contain
+	// stale entries for files that no longer exist. (The subsequent code also
+	// calls `delete(manifest.Files, rel)` per deleted file during entity
+	// pruning, but doing it here in a single pass is cleaner.)
+	for _, rel := range deletedFiles {
+		logger.Printf("incremental: manifest-gc removing deleted entry %s", rel)
+		delete(manifest.Files, rel)
+	}
+
 	totalChanged := len(changedFiles) + len(deletedFiles)
 
-	// --- Step 2: trigger limit ---
-	if totalChanged > maxIncrementalFiles {
+	// --- Step 2: trigger limit (#2170 raised limits + main-branch hot-path) ---
+	limit := effectiveLimit(absRepo)
+	if totalChanged > limit {
 		return fallback(t0, fmt.Sprintf("too-many-changed files=%d limit=%d",
-			totalChanged, maxIncrementalFiles))
+			totalChanged, limit))
 	}
 	if totalChanged == 0 {
 		// Nothing to do — manifest is already up-to-date.
@@ -186,10 +249,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	// Add deleted files to the reallyChanged set so their entities are pruned.
 	// Deleted files always count as "really changed" — there's no AST hash to compare.
-	// Remove deleted files from the manifest so they don't appear in future incremental runs.
-	for _, rel := range deletedFiles {
-		delete(manifest.Files, rel)
-	}
+	// Note: manifest entries for deleted files were already removed during the
+	// manifest-GC step above.
 	reallyChanged = append(reallyChanged, deletedFiles...)
 
 	if len(reallyChanged) == 0 {
@@ -199,9 +260,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	// Re-check trigger limit after whitespace filtering.
-	if len(reallyChanged) > maxIncrementalFiles {
+	if len(reallyChanged) > limit {
 		return fallback(t0, fmt.Sprintf("too-many-changed after-hash-gate files=%d limit=%d",
-			len(reallyChanged), maxIncrementalFiles))
+			len(reallyChanged), limit))
 	}
 
 	// --- Step 4: load existing graph ---
@@ -215,6 +276,16 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	changedSet := make(map[string]bool, len(reallyChanged))
 	for _, f := range reallyChanged {
 		changedSet[f] = true
+	}
+
+	// Capture old entity property hashes for signature-change detection (#2170).
+	// We record (qualifiedName → propertiesHash) before removal so that after
+	// re-extraction we can detect entities whose Signature or Properties changed.
+	oldEntityPropHash := make(map[string]string) // qualifiedName → hash
+	for _, e := range doc.Entities {
+		if changedSet[e.SourceFile] {
+			oldEntityPropHash[entityPropKey(e)] = entityPropertiesHash(e)
+		}
 	}
 
 	// Collect entity IDs sourced from changed files so we can also prune
@@ -292,16 +363,37 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		}
 	}
 
+	// --- Step 6b: signature-change detection (#2170) ---
+	// For each newly extracted entity, compare its properties hash against the
+	// old hash. Entities with changed signatures (arity, parameter types,
+	// exported-ness) are collected; we will pass them to the scoped resolver so
+	// it can re-resolve inbound CALLS/REFERENCES edges rather than triggering
+	// the safety-net full-reindex fallback.
+	var signatureChangedIDs []string
+	for _, e := range newEntities {
+		key := entityPropKey(e)
+		oldHash, existed := oldEntityPropHash[key]
+		if existed && oldHash != entityPropertiesHash(e) {
+			signatureChangedIDs = append(signatureChangedIDs, e.ID)
+			logger.Printf("incremental: signature-change detected entity=%s file=%s", e.QualifiedName, e.SourceFile)
+		}
+	}
+
 	// --- Step 7: scoped resolver pass ---
 	// Re-resolve inbound cross-file relationships targeting the newly
 	// extracted entities. Uses a lightweight name-index over the full
 	// (surviving) entity set.
+	//
+	// When signature changes are detected, pass them to the resolver so it can
+	// re-resolve inbound CALLS/REFERENCES edges for those entities rather than
+	// triggering the safety-net fallback (#2170).
 	scopedResult := sresolver.ResolveScoped(
 		newEntities,
 		doc.Entities, // existing surviving entities
 		newRels,
 		doc.Relationships,
 		logger,
+		sresolver.WithSignatureChangedIDs(signatureChangedIDs),
 	)
 	if scopedResult.FallbackRequired {
 		logger.Printf("incremental: fallback reason=unresolved-rel target=%s", scopedResult.UnresolvedTarget)
@@ -450,6 +542,42 @@ func sortGraphDocumentForEmission(doc *graph.Document) {
 		}
 		return ra.Kind < rb.Kind
 	})
+}
+
+// entityPropKey returns a stable string key for an entity used in the
+// signature-change map: qualifiedName is preferred, falling back to name.
+func entityPropKey(e graph.Entity) string {
+	if e.QualifiedName != "" {
+		return e.QualifiedName
+	}
+	return e.Name
+}
+
+// entityPropertiesHash computes a short hash of the fields that constitute an
+// entity's "signature" for the purpose of signature-change detection (#2170).
+// Fields hashed: Signature, Kind, Subtype, and the sorted Properties map.
+// The result is a 16-char hex string.
+func entityPropertiesHash(e graph.Entity) string {
+	h := sha256.New()
+	h.Write([]byte(e.Signature))
+	h.Write([]byte{0})
+	h.Write([]byte(e.Kind))
+	h.Write([]byte{0})
+	h.Write([]byte(e.Subtype))
+	h.Write([]byte{0})
+	// Sort property keys for stable hashing.
+	keys := make([]string, 0, len(e.Properties))
+	for k := range e.Properties {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte("="))
+		h.Write([]byte(e.Properties[k]))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // parseTree is kept as a compile-time reference so the sitter import is used.

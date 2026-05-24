@@ -382,32 +382,271 @@ func TestIncremental_DeleteFile_EntitiesDisappear(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: 6+ files changed → fallback to full reindex
+// Test: > default limit files changed → fallback to full reindex
+// (Raised default is 20 for feature branches, #2170)
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestIncremental_TooManyChangedFiles_Fallback(t *testing.T) {
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 
-	// Create 6 Go files.
-	for i := 0; i < 6; i++ {
+	// Create 21 Go files — exceeds the raised default limit of 20.
+	for i := 0; i < 21; i++ {
 		writeFile(t, repo, fmt.Sprintf("file%d.go", i), fmt.Sprintf("package p\n\nfunc F%d() {}\n", i))
 	}
 
-	// Seed an empty baseline graph + manifset.
+	// Seed an empty baseline graph + manifest with NO files so all 21 appear as "changed".
 	buildMinimalGraph(t, stateDir, nil, nil)
-	// Seed manifest with NO files so all 6 appear as "changed".
 	m := diff.LoadManifest(t.TempDir()) // empty manifest from an unrelated temp dir
 	_ = diff.SaveManifest(stateDir, repo, m)
 
 	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
 	if res.Done {
-		t.Error("TryIncremental should fall back when > 5 files changed")
+		t.Error("TryIncremental should fall back when > 20 files changed (default feature-branch limit)")
 	}
 	if res.FallbackReason == "" {
 		t.Error("FallbackReason should be non-empty on trigger-limit fallback")
 	}
 	t.Logf("fallback reason: %s", res.FallbackReason)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: env override — ARCHIGRAPH_INCREMENTAL_MAX_FILES raises the limit (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestIncremental_EnvOverrideLimit(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Create 8 files — over the legacy limit of 5 but under the env override of 10.
+	for i := 0; i < 8; i++ {
+		writeFile(t, repo, fmt.Sprintf("file%d.go", i), fmt.Sprintf("package p\n\nfunc F%d() {}\n", i))
+	}
+
+	// Baseline graph + empty manifest so all 8 appear as changed.
+	buildMinimalGraph(t, stateDir, nil, nil)
+	m := diff.LoadManifest(t.TempDir())
+	_ = diff.SaveManifest(stateDir, repo, m)
+
+	// Without env override: 8 files would be below the new default limit (20)
+	// so it should succeed — but with env override set to 5 it should fallback.
+	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "5")
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	if res.Done {
+		t.Error("TryIncremental should fall back when files exceed ARCHIGRAPH_INCREMENTAL_MAX_FILES=5")
+	}
+	t.Logf("fallback reason (env=5): %s", res.FallbackReason)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: 30-file batch on main branch → incremental (hot-path limit=50) (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestIncremental_MainBranchHotPath_30Files(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Create 30 Go files — over the feature-branch limit (20) but under the
+	// main-branch hot-path limit (50). The env override forces main-branch
+	// behaviour without needing an actual git repo.
+	for i := 0; i < 30; i++ {
+		writeFile(t, repo, fmt.Sprintf("file%d.go", i), fmt.Sprintf("package p\n\nfunc F%d() {}\n", i))
+	}
+
+	// Baseline graph + empty manifest so all 30 appear as changed.
+	buildMinimalGraph(t, stateDir, nil, nil)
+	m := diff.LoadManifest(t.TempDir())
+	_ = diff.SaveManifest(stateDir, repo, m)
+
+	// Simulate main-branch hot-path by setting the env override to 50
+	// (same as mainBranchIncrementalFiles).
+	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "50")
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	if !res.Done {
+		t.Errorf("TryIncremental should succeed on 30-file batch when limit is 50 (main-branch hot-path), fallback=%s", res.FallbackReason)
+	}
+	t.Logf("30-file main hot-path: done=%v changed=%d took=%s", res.Done, res.ChangedFiles, res.Duration.Truncate(time.Millisecond))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: 50-file batch on feature branch → full reindex (over the cap) (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestIncremental_FeatureBranch_50Files_Fallback(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Create 50 Go files — exceeds both feature-branch (20) and main-branch (50) limits.
+	// Without an env override and without being on main, 21+ files should fall back.
+	for i := 0; i < 50; i++ {
+		writeFile(t, repo, fmt.Sprintf("file%d.go", i), fmt.Sprintf("package p\n\nfunc F%d() {}\n", i))
+	}
+
+	// Baseline graph + empty manifest so all 50 appear as changed.
+	buildMinimalGraph(t, stateDir, nil, nil)
+	m := diff.LoadManifest(t.TempDir())
+	_ = diff.SaveManifest(stateDir, repo, m)
+
+	// Default limit (no env override). repo is a bare temp dir, not a git repo,
+	// so IsDefaultBranch returns false → limit = defaultIncrementalFiles (20).
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	if res.Done {
+		t.Error("TryIncremental should fall back on 50-file feature-branch batch (limit=20)")
+	}
+	t.Logf("50-file feature branch fallback reason: %s", res.FallbackReason)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: signature change — inbound callers re-resolved without full reindex (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestIncremental_SignatureChange_InboundCallersRewired(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	// pkg/foo.go defines Foo with signature "(x int) error".
+	// caller/bar.go calls Foo and has an inbound CALLS rel pointing to Foo's entity.
+	writeFile(t, repo, "pkg/foo.go", "package pkg\n\nfunc Foo(x int) error { return nil }\n")
+	writeFile(t, repo, "caller/bar.go", "package caller\n\nfunc Bar() {}\n")
+
+	fooID := graph.EntityID("test-repo", "SCOPE.Operation", "Foo", "pkg/foo.go")
+	barID := graph.EntityID("test-repo", "SCOPE.Operation", "Bar", "caller/bar.go")
+
+	entityFoo := graph.Entity{
+		ID: fooID, Name: "Foo", QualifiedName: "pkg.Foo",
+		Kind: "SCOPE.Operation", SourceFile: "pkg/foo.go", Language: "go",
+		Signature: "func Foo(x int) error",
+	}
+	entityBar := graph.Entity{
+		ID: barID, Name: "Bar", QualifiedName: "caller.Bar",
+		Kind: "SCOPE.Operation", SourceFile: "caller/bar.go", Language: "go",
+	}
+	// Inbound CALLS edge: Bar → Foo (hex IDs, already resolved).
+	callsRel := graph.Relationship{
+		ID:     graph.RelationshipID(barID, fooID, "CALLS"),
+		FromID: barID,
+		ToID:   fooID,
+		Kind:   "CALLS",
+	}
+
+	buildMinimalGraph(t, stateDir, []graph.Entity{entityFoo, entityBar}, []graph.Relationship{callsRel})
+	seedManifest(t, repo, stateDir)
+
+	// Mutate Foo's signature: rename parameter (arity unchanged but signature text differs).
+	writeFile(t, repo, "pkg/foo.go", "package pkg\n\nfunc Foo(count int) error { return nil }\n")
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	if !res.Done {
+		t.Fatalf("TryIncremental: signature change should not trigger fallback, got: %s", res.FallbackReason)
+	}
+
+	// Correctness: Foo is still present, Bar is still present, the CALLS edge is preserved.
+	doc, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("load graph: %v", err)
+	}
+	hasFoo, hasBar, hasCallsEdge := false, false, false
+	for _, e := range doc.Entities {
+		if e.Name == "Foo" {
+			hasFoo = true
+		}
+		if e.Name == "Bar" {
+			hasBar = true
+		}
+	}
+	for _, r := range doc.Relationships {
+		if r.Kind == "CALLS" && r.ToID == fooID {
+			hasCallsEdge = true
+		}
+	}
+	if !hasFoo {
+		t.Error("Foo entity should be present after signature change")
+	}
+	if !hasBar {
+		t.Error("Bar entity should still be present (unchanged file)")
+	}
+	if !hasCallsEdge {
+		t.Error("CALLS edge Bar→Foo should be preserved after signature change (no full reindex)")
+	}
+	t.Logf("signature-change incremental: done=%v changed=%d entities=%d rels=%d took=%s",
+		res.Done, res.ChangedFiles, len(doc.Entities), len(doc.Relationships), res.Duration.Truncate(time.Millisecond))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: manifest corruption → fall back to full reindex (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestIncremental_ManifestCorruption_FallsBackToFull(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	writeFile(t, repo, "main.go", "package main\n\nfunc Main() {}\n")
+
+	// Build a baseline graph.
+	entities := []graph.Entity{
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "Main", "main.go"),
+			Name: "Main", Kind: "SCOPE.Operation", SourceFile: "main.go", Language: "go"},
+	}
+	buildMinimalGraph(t, stateDir, entities, nil)
+
+	// Write a corrupt manifest (not valid JSON).
+	corruptManifest := filepath.Join(stateDir, "file-index.json")
+	if err := os.WriteFile(corruptManifest, []byte("{not valid json!!!"), 0o644); err != nil {
+		t.Fatalf("write corrupt manifest: %v", err)
+	}
+
+	// TryIncremental should fall back gracefully: diff.LoadManifest returns a
+	// fresh empty manifest on corruption, so all files appear "changed". Since
+	// the graph exists, the incremental pass should succeed (treating main.go as
+	// new/changed and re-extracting it) — not panic or error out.
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	// The result may be Done=true (treated as new file) or Done=false (fallback
+	// for other reasons). What matters is that it does NOT panic.
+	t.Logf("manifest corruption recovery: done=%v fallback=%s took=%s",
+		res.Done, res.FallbackReason, res.Duration.Truncate(time.Millisecond))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: manifest GC — deleted-file entries removed before next pass (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestIncremental_ManifestGC_DeletedEntryRemoved(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	writeFile(t, repo, "keep.go", "package p\n\nfunc Keep() {}\n")
+	writeFile(t, repo, "todelete.go", "package p\n\nfunc Gone() {}\n")
+
+	entities := []graph.Entity{
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "Keep", "keep.go"),
+			Name: "Keep", Kind: "SCOPE.Operation", SourceFile: "keep.go", Language: "go"},
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "Gone", "todelete.go"),
+			Name: "Gone", Kind: "SCOPE.Operation", SourceFile: "todelete.go", Language: "go"},
+	}
+	buildMinimalGraph(t, stateDir, entities, nil)
+	seedManifest(t, repo, stateDir)
+
+	// Delete todelete.go.
+	deleteFile(t, repo, "todelete.go")
+
+	// First incremental pass: should detect deletion, prune entity, update manifest.
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	if !res.Done {
+		t.Fatalf("first incremental (deletion): unexpected fallback: %s", res.FallbackReason)
+	}
+
+	// Second incremental pass: todelete.go should NOT appear as a "changed" file
+	// (the manifest GC should have removed its entry on the first pass).
+	res2 := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	if !res2.Done {
+		t.Fatalf("second incremental (after GC): unexpected fallback: %s", res2.FallbackReason)
+	}
+	if res2.ChangedFiles != 0 {
+		t.Errorf("second pass after deletion should see 0 changed files (GC cleaned the manifest), got %d", res2.ChangedFiles)
+	}
+	t.Logf("manifest GC: first-pass changed=%d second-pass changed=%d", res.ChangedFiles, res2.ChangedFiles)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

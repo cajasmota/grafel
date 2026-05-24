@@ -106,6 +106,67 @@ func TestCapture_nonGitDir(t *testing.T) {
 	}
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// IsDefaultBranch tests (#2170)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestIsDefaultBranch_MainBranchReturnsTrue(t *testing.T) {
+	dir := initBareRepo(t, "main")
+	if !gitmeta.IsDefaultBranch(dir) {
+		t.Error("IsDefaultBranch should return true on a repo checked out on main")
+	}
+}
+
+func TestIsDefaultBranch_MasterBranchReturnsTrue(t *testing.T) {
+	dir := initBareRepo(t, "master")
+	if !gitmeta.IsDefaultBranch(dir) {
+		t.Error("IsDefaultBranch should return true on a repo checked out on master")
+	}
+}
+
+func TestIsDefaultBranch_FeatureBranchReturnsFalse(t *testing.T) {
+	dir := initBareRepo(t, "main")
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("checkout", "-b", "feat/some-feature")
+
+	if gitmeta.IsDefaultBranch(dir) {
+		t.Error("IsDefaultBranch should return false on a feature branch")
+	}
+}
+
+func TestIsDefaultBranch_NonGitDirReturnsFalse(t *testing.T) {
+	dir := t.TempDir()
+	if gitmeta.IsDefaultBranch(dir) {
+		t.Error("IsDefaultBranch should return false for a non-git directory")
+	}
+}
+
+func TestIsDefaultBranch_DetachedHEADReturnsFalse(t *testing.T) {
+	dir := initBareRepo(t, "main")
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := strings.TrimSpace(string(out))
+
+	cmd := exec.Command("git", "checkout", "--detach", sha)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git checkout --detach: %v\n%s", err, out)
+	}
+
+	if gitmeta.IsDefaultBranch(dir) {
+		t.Error("IsDefaultBranch should return false for detached HEAD")
+	}
+}
+
 func TestCapture_worktree(t *testing.T) {
 	main := initBareRepo(t, "main")
 	wtDir := t.TempDir()
