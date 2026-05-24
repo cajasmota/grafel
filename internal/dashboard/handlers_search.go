@@ -3,15 +3,16 @@ package dashboard
 // handlers_search.go — Global typeahead search
 //
 //	GET /api/search/{group}?q=
+//
+// Performance: the handler uses the pre-built SearchIndex stored in
+// DashGroup.Search.  No full entity scan happens at request time (#2104).
 
 import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
-	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -27,7 +28,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "q required")
 		return
 	}
-	limit := 20
+	const entityLimit = 20
+	const pathLimit = 10
 
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
@@ -37,15 +39,71 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	qLow := strings.ToLower(q)
 
-	// Score entities by simple name prefix / substring match.
-	// A production implementation would use BM25 (same as MCP); for Phase 1
-	// this substring search is fast and correct enough for typeahead.
-	type entityHit struct {
-		e     *graph.Entity
-		repo  string
-		score int // 2 = prefix, 1 = substring
+	// --- Entity search via pre-built index (O(trigram candidates) not O(N)) ---
+	entities := []map[string]any{}
+	if grp.Search != nil {
+		for _, h := range grp.Search.searchEntities(qLow, entityLimit) {
+			entities = append(entities, map[string]any{
+				"id":          dashPrefixedID(h.repoSlug, h.entity.ID),
+				"label":       h.entity.Name,
+				"kind":        dashStripScopePrefix(h.entity.Kind),
+				"source_file": h.entity.SourceFile,
+				"start_line":  h.entity.StartLine,
+				"repo":        h.repoSlug,
+			})
+		}
+	} else {
+		// Fallback for tests/fixtures that bypass loadGroupForRef.
+		entities = searchEntitiesLinear(grp, qLow, entityLimit)
 	}
 
+	// --- Doc search: scan doc paths for markdown files matching q ---
+	docs := []map[string]any{}
+	if docPaths, dErr := groupDocPaths(group); dErr == nil {
+		for repoSlug, docPath := range docPaths {
+			if docPath == "" {
+				continue
+			}
+			matches := searchDocFiles(docPath, repoSlug, qLow, 5)
+			docs = append(docs, matches...)
+		}
+	}
+
+	// --- Path search via pre-built index ---
+	paths := []map[string]any{}
+	if grp.Search != nil {
+		for _, ep := range grp.Search.searchPaths(qLow, pathLimit) {
+			paths = append(paths, map[string]any{
+				"id":   ep.prefixID,
+				"path": ep.path,
+				"verb": ep.verb,
+				"repo": ep.repoSlug,
+			})
+		}
+	} else {
+		// Fallback for tests/fixtures that bypass loadGroupForRef.
+		paths = searchPathsLinear(grp, qLow, pathLimit)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entities": entities,
+		"docs":     docs,
+		"paths":    paths,
+	})
+}
+
+// searchEntitiesLinear is the legacy O(N) scan used when no SearchIndex is
+// available (e.g. unit tests that construct a DashGroup directly).
+func searchEntitiesLinear(grp *DashGroup, qLow string, limit int) []map[string]any {
+	type entityHit struct {
+		repoSlug string
+		id       string
+		name     string
+		kind     string
+		srcFile  string
+		startLn  int
+		score    int
+	}
 	var hits []entityHit
 	for _, r := range sortedRepos(grp) {
 		for i := range r.Doc.Entities {
@@ -58,54 +116,53 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 				score = 1
 			}
 			if score > 0 {
-				hits = append(hits, entityHit{e: e, repo: r.Slug, score: score})
+				hits = append(hits, entityHit{
+					repoSlug: r.Slug,
+					id:       dashPrefixedID(r.Slug, e.ID),
+					name:     e.Name,
+					kind:     dashStripScopePrefix(e.Kind),
+					srcFile:  e.SourceFile,
+					startLn:  e.StartLine,
+					score:    score,
+				})
 			}
 		}
 	}
-	sort.SliceStable(hits, func(i, j int) bool {
-		if hits[i].score != hits[j].score {
-			return hits[i].score > hits[j].score
+	// Sort: higher score first, then name ascending.
+	for i := 1; i < len(hits); i++ {
+		for j := i; j > 0; j-- {
+			a, b := hits[j-1], hits[j]
+			if a.score > b.score || (a.score == b.score && a.name <= b.name) {
+				break
+			}
+			hits[j-1], hits[j] = hits[j], hits[j-1]
 		}
-		return hits[i].e.Name < hits[j].e.Name
-	})
+	}
 	if len(hits) > limit {
 		hits = hits[:limit]
 	}
-
-	entities := make([]map[string]any, 0, len(hits))
-	for _, h := range hits {
-		entities = append(entities, map[string]any{
-			"id":          dashPrefixedID(h.repo, h.e.ID),
-			"label":       h.e.Name,
-			"kind":        dashStripScopePrefix(h.e.Kind),
-			"source_file": h.e.SourceFile,
-			"start_line":  h.e.StartLine,
-			"repo":        h.repo,
-		})
-	}
-
-	// Doc search: scan doc paths for markdown files whose names match q.
-	docs := []map[string]any{}
-	if docPaths, dErr := groupDocPaths(group); dErr == nil {
-		for repoSlug, docPath := range docPaths {
-			if docPath == "" {
-				continue
-			}
-			matches := searchDocFiles(docPath, repoSlug, qLow, 5)
-			docs = append(docs, matches...)
+	out := make([]map[string]any, len(hits))
+	for i, h := range hits {
+		out[i] = map[string]any{
+			"id":          h.id,
+			"label":       h.name,
+			"kind":        h.kind,
+			"source_file": h.srcFile,
+			"start_line":  h.startLn,
+			"repo":        h.repoSlug,
 		}
 	}
+	return out
+}
 
-	// Path search: filter http_endpoint paths.
-	paths := []map[string]any{}
+// searchPathsLinear is the legacy O(N) HTTP-endpoint scan used as fallback.
+func searchPathsLinear(grp *DashGroup, qLow string, limit int) []map[string]any {
+	var out []map[string]any
 	for _, r := range sortedRepos(grp) {
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			// #1217 backward compat: accept all three http endpoint kind strings.
 			bareKind := dashStripScopePrefix(e.Kind)
-			if !types.IsHTTPEndpointKind(bareKind) &&
-				!strings.EqualFold(bareKind, httpEndpointKind) &&
-				e.Kind != "Endpoint" && e.Kind != "Route" {
+			if !isHTTPEndpointEntity(bareKind, e.Kind) {
 				continue
 			}
 			path := e.Properties["path"]
@@ -113,7 +170,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 				path = e.Name
 			}
 			if strings.Contains(strings.ToLower(path), qLow) {
-				paths = append(paths, map[string]any{
+				out = append(out, map[string]any{
 					"id":   dashPrefixedID(r.Slug, e.ID),
 					"path": path,
 					"verb": e.Properties["verb"],
@@ -121,16 +178,18 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 		}
-		if len(paths) >= 10 {
+		if len(out) >= limit {
 			break
 		}
 	}
+	return out
+}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"entities": entities,
-		"docs":     docs,
-		"paths":    paths,
-	})
+// isHTTPEndpointEntity mirrors the multi-kind check used elsewhere (#1217).
+func isHTTPEndpointEntity(bareKind, rawKind string) bool {
+	return types.IsHTTPEndpointKind(bareKind) ||
+		strings.EqualFold(bareKind, httpEndpointKind) ||
+		rawKind == "Endpoint" || rawKind == "Route"
 }
 
 // searchDocFiles walks a directory looking for markdown files whose names or
