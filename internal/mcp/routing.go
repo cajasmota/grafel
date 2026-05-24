@@ -200,6 +200,10 @@ type CWDResolution struct {
 	Group string
 	// RepoSlug is the slug of the repo within the group whose path contains cwd.
 	RepoSlug string
+	// ModuleSlug is the relative sub-path of the module within a monorepo repo
+	// when cwd is inside a declared Module sub-path. Empty when not in a module
+	// (standalone repo or monorepo root). Populated by moduleSlugForCWD (M3 #2180).
+	ModuleSlug string
 	// Ref is the git HEAD ref of the repo (or worktree). Empty string means
 	// detached HEAD or non-git directory.
 	Ref string
@@ -214,6 +218,104 @@ type CWDResolution struct {
 	// Source is "worktree_registry" (PH3 ephemeral child), "cwd_registry",
 	// "worktree" (PH1c sibling match), "cwd", "singleton", "explicit", or "none".
 	Source string
+}
+
+// fleetRepoEntry is the minimal fleet-config repo shape needed for module
+// resolution. It mirrors registry.Repo but avoids an import cycle.
+type fleetRepoEntry struct {
+	Slug    string   `json:"slug"`
+	Path    string   `json:"path"`
+	Modules []string `json:"modules,omitempty"`
+}
+
+// fleetGroupConfig is the minimal fleet-config shape for module resolution.
+type fleetGroupConfig struct {
+	Name  string           `json:"name"`
+	Repos []fleetRepoEntry `json:"repos"`
+}
+
+// loadFleetConfigForGroup reads the per-group fleet config JSON and returns
+// the parsed config. It is used by moduleSlugForCWD to access Module
+// declarations that are not stored in the in-memory mcp.Registry (#2180).
+// Returns nil on any error (config missing, malformed) — callers treat nil as
+// "no module info available".
+func loadFleetConfigForGroup(s *State, groupName string) *fleetGroupConfig {
+	if s == nil || s.registry == nil {
+		return nil
+	}
+	// Walk the raw registry.json to find the config_path for this group.
+	// The mcp.Registry is already a parsed view from registry.json.
+	// We re-read the raw file to get the config_path field which is only
+	// present in the CLI array format.
+	rawData, err := os.ReadFile(s.registry.Path)
+	if err != nil {
+		return nil
+	}
+	var raw struct {
+		Version int `json:"version"`
+		Groups  []struct {
+			Name       string `json:"name"`
+			ConfigPath string `json:"config_path"`
+		} `json:"groups"`
+	}
+	if err := json.Unmarshal(rawData, &raw); err != nil || len(raw.Groups) == 0 {
+		return nil
+	}
+	var configPath string
+	for _, g := range raw.Groups {
+		if g.Name == groupName {
+			configPath = g.ConfigPath
+			break
+		}
+	}
+	if configPath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil
+	}
+	var cfg fleetGroupConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+	return &cfg
+}
+
+// moduleSlugForCWD returns the registered Module sub-path that contains abs
+// within the given repoPath. It walks the fleet config for the group, finds the
+// repo, and performs longest-prefix matching among its Module entries. Returns
+// "" when abs is not inside any declared module sub-path, or when the repo has
+// no modules (M3 #2180).
+//
+// Example: repoPath=/repos/platform, Module="payments/svc", abs=/repos/platform/payments/svc/api
+// → returns "payments/svc".
+func moduleSlugForCWD(s *State, groupName, repoSlug, repoPath, abs string) string {
+	cfg := loadFleetConfigForGroup(s, groupName)
+	if cfg == nil {
+		return ""
+	}
+	// Find the specific repo entry.
+	var modules []string
+	for _, r := range cfg.Repos {
+		if r.Slug == repoSlug {
+			modules = r.Modules
+			break
+		}
+	}
+	if len(modules) == 0 {
+		return ""
+	}
+	repoClean := filepath.Clean(repoPath)
+	// Find the longest module sub-path that is an ancestor of abs.
+	best := ""
+	for _, mod := range modules {
+		modAbs := filepath.Join(repoClean, mod)
+		if pathContains(modAbs, abs) && len(mod) > len(best) {
+			best = mod
+		}
+	}
+	return best
 }
 
 // ResolveCWD is the PH1c entry point that maps a cwd to a full
@@ -272,9 +374,13 @@ func ResolveCWD(s *State, cwd string) CWDResolution {
 		// Determine which repo slug contains cwd (longest-prefix match).
 		slug, repoPath := repoSlugForCWD(s, group, abs)
 		meta := gitmeta.Capture(repoPath)
+		// M3 (#2180): if the matched repo has declared modules, determine which
+		// module sub-path cwd is inside.
+		modSlug := moduleSlugForCWD(s, group, slug, repoPath, abs)
 		return CWDResolution{
 			Group:      group,
 			RepoSlug:   slug,
+			ModuleSlug: modSlug,
 			Ref:        meta.Ref,
 			SHA:        meta.SHA,
 			IsWorktree: meta.IsWorktree,

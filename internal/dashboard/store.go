@@ -37,6 +37,11 @@ type GroupSummary struct {
 	LastIndexed string   `json:"last_indexed,omitempty"` // RFC3339, most-recent across repos
 	Frameworks  []string `json:"frameworks,omitempty"`   // top-8 frameworks by frequency, desc
 
+	// Monorepos maps parent-repo slug → list of registered module sub-paths.
+	// Only populated for repos that have at least one Module declared (#2180).
+	// Key is the repo slug; value is the Module slice from the fleet config.
+	Monorepos map[string][]string `json:"monorepos,omitempty"`
+
 	// RepoPaths are the absolute on-disk paths of each repo in the group.
 	// Not serialised to JSON; used internally to compute tier state (S1 #2151).
 	RepoPaths []string `json:"-"`
@@ -129,6 +134,13 @@ func (liveStore) ListGroups() ([]GroupSummary, error) {
 				s.Repos = append(s.Repos, r.Slug)
 				// S1 (#2151): populate RepoPaths for tier-state reporting.
 				s.RepoPaths = append(s.RepoPaths, r.Path)
+				// M3 (#2180): populate Monorepos for repos with declared modules.
+				if len(r.Modules) > 0 {
+					if s.Monorepos == nil {
+						s.Monorepos = make(map[string][]string)
+					}
+					s.Monorepos[r.Slug] = r.Modules
+				}
 			}
 		}
 		// Aggregate entity_count + last_indexed from per-repo graph-stats.json.

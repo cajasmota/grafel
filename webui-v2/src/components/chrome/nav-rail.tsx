@@ -23,6 +23,7 @@ import { useAppStore } from "@/store/use-app-store";
 import { usePendingCount } from "@/hooks/use-pending";
 import { SCREENS, PENDING_SCREEN, SETTINGS_SCREEN } from "./screens";
 import { WorktreeList } from "./worktree-list";
+import { MonorepoModuleList } from "./monorepo-module-list";
 
 function rowClass(active: boolean) {
   return cn(
@@ -85,6 +86,9 @@ export function NavRail() {
 
         {/* PH4: worktree subtree — visible when group has worktree refs */}
         <WorktreeList groupId={groupId} />
+
+        {/* M3: monorepo module tree — visible when group has repos with declared modules */}
+        <MonorepoModuleList groupId={groupId} />
       </nav>
 
       {/* Foot */}

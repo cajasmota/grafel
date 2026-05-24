@@ -47,6 +47,9 @@ type v2Group struct {
 	// Precedence across repos: hot > warm > cold > expired.
 	// "cold" when the group has no graph.fb on disk (S1 #2151).
 	Tier string `json:"tier"`
+	// Monorepos maps parent-repo slug → list of module sub-paths (M3 #2180).
+	// Omitted when no repos have declared modules.
+	Monorepos map[string][]string `json:"monorepos,omitempty"`
 }
 
 const (
@@ -101,6 +104,7 @@ func toV2Group(s GroupSummary, histRoot string, tq TierQuerier) v2Group {
 		IndexedAt:   indexedAt,
 		Health:      health,
 		Tier:        tierStr,
+		Monorepos:   s.Monorepos,
 	}
 }
 

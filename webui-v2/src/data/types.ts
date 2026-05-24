@@ -181,6 +181,12 @@ export interface Group {
   /** ms epoch of the most-recent index across repos; `null` when never indexed. */
   indexedAt: number | null;
   health: GroupHealth;
+  /**
+   * Monorepo module map: parent-repo slug → list of module sub-paths.
+   * Only present when the group has repos with declared modules (M3 #2180).
+   * Absent for groups with no monorepo repos.
+   */
+  monorepos?: Record<string, string[]>;
 }
 
 // ----------------------------------------------------------------

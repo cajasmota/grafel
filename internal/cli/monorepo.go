@@ -4,15 +4,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon/client"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 	"github.com/cajasmota/archigraph/internal/install/detect"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
+
+// resolveSymlinks resolves any symlinks in path, returning the real absolute
+// path. Falls back to the original path on error.
+func resolveSymlinks(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+}
 
 func newMonorepoCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -23,6 +35,7 @@ func newMonorepoCmd() *cobra.Command {
 		newMonorepoAddCmd(),
 		newMonorepoRemoveCmd(),
 		newMonorepoListCmd(),
+		newMonorepoMigrateCmd(),
 	)
 	return cmd
 }
@@ -284,4 +297,198 @@ func without(base, drop []string) []string {
 		}
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// monorepo migrate
+// ---------------------------------------------------------------------------
+
+// MigrateResult describes the outcome of MigratePerSubRepoFleet.
+type MigrateResult struct {
+	// Collapsed is the list of parent repo slugs that were collapsed (had sub-repos merged).
+	Collapsed []string
+	// Already is the list of parent repo slugs that were already collapsed (idempotent).
+	Already []string
+	// Unchanged is the list of repo slugs that were left standalone (no shared git root).
+	Unchanged []string
+}
+
+// MigratePerSubRepoFleet collapses N separate Repo entries that share a
+// common git-toplevel into 1 Repo with N Modules. The parent Repo is the
+// entry whose Path equals the git-toplevel; the others become Module sub-paths
+// relative to the parent. The operation is idempotent: running it twice
+// produces no change after the first run.
+//
+// Only repos inside the given group are considered. Standalone repos (those
+// whose git-toplevel equals their own Path, or those with a unique toplevel)
+// are left untouched.
+func MigratePerSubRepoFleet(group string) (MigrateResult, error) {
+	groups, err := registry.Groups()
+	if err != nil {
+		return MigrateResult{}, err
+	}
+	var ref *registry.GroupRef
+	for i := range groups {
+		if groups[i].Name == group {
+			ref = &groups[i]
+			break
+		}
+	}
+	if ref == nil {
+		return MigrateResult{}, fmt.Errorf("unknown group: %s", group)
+	}
+	cfg, err := registry.LoadGroupConfig(ref.ConfigPath)
+	if err != nil {
+		return MigrateResult{}, err
+	}
+
+	// Map git-toplevel → list of repos whose path is under that toplevel.
+	type repoIdx struct {
+		idx  int
+		repo *registry.Repo
+	}
+	toplevelMap := map[string][]repoIdx{} // toplevel → repos
+	for i := range cfg.Repos {
+		r := &cfg.Repos[i]
+		meta := gitmeta.Capture(r.Path)
+		top := meta.TopLevel
+		if top == "" {
+			// Not a git repo or git unavailable — treat as standalone.
+			top = r.Path
+		}
+		// Resolve symlinks so macOS /var → /private/var differences don't cause
+		// relative-path mismatches (e.g. in tests using t.TempDir()).
+		top = resolveSymlinks(filepath.Clean(top))
+		toplevelMap[top] = append(toplevelMap[top], repoIdx{idx: i, repo: r})
+	}
+
+	var result MigrateResult
+	// Track which repo indices to keep (by their original index).
+	keepIdx := map[int]bool{}
+	// Track new parent repos to append (already-collapsed ones).
+
+	for top, entries := range toplevelMap {
+		if len(entries) == 1 {
+			// Standalone repo: no collapse needed.
+			keepIdx[entries[0].idx] = true
+			result.Unchanged = append(result.Unchanged, entries[0].repo.Slug)
+			continue
+		}
+
+		// Find the entry whose Path == top (the parent). If none exists,
+		// pick the one with the shortest path as a heuristic parent.
+		parentIdx := -1
+		for _, e := range entries {
+			if resolveSymlinks(filepath.Clean(e.repo.Path)) == top {
+				parentIdx = e.idx
+				break
+			}
+		}
+		if parentIdx == -1 {
+			// Find shortest path as parent.
+			shortest := entries[0]
+			for _, e := range entries[1:] {
+				if len(e.repo.Path) < len(shortest.repo.Path) {
+					shortest = e
+				}
+			}
+			parentIdx = shortest.idx
+		}
+
+		parent := cfg.Repos[parentIdx]
+
+		// Collect module sub-paths from the child entries.
+		var newModules []string
+		for _, e := range entries {
+			if e.idx == parentIdx {
+				continue
+			}
+			// Resolve symlinks on the child path so the relative computation
+			// works correctly on macOS where /tmp → /private/tmp.
+			childPath := resolveSymlinks(filepath.Clean(e.repo.Path))
+			rel, err := filepath.Rel(top, childPath)
+			if err != nil || rel == "." {
+				continue
+			}
+			newModules = append(newModules, rel)
+		}
+		sort.Strings(newModules)
+
+		// Check if parent already has all modules (idempotent).
+		existingSet := map[string]struct{}{}
+		for _, m := range parent.Modules {
+			existingSet[m] = struct{}{}
+		}
+		allPresent := true
+		for _, m := range newModules {
+			if _, ok := existingSet[m]; !ok {
+				allPresent = false
+				break
+			}
+		}
+
+		if allPresent && len(newModules) > 0 {
+			// Already migrated.
+			keepIdx[parentIdx] = true
+			result.Already = append(result.Already, parent.Slug)
+			continue
+		}
+
+		// Add new modules to parent (uniqueAdd is idempotent).
+		cfg.Repos[parentIdx].Modules = uniqueAdd(parent.Modules, newModules)
+		keepIdx[parentIdx] = true
+		result.Collapsed = append(result.Collapsed, parent.Slug)
+	}
+
+	// Rebuild repos list: keep only parent entries (drop collapsed children).
+	newRepos := make([]registry.Repo, 0, len(keepIdx))
+	for i := range cfg.Repos {
+		if keepIdx[i] {
+			newRepos = append(newRepos, cfg.Repos[i])
+		}
+	}
+	cfg.Repos = newRepos
+
+	if err := registry.SaveGroupConfig(ref.ConfigPath, cfg); err != nil {
+		return MigrateResult{}, err
+	}
+	return result, nil
+}
+
+// newMonorepoMigrateCmd returns the `monorepo migrate` subcommand.
+func newMonorepoMigrateCmd() *cobra.Command {
+	var jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "migrate <group>",
+		Short: "Collapse per-sub-repo fleet entries into one Repo with Modules",
+		Long: `migrate collapses N separate Repo entries that share a common git-toplevel
+into 1 Repo with N Modules. Idempotent: running it twice produces no change
+after the first run. Standalone repos (unique git root) are left untouched.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			group := args[0]
+			result, err := MigratePerSubRepoFleet(group)
+			if err != nil {
+				return err
+			}
+			if jsonOut {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(result)
+			}
+			w := cmd.OutOrStdout()
+			if len(result.Collapsed) > 0 {
+				fmt.Fprintf(w, "collapsed: %s\n", strings.Join(result.Collapsed, ", "))
+			}
+			if len(result.Already) > 0 {
+				fmt.Fprintf(w, "already migrated: %s\n", strings.Join(result.Already, ", "))
+			}
+			if len(result.Unchanged) > 0 {
+				fmt.Fprintf(w, "unchanged (standalone): %s\n", strings.Join(result.Unchanged, ", "))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON result")
+	return cmd
 }
