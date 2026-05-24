@@ -148,6 +148,13 @@ type LLMGraphContext struct {
 	// start_line or end_line. Tracked so downstream consumers can audit
 	// how often the extractors emit broken positions (issue #1964).
 	SourceWindowFallback bool `json:"source_window_fallback,omitempty"`
+	// SyntheticModule is true when the seed Module entity is a synthetic
+	// aggregation container produced by the module aggregation layer
+	// (Properties["synthetic"]="true"). Synthetic modules have no source file
+	// of their own; module_readme and module_configs will be absent. The
+	// module_manifest is built from the module's CONTAINS children when they
+	// are present in the graph (#1969).
+	SyntheticModule bool `json:"synthetic_module,omitempty"`
 }
 
 // ModuleReadme holds the README content embedded into a Module bundle (#1880).
@@ -248,6 +255,16 @@ type ClassFieldEntry struct {
 	// TypeHint is the declared type of the field as inferred from the Signature
 	// (e.g. "UserRepository", "str", "List<String>"). Empty when not available.
 	TypeHint string `json:"type_hint,omitempty"`
+	// FieldType is the ORM/framework field type copied from the child entity's
+	// Properties["field_type"] (e.g. "CharField", "ForeignKey", "IntegerField").
+	// Populated only when the extractor stamped the field_type property (Django
+	// Model fields via django_relational.go). Empty for other field kinds (#1978).
+	FieldType string `json:"field_type,omitempty"`
+	// Kwargs is the map of kwarg.* property sidecars from the child entity's
+	// Properties (keys have the "kwarg." prefix stripped). For a ForeignKey field
+	// this carries {"to": "Client", "on_delete": "CASCADE"}; for a CharField it
+	// carries {"max_length": "200"}. Nil when no kwarg.* properties exist (#1978).
+	Kwargs map[string]string `json:"kwargs,omitempty"`
 	// DefaultValue is the literal default value when the extractor captured one.
 	// Empty for computed or unknown defaults.
 	DefaultValue string `json:"default_value,omitempty"`
@@ -1025,9 +1042,25 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 
 		// Populate ModuleReadme and ModuleConfigs for Module-kind seeds (#1880).
 		// Also populate ModuleManifest (#1881) — both coexist.
+		//
+		// Issue #1969 — synthetic Module entities (produced by the module
+		// aggregation layer, Properties["synthetic"]="true") have no
+		// SourceFile and no README on disk. Their CONTAINS children are real
+		// code entities, so ModuleManifest is still built from those children
+		// when they are present. ModuleReadme and ModuleConfigs are skipped
+		// because there is no source directory to scan. SyntheticModule is
+		// set so the LLM can reason about the absence of file-level metadata.
 		if isModuleKind(entity.Kind) {
-			gc.ModuleReadme, gc.ModuleConfigs = buildModuleSupplements(entity, seedRepo, neighbours, neighbourKinds)
-			gc.ModuleManifest = buildModuleManifest(entity, neighbours, neighbourKinds)
+			isSynthetic := entity.Properties["synthetic"] == "true" && entity.SourceFile == ""
+			if isSynthetic {
+				gc.SyntheticModule = true
+				// For synthetic aggregate modules: skip README/config discovery
+				// (no source directory); build ModuleManifest from CONTAINS children.
+				gc.ModuleManifest = buildModuleManifest(entity, neighbours, neighbourKinds)
+			} else {
+				gc.ModuleReadme, gc.ModuleConfigs = buildModuleSupplements(entity, seedRepo, neighbours, neighbourKinds)
+				gc.ModuleManifest = buildModuleManifest(entity, neighbours, neighbourKinds)
+			}
 		}
 	}
 
@@ -1218,6 +1251,26 @@ func inferVisibility(sig string) string {
 		return "public"
 	}
 	return ""
+}
+
+// extractKwargs extracts the "kwarg.*" property sidecars from an entity
+// Properties map into a plain string→string map with the "kwarg." prefix
+// stripped (#1978). Returns nil when no kwarg.* keys are present so the
+// ClassFieldEntry.Kwargs JSON field is elided via omitempty.
+func extractKwargs(props map[string]string) map[string]string {
+	if len(props) == 0 {
+		return nil
+	}
+	var out map[string]string
+	for k, v := range props {
+		if strings.HasPrefix(k, "kwarg.") {
+			if out == nil {
+				out = make(map[string]string)
+			}
+			out[k[len("kwarg."):]] = v
+		}
+	}
+	return out
 }
 
 // typeHintFromSignature extracts the declared type from a field signature.
@@ -1433,6 +1486,16 @@ func buildClassManifest(entity *graph.Entity, neighbours []graph.Entity, neighbo
 						StartLine: n.StartLine,
 					}
 					entry.Visibility = inferVisibility(n.Signature)
+					// Issue #1978 — copy field_type and kwarg.* properties from
+					// the child entity's Properties map so that class_manifest
+					// field entries carry the same ORM metadata that
+					// NeighbourBrief.TypeHint surfaces for Schema neighbours.
+					// This lets docgen render a schema table directly from
+					// class_manifest without an extra neighbour-brief lookup.
+					if n.Properties != nil {
+						entry.FieldType = strings.TrimSpace(n.Properties["field_type"])
+						entry.Kwargs = extractKwargs(n.Properties)
+					}
 					m.Fields = append(m.Fields, entry)
 				}
 			}
@@ -1742,6 +1805,15 @@ func buildModuleManifest(entity *graph.Entity, neighbours []graph.Entity, neighb
 			}
 
 			// --- Classes (other class-like kinds, after model filter) ---
+			// Issue #1969 — skip SCOPE.Component(file) proxy entities: these are
+			// intermediate file containers emitted by extractors to bridge Module
+			// → file-body CONTAINS edges. They are not real classes and adding
+			// them to the Classes bucket would pollute the manifest and prevent
+			// the nil-return guard from emitting a useful manifest for modules
+			// whose only CONTAINS child is such a proxy entity.
+			if n.Kind == "SCOPE.Component" && n.Subtype == "file" {
+				continue
+			}
 			if isClassLikeKind(n.Kind) {
 				totalClasses++
 				if totalClasses <= ModuleManifestBucketCap {
