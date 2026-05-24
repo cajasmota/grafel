@@ -21,8 +21,10 @@ import (
 	"github.com/cajasmota/archigraph/internal/agents"
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/dashboard"
+	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/process"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/jobs"
@@ -252,11 +254,12 @@ func runDaemon(argv []string) error {
 		// reindex skips Pass 4 (graph algorithms) so a freshly-saved
 		// file becomes queryable as soon as the basic graph lands;
 		// the algorithm pass is run separately on a 30s debounce.
-		ReposToWatch:   daemonReposToWatch,
-		GroupsForRepo:  daemonGroupsForRepo,
-		SchedulerIndex: daemonSchedulerIndex,
-		SchedulerLinks: daemonSchedulerLinks,
-		SchedulerAlgo:  daemonSchedulerAlgo,
+		ReposToWatch:         daemonReposToWatch,
+		GroupsForRepo:        daemonGroupsForRepo,
+		SchedulerIndex:       daemonSchedulerIndex,
+		SchedulerLinks:       daemonSchedulerLinks,
+		SchedulerAlgo:        daemonSchedulerAlgo,
+		SchedulerIncremental: daemonSchedulerIncremental,
 
 		MaxRSSBudgetMB:      maxRSSBudget,
 		RSSHistoryPath:      filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
@@ -403,6 +406,31 @@ func daemonSchedulerIndex(_ context.Context, repoPath string, ref string) error 
 	// PH2 (#2090): register / re-activate the tier slot as HOT after index.
 	tierAfterIndex(repoPath, ref)
 	return err
+}
+
+// daemonSchedulerIncremental is the S3 incremental file-level reindex hook
+// wired into the scheduler (issue #2153 of epic #2149). It is only called when
+// ARCHIGRAPH_INCREMENTAL_REINDEX=1 is set; the scheduler gates on that env var
+// before dispatching.
+//
+// The function attempts to patch graph.fb in-place rather than re-running the
+// full index pipeline. It falls back (done=false) when more than 5 files changed,
+// the graph is absent, or the scoped resolver detects an unresolvable relationship.
+func daemonSchedulerIncremental(_ context.Context, repoPath string, ref string) sched.IncrementalResult {
+	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
+	if stateDir == "" {
+		stateDir = daemon.StateDirForRepo(repoPath)
+	}
+	res := extractors.TryIncremental(context.Background(), repoPath, stateDir, nil)
+	if res.Done {
+		invalidateAfterIndex(repoPath)
+		tierAfterIndex(repoPath, ref)
+	}
+	return sched.IncrementalResult{
+		Done:           res.Done,
+		FallbackReason: res.FallbackReason,
+		ChangedFiles:   res.ChangedFiles,
+	}
 }
 
 // daemonSchedulerLinks re-runs the cross-repo link passes for a group.

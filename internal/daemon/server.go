@@ -42,6 +42,12 @@ type Config struct {
 	SchedulerLinks func(ctx context.Context, group string) error
 	SchedulerAlgo  func(ctx context.Context, repo string) error
 
+	// SchedulerIncremental, when non-nil, is wired as the S3 incremental
+	// file-level reindex hook (issue #2153). It is attempted before
+	// SchedulerIndex when ARCHIGRAPH_INCREMENTAL_REINDEX=1 is set. When nil
+	// the incremental path is never tried (default: full reindex always).
+	SchedulerIncremental func(ctx context.Context, repo string, ref string) sched.IncrementalResult
+
 	// MaxRSSBudgetMB caps the total predicted RSS of concurrently
 	// running index jobs. 0 disables admission control (legacy
 	// behaviour). The CLI sets this via --max-rss-budget on the
@@ -222,6 +228,9 @@ func Run(ctx context.Context, cfg Config) error {
 			RefCapture: func(repoPath string) string {
 				return gitmeta.Capture(repoPath).Ref
 			},
+			// S3 incremental file-level reindex (issue #2153). When nil
+			// the scheduler falls through to full reindex on every tick.
+			Incremental: cfg.SchedulerIncremental,
 		})
 		if cfg.MaxRSSBudgetMB > 0 {
 			logger.Printf("scheduler: RSS-budget admission control enabled budget=%dMB history=%s",

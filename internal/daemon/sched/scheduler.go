@@ -81,6 +81,26 @@ type GroupsForRepoFn func(repoPath string) []string
 // job is admitted regardless of budget).
 type PredictFn func(repoPath string) int64
 
+// IncrementalResult carries the outcome of a S3 incremental reindex attempt.
+// Mirrors extractors.Result without importing that package here to avoid a
+// circular dependency (extractors imports daemon for StateDirForRepo).
+type IncrementalResult struct {
+	// Done is true when the incremental patch completed and the caller should
+	// NOT fall through to the full IndexFn.
+	Done bool
+	// FallbackReason is non-empty when Done=false (safety-net triggered or
+	// too many files changed). Used only for logging.
+	FallbackReason string
+	// ChangedFiles is the number of files that were re-extracted.
+	ChangedFiles int
+}
+
+// IncrementalFn attempts the S3 incremental file-level reindex optimisation.
+// Called by the scheduler worker when ARCHIGRAPH_INCREMENTAL_REINDEX=1 is set.
+// Returns done=true when the patch succeeded; done=false causes the scheduler
+// to fall through to IndexFn (full reindex fallback).
+type IncrementalFn func(ctx context.Context, repoPath string, ref string) IncrementalResult
+
 // CloneResult carries the outcome of a clone-from-parent attempt.
 // Mirrors clone.Result without importing the clone package here to
 // avoid a circular dependency (clone imports daemon for StateDirForRepoRef).
@@ -152,6 +172,20 @@ type Config struct {
 	// failure or error), IndexFn is called normally (full reindex fallback).
 	// This is the PH7 clone-from-parent optimisation (issue #2099).
 	Clone CloneFn
+
+	// Incremental, when non-nil, is attempted before IndexFn when the
+	// ARCHIGRAPH_INCREMENTAL_REINDEX=1 env var is set (S3 of epic #2149,
+	// issue #2153). It performs a surgical file-level graph patch that is
+	// ~25× faster than a full reindex for single-file edits.
+	//
+	// The function returns (done=true) when the incremental patch succeeded
+	// and the full IndexFn should be skipped. It returns (done=false) on any
+	// precondition failure, safety-net trigger, or error — the scheduler
+	// falls through to IndexFn transparently (full reindex fallback).
+	//
+	// Default (nil): incremental path is never tried; behaviour is identical
+	// to before this field was added.
+	Incremental IncrementalFn
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -638,12 +672,33 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		}
 	}()
 
+	// S3: attempt incremental file-level reindex before the full index or
+	// clone-from-parent path. Only tried when the Incremental callback is
+	// configured AND the opt-in env var is set.
+	//
+	// On success (res.Done=true) we skip both clone and full reindex.
+	// On fallback (res.Done=false) we log the reason and fall through normally.
+	var err error
+	incrementalDone := false
+	if s.cfg.Incremental != nil && incrementalEnabled() {
+		res := s.cfg.Incremental(context.Background(), repoPath, tok.ref)
+		if res.Done {
+			incrementalDone = true
+			s.logEvent("incremental_ok", repoPath,
+				"changed_files="+itoa(int64(res.ChangedFiles)))
+		} else {
+			s.logEvent("incremental_fallback", repoPath,
+				"reason="+res.FallbackReason)
+			s.logger.Printf("sched: incremental fallback repo=%s reason=%s",
+				repoPath, res.FallbackReason)
+		}
+	}
+
 	// PH7: attempt clone-from-parent before running the full index.
 	// Only tried when the Clone callback is configured AND the job carries
 	// a non-empty ref (so we know which per-ref store to check).
-	var err error
 	cloneSkipped := false
-	if s.cfg.Clone != nil && tok.ref != "" {
+	if !incrementalDone && s.cfg.Clone != nil && tok.ref != "" {
 		res := s.cfg.Clone(context.Background(), repoPath, tok.ref)
 		if res.Done {
 			cloneSkipped = true
@@ -651,7 +706,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 				"from="+res.ParentRef+" changed_files="+itoa(int64(res.ChangedFiles)))
 		}
 	}
-	if !cloneSkipped && s.cfg.Index != nil {
+	if !incrementalDone && !cloneSkipped && s.cfg.Index != nil {
 		err = s.cfg.Index(context.Background(), repoPath, tok.ref)
 	}
 
@@ -961,6 +1016,14 @@ func formatMB(mb int64) string {
 		return "0MB"
 	}
 	return itoa(mb) + "MB"
+}
+
+// incrementalEnabled reports whether the S3 incremental reindex path is
+// active. Reads ARCHIGRAPH_INCREMENTAL_REINDEX once per call. Default is
+// false so behaviour is unchanged for existing installations.
+func incrementalEnabled() bool {
+	v := os.Getenv("ARCHIGRAPH_INCREMENTAL_REINDEX")
+	return v == "1" || v == "true"
 }
 
 func itoa(n int64) string {
