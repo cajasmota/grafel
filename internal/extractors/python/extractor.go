@@ -632,6 +632,14 @@ func walkNode(
 				// from the parent Model to any `<attr> = <Manager>()` style
 				// attachment (#1989).
 				enrichDjangoModelFieldsAndManagers(body, file, childParent, classIdx, before, after, out)
+				// Issue #2061 — DRF serializer field REFERENCES emission.
+				// Covers PrimaryKeyRelatedField / HyperlinkedRelatedField /
+				// SlugRelatedField (queryset → model), nested-serializer
+				// references (FooSerializer(...)), source="…" path binding to
+				// Meta.model, and implicit ModelSerializer scalar→Meta.model
+				// binding. Runs AFTER applyFrameworkInnerClassProperties so
+				// the parent's `meta_model` property is already stamped.
+				emitDRFSerializerFieldRefs(body, file, childParent, classIdx, before, after, out)
 			}
 		}
 		return // body handled above — do not recurse further
@@ -746,6 +754,9 @@ func walkNode(
 					// classes (e.g. @python_2_unicode_compatible on legacy
 					// Django).
 					enrichDjangoModelFieldsAndManagers(body, file, childParent, classIdx, before, after, out)
+					// Issue #2061 — DRF serializer field REFERENCES (decorated
+					// class branch). See bare branch above for rationale.
+					emitDRFSerializerFieldRefs(body, file, childParent, classIdx, before, after, out)
 				}
 			}
 		}
