@@ -20,6 +20,14 @@ import (
 	"github.com/cajasmota/archigraph/internal/version"
 )
 
+// rebuildRPCTimeout is the maximum wall-clock time a single Rebuild RPC is
+// allowed to run. A rebuild that exceeds this limit is treated as a deadlock
+// and returns an error so the RPC client is unblocked. The underlying index
+// goroutines are abandoned (they will eventually complete or panic-recover and
+// be cleaned up). 2 hours is intentionally conservative — even a full cold
+// re-index of a large group should finish well under 30 minutes in practice.
+const rebuildRPCTimeout = 2 * time.Hour
+
 // IndexFunc runs a one-shot index. The daemon does not import the
 // extractor stack directly — that lives in cmd/archigraph — so it
 // receives the entrypoint as a function value at construction time.
@@ -108,8 +116,22 @@ type Service struct {
 	maxConcurrentGroups int
 
 	// groupRebuildMu prevents a concurrent double-rebuild of the same
-	// group. Keyed by group name.
+	// group. Keyed by group name. Each value is a *sync.Mutex; loaded-or-
+	// stored atomically via sync.Map to avoid the TOCTOU race that would
+	// arise with a plain map + RWMutex. Wired into Service.Rebuild in
+	// #2097 after the field was left as an unwired stub.
 	groupRebuildMu sync.Map // map[string]*sync.Mutex
+
+	// rebuildInFlight counts Rebuild RPCs that are currently inside
+	// Service.Rebuild (i.e. past the per-group mutex acquisition). It is
+	// separate from inFlight (which counts all RPC kinds) so Status can
+	// surface the distinction for deadlock diagnosis (#2097).
+	rebuildInFlight int64
+
+	// groupsActiveCount is the number of groups whose per-group mutex is
+	// currently held. Incremented when a group mutex is acquired, decremented
+	// on release. Exposed via StatusReply.RebuildGroupsActive (#2097).
+	groupsActiveCount int64
 
 	// Phase B — populated only when the daemon is run with a watcher
 	// + scheduler attached. Both may be nil in test wiring that
@@ -182,6 +204,8 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	reply.UptimeSec = int64(time.Since(s.startedAt).Seconds())
 	reply.RSSBytes = ms.Sys
 	reply.InFlight = int(atomic.LoadInt64(&s.inFlight))
+	reply.RebuildInFlight = int(atomic.LoadInt64(&s.rebuildInFlight))
+	reply.RebuildGroupsActive = int(atomic.LoadInt64(&s.groupsActiveCount))
 	reply.StartedAt = s.startedAt.UTC().Format(time.RFC3339)
 	reply.SocketPath = s.socketPath
 	// Report the binary path so clients can detect stale daemons (#855).
@@ -279,6 +303,14 @@ func (s *Service) Index(args *proto.IndexArgs, reply *proto.IndexReply) error {
 //
 // When args.ProgressToken is non-empty, per-repo progress is stored
 // so the CLI can poll it via IndexProgress while this call blocks.
+//
+// Concurrency guard (#2097): each group gets a per-group mutex
+// (groupRebuildMu) so only one Rebuild RPC per group runs at a time.
+// A second concurrent RPC for the same group blocks until the first
+// finishes — it does NOT race against the same output files. Combined
+// with a per-RPC wall-clock timeout (rebuildRPCTimeout) this prevents
+// the indefinite hang that was observed when in_flight=4 and all four
+// RPCs targeted the same group.
 func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) error {
 	if s.rebuild == nil {
 		return errors.New("rebuild entrypoint not configured")
@@ -289,47 +321,136 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	atomic.AddInt64(&s.inFlight, 1)
 	defer atomic.AddInt64(&s.inFlight, -1)
 
-	// If no progress token was supplied, run synchronously as before.
-	if args.ProgressToken == "" {
-		repos, warning, err := s.rebuild(*args)
-		if err != nil {
-			return err
-		}
-		reply.Repos = repos
-		reply.Warning = warning
-		return nil
+	// Per-group mutual exclusion: load-or-store a *sync.Mutex for this
+	// group so that concurrent Rebuild RPCs targeting the same group are
+	// serialised rather than racing on the same output files (#2097).
+	muVal, _ := s.groupRebuildMu.LoadOrStore(args.Group, &sync.Mutex{})
+	groupMu := muVal.(*sync.Mutex)
+	groupMu.Lock()
+	atomic.AddInt64(&s.groupsActiveCount, 1)
+	atomic.AddInt64(&s.rebuildInFlight, 1)
+	defer func() {
+		atomic.AddInt64(&s.groupsActiveCount, -1)
+		atomic.AddInt64(&s.rebuildInFlight, -1)
+		groupMu.Unlock()
+	}()
+
+	if s.logger != nil {
+		s.logger.Printf("rebuild: start group=%s token=%q wipe=%v incremental=%v slug=%q",
+			args.Group, args.ProgressToken, args.Wipe, args.Incremental, args.Slug)
 	}
 
-	// Progress-tracked path — delegate to the progress-aware rebuild.
-	token := args.ProgressToken
-	sess := s.newProgressSession(token, args.Group)
-	defer func() {
+	// Per-RPC timeout: bound the maximum wall-clock time so a stalled
+	// indexer cannot wedge the daemon indefinitely (#2097).
+	type rebuildResult struct {
+		repos   []string
+		warning string
+		err     error
+	}
+	resultCh := make(chan rebuildResult, 1)
+
+	var (
+		sess  *rebuildSession
+		token string
+	)
+	if args.ProgressToken != "" {
+		token = args.ProgressToken
+		sess = s.newProgressSession(token, args.Group)
+	}
+
+	rebuildStartTime := time.Now()
+	go func() {
+		var repos []string
+		var warning string
+		var err error
+		if sess != nil {
+			repos, warning, err = s.rebuildWithProgress(sess, *args)
+		} else {
+			repos, warning, err = s.rebuild(*args)
+		}
+		resultCh <- rebuildResult{repos: repos, warning: warning, err: err}
+	}()
+
+	// Dead-man heartbeat: if no result arrives within 5 minutes, log a
+	// warning so operators can detect a stalled rebuild without waiting
+	// for the full 2-hour timeout (#2097).
+	const deadManInterval = 5 * time.Minute
+	deadMan := time.NewTicker(deadManInterval)
+	defer deadMan.Stop()
+	// Use a separate goroutine to handle the ticker without blocking the
+	// main select (the ticker fires repeatedly until the main select exits).
+	go func() {
+		for range deadMan.C {
+			if s.logger != nil {
+				s.logger.Printf("rebuild: WARNING group=%s still running after %s (no result yet) — possible stall",
+					args.Group, time.Since(rebuildStartTime).Truncate(time.Second))
+			}
+		}
+	}()
+
+	timer := time.NewTimer(rebuildRPCTimeout)
+	defer timer.Stop()
+
+	var res rebuildResult
+	select {
+	case res = <-resultCh:
+		// Normal completion.
+	case <-timer.C:
+		if s.logger != nil {
+			s.logger.Printf("rebuild: TIMEOUT group=%s after %s — RPC unblocked; background index may still be running",
+				args.Group, rebuildRPCTimeout)
+		}
+		if sess != nil {
+			sess.mu.Lock()
+			sess.done = true
+			for i := range sess.repos {
+				if sess.repos[i].Phase != proto.PhaseCompleted {
+					sess.repos[i].Phase = proto.PhaseFailed
+					sess.repos[i].ErrMsg = "rebuild RPC timeout"
+					sess.repos[i].UpdatedAt = time.Now().Unix()
+				}
+			}
+			sess.mu.Unlock()
+		}
+		return fmt.Errorf("rebuild group=%s timed out after %s", args.Group, rebuildRPCTimeout)
+	}
+
+	if sess != nil {
 		// Mark the session done so the final poll returns Done=true.
 		sess.mu.Lock()
 		sess.done = true
 		sess.mu.Unlock()
-	}()
-
-	repos, warning, err := s.rebuildWithProgress(sess, *args)
-	if err != nil {
-		return err
 	}
-	reply.Repos = repos
-	reply.Warning = warning
-	reply.TotalEntities = sess.totalEntities
-	reply.TotalRels = sess.totalRels
-	elapsedSec := time.Since(sess.startedAt).Seconds()
-	reply.ElapsedSec = elapsedSec
 
-	// Record index wall-time for the performance budget monitor (#1319).
-	// Best-effort: do not fail the rebuild if recording fails.
-	go func() {
-		homeDir, _ := registry.HomeDir()
-		if homeDir != "" {
-			rec := perf.NewRecorder(homeDir + "/perf-history.jsonl")
-			_ = rec.Record("index_wall_ms", args.Group, elapsedSec*1000)
+	if s.logger != nil {
+		if res.err != nil {
+			s.logger.Printf("rebuild: error group=%s err=%v", args.Group, res.err)
+		} else {
+			s.logger.Printf("rebuild: done group=%s repos=%d warning=%q", args.Group, len(res.repos), res.warning)
 		}
-	}()
+	}
+
+	if res.err != nil {
+		return res.err
+	}
+	reply.Repos = res.repos
+	reply.Warning = res.warning
+	if sess != nil {
+		reply.TotalEntities = sess.totalEntities
+		reply.TotalRels = sess.totalRels
+		elapsedSec := time.Since(sess.startedAt).Seconds()
+		reply.ElapsedSec = elapsedSec
+
+		// Record index wall-time for the performance budget monitor (#1319).
+		// Best-effort: do not fail the rebuild if recording fails.
+		go func() {
+			homeDir, _ := registry.HomeDir()
+			if homeDir != "" {
+				rec := perf.NewRecorder(homeDir + "/perf-history.jsonl")
+				_ = rec.Record("index_wall_ms", args.Group, elapsedSec*1000)
+			}
+		}()
+	}
 
 	return nil
 }

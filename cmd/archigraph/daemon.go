@@ -398,6 +398,14 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 // to stderr for diagnostics. The cross-repo link pass runs only once all
 // per-repo indexes complete.
 func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
+	rebuildStart := time.Now()
+	fmt.Fprintf(os.Stderr, "archigraph: rebuild start group=%s slug=%q wipe=%v incremental=%v\n",
+		args.Group, args.Slug, args.Wipe, args.Incremental)
+	defer func() {
+		fmt.Fprintf(os.Stderr, "archigraph: rebuild exit group=%s took=%s\n",
+			args.Group, time.Since(rebuildStart).Truncate(time.Millisecond))
+	}()
+
 	groups, err := registry.Groups()
 	if err != nil {
 		return nil, "", err
@@ -452,26 +460,39 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 	if conc == 1 || len(work) <= 1 {
 		// --- Serial path ---
 		for i, w := range work {
-			if args.Wipe {
-				_ = os.RemoveAll(daemon.StateDirForRepo(w.r.Path))
-			}
 			t0 := time.Now()
-			var opts []IndexOption
-			if args.Incremental && !args.Wipe {
-				opts = append(opts, WithIncremental(daemon.StateDirForRepo(w.r.Path)))
-			}
-			// Publish granular per-repo progress into the shared broker so the
-			// WebUI Index step renders live rows + file counters (#1531).
-			opts = append(opts,
-				WithPublisher(daemonProgressBroker),
-				WithProgressSlugs(args.Group, w.r.Slug))
-			// #1576: tag the graph with the CONFIG slug (not the on-disk
-			// directory basename) so doc.Repo matches the slug the dashboard
-			// keys nodes by and the slug the cross-repo link pass emits as the
-			// link endpoint prefix. When the wizard slugifies a repo name
-			// (e.g. upvate_core → upvate-core) an empty repoTag would fall back
-			// to the dir basename and diverge, dropping every cross-repo edge.
-			indexErr := rebuildIndexFunc(w.r.Path, "", w.r.Slug, nil, false, false, opts...)
+			// Panic recovery (#2097): convert an extractor panic into an error so
+			// the remaining repos in the batch can still run.
+			var indexErr error
+			func(rw repoWork, idx int) {
+				defer func() {
+					if r := recover(); r != nil {
+						indexErr = fmt.Errorf("index panic: %v", r)
+						fmt.Fprintf(os.Stderr,
+							"archigraph: rebuild %s panic recovered: %v\n",
+							rw.r.Slug, r)
+					}
+				}()
+				if args.Wipe {
+					_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
+				}
+				var opts []IndexOption
+				if args.Incremental && !args.Wipe {
+					opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
+				}
+				// Publish granular per-repo progress into the shared broker so the
+				// WebUI Index step renders live rows + file counters (#1531).
+				opts = append(opts,
+					WithPublisher(daemonProgressBroker),
+					WithProgressSlugs(args.Group, rw.r.Slug))
+				// #1576: tag the graph with the CONFIG slug (not the on-disk
+				// directory basename) so doc.Repo matches the slug the dashboard
+				// keys nodes by and the slug the cross-repo link pass emits as the
+				// link endpoint prefix. When the wizard slugifies a repo name
+				// (e.g. upvate_core → upvate-core) an empty repoTag would fall back
+				// to the dir basename and diverge, dropping every cross-repo edge.
+				indexErr = rebuildIndexFunc(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
+			}(w, i)
 			results[i] = repoResult{
 				path: w.r.Path,
 				slug: w.r.Slug,
@@ -481,30 +502,58 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 		}
 	} else {
 		// --- Parallel path: semaphore-bounded worker pool ---
+		//
+		// Panic recovery (#2097): a panic inside rebuildIndexFunc would
+		// propagate out of the goroutine and crash the daemon. We recover,
+		// convert the panic to an error stored in results[idx], and release
+		// the semaphore slot via defer so subsequent goroutines are not
+		// starved. The deferred <-sem is registered AFTER the blocking
+		// sem<- succeeds, so a panic before acquiring the slot cannot leave
+		// a phantom holder either.
 		sem := make(chan struct{}, conc)
 		var wg sync.WaitGroup
 		for i, w := range work {
 			wg.Add(1)
 			go func(idx int, rw repoWork) {
 				defer wg.Done()
+
+				// Acquire semaphore slot. This MUST come before the
+				// panic-recovery defer so the defer's <-sem only fires
+				// once the slot is actually held.
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				if args.Wipe {
-					_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
-				}
 				t0 := time.Now()
-				var opts []IndexOption
-				if args.Incremental && !args.Wipe {
-					opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
-				}
-				// Publish granular per-repo progress into the shared broker so
-				// the WebUI Index step renders live rows + file counters (#1531).
-				opts = append(opts,
-					WithPublisher(daemonProgressBroker),
-					WithProgressSlugs(args.Group, rw.r.Slug))
-				// #1576: tag with the CONFIG slug — see serial path above.
-				indexErr := rebuildIndexFunc(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
+
+				// Recover from panics in the index function so a single
+				// failing repo does not crash the daemon process (#2097).
+				var indexErr error
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							indexErr = fmt.Errorf("index panic: %v", r)
+							fmt.Fprintf(os.Stderr,
+								"archigraph: rebuild %s panic recovered: %v\n",
+								rw.r.Slug, r)
+						}
+					}()
+
+					if args.Wipe {
+						_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
+					}
+					var opts []IndexOption
+					if args.Incremental && !args.Wipe {
+						opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
+					}
+					// Publish granular per-repo progress into the shared broker so
+					// the WebUI Index step renders live rows + file counters (#1531).
+					opts = append(opts,
+						WithPublisher(daemonProgressBroker),
+						WithProgressSlugs(args.Group, rw.r.Slug))
+					// #1576: tag with the CONFIG slug — see serial path above.
+					indexErr = rebuildIndexFunc(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
+				}()
+
 				results[idx] = repoResult{
 					path: rw.r.Path,
 					slug: rw.r.Slug,
