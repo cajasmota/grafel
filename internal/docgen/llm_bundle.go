@@ -96,6 +96,15 @@ type LLMSectionPrompt struct {
 	// markdown and the orchestrator should skip the LLM call for this section.
 	// Additive field: orchestrators that don't know it treat it as falsy/absent.
 	CacheHit bool `json:"cache_hit,omitempty"`
+	// GraphContext is a per-section copy of the bundle-level graph context.
+	// Until #1975 it was missing, meaning the LLM fill step received only the
+	// guidance + stub for each section with no source_window or neighbour briefs
+	// (all 13 sections fired context-blind). BuildBundle now propagates the
+	// bundle-level LLMGraphContext into each section so a fill worker that
+	// processes a single section in isolation still has the grounding context.
+	// Additive field: orchestrators that already read the bundle-level
+	// graph_context can ignore it.
+	GraphContext LLMGraphContext `json:"graph_context"`
 }
 
 // LLMGraphContext carries the resolved entity metadata and neighbour summaries
@@ -1039,6 +1048,16 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 			MaxMermaid:   sectionMaxMermaid(sec),
 			NeighbourIDs: nbIDs,
 			PromptHash:   sh,
+			// #1975: propagate the bundle-level graph_context (entity metadata,
+			// source_window, neighbour_briefs, class/module manifests) into the
+			// per-section prompt. Previously the fill step ran context-blind:
+			// the orchestrator delivered each LLMSectionPrompt to the LLM with
+			// only stub_markdown + guidance, never the source_window or
+			// neighbour briefs. By copying the value (struct copy — gc is not
+			// mutated after this point) every section carries the same
+			// grounding payload, and section-isolated fill workers no longer
+			// need to thread the bundle around.
+			GraphContext: gc,
 		}
 
 		// Cache read: if a cached result exists, stamp cache_hit=true and

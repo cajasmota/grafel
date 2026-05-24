@@ -110,6 +110,24 @@ func classifyNoise(e *graph.Entity) noiseKind {
 	}
 
 	// File/module container Component: label == source-file path, no body.
+	//
+	// #2015: also check the top-level Subtype field. The extractor stamps the
+	// subtype into BOTH the EntityRecord.Subtype field and Properties["subtype"]
+	// (extractor.FileEntity), but some load / conversion paths only repopulate
+	// one of them. Checking both makes the classification robust regardless of
+	// which side carried the value through to the loaded graph.Entity. We also
+	// relax the StartLine==0 gate: the python extractor's #1964 finalize sweep
+	// stamps StartLine=1 onto previously-zero entities — including file
+	// containers — so a real file Component can arrive here with StartLine>0
+	// yet still be the synthetic file node whose only role is anchoring
+	// file-level IMPORTS/REFERENCES edges.
+	subtype := e.Subtype
+	if subtype == "" {
+		subtype = e.Properties["subtype"]
+	}
+	if bareKind == "component" && (subtype == "file" || subtype == "module") {
+		return noiseContainer
+	}
 	if bareKind == "component" && e.StartLine == 0 {
 		if e.Properties["subtype"] == "file" || e.Properties["subtype"] == "module" {
 			return noiseContainer

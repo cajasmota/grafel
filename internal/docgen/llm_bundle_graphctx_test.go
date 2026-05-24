@@ -460,3 +460,54 @@ func TestBuildBundle_SourceWindow_CWDOutside(t *testing.T) {
 	}
 	t.Logf("CWDOutside (cwd=%s): source_window (%d chars):\n%s", os.TempDir(), len(sw), sw)
 }
+
+// TestBuildBundle_SectionGraphContextPropagated reproduces #1975: BuildBundle
+// constructed each LLMSectionPrompt without copying the bundle-level
+// GraphContext, so the LLM fill step received only stub_markdown + guidance
+// per section — no source_window, no neighbour_briefs, no qualified_name. All
+// 13 sections fired context-blind. After the fix every section carries the
+// bundle-level GraphContext as a struct copy so a section-isolated fill
+// worker still has the grounding payload. (#1975)
+func TestBuildBundle_SectionGraphContextPropagated(t *testing.T) {
+	groupName, entityID := graphCtxTestHarness(t)
+
+	opts := docgen.BuildBundleOpts{
+		RunOpts: docgen.RunOpts{
+			Group:        groupName,
+			SeedEntityID: entityID,
+			NoCache:      true,
+		},
+		Tier:    1,
+		NoCache: true,
+	}
+
+	bundle, err := docgen.BuildBundle(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("BuildBundle: %v", err)
+	}
+	if len(bundle.Sections) == 0 {
+		t.Fatalf("expected at least one section, got 0")
+	}
+	if bundle.GraphContext.QualifiedName == "" {
+		t.Fatalf("bundle.GraphContext.QualifiedName empty — harness invariant broken")
+	}
+	for i := range bundle.Sections {
+		sp := &bundle.Sections[i]
+		if sp.GraphContext.QualifiedName != bundle.GraphContext.QualifiedName {
+			t.Errorf("section %q: expected GraphContext.QualifiedName=%q, got %q",
+				sp.Section, bundle.GraphContext.QualifiedName, sp.GraphContext.QualifiedName)
+		}
+		if sp.GraphContext.EntityName != bundle.GraphContext.EntityName {
+			t.Errorf("section %q: expected GraphContext.EntityName=%q, got %q",
+				sp.Section, bundle.GraphContext.EntityName, sp.GraphContext.EntityName)
+		}
+		if sp.GraphContext.Repo != bundle.GraphContext.Repo {
+			t.Errorf("section %q: expected GraphContext.Repo=%q, got %q",
+				sp.Section, bundle.GraphContext.Repo, sp.GraphContext.Repo)
+		}
+		if sp.GraphContext.SourceWindow != bundle.GraphContext.SourceWindow {
+			t.Errorf("section %q: source_window mismatch (bundle has %d chars, section has %d)",
+				sp.Section, len(bundle.GraphContext.SourceWindow), len(sp.GraphContext.SourceWindow))
+		}
+	}
+}

@@ -412,6 +412,115 @@ func TestFindCallers_ModuleInitReExports(t *testing.T) {
 	}
 }
 
+// TestFindCallers_ChecklistAdminPyPostFinalize reproduces the verification-round
+// failure for #2015: post-#1964 the python extractor's finalize sweep stamps
+// StartLine=1 onto previously-zero file containers, so the noiseContainer gate
+// in classifyNoise that required StartLine==0 stopped matching. The container
+// then fell through to either noiseShadow (and got dropped) or noiseNone (and
+// passed through). Without #2015 the production scenario — Checklist model with
+// 17 REFERENCES + IMPORTS edges from core/admin.py — was still missing the
+// admin.py caller. This test exercises that exact shape: a file Component with
+// StartLine>0 and only the top-level Subtype set (no Properties["subtype"]),
+// connected via REFERENCES + IMPORTS edges in addition to a CALLS-via-method
+// noise neighbour. After the fix admin.py is the file-level caller. (#2015)
+func TestFindCallers_ChecklistAdminPyPostFinalize(t *testing.T) {
+	doc := minDoc(
+		[]graph.Entity{
+			// Target: Checklist model.
+			{
+				ID: "checklist-model", Name: "Checklist",
+				Kind: "SCOPE.Schema", SourceFile: "core/models/checklist.py", StartLine: 12,
+			},
+			// File container WITH StartLine=1 (post-#1964 finalize) and only
+			// the top-level Subtype field set — Properties["subtype"] is
+			// intentionally absent here to simulate fb-load paths that lose
+			// the redundant Properties copy. Pre-#2015 this entity would slip
+			// through the noiseContainer gate, get re-classified as
+			// noiseShadow by the StartLine==0 fallback (which also wouldn't
+			// match here, so it became noiseNone) — and in some real graphs
+			// failed the byID lookup entirely.
+			{
+				ID: "admin-file", Name: "core/admin.py",
+				Kind: "SCOPE.Component", SourceFile: "core/admin.py",
+				StartLine: 1,
+				Subtype:   "file",
+			},
+			// A real method caller so the result count is non-empty
+			// independent of the file caller.
+			{
+				ID: "register-call", Name: "register_models",
+				Kind: "SCOPE.Operation", SourceFile: "core/setup.py", StartLine: 8,
+			},
+		},
+		[]graph.Relationship{
+			// 17 REFERENCES (simulated as one — BFS de-dupes anyway).
+			{FromID: "admin-file", ToID: "checklist-model", Kind: "REFERENCES"},
+			// IMPORTS edge from the same file.
+			{FromID: "admin-file", ToID: "checklist-model", Kind: "IMPORTS"},
+			// A plain CALLS caller — must still appear.
+			{FromID: "register-call", ToID: "checklist-model", Kind: "CALLS"},
+		},
+	)
+	srv := newTestServerWithDoc(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "checklist-model",
+		"depth":     float64(1),
+	})
+	callers, ok := out["callers"].([]any)
+	if !ok {
+		t.Fatalf("expected callers array, got %T", out["callers"])
+	}
+	names := map[string]bool{}
+	for _, c := range callers {
+		if cm, ok := c.(map[string]any); ok {
+			names[fmt.Sprintf("%v", cm["name"])] = true
+		}
+	}
+	if !names["core/admin.py"] {
+		t.Errorf("expected core/admin.py to be a caller of Checklist; got names=%v", names)
+	}
+	if !names["register_models"] {
+		t.Errorf("expected register_models to be a caller of Checklist; got names=%v", names)
+	}
+}
+
+// TestFindCallers_NilByIDSyntheticFileCaller verifies that when an inbound
+// REFERENCES edge points to a FromID that isn't in the byID index (a path
+// string that the resolver's IMPORTS→FileEntity-hex rewrite missed), the
+// handler now synthesises a caller entry rather than silently dropping the
+// signal. (#2015 — pragmatic recovery for unresolved file-level callers.)
+func TestFindCallers_NilByIDSyntheticFileCaller(t *testing.T) {
+	doc := minDoc(
+		[]graph.Entity{
+			{
+				ID: "target-model", Name: "Building",
+				Kind: "SCOPE.Schema", SourceFile: "core/models.py", StartLine: 1,
+			},
+			// Note: NO entity with ID "raw/path/admin.py" — the inbound
+			// edge below points to a path string that the resolver never
+			// rewrote.
+		},
+		[]graph.Relationship{
+			{FromID: "raw/path/admin.py", ToID: "target-model", Kind: "REFERENCES"},
+		},
+	)
+	srv := newTestServerWithDoc(t, doc)
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "target-model",
+		"depth":     float64(1),
+	})
+	callers, _ := out["callers"].([]any)
+	if len(callers) != 1 {
+		t.Fatalf("expected 1 synthetic caller, got %d: %v", len(callers), callers)
+	}
+	first := callers[0].(map[string]any)
+	// Name should be the leaf of the path.
+	if first["name"] != "admin.py" {
+		t.Errorf("expected synthetic caller name=admin.py, got %v", first["name"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestFindCallees
 // ---------------------------------------------------------------------------
