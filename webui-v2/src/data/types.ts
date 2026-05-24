@@ -613,6 +613,25 @@ export interface ProcessStep {
   side_effects?: string[];
 }
 
+/**
+ * One node in the branches_dag JSON tree (introduced in #2028 Phase 1).
+ * Mirrors ChainStep in the Go daemon.
+ *
+ * - `step_index` aligns with the corresponding ProcessStep in the `steps` array.
+ * - `branches` is non-empty (length > 1) at fan-out points.
+ * - `reason === "fanout_cap"` marks a "+N more" overflow sentinel that should
+ *   be rendered as a compacted indicator rather than a real step.
+ */
+export interface ChainStep {
+  step_index: number;
+  entity_id: string;
+  label: string;
+  /** Present on overflow sentinels: "fanout_cap" */
+  reason?: string;
+  /** Child branches — length > 1 means this is a fan-out point. */
+  branches: ChainStep[];
+}
+
 export interface Process {
   process_id: string;
   label: string;
@@ -637,6 +656,16 @@ export interface Process {
   enrichment?: FlowEnrichment;
   docgen_status?: "enriched" | "pending" | "stale";
   source_snippets?: Record<string, string>;
+  /**
+   * True when this process has at least one fan-out step (introduced in #2028).
+   * When true, `branches_dag` carries the full branching DAG.
+   */
+  is_dag?: boolean;
+  /**
+   * JSON-serialised ChainStep tree emitted by #2028 Phase 1.
+   * Only present when `is_dag === true`. Parse with JSON.parse → ChainStep.
+   */
+  branches_dag?: string;
 }
 
 export interface FlowDeadEnd {
