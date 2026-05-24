@@ -21,6 +21,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/agents"
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/process"
@@ -389,13 +390,24 @@ func daemonGroupsForRepo(repoPath string) []string {
 // It is passed as the repoTag so the graph artifact is written into the
 // correct per-ref directory. When ref is empty the indexer falls back to
 // the current HEAD ref via gitmeta.Capture inside StateDirForRepo.
-func daemonSchedulerIndex(_ context.Context, repoPath string, ref string) error {
-	// ADR-0016 flip-day (#808): graph.fb is always written by default now.
-	// WithExportFB is a no-op kept for back-compat; removed in next release.
-	// Pass ref as the output-path hint so the per-ref store layout is used.
-	_ = ref // ref is stored via StateDirForRepo → StateDirForRepoRef at write time;
-	// the indexer itself resolves the correct path via gitmeta at index time.
-	err := Index(repoPath, "", "", []string{"graph-algo"}, false, false)
+//
+// S5 (#2155): when ARCHIGRAPH_SUBPROCESS_INDEXER=true the actual Index()
+// call is delegated to a short-lived child process so the daemon's heap
+// stays flat across sustained reindex workloads. The in-process path
+// remains the default (see sched.SubprocessIndexEnabled for the env gate).
+func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) error {
+	var err error
+	if sched.SubprocessIndexEnabled() {
+		// S5 path: fork-exec `archigraph index-internal` for memory isolation.
+		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, log.Default())
+	} else {
+		// In-process path (legacy default, enabled on existing installs).
+		// ADR-0016 flip-day (#808): graph.fb is always written by default now.
+		// ref is stored via StateDirForRepo → StateDirForRepoRef at write time;
+		// the indexer itself resolves the correct path via gitmeta at index time.
+		_ = ref
+		err = Index(repoPath, "", "", []string{"graph-algo"}, false, false)
+	}
 	// Drop the cached mmap so the next MCP query reopens against the
 	// freshly written graph.fb. Done on both success and failure paths
 	// — a stale handle is worse than a cold miss.

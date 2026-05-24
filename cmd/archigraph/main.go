@@ -20,6 +20,12 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "xrepo-verify" {
 		os.Exit(runXRepoVerify(os.Args[2:]))
 	}
+	// Hidden subprocess-indexer entrypoint (S5 of #2149 / issue #2155).
+	// fork-exec'd by the daemon's subprocess runner; not part of the public
+	// command surface and intentionally not registered with cobra.
+	if len(os.Args) >= 2 && os.Args[1] == "index-internal" {
+		os.Exit(runIndexInternal(os.Args[2:]))
+	}
 	cli.Execute(cli.Hooks{
 		RunDaemon:    runDaemon,
 		RunLinks:     runLinksHook,
