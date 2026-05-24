@@ -1567,6 +1567,44 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 						return match, statusRewritten, true
 					}
 				}
+				// Issue #2060 — global fallback: when the convention-
+				// guessed (file, member) lookup misses, try the same
+				// byQualifiedName → byName → Function/Method kind ladder
+				// the "?" form uses below. testmap now stamps prodFile on
+				// every confidence (not just "low") so the short-form
+				// stub appears for many more test→production edges. If
+				// the convention guess is wrong (e.g. table-driven test
+				// calls a helper in a sibling file, or upvate test calls
+				// a domain function in a different module) we still want
+				// to resolve via the globally-unique name path before
+				// giving up. Without this branch the broadened extractor
+				// emission would simply shift orphans from "?" form into
+				// short-form unmatched — fixing nothing.
+				if qid, ok := idx.byQualifiedName[member]; ok {
+					if qid == "" {
+						return "", statusUnmatched, true
+					}
+					return qid, statusRewritten, true
+				}
+				if qid, ok := idx.byName[member]; ok && qid != "" {
+					return qid, statusRewritten, true
+				}
+				if bucket := idx.nameKinds[member]; len(bucket) > 0 {
+					var hit string
+					for _, knd := range []string{"Function", "Method", "Operation", "SCOPE.Operation"} {
+						if id, ok := bucket[knd]; ok && id != "" {
+							if hit != "" && hit != id {
+								hit = ""
+								break
+							}
+							hit = id
+						}
+					}
+					if hit != "" {
+						return hit, statusRewritten, true
+					}
+				}
+				return "", statusUnmatched, true
 			}
 		}
 	}

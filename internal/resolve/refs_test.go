@@ -2305,3 +2305,91 @@ func TestClassifyDispositionLang_TSRefStubIsDynamic(t *testing.T) {
 		t.Errorf("classifyDispositionLang(%q) = %v, want DispositionDynamic", stub, got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #2060 — testmap short-form (scope:operation:<file>#<name>) now falls
+// through to the byQualifiedName → byName → kind-hint ladder when the
+// convention-guessed (file, name) lookup misses. testmap stamps the
+// convention prodFile for every confidence (#2060 extractor fix), so the
+// short-form fires for many edges whose tested callable does NOT live in the
+// guessed file (table-driven tests, helper-tested code, cross-file domain
+// calls). The fallback ensures these still resolve when the bare name is
+// globally unique.
+// ---------------------------------------------------------------------------
+
+func TestIssue2060_TestmapShortForm_GlobalByNameFallback(t *testing.T) {
+	// Convention guesses tests/user.py, but the production function lives in
+	// app/services/orders.py. Pre-#2060 the short-form lookup would return
+	// statusUnmatched; post-#2060 it falls through to byName.
+	entities := []types.EntityRecord{{
+		ID:         "aaaaaaaaaaaaaaaa",
+		Kind:       "Function",
+		Name:       "create_order",
+		SourceFile: "app/services/orders.py",
+	}}
+	rels := []types.RelationshipRecord{{
+		FromID:     "0000000000000000",
+		ToID:       "scope:operation:tests/user.py#create_order",
+		Kind:       "TESTS",
+		Properties: map[string]string{"language": "python"},
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("expected short-form global fallback to bind via byName, ToID=%s", rels[0].ToID)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("expected ToRewritten=1, got %+v", stats)
+	}
+}
+
+func TestIssue2060_TestmapShortForm_FilePreferredOverGlobal(t *testing.T) {
+	// When the convention file DOES contain the callee, the (file, name)
+	// path must win over the global byName fallback (preserves precision).
+	entities := []types.EntityRecord{
+		{
+			ID:         "aaaaaaaaaaaaaaaa",
+			Kind:       "Function",
+			Name:       "Helper",
+			SourceFile: "pkg/widget.go",
+		},
+		// Globally there's only one Helper, so byName would also bind
+		// — but the (file, name) path must execute first.
+	}
+	rels := []types.RelationshipRecord{{
+		FromID:     "0000000000000000",
+		ToID:       "scope:operation:pkg/widget.go#Helper",
+		Kind:       "TESTS",
+		Properties: map[string]string{"language": "go"},
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("expected (file,name) rewrite, ToID=%s", rels[0].ToID)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("expected ToRewritten=1, got %+v", stats)
+	}
+}
+
+func TestIssue2060_TestmapShortForm_AmbiguousNameNotResolved(t *testing.T) {
+	// Two entities share the bare name AND it doesn't live in the convention
+	// file. byQualifiedName misses, byName flips ambiguous → unmatched.
+	entities := []types.EntityRecord{
+		{ID: "1111111111111111", Kind: "Function", Name: "save", SourceFile: "a.go"},
+		{ID: "2222222222222222", Kind: "Function", Name: "save", SourceFile: "b.go"},
+	}
+	rels := []types.RelationshipRecord{{
+		FromID:     "0000000000000000",
+		ToID:       "scope:operation:tests/c_test.go#save",
+		Kind:       "TESTS",
+		Properties: map[string]string{"language": "go"},
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	// Stub must remain a stub (not silently bound to one of the two).
+	if rels[0].ToID == "1111111111111111" || rels[0].ToID == "2222222222222222" {
+		t.Fatalf("ambiguous name silently resolved to %s", rels[0].ToID)
+	}
+	_ = stats
+}
