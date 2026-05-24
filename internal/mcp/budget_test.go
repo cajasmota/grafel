@@ -50,7 +50,9 @@ func TestMCPHandshakeBudget(t *testing.T) {
 		// shorter sentinel/expand descriptions. Measured: 3,452 tokens (31 tools).
 		// Ceiling bumped to 3,500 to seat the new surface. Drops to ~3,200 next release
 		// when find_callers/find_callees aliases are removed.
-		tokenCeiling  = 3500
+		// PH5 (#2093): +archigraph_diff_refs (ref_a, ref_b, repo, group, cwd params).
+		// Measured: 3,562 tokens (32 tools). Ceiling bumped to 3,600.
+		tokenCeiling  = 3600
 		charsPerToken = 4
 		envelopeBytes = 512 // initEnvelopeBytes constant from cmd/mcp-audit
 		maxDescLen    = 80

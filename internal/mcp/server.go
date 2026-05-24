@@ -646,6 +646,16 @@ func (s *Server) registerTools() {
 
 	// archigraph_license_audit dropped (HTTP API still available); see registerTools comments.
 
+	// archigraph_diff_refs — PH5 (#2093): compare two indexed git refs.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_diff_refs",
+		mcpapi.WithDescription("Diff two indexed git refs: added/removed/modified entities + relationships."),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("repo", mcpapi.Required()),
+		mcpapi.WithString("ref_a", mcpapi.Required()),
+		mcpapi.WithString("ref_b", mcpapi.Required()),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_diff_refs", s.handleDiffRefs))
+
 	// archigraph_status — cwd-gate sentinel (#1769).
 	// Registered as a real callable tool so agents can invoke it and receive
 	// guidance. Excluded from the full handshake returned to indexed sessions

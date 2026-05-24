@@ -1498,3 +1498,55 @@ export interface GroupRefsResponse {
   /** Key = repo slug, value = refs for that repo. */
   refs: Record<string, RefEntry[]>;
 }
+
+// ---------------------------------------------------------------------------
+// PH5 (#2093) — Graph diff types
+// ---------------------------------------------------------------------------
+
+/** One entity in the diff output. */
+export interface DiffEntityEntry {
+  id: string;
+  kind: string;
+  name: string;
+  source_file: string;
+  /** Fields that changed (only present on modified entities). */
+  modified_fields?: string[];
+}
+
+/** One relationship in the diff output. */
+export interface DiffRelEntry {
+  from_id: string;
+  to_id: string;
+  kind: string;
+}
+
+/** Aggregated change counts. */
+export interface DiffSummary {
+  entities_added: number;
+  entities_removed: number;
+  entities_modified: number;
+  relationships_added: number;
+  relationships_removed: number;
+  files_changed: number;
+}
+
+/**
+ * Full diff result returned by GET /api/v2/groups/:g/repos/:r/diff.
+ * Matches internal/graph.DiffResult wire shape.
+ */
+export interface DiffResult {
+  group: string;
+  repo: string;
+  ref_a: string;
+  ref_b: string;
+  summary: DiffSummary;
+  entities: {
+    added: DiffEntityEntry[];
+    removed: DiffEntityEntry[];
+    modified: DiffEntityEntry[];
+  };
+  relationships: {
+    added: DiffRelEntry[];
+    removed: DiffRelEntry[];
+  };
+}

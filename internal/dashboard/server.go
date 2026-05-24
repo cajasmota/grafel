@@ -639,6 +639,10 @@ func (s *Server) routes() http.Handler {
 	// Returns which refs have an indexed graph on disk and their tier (hot/cold).
 	mux.HandleFunc("GET /api/v2/groups/{group}/refs", s.handleV2GroupRefs)
 
+	// PH5 (#2093): graph diff — compare two indexed refs for a single repo.
+	// GET /api/v2/groups/{group}/repos/{repo}/diff?refA=main&refB=feat%2Fx
+	mux.HandleFunc("GET /api/v2/groups/{group}/repos/{repo}/diff", s.handleV2RepoDiff)
+
 	// Settings screen — per-group management surface (#1436, epic #1432).
 	mux.HandleFunc("GET /api/v2/groups/{group}", s.handleV2GetGroup)
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/features", s.handleV2PatchFeatures)

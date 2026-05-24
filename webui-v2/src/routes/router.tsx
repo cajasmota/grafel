@@ -23,6 +23,8 @@ import DocsScreen from "./docs";
 import SettingsScreen from "./settings";
 import PendingScreen from "./pending";
 import OperationsScreen from "./operations";
+// PH5 (#2093): graph diff compare view
+import CompareScreen from "./compare";
 
 // Errors screen — #1443, epic #1432
 import { NotFoundPage, GroupGonePage, DaemonDownPage, UpgradingPage, AppErrorPage } from "./errors";
@@ -51,6 +53,8 @@ export const router = createBrowserRouter([
           { path: "settings", element: <SettingsScreen />, handle: { surfaceLabel: "Group settings" } },
           { path: "pending", element: <PendingScreen />, handle: { surfaceLabel: "Pending" } },
           { path: "operations", element: <OperationsScreen />, handle: { surfaceLabel: "Operations" } },
+          // PH5 (#2093): graph diff compare view
+          { path: "compare", element: <CompareScreen />, handle: { surfaceLabel: "Compare" } },
           // Errors — in-group variants (full chrome provided by AppShell)
           { path: "missing", element: <GroupGonePage />, handle: { surfaceLabel: "Group not found" } },
           { path: "error/daemon-down", element: <DaemonDownPage />, handle: { surfaceLabel: "Daemon unreachable" } },

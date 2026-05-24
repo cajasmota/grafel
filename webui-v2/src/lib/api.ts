@@ -54,6 +54,7 @@ import type {
   FsListReply,
   ModuleAnalysisResponse,
   GroupRefsResponse,
+  DiffResult,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -613,6 +614,18 @@ export const api = {
    */
   getRefs: (groupId: string) =>
     requestV2<GroupRefsResponse>(`/groups/${encodeURIComponent(groupId)}/refs`),
+
+  /**
+   * GET /api/v2/groups/:g/repos/:r/diff?refA=...&refB=...
+   *
+   * PH5 (#2093): returns the structural diff between two indexed git refs
+   * for a single repo. Both refA and refB must be indexed on disk.
+   */
+  getDiff: (groupId: string, repo: string, refA: string, refB: string) =>
+    requestV2<DiffResult>(
+      `/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repo)}/diff` +
+        `?refA=${encodeURIComponent(refA)}&refB=${encodeURIComponent(refB)}`,
+    ),
 };
 
 export type Api = typeof api;
