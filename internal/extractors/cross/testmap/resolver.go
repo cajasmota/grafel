@@ -211,14 +211,21 @@ func resolveCalls(tf testFunction, prodFile, convSymbol string) []testedCall {
 
 	out := make([]testedCall, 0, len(seen))
 	for qname, conf := range seen {
-		file := ""
-		if conf == "low" {
-			file = prodFile
-		}
+		// Issue #2060 — populate prodFile for ALL confidences, not just
+		// "low". The resolver's scope:operation:<file>#<name> short-form
+		// path (internal/resolve/refs.go lookupStructural) tries
+		// byLocation[file][name] and a byMember[file] walk; either is
+		// dramatically more likely to hit than the "?" form's global
+		// byName lookup, especially for archigraph + upvate where common
+		// production names (e.g. "GetUser", "create_order") are not
+		// globally unique. When the convention couldn't infer a file
+		// (no fallback applies to the test path) prodFile stays empty
+		// and the productionFunctionRef emits the "?" form, preserving
+		// the existing high-confidence-uses-global-byName behaviour.
 		out = append(out, testedCall{
 			qname:      qname,
 			confidence: conf,
-			prodFile:   file,
+			prodFile:   prodFile,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

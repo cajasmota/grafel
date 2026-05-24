@@ -88,6 +88,137 @@ func main() { fmt.Println("hi") }`
 }
 
 // ---------------------------------------------------------------------------
+// Issue #2060 — TESTS edges carry a convention-derived prodFile hint at every
+// confidence so the resolver short-form path can bind (file, name) without
+// falling through to the "?" global byName lookup (which only resolves
+// globally-unique names — rare in archigraph + upvate where production
+// callees like `GetUser` / `create_order` collide across packages).
+// ---------------------------------------------------------------------------
+
+func TestIssue2060_GoHighConfidenceEdgeCarriesProdFile(t *testing.T) {
+	// Direct call → high confidence. Pre-#2060 the TESTS edge ToID was
+	// "scope:operation:?#Foo"; post-#2060 it must be
+	// "scope:operation:pkg/user.go#Foo" so the resolver tries
+	// byLocation[pkg/user.go][Foo] before falling through to byName.
+	src := `package user
+import "testing"
+func TestFoo(t *testing.T) { Foo(); }`
+	recs := runExtract(t, "pkg/user_test.go", "go", src)
+	if len(recs) == 0 {
+		t.Fatalf("no records")
+	}
+	rec := findByTested(t, recs, "TestFoo", "Foo")
+	if rec.Properties["confidence"] != "high" {
+		t.Fatalf("expected high, got %q", rec.Properties["confidence"])
+	}
+	if len(rec.Relationships) == 0 {
+		t.Fatal("no relationships emitted")
+	}
+	want := "scope:operation:pkg/user.go#Foo"
+	if rec.Relationships[0].ToID != want {
+		t.Errorf("TESTS ToID=%q, want %q", rec.Relationships[0].ToID, want)
+	}
+}
+
+func TestIssue2060_PythonHighConfidenceEdgeCarriesProdFile(t *testing.T) {
+	src := `import pytest
+def test_user_create():
+    User.create({"x": 1})
+`
+	recs := runExtract(t, "tests/test_user.py", "python", src)
+	// At least one of the resolved targets should carry the convention
+	// prod file (tests/user.py) in its ToID. The exact targets are
+	// `User.create` (high) and the test_function fallback wouldn't
+	// fire because direct calls succeed.
+	found := false
+	for _, r := range recs {
+		for _, rel := range r.Relationships {
+			if rel.Kind != "TESTS" {
+				continue
+			}
+			if strings.HasPrefix(rel.ToID, "scope:operation:tests/user.py#") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected at least one TESTS edge ToID under tests/user.py prefix; got recs=%d", len(recs))
+		for _, r := range recs {
+			for _, rel := range r.Relationships {
+				t.Logf("  rel: %+v", rel)
+			}
+		}
+	}
+}
+
+func TestIssue2060_JSHighConfidenceEdgeCarriesProdFile(t *testing.T) {
+	src := `import { getUser } from './user';
+describe('users', () => {
+  it('returns a user', () => {
+    const u = getUser(1);
+    expect(u).toBeDefined();
+  });
+});`
+	recs := runExtract(t, "src/user.test.ts", "typescript", src)
+	found := false
+	for _, r := range recs {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "TESTS" && strings.HasPrefix(rel.ToID, "scope:operation:src/user.ts#") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected TESTS edge ToID under src/user.ts; got recs=%d", len(recs))
+	}
+}
+
+func TestIssue2060_NoConventionStillEmitsQuestionForm(t *testing.T) {
+	// Rust has no filename convention; high-confidence call must still
+	// emit a "?" form ToID so the global byName ladder can bind it. The
+	// extractor must NOT stamp an empty file path.
+	src := `#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_compute() { compute_thing(1); }
+}`
+	recs := runExtract(t, "src/lib.rs", "rust", src)
+	found := false
+	for _, r := range recs {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "TESTS" && strings.HasPrefix(rel.ToID, "scope:operation:?#") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("rust has no convention; expected ? form ToID")
+	}
+}
+
+// tested_file is ONLY stamped for low-confidence fallback (so the property
+// retains its pre-#2060 meaning of "best-guess tested file derived from naming
+// convention because no direct call was found"). High/medium calls now carry
+// prodFile too but it's a resolver hint, not a verified location.
+func TestIssue2060_TestedFileOnlyStampedForLowConfidence(t *testing.T) {
+	src := `package p
+import "testing"
+func TestHigh(t *testing.T) { RealCall(); }
+func TestLow(t *testing.T) { t.Log("none"); }`
+	recs := runExtract(t, "pkg/widget_test.go", "go", src)
+	for _, r := range recs {
+		conf := r.Properties["confidence"]
+		tf := r.Properties["tested_file"]
+		if conf == "low" && tf == "" {
+			t.Errorf("low confidence should stamp tested_file")
+		}
+		if conf == "high" && tf != "" {
+			t.Errorf("high confidence should NOT stamp tested_file, got %q", tf)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Go testing
 // ---------------------------------------------------------------------------
 

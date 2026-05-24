@@ -254,7 +254,12 @@ func buildEntity(
 		// allowlist validation passes.
 		"pattern_kind": "test_coverage",
 	}
-	if tc.prodFile != "" {
+	// tested_file is only stamped for the low-confidence naming-convention
+	// fallback (issue #2060) — for high/medium calls prodFile is now also
+	// populated as a resolver hint, but the file is a convention guess and
+	// not a verified location, so we keep the property meaning ("the
+	// best-guess tested file when no direct call/mock was found").
+	if tc.prodFile != "" && tc.confidence == "low" {
 		props["tested_file"] = tc.prodFile
 	}
 
