@@ -33,7 +33,7 @@ import { usePaths, usePathDetail, useOrphans } from "@/hooks/use-paths";
 import type {
   PathBackend, ControllerGroupShape, PathRoute, PathDetail,
   OrphanCaller, HttpVerb, OrphanReason, PathEntity, HandlerDetail,
-  PathParameter, ResponseShape,
+  PathParameter, ResponseShape, PerStatusResponse,
 } from "@/data/types";
 
 /* ============================================================
@@ -493,6 +493,109 @@ function HandlerRefLine({ handler }: { handler: HandlerDetail }) {
 }
 
 /**
+ * #1938 Phase 1 — per-status-code tab strip above the Response ShapeTree.
+ * Renders one chip per status code; clicking selects it and re-renders the
+ * ShapeTree for that status's type. Default-selected = lowest 2xx code.
+ */
+function StatusCodeChip({
+  code,
+  selected,
+  onClick,
+}: {
+  code: number;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const tone =
+    code >= 200 && code < 300
+      ? { bg: "bg-[var(--pastel-2)]", text: "text-[var(--pastel-2-ink)]", border: "border-[var(--pastel-2)]" }
+      : code >= 400 && code < 500
+        ? { bg: "bg-[var(--pastel-4)]", text: "text-[var(--pastel-4-ink)]", border: "border-[var(--pastel-4)]" }
+        : code >= 500
+          ? { bg: "bg-danger-soft", text: "text-danger", border: "border-danger-soft" }
+          : { bg: "bg-surface-2", text: "text-text-3", border: "border-border" };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center justify-center h-5 px-2 rounded text-[11px] font-mono font-semibold border select-none transition-all",
+        tone.bg, tone.text, tone.border,
+        selected ? "ring-2 ring-accent ring-offset-1" : "opacity-70 hover:opacity-100",
+      )}
+    >
+      {code}
+    </button>
+  );
+}
+
+function PerStatusResponseStrip({
+  entries,
+  groupId,
+}: {
+  entries: PerStatusResponse[];
+  groupId: string;
+}) {
+  // Default to lowest 2xx code, or first entry if no 2xx.
+  const defaultCode = entries.find((e) => e.status_code >= 200 && e.status_code < 300)?.status_code
+    ?? entries[0]?.status_code;
+  const [selected, setSelected] = useState<number | undefined>(defaultCode);
+  const activeEntry = entries.find((e) => e.status_code === selected);
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div data-testid="per-status-strip">
+      {/* Tab strip */}
+      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border-soft">
+        <span className="text-[10px] text-text-4 font-medium mr-1">Status</span>
+        {entries.map((e) => (
+          <StatusCodeChip
+            key={e.status_code}
+            code={e.status_code}
+            selected={selected === e.status_code}
+            onClick={() => setSelected(e.status_code)}
+          />
+        ))}
+      </div>
+      {/* ShapeTree for the selected status */}
+      {activeEntry && (
+        <ShapeTree
+          groupId={groupId}
+          rows={
+            activeEntry.has_children && activeEntry.type_entity_id
+              ? [
+                  {
+                    key: `status-${activeEntry.status_code}`,
+                    name: "response",
+                    inLabel: String(activeEntry.status_code),
+                    inTone: "status" as ShapeTreeRow["inTone"],
+                    type: activeEntry.type_name ?? "—",
+                    type_entity_id: activeEntry.type_entity_id,
+                    type_name_fallback: activeEntry.type_name,
+                    has_children: true,
+                  },
+                ]
+              : activeEntry.type_name
+                ? [
+                    {
+                      key: `status-${activeEntry.status_code}`,
+                      name: "response",
+                      inLabel: String(activeEntry.status_code),
+                      inTone: "status" as ShapeTreeRow["inTone"],
+                      type: activeEntry.type_name,
+                      has_children: false,
+                    },
+                  ]
+                : []
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * Refs #1935 Phase 1 — project a PathParameter onto the ShapeTree's
  * top-level row shape. Body params whose type resolves to a known
  * class entity carry `type_entity_id` + `has_children=true` so the
@@ -730,21 +833,37 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
         {/* 3. Response — ShapeTree subtree (#1935 Phase 1). Replaces the
             former "Response shapes" table. Each response shape becomes a
             top-level row; expandable when the return type resolves to a
-            user-defined DTO. */}
+            user-defined DTO.
+            #1938 Phase 1 — when per_status_responses is non-empty (Java
+            @APIResponse annotations present), render a per-status tab strip
+            above the ShapeTree; the strip defaults to the lowest 2xx tab. */}
         <div>
           <SectionHeader
             icon={<Box size={14} />}
             title="Response"
-            count={filteredShapes.length}
+            count={
+              (detail.per_status_responses?.length ?? 0) > 0
+                ? detail.per_status_responses!.length
+                : filteredShapes.length
+            }
             infoText="Response body types per HTTP status code, derived from handler return types + framework annotations. Expandable when the return type is a user-defined DTO."
             open={openSections.response}
             onToggle={() => toggleSection("response")}
           />
           {openSections.response && (
-            <ShapeTree
-              groupId={groupId}
-              rows={filteredShapes.flatMap((s, idx) => responseToShapeTreeRows(s, idx))}
-            />
+            (detail.per_status_responses?.length ?? 0) > 0
+              ? (
+                <PerStatusResponseStrip
+                  entries={detail.per_status_responses!}
+                  groupId={groupId}
+                />
+              )
+              : (
+                <ShapeTree
+                  groupId={groupId}
+                  rows={filteredShapes.flatMap((s, idx) => responseToShapeTreeRows(s, idx))}
+                />
+              )
           )}
         </div>
 

@@ -150,6 +150,17 @@ type v2ResponseShape struct {
 	HasChildren  bool   `json:"has_children,omitempty"`
 }
 
+// v2PerStatusResponse is one entry in the per-status-code tab strip
+// for the Response section (#1938 Phase 1). Each entry describes the
+// response shape for a specific HTTP status code extracted from
+// @APIResponse / @ApiResponse annotations.
+type v2PerStatusResponse struct {
+	StatusCode   int    `json:"status_code"`
+	TypeName     string `json:"type_name,omitempty"`
+	TypeEntityID string `json:"type_entity_id,omitempty"`
+	HasChildren  bool   `json:"has_children,omitempty"`
+}
+
 // v2HandlerDetail is one handler implementation in the detail pane.
 type v2HandlerDetail struct {
 	Verb          string `json:"verb"`
@@ -210,10 +221,15 @@ type v2PathDetail struct {
 	AuthPolicy   *v2AuthPolicy      `json:"auth_policy,omitempty"`
 	AuthChip     string             `json:"auth_chip,omitempty"`
 	AuthChipTone string             `json:"auth_chip_tone,omitempty"`
-	Description     v2DescriptionBlock `json:"description"`
-	Parameters      []v2PathParameter  `json:"parameters"`
-	ResponseShapes  []v2ResponseShape  `json:"response_shapes"`
-	Handlers        []v2HandlerDetail  `json:"handlers"`
+	Description     v2DescriptionBlock    `json:"description"`
+	Parameters      []v2PathParameter     `json:"parameters"`
+	ResponseShapes  []v2ResponseShape     `json:"response_shapes"`
+	// PerStatusResponses carries per-status-code response metadata extracted
+	// from @APIResponse / @ApiResponse annotations (#1938 Phase 1). Non-empty
+	// only for Java endpoints using MicroProfile OpenAPI or JAX-RS 2.x.
+	// The frontend renders a tab strip above the ShapeTree when this is non-empty.
+	PerStatusResponses []v2PerStatusResponse `json:"per_status_responses,omitempty"`
+	Handlers        []v2HandlerDetail     `json:"handlers"`
 	InboundFetches  []v2PathEntity     `json:"inbound_fetches"`
 	Outbound        v2OutboundQueries  `json:"outbound"`
 	SideEffects     []v2PathEntity     `json:"side_effects"`
@@ -417,6 +433,36 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				AuthPolicy:     authPolicy,
 			})
 		}
+	}
+
+	// ---- Phase 1b: #1940 — suppress ANY-verb catch-all endpoints when
+	//      per-verb counterparts exist for the same (backend, path).
+	//
+	// Django URL-conf entries can emit method=ANY when the URL entry itself
+	// carries no verb restriction. When a per-verb route (GET, POST, etc.)
+	// exists for the same path (typically from DRF router expansion or a
+	// class-based view), the ANY entry is redundant and clutters the list.
+	// We mark it synthetic so the Endpoints tab hides it; it will instead
+	// appear under the "Catch-all" filter chip (frontend TODO: #1940).
+	{
+		type backendPathKey struct{ backend, path string }
+		nonAnyVerbs := map[backendPathKey]bool{}
+		for _, ep := range eps {
+			if ep.Verb != "ANY" {
+				nonAnyVerbs[backendPathKey{ep.OwningBackend, ep.Path}] = true
+			}
+		}
+		filtered := eps[:0:0]
+		for _, ep := range eps {
+			if ep.Verb == "ANY" &&
+				ep.Repo != "" &&
+				nonAnyVerbs[backendPathKey{ep.OwningBackend, ep.Path}] {
+				// A per-verb route exists — suppress this synthetic catch-all.
+				continue
+			}
+			filtered = append(filtered, ep)
+		}
+		eps = filtered
 	}
 
 	// ---- Phase 2: group by backend → controller → path ----
@@ -753,6 +799,10 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		// engine.extractJavaReturnType (e.g. "LoginResponse"). Used to
 		// surface a ShapeTree-expandable response row.
 		ResponseType string
+		// Issue #1938 Phase 1 — JSON-encoded []engine.APIResponseEntry extracted
+		// from @APIResponse / @ApiResponse annotations. Decoded below to build
+		// the PerStatusResponses tab strip.
+		APIResponsesJSON string
 		// #1942 Phase 1 — resolved auth_policy decoded from the endpoint's
 		// `auth_policy` property. Multiple `matched` entries for the same path
 		// are reduced to the strongest policy when building the response.
@@ -906,6 +956,8 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				// Refs #1935 Phase 1 — handler return type for the
 				// Response ShapeTree subtree.
 				ResponseType: e.Properties["response_type"],
+				// Issue #1938 Phase 1 — per-status @APIResponse annotations.
+				APIResponsesJSON: e.Properties["api_responses"],
 				// #1942 Phase 1 — auth_policy decoded from the endpoint entity.
 				AuthPolicy: readAuthPolicyFromEntity(e.Properties),
 			})
@@ -1205,6 +1257,42 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Issue #1938 Phase 1 — build per-status-code response tab data.
+	// Merge @APIResponse entries across all matched handlers; deduplicate by
+	// status code (first-wins). Resolve type names to in-group class entities
+	// so the frontend can request ShapeTree expansion.
+	var perStatusResponses []v2PerStatusResponse
+	{
+		seenStatus := map[int]bool{}
+		for _, h := range hits {
+			if h.APIResponsesJSON == "" {
+				continue
+			}
+			entries := engine.DecodeAPIResponses(h.APIResponsesJSON)
+			for _, entry := range entries {
+				if seenStatus[entry.StatusCode] {
+					continue
+				}
+				seenStatus[entry.StatusCode] = true
+				psr := v2PerStatusResponse{StatusCode: entry.StatusCode}
+				if entry.TypeName != "" {
+					psr.TypeName = entry.TypeName
+					resolveT := unwrapElementType(entry.TypeName)
+					if target := findClassEntityByName(grp, resolveT); target != nil {
+						if slug, _ := findRepoForEntity(grp, target.ID); slug != "" {
+							psr.TypeEntityID = dashPrefixedID(slug, target.ID)
+							psr.HasChildren = classHasFieldChildren(grp, target)
+						}
+					}
+				}
+				perStatusResponses = append(perStatusResponses, psr)
+			}
+		}
+		sort.Slice(perStatusResponses, func(i, j int) bool {
+			return perStatusResponses[i].StatusCode < perStatusResponses[j].StatusCode
+		})
+	}
+
 	// Description block from docgen.
 	var description v2DescriptionBlock
 	if len(hits) > 0 && hits[0].HasDocs {
@@ -1239,25 +1327,26 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeV2JSON(w, http.StatusOK, v2OK(v2PathDetail{
-		PathHash:        pathHash,
-		Path:            pathStr,
-		Verbs:           verbs,
-		Repos:           repos,
-		IsWebhook:       isWebhook,
-		WebhookProvider: webhookProv,
-		Auth:            auth,
-		AuthPolicy:      authPolicyWire,
-		AuthChip:        authChip,
-		AuthChipTone:    authChipTone,
-		AuthScheme:      authScheme,
-		Description:     description,
-		Parameters:      params,
-		ResponseShapes:  responseShapes,
-		Handlers:        handlers,
-		InboundFetches:  inboundFetches,
-		Outbound:        outbound,
-		SideEffects:     sideEffectEntities,
-		Tests:           testEntities,
+		PathHash:           pathHash,
+		Path:               pathStr,
+		Verbs:              verbs,
+		Repos:              repos,
+		IsWebhook:          isWebhook,
+		WebhookProvider:    webhookProv,
+		Auth:               auth,
+		AuthPolicy:         authPolicyWire,
+		AuthChip:           authChip,
+		AuthChipTone:       authChipTone,
+		AuthScheme:         authScheme,
+		Description:        description,
+		Parameters:         params,
+		ResponseShapes:     responseShapes,
+		PerStatusResponses: perStatusResponses,
+		Handlers:           handlers,
+		InboundFetches:     inboundFetches,
+		Outbound:           outbound,
+		SideEffects:        sideEffectEntities,
+		Tests:              testEntities,
 	}))
 }
 

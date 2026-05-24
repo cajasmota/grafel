@@ -56,6 +56,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -738,6 +739,13 @@ func buildMethodEndpointsWithAuth(
 	allParams := extractJavaParameters(paramFrag, uniqueVerbs)
 	paramsJSON := EncodeJavaParameters(allParams)
 
+	// Issue #1938 Phase 1 — extract @APIResponse / @ApiResponse per-status-code
+	// metadata from the method's annotation block. The JSON-encoded slice is
+	// attached to every emitted endpoint entity so the dashboard can render a
+	// per-status tab strip with ShapeTree expansion for resolved DTOs.
+	apiResponses := extractAPIResponseAnnotations(joined)
+	apiResponsesJSON := EncodeAPIResponses(apiResponses)
+
 	// #1942 Phase 1 — resolve auth_policy from class + method + Quarkus context.
 	policy := ResolveJavaAuthPolicy(
 		joined, methodLine,
@@ -810,6 +818,11 @@ func buildMethodEndpointsWithAuth(
 			}
 		}
 
+		// Issue #1938 Phase 1 — attach the per-status @APIResponse list.
+		if apiResponsesJSON != "" {
+			props["api_responses"] = apiResponsesJSON
+		}
+
 		out = append(out, types.EntityRecord{
 			ID:                 id,
 			Name:               id,
@@ -872,3 +885,159 @@ func parseRequestMappingMethods(args string) []string {
 
 // joinPathFragments is shared with http_endpoint_synthesis.go (defined
 // there). We do not redefine it here.
+
+// ---------------------------------------------------------------------------
+// #1938 Phase 1 — @APIResponse per-status-code extraction
+// ---------------------------------------------------------------------------
+
+// javaAPIResponseCodeStringRe matches the responseCode = "NNN" form used by
+// MicroProfile OpenAPI: @APIResponse(responseCode = "200", ...).
+var javaAPIResponseCodeStringRe = regexp.MustCompile(`responseCode\s*=\s*"(\d{3})"`)
+
+// javaAPIResponseCodeIntRe matches the code = NNN (integer) form used by
+// JAX-RS 2.x / Swagger: @ApiResponse(code = 404, ...).
+// The word-boundary lookahead ensures we don't match "response_code = 404".
+var javaAPIResponseCodeIntRe = regexp.MustCompile(`(?:^|[\s,(])code\s*=\s*(\d{3})\b`)
+
+// javaAPIResponseSchemaRe captures `implementation = Foo.class` or
+// `response = Foo.class` inside an @APIResponse / @Content(...) block.
+var javaAPIResponseSchemaRe = regexp.MustCompile(
+	`(?:implementation|response)\s*=\s*([A-Z][A-Za-z0-9_]*)\s*\.class`)
+
+// javaAPIResponseAnnotationRe detects both @APIResponse (MicroProfile) and
+// @ApiResponse (Swagger / JAX-RS 2.x). The annotation opens with a '('.
+//   - @APIResponse(responseCode = "200", ...)    — MicroProfile OpenAPI
+//   - @ApiResponse(code = 404, ...)              — Swagger / Jakarta RS
+// The case-insensitive prefix `(?i)API` matches both `API` and `Api`.
+var javaAPIResponseAnnotationRe = regexp.MustCompile(`@(?i:API)Response\s*\(`)
+
+// APIResponseEntry holds one parsed @APIResponse annotation.
+type APIResponseEntry struct {
+	StatusCode     int    `json:"status_code"`
+	TypeEntityID   string `json:"type_entity_id,omitempty"`
+	TypeName       string `json:"type_name,omitempty"`
+	HasChildren    bool   `json:"has_children,omitempty"`
+}
+
+// extractAPIResponseAnnotations scans the joined annotation block for all
+// @APIResponse / @ApiResponse annotations and returns the parsed list.
+//
+// Strategy: split the joined text into per-annotation segments by finding each
+// @APIResponse( / @ApiResponse( occurrence, then scan forward to find the
+// balanced-paren closing ')'. This handles nested @Content(@Schema(...))
+// without requiring a [^)]* inner pattern that would fail on nested parens.
+//
+// The list is order-preserving (annotation declaration order). A status code
+// that appears more than once is collapsed to the first occurrence.
+func extractAPIResponseAnnotations(joined string) []APIResponseEntry {
+	if !strings.Contains(joined, "@APIResponse") && !strings.Contains(joined, "@ApiResponse") &&
+		!strings.Contains(joined, "@Apiresponse") {
+		return nil
+	}
+
+	// Find all annotation start positions.
+	locs := javaAPIResponseAnnotationRe.FindAllStringIndex(joined, -1)
+	if len(locs) == 0 {
+		return nil
+	}
+
+	seen := map[int]bool{}
+	var out []APIResponseEntry
+
+	for _, loc := range locs {
+		// loc[1] is the position after the opening '(' of the annotation.
+		openAt := loc[1] - 1 // position of the '('
+		if openAt >= len(joined) {
+			continue
+		}
+		// Find the matching closing ')' walking forward.
+		closeAt := findMatchingClose(joined, openAt)
+		var block string
+		if closeAt > openAt {
+			block = joined[openAt : closeAt+1]
+		} else {
+			// Unbalanced — take the rest of the line.
+			lineEnd := strings.IndexByte(joined[loc[0]:], '\n')
+			if lineEnd < 0 {
+				block = joined[loc[0]:]
+			} else {
+				block = joined[loc[0] : loc[0]+lineEnd]
+			}
+		}
+
+		// Extract status code from this annotation block.
+		code := 0
+		if m := javaAPIResponseCodeStringRe.FindStringSubmatch(block); len(m) >= 2 {
+			code = parseDigits(m[1])
+		} else if m := javaAPIResponseCodeIntRe.FindStringSubmatch(block); len(m) >= 2 {
+			code = parseDigits(m[1])
+		}
+		if code == 0 || seen[code] {
+			continue
+		}
+		seen[code] = true
+
+		entry := APIResponseEntry{StatusCode: code}
+		// Extract DTO type from implementation=Foo.class or response=Foo.class.
+		if sm := javaAPIResponseSchemaRe.FindStringSubmatch(block); len(sm) >= 2 {
+			entry.TypeName = sm[1]
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// findMatchingClose walks forward from position `open` (a '(') and returns the
+// index of the matching ')'. Returns -1 when the input is unbalanced.
+func findMatchingClose(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// parseDigits converts a pure-ASCII decimal string to int. Returns 0 on error.
+func parseDigits(s string) int {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
+}
+
+// EncodeAPIResponses serialises the []APIResponseEntry slice to JSON for
+// storage in entity Properties["api_responses"]. Returns "" when empty.
+func EncodeAPIResponses(entries []APIResponseEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(entries)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// DecodeAPIResponses deserialises the value of Properties["api_responses"].
+func DecodeAPIResponses(raw string) []APIResponseEntry {
+	if raw == "" {
+		return nil
+	}
+	var out []APIResponseEntry
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
+}

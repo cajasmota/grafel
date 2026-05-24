@@ -117,6 +117,24 @@ func rankEntryPoints(doc *graph.Document, byID map[string]*graph.Entity, adj *ca
 			score += 1.0
 		case "SCOPE.Component":
 			score += 0.5
+		case "SCOPE.JSX":
+			// Issue #2024 — JSX component entities are UI entry points;
+			// give them a modest boost so React component render functions
+			// (e.g. TransferReceive) seed process-flow chains even when
+			// their name doesn't match the entryNameRE suffix list.
+			score += 2.0
+			if entryKind == "" {
+				entryKind = "ui_component"
+			}
+		}
+
+		// Issue #2024 — bonus for PascalCase function names in JSX/TSX source
+		// files (React component pattern: TransferReceive, PaymentForm, etc.).
+		// These are exported components that drive UI workflows and should seed
+		// the BFS even without an HTTP boundary signal.
+		if entryKind == "" && isPascalCaseIdentifier(local) && isJSXSourceFile(e.SourceFile) {
+			score += 2.0
+			entryKind = "ui_component"
 		}
 
 		if score <= 0 {
@@ -194,9 +212,15 @@ func buildBrokerBoundarySet(doc *graph.Document) map[string]string {
 // Routes and Endpoints themselves are targets of IMPLEMENTS edges, not
 // origins of CALLS; the handler entity (Function/Method/Operation) is what
 // actually emits the CALLS chain.
+//
+// Issue #2024 — SCOPE.JSX (React/Vue component entities emitted by the
+// JS/TS extractor) are now included so that frontend component render
+// functions like TransferReceive can seed a process-flow chain when they
+// call a service function that eventually reaches an HTTP endpoint.
 func isEntryCandidate(e *graph.Entity) bool {
 	switch e.Kind {
-	case "SCOPE.Function", "SCOPE.Operation", "SCOPE.Component", "SCOPE.Class":
+	case "SCOPE.Function", "SCOPE.Operation", "SCOPE.Component", "SCOPE.Class",
+		"SCOPE.JSX":
 		return true
 	}
 	return false
@@ -254,4 +278,34 @@ func isExportedName(name, language string) bool {
 	default:
 		return first != '_'
 	}
+}
+
+// isPascalCaseIdentifier returns true when name starts with an uppercase
+// letter and contains at least one lowercase letter — the standard PascalCase
+// React component naming convention (e.g. "TransferReceive", "PaymentForm").
+// Pure ALL_CAPS names (like constants) are excluded.
+func isPascalCaseIdentifier(name string) bool {
+	if len(name) < 2 {
+		return false
+	}
+	first := name[0]
+	if first < 'A' || first > 'Z' {
+		return false
+	}
+	// Require at least one lowercase character so CONSTANT_STYLE names
+	// are not mistaken for React components.
+	hasLower := false
+	for _, c := range name {
+		if c >= 'a' && c <= 'z' {
+			hasLower = true
+			break
+		}
+	}
+	return hasLower
+}
+
+// isJSXSourceFile returns true when path has a .jsx or .tsx extension,
+// indicating the file contains JSX syntax and is likely a React component.
+func isJSXSourceFile(path string) bool {
+	return strings.HasSuffix(path, ".jsx") || strings.HasSuffix(path, ".tsx")
 }

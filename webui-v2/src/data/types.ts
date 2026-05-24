@@ -832,6 +832,20 @@ export interface PathParameter {
   has_children?: boolean;
 }
 
+/**
+ * #1938 Phase 1 — per-status-code response entry extracted from
+ * @APIResponse / @ApiResponse annotations (Java MicroProfile / JAX-RS).
+ * Populated only when the Java annotation extractor found explicit status
+ * codes on the handler. The frontend renders a tab strip above the ShapeTree
+ * when this array is non-empty. Default-selected tab = lowest 2xx code.
+ */
+export interface PerStatusResponse {
+  status_code: number;
+  type_name?: string;
+  type_entity_id?: string;
+  has_children?: boolean;
+}
+
 /** Response shape per verb in the detail pane. */
 export interface ResponseShape {
   verb: HttpVerb;
@@ -916,6 +930,8 @@ export interface PathDetail {
   };
   parameters: PathParameter[];
   response_shapes: ResponseShape[];
+  /** #1938 Phase 1 — per-status response tabs (Java @APIResponse only). */
+  per_status_responses?: PerStatusResponse[];
   handlers: HandlerDetail[];
   inbound_fetches: PathEntity[];
   outbound: {
