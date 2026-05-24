@@ -27,6 +27,21 @@
 //     the store layout uses — so there are no translation bugs between what
 //     the poller observes and what StateDirForRepoRef produces.
 //
+// Monorepo M1 (issue #2178)
+//
+// Repos that share a git common-dir (git worktrees, or sub-repos registered
+// from a monorepo where all paths resolve to the same physical .git/) are
+// deduplicated at the poll layer. A single pair of os.Stat calls is issued
+// per common-dir per poll cycle instead of one per repo:
+//
+//   - Stat 1: .git/HEAD          — detects branch switches (checkout)
+//   - Stat 2: .git/refs/heads/X  — detects new commits on the current branch
+//
+// When either file's mod-time changes, gitmeta.Capture is called once and
+// the resulting HEAD snapshot is fanned out to all repos sharing that
+// common-dir. Per-repo git-diff classification (S4) still runs independently
+// for each repo path so that the source-change filter remains accurate.
+//
 // Thread safety: all mutable state is protected by GitHeadPoller.mu.
 package watch
 
@@ -34,8 +49,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/gitmeta"
@@ -64,10 +81,13 @@ const (
 // we recommend a full reindex instead of an incremental one.
 const smallDiffThreshold = 20
 
-// HeadSnapshot is the last-seen HEAD state for one repo.
+// HeadSnapshot is the last-seen HEAD state for one common-dir group.
 type HeadSnapshot struct {
-	Ref string // symbolic ref ("main", "feat/x"); "" for detached HEAD
-	SHA string // abbreviated commit SHA (12 chars)
+	Ref        string // symbolic ref ("main", "feat/x"); "" for detached HEAD
+	SHA        string // abbreviated commit SHA (12 chars)
+	HeadMTime  int64  // mod-time of .git/HEAD (nanoseconds) — branch switch signal
+	RefMTime   int64  // mod-time of .git/refs/heads/<branch> — commit signal
+	CurrentRef string // the resolved branch name used to find the ref file
 }
 
 // BranchSwitchEvent is emitted by the poller when it detects a HEAD change
@@ -88,15 +108,45 @@ type BranchSwitchEvent struct {
 // BranchSwitchSink is the callback invoked for each detected branch switch.
 type BranchSwitchSink func(ev BranchSwitchEvent)
 
+// commonDirGroup holds all state for repos that share one git common-dir.
+// The group is the unit of polling: two os.Stat calls per cycle (HEAD + ref),
+// not two per repo.
+type commonDirGroup struct {
+	// commonDir is the absolute path of the shared .git directory (output of
+	// git rev-parse --git-common-dir, resolved to an absolute real path via
+	// filepath.EvalSymlinks to handle OS-level symlinks such as /tmp → /private/tmp).
+	commonDir string
+
+	// headFile is the absolute path to the .git/HEAD file.
+	headFile string
+
+	// repos is the set of repo paths in this group (key = abs repo path).
+	repos map[string]struct{}
+
+	// snap is the last observed HEAD state.
+	snap HeadSnapshot
+
+	// representative is any one repo path used to run gitmeta.Capture when
+	// a change is detected. Since all repos in the group share a common-dir
+	// they all observe the same HEAD.
+	representative string
+}
+
 // GitHeadPoller polls .git/HEAD (via gitmeta.Capture) for every registered
-// repo and notifies the BranchSwitchSink when a change is detected.
+// common-dir group and notifies the BranchSwitchSink when a change is
+// detected. Multiple repos sharing the same git common-dir are deduplicated
+// into a single poll per cycle (Monorepo M1, issue #2178).
 type GitHeadPoller struct {
 	interval time.Duration
 	sink     BranchSwitchSink
 	logger   *log.Logger
 
-	mu       sync.Mutex
-	heads    map[string]HeadSnapshot // key: absolute repo path
+	mu          sync.Mutex
+	groups      map[string]*commonDirGroup // key: absolute common-dir path
+	repoToGroup map[string]string          // key: abs repo path → common-dir
+
+	statCalls uint64 // atomic — total os.Stat calls on HEAD/ref files (for measurement)
+
 	stopOnce sync.Once
 	stopCh   chan struct{}
 	doneCh   chan struct{}
@@ -115,12 +165,13 @@ func NewGitHeadPoller(interval time.Duration, sink BranchSwitchSink, logger *log
 		logger = log.New(os.Stderr, "githead-poller: ", log.LstdFlags)
 	}
 	return &GitHeadPoller{
-		interval: interval,
-		sink:     sink,
-		logger:   logger,
-		heads:    make(map[string]HeadSnapshot),
-		stopCh:   make(chan struct{}),
-		doneCh:   make(chan struct{}),
+		interval:    interval,
+		sink:        sink,
+		logger:      logger,
+		groups:      make(map[string]*commonDirGroup),
+		repoToGroup: make(map[string]string),
+		stopCh:      make(chan struct{}),
+		doneCh:      make(chan struct{}),
 	}
 }
 
@@ -138,30 +189,160 @@ func (p *GitHeadPoller) Stop() {
 	<-p.doneCh
 }
 
+// StatCalls returns the cumulative number of os.Stat calls issued against
+// HEAD and ref files since the poller was created. Used for before/after
+// measurement of the M1 dedup.
+func (p *GitHeadPoller) StatCalls() uint64 {
+	return atomic.LoadUint64(&p.statCalls)
+}
+
+// GroupCount returns the number of distinct common-dir groups currently
+// registered. Used by tests to verify dedup is in effect.
+func (p *GitHeadPoller) GroupCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.groups)
+}
+
+// resolveCommonDir resolves the git common-dir for repoPath to a canonical
+// absolute path. filepath.EvalSymlinks is used to resolve OS-level symlinks
+// (e.g. macOS /tmp → /private/tmp) so that the base repo and its linked
+// worktrees map to the same key. Returns "" if repoPath is not a git repo.
+func resolveCommonDir(repoPath string) string {
+	raw := gitmeta.RunGit(repoPath, "rev-parse", "--git-common-dir")
+	if raw == "" {
+		return ""
+	}
+	// --git-common-dir may return a relative path (e.g. ".git") for the base
+	// repo; resolve it relative to the repo root.
+	var abs string
+	if filepath.IsAbs(raw) {
+		abs = raw
+	} else {
+		var err error
+		abs, err = filepath.Abs(filepath.Join(repoPath, raw))
+		if err != nil {
+			return ""
+		}
+	}
+	// Resolve symlinks so macOS /tmp → /private/tmp and similar OS symlinks
+	// don't create spurious duplicate groups.
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return filepath.Clean(abs) // fallback: clean without symlink resolution
+	}
+	return real
+}
+
+// refFileForBranch returns the path to the ref file for a given branch name
+// inside the common-dir (e.g. .git/refs/heads/main). Returns "" if branch is
+// empty (detached HEAD). The caller must handle the case where the file does
+// not exist (packed-refs case; we fall back to treating mod-time as 0).
+func refFileForBranch(commonDir, branch string) string {
+	if branch == "" {
+		return ""
+	}
+	return filepath.Join(commonDir, "refs", "heads", branch)
+}
+
+// captureInitialSnap captures the current HEAD state and mod-times for a
+// repo, used to set the baseline snapshot at AddRepo time.
+func captureInitialSnap(repoPath, commonDir string) HeadSnapshot {
+	meta := gitmeta.Capture(repoPath)
+	snap := HeadSnapshot{
+		Ref:        meta.Ref,
+		SHA:        meta.SHA,
+		CurrentRef: meta.Ref,
+	}
+	headFile := filepath.Join(commonDir, "HEAD")
+	if fi, err := os.Stat(headFile); err == nil {
+		snap.HeadMTime = fi.ModTime().UnixNano()
+	}
+	refFile := refFileForBranch(commonDir, meta.Ref)
+	if refFile != "" {
+		if fi, err := os.Stat(refFile); err == nil {
+			snap.RefMTime = fi.ModTime().UnixNano()
+		}
+	}
+	return snap
+}
+
 // AddRepo registers a repo for HEAD polling. The initial HEAD state is captured
 // immediately so the first poll cycle does not spuriously emit an event.
-// Idempotent: re-adding a registered repo updates the baseline snapshot.
+// Repos that share a git common-dir are automatically grouped so that only one
+// pair of stat calls is issued per common-dir per poll cycle.
+// Idempotent: re-adding a registered repo is a no-op.
 func (p *GitHeadPoller) AddRepo(repoPath string) {
-	meta := gitmeta.Capture(repoPath)
-	snap := HeadSnapshot{Ref: meta.Ref, SHA: meta.SHA}
+	commonDir := resolveCommonDir(repoPath)
+	if commonDir == "" {
+		// Not a git repo; register with repoPath as its own sentinel common-dir.
+		commonDir = repoPath
+	}
+
+	snap := captureInitialSnap(repoPath, commonDir)
+
 	p.mu.Lock()
-	p.heads[repoPath] = snap
-	p.mu.Unlock()
+	defer p.mu.Unlock()
+
+	if _, already := p.repoToGroup[repoPath]; already {
+		return // idempotent
+	}
+
+	grp, ok := p.groups[commonDir]
+	if !ok {
+		grp = &commonDirGroup{
+			commonDir:      commonDir,
+			headFile:       filepath.Join(commonDir, "HEAD"),
+			repos:          make(map[string]struct{}),
+			snap:           snap,
+			representative: repoPath,
+		}
+		p.groups[commonDir] = grp
+	}
+	grp.repos[repoPath] = struct{}{}
+	p.repoToGroup[repoPath] = commonDir
 }
 
 // RemoveRepo deregisters a repo. Safe to call on unregistered paths.
+// If the repo was the last member of its common-dir group, the group is
+// also removed.
 func (p *GitHeadPoller) RemoveRepo(repoPath string) {
 	p.mu.Lock()
-	delete(p.heads, repoPath)
-	p.mu.Unlock()
+	defer p.mu.Unlock()
+
+	commonDir, ok := p.repoToGroup[repoPath]
+	if !ok {
+		return
+	}
+	delete(p.repoToGroup, repoPath)
+
+	grp := p.groups[commonDir]
+	if grp == nil {
+		return
+	}
+	delete(grp.repos, repoPath)
+
+	// Update representative if we removed it.
+	if grp.representative == repoPath {
+		grp.representative = ""
+		for r := range grp.repos {
+			grp.representative = r
+			break
+		}
+	}
+
+	// Drop the group when it is empty.
+	if len(grp.repos) == 0 {
+		delete(p.groups, commonDir)
+	}
 }
 
 // Repos returns a snapshot of currently polled repo paths.
 func (p *GitHeadPoller) Repos() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	out := make([]string, 0, len(p.heads))
-	for r := range p.heads {
+	out := make([]string, 0, len(p.repoToGroup))
+	for r := range p.repoToGroup {
 		out = append(out, r)
 	}
 	return out
@@ -236,52 +417,120 @@ func classifyRefChange(repoPath, oldSHA, newSHA string, logger *log.Logger) (Rei
 	return ReindexFull, sourcePaths
 }
 
-// poll captures the current HEAD for every registered repo and calls the
-// sink for any that changed.
+// statModTime stats a file and returns its mod-time in nanoseconds.
+// Returns 0 if the file cannot be stat-ed (missing, permission error, etc.).
+// Increments the poller's stat counter.
+func (p *GitHeadPoller) statModTime(path string) int64 {
+	atomic.AddUint64(&p.statCalls, 1)
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return fi.ModTime().UnixNano()
+}
+
+// poll issues one stat per tracked file per common-dir group per cycle, then
+// fans out BranchSwitchEvents to all repos in changed groups. S4 git-diff
+// classification is per-repo (correct: the working tree differs per repo path
+// even when HEAD is shared).
 func (p *GitHeadPoller) poll() {
+	// Snapshot group metadata under the lock, then do all I/O outside it.
 	p.mu.Lock()
-	repos := make([]string, 0, len(p.heads))
-	for r := range p.heads {
-		repos = append(repos, r)
+	type groupSnap struct {
+		grp            *commonDirGroup
+		prev           HeadSnapshot
+		repos          []string
+		representative string
+	}
+	snaps := make([]groupSnap, 0, len(p.groups))
+	for _, grp := range p.groups {
+		repos := make([]string, 0, len(grp.repos))
+		for r := range grp.repos {
+			repos = append(repos, r)
+		}
+		snaps = append(snaps, groupSnap{
+			grp:            grp,
+			prev:           grp.snap,
+			repos:          repos,
+			representative: grp.representative,
+		})
 	}
 	p.mu.Unlock()
 
-	for _, repoPath := range repos {
-		meta := gitmeta.Capture(repoPath)
-		current := HeadSnapshot{Ref: meta.Ref, SHA: meta.SHA}
-
-		p.mu.Lock()
-		prev, ok := p.heads[repoPath]
-		if !ok {
-			// repo was removed between the snapshot and now
-			p.mu.Unlock()
+	for _, s := range snaps {
+		// Stat 1: .git/HEAD — detects branch switches (one stat per group).
+		newHeadMTime := p.statModTime(s.grp.headFile)
+		if newHeadMTime == 0 {
+			// HEAD file gone — repo deleted or temporarily inaccessible.
 			continue
 		}
-		changed := current.Ref != prev.Ref || current.SHA != prev.SHA
-		if changed {
-			p.heads[repoPath] = current
+
+		// Stat 2: .git/refs/heads/<branch> — detects new commits.
+		// We use the previously known branch name; if the branch changed,
+		// Stat 1's mod-time will have already triggered a capture below.
+		refFile := refFileForBranch(s.grp.commonDir, s.prev.CurrentRef)
+		var newRefMTime int64
+		if refFile != "" {
+			newRefMTime = p.statModTime(refFile)
+		}
+
+		// Skip if neither file changed since the last poll.
+		if newHeadMTime == s.prev.HeadMTime && newRefMTime == s.prev.RefMTime {
+			continue
+		}
+
+		// At least one file changed. Capture the new ref + SHA using the
+		// representative repo path.
+		if s.representative == "" {
+			continue
+		}
+		meta := gitmeta.Capture(s.representative)
+		current := HeadSnapshot{
+			Ref:        meta.Ref,
+			SHA:        meta.SHA,
+			HeadMTime:  newHeadMTime,
+			RefMTime:   newRefMTime,
+			CurrentRef: meta.Ref,
+		}
+
+		// Update the stored snapshot under the lock.
+		p.mu.Lock()
+		if grp, ok := p.groups[s.grp.commonDir]; ok {
+			grp.snap = current
 		}
 		p.mu.Unlock()
 
-		if changed {
+		// Check whether ref+SHA actually changed. If only mod-times changed
+		// but content is identical (e.g. git gc rewrote a file), skip fan-out.
+		if current.Ref == s.prev.Ref && current.SHA == s.prev.SHA {
+			continue
+		}
+
+		// Fan out to every repo in the group.
+		for _, repoPath := range s.repos {
+			p.mu.Lock()
+			_, stillRegistered := p.repoToGroup[repoPath]
+			p.mu.Unlock()
+			if !stillRegistered {
+				continue
+			}
+
 			ev := BranchSwitchEvent{
 				RepoPath: repoPath,
-				OldRef:   prev.Ref,
-				OldSHA:   prev.SHA,
+				OldRef:   s.prev.Ref,
+				OldSHA:   s.prev.SHA,
 				NewRef:   current.Ref,
 				NewSHA:   current.SHA,
 			}
 
-			// S4 git-diff validation: compute source-change set before
-			// forwarding to the sink so we can suppress no-op reindexes.
-			hint, changedFiles := classifyRefChange(repoPath, prev.SHA, current.SHA, p.logger)
+			// S4 git-diff validation: per-repo source-change classification.
+			hint, changedFiles := classifyRefChange(repoPath, s.prev.SHA, current.SHA, p.logger)
 			ev.ReindexHint = hint
 			ev.ChangedFiles = changedFiles
 
 			if hint == ReindexNone {
-				// No indexed-source files changed — suppress reindex entirely.
 				p.logger.Printf("ref-change: %s %s..%s no-source-changes — skipping reindex",
-					repoPath, prev.SHA, current.SHA)
+					repoPath, s.prev.SHA, current.SHA)
 				continue
 			}
 
