@@ -351,6 +351,132 @@ func TestMockOnly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Go testify suite (#2076)
+// ---------------------------------------------------------------------------
+
+// TestGoTestifySuite_BasicMethod verifies that a receiver-method test on a
+// testify suite struct emits a TESTS edge and carries the correct framework /
+// confidence properties.
+func TestGoTestifySuite_BasicMethod(t *testing.T) {
+	src := `package user
+
+import (
+	"testing"
+	"github.com/stretchr/testify/suite"
+)
+
+type UserSuite struct{ suite.Suite }
+
+func (s *UserSuite) TestGetUser() {
+	u := s.repo.GetUser(1)
+	s.Require().NotNil(u)
+}
+
+func TestRunUserSuite(t *testing.T) {
+	suite.Run(t, new(UserSuite))
+}
+`
+	recs := runExtract(t, "user_test.go", "go", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected >=1 entity, got 0")
+	}
+	// TestGetUser must appear as a test_function.
+	found := false
+	for _, r := range recs {
+		if r.Properties["test_function"] == "TestGetUser" {
+			found = true
+			if r.Properties["test_framework"] != "go_testing" {
+				t.Errorf("framework=%q, want go_testing", r.Properties["test_framework"])
+			}
+			hasTestsEdge := false
+			for _, rel := range r.Relationships {
+				if rel.Kind == "TESTS" {
+					hasTestsEdge = true
+				}
+			}
+			if !hasTestsEdge {
+				t.Errorf("TestGetUser entity has no TESTS edge")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no entity with test_function=TestGetUser (got %d entities)", len(recs))
+		for _, r := range recs {
+			t.Logf("  entity: test_function=%q tested_function=%q", r.Properties["test_function"], r.Properties["tested_function"])
+		}
+	}
+}
+
+// TestGoTestifySuite_DirectCallHighConfidence verifies that a direct production
+// call inside a suite method is resolved at high confidence.
+func TestGoTestifySuite_DirectCallHighConfidence(t *testing.T) {
+	src := `package svc
+
+import (
+	"github.com/stretchr/testify/suite"
+)
+
+type RepoSuite struct{ suite.Suite }
+
+func (s *RepoSuite) TestFindOrder() {
+	order := FindOrder(42)
+	s.NotNil(order)
+}
+`
+	recs := runExtract(t, "repo_test.go", "go", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities")
+	}
+	rec := findByTested(t, recs, "TestFindOrder", "FindOrder")
+	if rec.Properties["confidence"] != "high" {
+		t.Errorf("confidence=%q, want high", rec.Properties["confidence"])
+	}
+	if !hasEdge(recs, "TestFindOrder", "FindOrder") {
+		t.Errorf("missing TESTS edge TestFindOrder→FindOrder")
+	}
+}
+
+// TestGoTestifySuite_NonSuiteReceiverSkipped ensures that receiver methods on
+// structs that do NOT embed suite.Suite are not falsely detected as tests.
+func TestGoTestifySuite_NonSuiteReceiverSkipped(t *testing.T) {
+	src := `package svc
+
+type MyHandler struct{}
+
+func (h *MyHandler) TestHelper() {
+	doInternal()
+}
+`
+	recs := runExtract(t, "helper_test.go", "go", src)
+	for _, r := range recs {
+		if r.Properties["test_function"] == "TestHelper" {
+			t.Errorf("non-suite receiver method should not be detected as a test")
+		}
+	}
+}
+
+// TestGoTestifySuite_StandardTestsUnaffected ensures legacy top-level tests
+// continue to work correctly alongside suite-method detection.
+func TestGoTestifySuite_StandardTestsUnaffected(t *testing.T) {
+	src := `package p
+import "testing"
+func TestStandard(t *testing.T) {
+	DoWork()
+}
+`
+	recs := runExtract(t, "p_test.go", "go", src)
+	found := false
+	for _, r := range recs {
+		if r.Properties["test_function"] == "TestStandard" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("standard top-level test was not detected")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Python pytest
 // ---------------------------------------------------------------------------
 

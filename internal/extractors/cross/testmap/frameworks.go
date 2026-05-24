@@ -213,12 +213,56 @@ var goTestFuncRE = regexp.MustCompile(
 	`(?m)^\s*func\s+(Test\w+)\s*\(\s*\w+\s+\*testing\.T\s*\)\s*{`,
 )
 
+// goTestSuiteMethodRE matches testify suite receiver-method test functions of
+// the form: func (s *MySuite) TestFoo() {
+// The receiver type name is captured in group 1, the test name in group 2.
+var goTestSuiteMethodRE = regexp.MustCompile(
+	`(?m)^\s*func\s+\(\s*\w+\s+\*(\w+)\s*\)\s+(Test\w+)\s*\([^)]*\)\s*{`,
+)
+
+// goSuiteEmbedRE detects whether a named struct embeds suite.Suite from the
+// testify package. It matches: suite.Suite as a field in the struct body.
+// We use a simple source-level search rather than full AST parsing.
+var goSuiteEmbedRE = regexp.MustCompile(
+	`(?m)\bsuite\.Suite\b`,
+)
+
+// isSuiteStruct reports whether structName appears to be a testify suite struct
+// by checking whether the source contains a struct definition for structName
+// that embeds suite.Suite.
+func isSuiteStruct(source, structName string) bool {
+	// Fast path: source must reference suite.Suite at all.
+	if !goSuiteEmbedRE.MatchString(source) {
+		return false
+	}
+	// Build a regex: type <structName> struct { ... suite.Suite ... }
+	// We accept any ordering / whitespace between the struct open brace and the
+	// embed, covering single-field and multi-field structs.
+	structRE := regexp.MustCompile(
+		`(?ms)\btype\s+` + regexp.QuoteMeta(structName) + `\s+struct\s*\{[^}]*\bsuite\.Suite\b`,
+	)
+	return structRE.MatchString(source)
+}
+
 func detectGoTest(source string) []testFunction {
 	var out []testFunction
+	// Standard top-level test functions: func TestFoo(t *testing.T) { … }
 	for _, m := range goTestFuncRE.FindAllStringSubmatchIndex(source, -1) {
 		name := source[m[2]:m[3]]
 		body := extractBraceBody(source, m[1]-1)
 		out = append(out, testFunction{qname: name, body: body})
+	}
+	// Testify suite receiver-method tests: func (s *MySuite) TestFoo() { … }
+	// Only emit when the receiver type looks like a testify suite struct (embeds
+	// suite.Suite), to avoid false-positive matches on unrelated receiver methods.
+	for _, m := range goTestSuiteMethodRE.FindAllStringSubmatchIndex(source, -1) {
+		receiverType := source[m[2]:m[3]]
+		testName := source[m[4]:m[5]]
+		if !isSuiteStruct(source, receiverType) {
+			continue
+		}
+		body := extractBraceBody(source, m[1]-1)
+		out = append(out, testFunction{qname: testName, body: body})
 	}
 	return out
 }
