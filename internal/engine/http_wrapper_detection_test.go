@@ -321,6 +321,116 @@ export const api = createApi({
 	requireContains(t, got, want, "#806 RTK Query builder.query resource names")
 }
 
+// ---------------------------------------------------------------------------
+// #2117 — useMutation / useSuspenseQuery / RTK builder.mutation verb fix
+// ---------------------------------------------------------------------------
+
+// TestSynth2117_UseMutationWithMutationKey verifies that useMutation with a
+// mutationKey array emits a POST http_endpoint_call to the named resource.
+// Before #2117 the useQueryKeyRe only matched useQuery, so useMutation calls
+// produced zero cross-stack flows.
+func TestSynth2117_UseMutationWithMutationKey(t *testing.T) {
+	src := `import { useMutation } from '@tanstack/react-query';
+export function useUploadMutation() {
+  return useMutation({
+    mutationKey: ['attachments', 'upload'],
+    mutationFn: payload => $http.post('/attachments/', payload),
+  });
+}
+`
+	got, _ := runDetect(t, "typescript", "2117-useMutation.ts", src)
+	want := []string{"http:POST:/attachments"}
+	requireContains(t, got, want, "#2117 useMutation mutationKey emits POST cross-stack flow")
+}
+
+// TestSynth2117_UseMutationOnlyFile verifies that a file containing ONLY
+// useMutation calls (no useQuery, no axios) is not silently skipped by the
+// early-exit guard that previously only checked for "useQuery".
+func TestSynth2117_UseMutationOnlyFile(t *testing.T) {
+	src := `import { useMutation } from '@tanstack/react-query';
+
+export function useCreatePermit() {
+  return useMutation({
+    mutationKey: ['permits'],
+    mutationFn: body => callApi({ endpoint: '/permits/' }, 'POST', body),
+  });
+}
+
+export function useDeletePermit() {
+  return useMutation({
+    mutationKey: ['permits', 'delete'],
+    mutationFn: id => callApi({ endpoint: '/permits/' }, 'DELETE', { id }),
+  });
+}
+`
+	got, _ := runDetect(t, "typescript", "2117-mutation-only.ts", src)
+	want := []string{"http:POST:/permits"}
+	requireContains(t, got, want, "#2117 useMutation-only file emits cross-stack flow")
+}
+
+// TestSynth2117_UseSuspenseQuery verifies that useSuspenseQuery (React Query
+// v5) with a queryKey is recognized alongside useQuery. Before #2117 the
+// regex only anchored on "useQuery" not "useSuspenseQuery".
+func TestSynth2117_UseSuspenseQuery(t *testing.T) {
+	src := `import { useSuspenseQuery } from '@tanstack/react-query';
+
+export function useBuildings() {
+  return useSuspenseQuery({
+    queryKey: ['buildings'],
+    queryFn: () => $http.get('/buildings/'),
+  });
+}
+`
+	got, _ := runDetect(t, "typescript", "2117-useSuspenseQuery.ts", src)
+	want := []string{"http:GET:/buildings"}
+	requireContains(t, got, want, "#2117 useSuspenseQuery queryKey emits GET cross-stack flow")
+}
+
+// TestSynth2117_RTKBuilderMutationVerb verifies that builder.mutation emits
+// a POST (not GET). Before #2117 the verb was guessed from a 50-byte window
+// of the match string which was fragile and could misclassify long patterns.
+func TestSynth2117_RTKBuilderMutationVerb(t *testing.T) {
+	src := `import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+
+export const permitApi = createApi({
+  reducerPath: 'permitApi',
+  baseQuery: fetchBaseQuery({ baseUrl: '/api/v1/' }),
+  endpoints: (builder) => ({
+    listPermits: builder.query({ query: () => 'permits' }),
+    createPermit: builder.mutation({ query: () => 'permits' }),
+  }),
+});
+`
+	got, _ := runDetect(t, "typescript", "2117-rtk-mutation-verb.ts", src)
+	want := []string{
+		"http:GET:/permits",
+		"http:POST:/permits",
+	}
+	requireContains(t, got, want, "#2117 RTK builder.mutation emits POST; builder.query emits GET")
+}
+
+// TestSynth2117_ExtractReactQueryPaths_IncludesMutation verifies the
+// ExtractReactQueryPaths helper (used by downstream tools) returns paths for
+// useMutation as well as useQuery calls.
+func TestSynth2117_ExtractReactQueryPaths_IncludesMutation(t *testing.T) {
+	src := `
+useQuery({ queryKey: ['permits'], queryFn: getPermits })
+useMutation({ mutationKey: ['permits'], mutationFn: createPermit })
+builder.query({ query: () => 'jurisdictions' })
+builder.mutation({ query: () => 'jurisdictions' })
+`
+	got := ExtractReactQueryPaths(src)
+	seen := make(map[string]bool)
+	for _, p := range got {
+		seen[p] = true
+	}
+	for _, want := range []string{"/permits/", "/jurisdictions/"} {
+		if !seen[want] {
+			t.Errorf("ExtractReactQueryPaths missing %q; got: %v", want, got)
+		}
+	}
+}
+
 // TestSynth806_BareNameMultipleVerbs verifies that different methods are
 // correctly assigned for multiple callApi calls on the same resource.
 func TestSynth806_BareNameMultipleVerbs(t *testing.T) {
