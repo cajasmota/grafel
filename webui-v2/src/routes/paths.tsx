@@ -28,10 +28,12 @@ import { cn } from "@/lib/utils";
 import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/components/ui";
 import { RefLine } from "@/components/RefLine";
 import { SectionHeader } from "@/components/SectionHeader";
+import { ShapeTree, type ShapeTreeRow } from "@/components/ShapeTree";
 import { usePaths, usePathDetail, useOrphans } from "@/hooks/use-paths";
 import type {
   PathBackend, ControllerGroupShape, PathRoute, PathDetail,
   OrphanCaller, HttpVerb, OrphanReason, PathEntity, HandlerDetail,
+  PathParameter, ResponseShape,
 } from "@/data/types";
 
 /* ============================================================
@@ -55,13 +57,6 @@ const SERVICE_TYPE_COLORS: Record<string, string> = {
   REST:    "bg-[var(--pastel-1)] text-[var(--pastel-1-ink)]",
   gRPC:    "bg-[var(--pastel-9)] text-[var(--pastel-9-ink)]",
   GraphQL: "bg-[var(--pastel-5)] text-[var(--pastel-5-ink)]",
-};
-
-const PARAM_IN_COLORS: Record<string, string> = {
-  path:   "bg-[var(--info-soft)] text-[var(--info)]",
-  query:  "bg-[var(--pastel-1)] text-[var(--pastel-1-ink)]",
-  body:   "bg-[var(--success-soft)] text-[var(--success)]",
-  header: "bg-surface-2 text-text-3",
 };
 
 const DOWNSTREAM_COLORS: Record<string, { dot: string; label: string; icon: React.ReactNode }> = {
@@ -152,13 +147,6 @@ function PathString({ path, className }: { path: string; className?: string }) {
       {parts}
     </span>
   );
-}
-
-function statusCodeClass(code: number): string {
-  const c = Math.floor(code / 100);
-  if (c === 2) return "text-success";
-  if (c === 3) return "text-warning";
-  return "text-danger";
 }
 
 /* ============================================================
@@ -504,7 +492,62 @@ function HandlerRefLine({ handler }: { handler: HandlerDetail }) {
   );
 }
 
-function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; initialVerb?: string }) {
+/**
+ * Refs #1935 Phase 1 — project a PathParameter onto the ShapeTree's
+ * top-level row shape. Body params whose type resolves to a known
+ * class entity carry `type_entity_id` + `has_children=true` so the
+ * tree renders the expand glyph; everything else stays a terminal
+ * row identical to the old table layout.
+ */
+function paramToShapeTreeRow(p: PathParameter): ShapeTreeRow {
+  return {
+    key: `${p.in}:${p.name}`,
+    name: p.name,
+    inLabel: p.in,
+    inTone: p.in as ShapeTreeRow["inTone"],
+    type: p.type,
+    desc: p.desc,
+    required: p.required,
+    type_entity_id: p.type_entity_id,
+    type_name_fallback: p.type,
+    has_children: !!p.has_children,
+  };
+}
+
+/**
+ * Refs #1935 Phase 1 — project a ResponseShape into one ShapeTree row
+ * per status code. A response shape with no `type_name` resolved (the
+ * common non-Java case) still renders, falling back to the legacy
+ * "keys" list as the type token so the visual replacement is
+ * non-regressive for languages outside Phase 1 scope.
+ */
+function responseToShapeTreeRows(s: ResponseShape, idx: number): ShapeTreeRow[] {
+  const statusCodes = (s.status_codes ?? []).length > 0 ? s.status_codes : [undefined as number | undefined];
+  return statusCodes.map((status, j) => {
+    const hasBody = !s.dynamic && (s.type_name || (s.keys && s.keys.length > 0));
+    const typeDisplay = s.type_name
+      ? s.type_name
+      : s.dynamic
+        ? "Dynamic"
+        : hasBody
+          ? (s.keys ?? []).join(", ")
+          : "—";
+    const statusLabel = status !== undefined ? String(status) : s.verb;
+    return {
+      key: `${idx}-${statusLabel}-${j}`,
+      name: hasBody ? "response" : "(none)",
+      inLabel: status !== undefined ? `${s.verb} ${status}` : s.verb,
+      inTone: "status",
+      type: typeDisplay,
+      desc: s.dynamic ? "Shape determined at runtime" : undefined,
+      type_entity_id: s.type_entity_id,
+      type_name_fallback: s.type_name,
+      has_children: !!s.has_children,
+    };
+  });
+}
+
+function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathDetail; initialVerb?: string; groupId: string }) {
   // Real polyglot data can omit array/object fields entirely. Normalize once so
   // every downstream access is null-safe (#1536).
   const detail = {
@@ -663,7 +706,10 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
           )}
         </div>
 
-        {/* 2. Parameters */}
+        {/* 2. Parameters — ShapeTree subtree (#1935 Phase 1).
+            Each parameter row is its own top-level entry; body params
+            whose type resolves to a known class expand into a CONTAINS
+            field subtree on click. */}
         <div>
           <SectionHeader
             icon={<List size={14} />}
@@ -674,146 +720,31 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             onToggle={() => toggleSection("parameters")}
           />
           {openSections.parameters && (
-            <div className="px-4 py-2">
-              {filteredParams.length === 0 ? (
-                <p className="text-xs text-text-4 py-1">None</p>
-              ) : (
-                <table className="w-full text-xs table-fixed">
-                  <colgroup>
-                    <col style={{ width: "22%" }} />
-                    <col style={{ width: "12%" }} />
-                    <col style={{ width: "28%" }} />
-                    <col style={{ width: "38%" }} />
-                  </colgroup>
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">Name</th>
-                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">In</th>
-                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">Type</th>
-                      <th className="text-left py-1.5 text-text-4 font-medium">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredParams.map((p, i) => (
-                      <tr key={i} className="border-b border-border-soft last:border-0">
-                        <td className="py-1.5 pr-3 font-mono text-text">
-                          {p.name}
-                          {p.required && <span className="text-danger ml-0.5">*</span>}
-                        </td>
-                        <td className="py-1.5 pr-3">
-                          <span className={cn("px-1.5 py-0.5 rounded-sm text-[10px] font-medium", PARAM_IN_COLORS[p.in] ?? "bg-surface-2 text-text-3")}>
-                            {p.in}
-                          </span>
-                        </td>
-                        <td className="py-1.5 pr-3 font-mono text-text-3">{p.type}</td>
-                        <td className="py-1.5 text-text-3 leading-snug">{p.desc}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+            <ShapeTree
+              groupId={groupId}
+              rows={filteredParams.map((p) => paramToShapeTreeRow(p))}
+            />
           )}
         </div>
 
-        {/* 3. Response shapes */}
+        {/* 3. Response — ShapeTree subtree (#1935 Phase 1). Replaces the
+            former "Response shapes" table. Each response shape becomes a
+            top-level row; expandable when the return type resolves to a
+            user-defined DTO. */}
         <div>
           <SectionHeader
             icon={<Box size={14} />}
-            title="Response shapes"
+            title="Response"
             count={filteredShapes.length}
-            infoText="Response body types per HTTP status code, derived from handler return types + framework annotations (e.g. @APIResponse)."
+            infoText="Response body types per HTTP status code, derived from handler return types + framework annotations. Expandable when the return type is a user-defined DTO."
             open={openSections.response}
             onToggle={() => toggleSection("response")}
           />
           {openSections.response && (
-            <div className="px-4 py-2">
-              {filteredShapes.length === 0 ? (
-                <p className="text-xs text-text-4 py-1">None</p>
-              ) : (
-                <table className="w-full text-xs table-fixed">
-                  <colgroup>
-                    <col style={{ width: "22%" }} />
-                    <col style={{ width: "12%" }} />
-                    <col style={{ width: "28%" }} />
-                    <col style={{ width: "38%" }} />
-                  </colgroup>
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">Name</th>
-                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">In</th>
-                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">Type</th>
-                      <th className="text-left py-1.5 text-text-4 font-medium">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredShapes.flatMap((shape, shapeIdx) => {
-                      // If no status_codes, render a single default row for this response shape
-                      const statusCodesToRender = (shape.status_codes ?? []).length > 0
-                        ? shape.status_codes
-                        : [undefined]; // undefined status code for empty status_codes case
-
-                      return statusCodesToRender.map((statusCode) => {
-                        const hasBody = !shape.dynamic && shape.keys && shape.keys.length > 0;
-                        const typeDisplay = shape.dynamic
-                          ? "Dynamic"
-                          : hasBody
-                            ? shape.keys.join(", ")
-                            : "—";
-                        const description = shape.dynamic
-                          ? "Shape determined at runtime"
-                          : hasBody
-                            ? ""
-                            : "No response body for this status";
-                        const isMuted = !hasBody && !shape.dynamic;
-
-                        return (
-                          <tr
-                            key={`${shapeIdx}-${statusCode ?? "default"}`}
-                            className={cn(
-                              "border-b border-border-soft last:border-0",
-                              isMuted && "opacity-60",
-                            )}
-                          >
-                            <td className="py-1.5 pr-3 font-mono text-text">
-                              {hasBody ? "response" : "(none)"}
-                            </td>
-                            <td className="py-1.5 pr-3">
-                              <span
-                                className={cn(
-                                  "px-1.5 py-0.5 rounded-sm text-[10px] font-medium",
-                                  "bg-[var(--success-soft)] text-[var(--success)]",
-                                )}
-                              >
-                                body
-                              </span>
-                            </td>
-                            <td className="py-1.5 pr-3 font-mono text-text-3">
-                              {statusCode !== undefined ? (
-                                <>
-                                  <span className={cn(
-                                    "text-xs font-mono font-semibold",
-                                    statusCodeClass(statusCode),
-                                  )}>
-                                    {statusCode}
-                                  </span>
-                                  {typeDisplay !== "—" && (
-                                    <span className="ml-2 text-text-3">{typeDisplay}</span>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="text-text-3">{typeDisplay}</span>
-                              )}
-                            </td>
-                            <td className="py-1.5 text-text-3 leading-snug">{description}</td>
-                          </tr>
-                        );
-                      });
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
+            <ShapeTree
+              groupId={groupId}
+              rows={filteredShapes.flatMap((s, idx) => responseToShapeTreeRows(s, idx))}
+            />
           )}
         </div>
 
@@ -1800,7 +1731,7 @@ export default function PathsScreen() {
                   <p className="text-sm text-text-3">Route detail not found.</p>
                 </div>
               ) : (
-                <DetailPane detail={detail} initialVerb={selectedVerb} />
+                <DetailPane detail={detail} initialVerb={selectedVerb} groupId={groupId} />
               )}
             </div>
           </div>

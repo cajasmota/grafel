@@ -633,6 +633,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups/{id}/paths", s.handleV2PathsList)
 	mux.HandleFunc("GET /api/v2/groups/{id}/paths/orphans", s.handleV2PathsOrphans)
 	mux.HandleFunc("GET /api/v2/groups/{id}/paths/{hash}", s.handleV2PathDetail)
+	// #1935 Phase 1 — ShapeTree subtree resolution (lazy class-field walk).
+	mux.HandleFunc("GET /api/v2/groups/{id}/shape", s.handleV2Shape)
 	// Module-level GDS analysis (#1384, epic #1380) — SCC + PageRank +
 	// betweenness over the aggregated module graph.
 	mux.HandleFunc("GET /api/v2/groups/{group}/modules/analysis", s.handleV2ModulesAnalysis)

@@ -123,6 +123,13 @@ type v2PathParameter struct {
 	Required bool     `json:"required"`
 	Desc     string   `json:"desc"`
 	Verbs    []string `json:"verbs,omitempty"`
+	// Refs #1935 Phase 1 — when the parameter type resolves to a
+	// user-defined class entity in the group, TypeEntityID carries the
+	// prefixed entity id ("<slug>:<id>") and HasChildren is true. The
+	// frontend uses HasChildren to render the expand glyph and
+	// TypeEntityID as the input to GET /api/v2/groups/:id/shape.
+	TypeEntityID string `json:"type_entity_id,omitempty"`
+	HasChildren  bool   `json:"has_children,omitempty"`
 }
 
 // v2ResponseShape is one verb's response metadata.
@@ -131,6 +138,16 @@ type v2ResponseShape struct {
 	StatusCodes []int    `json:"status_codes"`
 	Keys        []string `json:"keys"`
 	Dynamic     bool     `json:"dynamic,omitempty"`
+	// Refs #1935 Phase 1 — when the handler's return type resolves to a
+	// known class entity, the response row can be expanded into a
+	// ShapeTree subtree. TypeName is the simple-name token surfaced
+	// from the Java extractor (e.g. "LoginResponse"); TypeEntityID is
+	// the prefixed entity id; HasChildren mirrors the frontend's
+	// expand-glyph predicate. Empty when the return type is void,
+	// primitive, or unresolved.
+	TypeName     string `json:"type_name,omitempty"`
+	TypeEntityID string `json:"type_entity_id,omitempty"`
+	HasChildren  bool   `json:"has_children,omitempty"`
 }
 
 // v2HandlerDetail is one handler implementation in the detail pane.
@@ -732,6 +749,10 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		// Issue #1936 Phase 1 — full per-parameter JSON list emitted by the
 		// Java annotation extractor. Decoded into v2PathParameter rows below.
 		ParametersJSON string
+		// Refs #1935 Phase 1 — handler return type extracted by
+		// engine.extractJavaReturnType (e.g. "LoginResponse"). Used to
+		// surface a ShapeTree-expandable response row.
+		ResponseType string
 		// #1942 Phase 1 — resolved auth_policy decoded from the endpoint's
 		// `auth_policy` property. Multiple `matched` entries for the same path
 		// are reduced to the strongest policy when building the response.
@@ -882,6 +903,9 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				RequestBodyParamName: e.Properties["request_body_param_name"],
 				// Issue #1936 Phase 1 — full parameter list (Java extractor).
 				ParametersJSON: e.Properties["parameters"],
+				// Refs #1935 Phase 1 — handler return type for the
+				// Response ShapeTree subtree.
+				ResponseType: e.Properties["response_type"],
 				// #1942 Phase 1 — auth_policy decoded from the endpoint entity.
 				AuthPolicy: readAuthPolicyFromEntity(e.Properties),
 			})
@@ -949,6 +973,11 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build response shapes grouped by verb.
+	//
+	// Refs #1935 Phase 1 — when the handler's return type resolves to
+	// an in-group class entity, also stamp TypeName / TypeEntityID /
+	// HasChildren so the frontend can render an expandable response
+	// row in the unified ShapeTree.
 	shapesByVerb := map[string]*v2ResponseShape{}
 	for _, h := range hits {
 		if _, ok := shapesByVerb[h.Verb]; !ok {
@@ -974,6 +1003,16 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 			}
 			if !found {
 				shape.StatusCodes = append(shape.StatusCodes, sc)
+			}
+		}
+		if h.ResponseType != "" && shape.TypeName == "" {
+			shape.TypeName = h.ResponseType
+			resolveType := unwrapElementType(h.ResponseType)
+			if target := findClassEntityByName(grp, resolveType); target != nil {
+				if slug, _ := findRepoForEntity(grp, target.ID); slug != "" {
+					shape.TypeEntityID = dashPrefixedID(slug, target.ID)
+					shape.HasChildren = classHasFieldChildren(grp, target)
+				}
 			}
 		}
 	}
@@ -1040,6 +1079,11 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	// parameter list did not already surface a body row for that verb. This
 	// keeps backwards compatibility with older indexer outputs that still
 	// only emit request_body_type / request_body_param_name.
+	//
+	// Refs #1935 Phase 1 — resolve the request body type to an in-group
+	// class entity so the ShapeTree component can request its field
+	// subtree. TypeEntityID is the prefixed entity id; HasChildren is
+	// true when at least one CONTAINS field child is present.
 	{
 		seenBodyVerbs := map[string]bool{}
 		for _, p := range params {
@@ -1058,14 +1102,22 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 			if paramName == "" {
 				paramName = "body"
 			}
-			params = append(params, v2PathParameter{
+			param := v2PathParameter{
 				Name:     paramName,
 				In:       "body",
 				Type:     h.RequestBodyType,
 				Required: true,
 				Desc:     "Request body — inferred from method parameter annotation.",
 				Verbs:    []string{h.Verb},
-			})
+			}
+			resolveType := unwrapElementType(h.RequestBodyType)
+			if target := findClassEntityByName(grp, resolveType); target != nil {
+				if slug, _ := findRepoForEntity(grp, target.ID); slug != "" {
+					param.TypeEntityID = dashPrefixedID(slug, target.ID)
+					param.HasChildren = classHasFieldChildren(grp, target)
+				}
+			}
+			params = append(params, param)
 		}
 	}
 

@@ -33,6 +33,7 @@ import type {
   PathsListResponse,
   PathDetail,
   OrphansResponse,
+  ShapeResponse,
   SystemStatus,
   SystemActionReply,
   SystemLogsReply,
@@ -480,6 +481,24 @@ export const api = {
   /** GET /api/v2/groups/:id/paths/orphans — orphan caller list. */
   listOrphans: (groupId: string) =>
     requestV2<OrphansResponse>(`/groups/${encodeURIComponent(groupId)}/paths/orphans`),
+
+  /**
+   * GET /api/v2/groups/:id/shape — lazy ShapeTree subtree resolver
+   * (refs #1935 Phase 1). Returns one field row per CONTAINS child of
+   * the requested class entity, with type + annotations metadata and a
+   * has_children flag the caller uses to decide whether to render an
+   * expand glyph. Accepts either `type_entity_id` (prefixed
+   * "slug:entity_id" form) or a bare `type` name to be resolved
+   * group-wide.
+   */
+  getShape: (groupId: string, opts: { typeEntityId?: string; type?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts.typeEntityId) qs.set("type_entity_id", opts.typeEntityId);
+    else if (opts.type) qs.set("type", opts.type);
+    return requestV2<ShapeResponse>(
+      `/groups/${encodeURIComponent(groupId)}/shape?${qs.toString()}`,
+    );
+  },
 
   // --- Operations screen (system / patterns / quality / updates) ---
   // These call the existing v1 endpoints; no v2 wrapper needed since

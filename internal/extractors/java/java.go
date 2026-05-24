@@ -199,13 +199,19 @@ func walk(
 	}
 
 	switch node.Type() {
-	case "class_declaration", "interface_declaration", "enum_declaration":
+	case "class_declaration", "interface_declaration", "enum_declaration", "record_declaration":
 		subtype := "class"
 		switch node.Type() {
 		case "interface_declaration":
 			subtype = "interface"
 		case "enum_declaration":
 			subtype = "enum"
+		case "record_declaration":
+			// Refs #1935 Phase 1 — Java records emit a Class entity so the
+			// ShapeTree subtree resolver treats them identically to POJOs.
+			// Header parameters become field entities so the dashboard sees
+			// them as CONTAINS children with type metadata.
+			subtype = "record"
 		}
 		rec, ok := buildComponent(node, file, subtype, pkgName)
 		if ok {
@@ -251,6 +257,61 @@ func walk(
 		}
 		classIdx := len(*out)
 		*out = append(*out, rec)
+
+		// Refs #1935 Phase 1 — Java record header parameters
+		// (e.g. `record TransferRequest(String id, BigDecimal qty)`)
+		// emit as SCOPE.Schema field entities so the dashboard
+		// ShapeTree can render them as CONTAINS children of the
+		// record class. The tree-sitter grammar exposes the
+		// parameters via a `formal_parameters` child on
+		// record_declaration; each child is a `formal_parameter`
+		// with `type` + `name` named children.
+		if node.Type() == "record_declaration" {
+			if params := node.ChildByFieldName("parameters"); params != nil {
+				for i := range params.ChildCount() {
+					p := params.Child(int(i))
+					if p == nil || p.Type() != "formal_parameter" {
+						continue
+					}
+					nameNode := p.ChildByFieldName("name")
+					typeNode := p.ChildByFieldName("type")
+					if nameNode == nil || typeNode == nil {
+						continue
+					}
+					fieldName := nodeText(nameNode, file.Content)
+					typeName := nodeText(typeNode, file.Content)
+					if fieldName == "" || typeName == "" {
+						continue
+					}
+					emittedName := rec.Name + "." + fieldName
+					// Preserve any annotations on the record
+					// component by replaying the raw source span.
+					raw := strings.TrimSpace(string(file.Content[p.StartByte():p.EndByte()]))
+					raw = strings.Join(strings.Fields(raw), " ")
+					sig := raw
+					if sig == "" {
+						sig = typeName + " " + fieldName
+					}
+					fieldRec := types.EntityRecord{
+						Name:       emittedName,
+						Kind:       "SCOPE.Schema",
+						Subtype:    "field",
+						SourceFile: file.Path,
+						Language:   "java",
+						StartLine:  int(p.StartPoint().Row) + 1,
+						EndLine:    int(p.EndPoint().Row) + 1,
+						Signature:  sig,
+					}
+					*out = append(*out, fieldRec)
+					(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+						types.RelationshipRecord{
+							ToID: extractor.BuildSchemaFieldStructuralRef("java", file.Path, emittedName),
+							Kind: "CONTAINS",
+						})
+				}
+			}
+		}
+
 		body := node.ChildByFieldName("body")
 		if body != nil {
 			// Issue #120 — pre-pass: collect this class's field types so
