@@ -27,6 +27,42 @@ type Info struct {
 	TopLevel string
 }
 
+// IsDefaultBranch reports whether the current HEAD ref of the repository at
+// repoPath is the repo's default (main) branch.
+//
+// Strategy:
+//  1. Read HEAD symbolic ref (e.g. "main", "master", "trunk").
+//  2. Compare against the remote's default branch via
+//     `git symbolic-ref refs/remotes/origin/HEAD --short`.
+//     This yields "origin/main" → strip the remote prefix.
+//  3. Fallback heuristic: if the remote default is unavailable, treat "main",
+//     "master", and "trunk" as default branch names.
+//
+// Returns false for detached HEAD, non-git directories, or any git error.
+func IsDefaultBranch(repoPath string) bool {
+	ref := RunGit(repoPath, "symbolic-ref", "--short", "HEAD")
+	if ref == "" {
+		return false // detached HEAD or not a git repo
+	}
+
+	// Attempt to read origin's HEAD to determine the registered default branch.
+	originHead := RunGit(repoPath, "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+	if originHead != "" {
+		// originHead is "origin/main" — strip the remote prefix.
+		parts := strings.SplitN(originHead, "/", 2)
+		if len(parts) == 2 {
+			return ref == parts[1]
+		}
+	}
+
+	// Fallback: canonical default branch names.
+	switch ref {
+	case "main", "master", "trunk":
+		return true
+	}
+	return false
+}
+
 // RunGit runs git with the given args inside dir and returns stdout trimmed.
 // Returns "" on any failure. Uses a 2-second timeout consistent with Capture.
 // This is the shared low-level runner used by both Capture and callers in
