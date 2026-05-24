@@ -191,34 +191,49 @@ func IsHTTPWrapperHeuristic(name string, idx WrapperConfigIndex) bool {
 // React Query / SWR / RTK Query beyond-minimum patterns
 // ---------------------------------------------------------------------------
 
-// useQueryCallRe matches React Query useQuery / useMutation / useSuspenseQuery
-// and SWR useSWR calls whose queryFn/fetcher returns a callApi-style
-// invocation.
+// useQueryKeyRe matches React Query useQuery / useSuspenseQuery calls whose
+// first argument is an options object with a queryKey array whose first
+// element is a string literal.
 //
 // We look for the short form where the queryKey first element (a string
 // literal) doubles as the URL resource name:
 //
 //	useQuery({ queryKey: ['users'], queryFn: () => callApi('users', 'GET') })
-//	useSWR('/users', fetcher)
+//	useSuspenseQuery({ queryKey: ['buildings'], ... })
 //
 // Capture groups:
 //
 //	1 = query key (resource name, e.g. 'users')
 var useQueryKeyRe = regexp.MustCompile(
-	`\buseQuery\s*\(\s*\{[^}]*queryKey\s*:\s*\[\s*['"]([^'"]+)['"]`,
+	`\buse(?:Suspense)?Query\s*\(\s*\{[^}]*queryKey\s*:\s*\[\s*['"]([^'"]+)['"]`,
+)
+
+// useMutationKeyRe matches React Query useMutation calls with a mutationKey
+// array whose first element is a string literal. These calls issue a POST
+// (or other mutating verb) to the named resource.
+//
+//	useMutation({ mutationKey: ['attachments', 'upload'], mutationFn: ... })
+//
+// Capture groups:
+//
+//	1 = mutation key / resource name (e.g. 'attachments')
+var useMutationKeyRe = regexp.MustCompile(
+	`\buseMutation\s*\(\s*\{[^}]*mutationKey\s*:\s*\[\s*['"]([^'"]+)['"]`,
 )
 
 // rtkQueryEndpointRe matches RTK Query createApi endpoint builder patterns:
 //
 //	createApi({ endpoints: builder => ({
 //	  getUsers: builder.query({ query: () => 'users' })
+//	  createUser: builder.mutation({ query: () => 'users' })
 //	})})
 //
 // Capture groups:
 //
-//	1 = endpoint resource name (e.g. 'users')
+//	1 = builder method ("query" or "mutation")
+//	2 = endpoint resource name (e.g. 'users')
 var rtkQueryEndpointRe = regexp.MustCompile(
-	`\bbuilder\s*\.\s*(?:query|mutation)\s*\(\s*\{[^}]*query\s*:\s*\(\s*\)\s*=>\s*['"]([^'"]+)['"]`,
+	`\bbuilder\s*\.\s*(query|mutation)\s*\(\s*\{[^}]*query\s*:\s*\(\s*\)\s*=>\s*['"]([^'"]+)['"]`,
 )
 
 // ExtractReactQueryPaths returns the list of resource names found in
@@ -239,11 +254,23 @@ func ExtractReactQueryPaths(content string) []string {
 		}
 	}
 
-	for _, m := range rtkQueryEndpointRe.FindAllStringSubmatch(content, -1) {
+	for _, m := range useMutationKeyRe.FindAllStringSubmatch(content, -1) {
 		if len(m) < 2 {
 			continue
 		}
 		norm := normalizeBareName(m[1])
+		if !seen[norm] {
+			seen[norm] = true
+			paths = append(paths, norm)
+		}
+	}
+
+	for _, m := range rtkQueryEndpointRe.FindAllStringSubmatch(content, -1) {
+		// m[1] = builder method ("query"/"mutation"), m[2] = resource name.
+		if len(m) < 3 {
+			continue
+		}
+		norm := normalizeBareName(m[2])
 		if !seen[norm] {
 			seen[norm] = true
 			paths = append(paths, norm)

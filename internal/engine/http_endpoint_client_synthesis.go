@@ -521,7 +521,9 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// Phase 5 (#806): React Query / RTK Query patterns can appear in files
 	// that contain none of the standard HTTP-client markers below. Handle
 	// them first so the early-exit guard doesn't drop them.
-	if strings.Contains(content, "useQuery") || strings.Contains(content, "builder.query") ||
+	// #2117: also check useMutation and useSuspenseQuery.
+	if strings.Contains(content, "useQuery") || strings.Contains(content, "useMutation") ||
+		strings.Contains(content, "builder.query") ||
 		strings.Contains(content, "builder.mutation") || strings.Contains(content, "createApi") {
 		funcsRQ := indexJSEnclosingFunctions(content)
 		symsRQ := buildJSConstantSymbolTable(content)
@@ -1042,12 +1044,13 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 //
 // The enclosing function at the call site is used as source_caller.
 func synthesizeReactQueryCalls(content string, funcs []jsFuncSpan, syms map[string]string, emit emitFn) {
-	if !strings.Contains(content, "useQuery") && !strings.Contains(content, "createApi") &&
-		!strings.Contains(content, "builder.") {
+	// #2117: include useMutation / useSuspenseQuery in early-exit check.
+	if !strings.Contains(content, "useQuery") && !strings.Contains(content, "useMutation") &&
+		!strings.Contains(content, "createApi") && !strings.Contains(content, "builder.") {
 		return
 	}
 
-	// useQuery({ queryKey: ['resource'], ... }) patterns.
+	// useQuery / useSuspenseQuery ({ queryKey: ['resource'], ... }) patterns.
 	for _, m := range useQueryKeyRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
@@ -1069,8 +1072,9 @@ func synthesizeReactQueryCalls(content string, funcs []jsFuncSpan, syms map[stri
 		emit("GET", canonical, "react_query", "Function", caller)
 	}
 
-	// RTK Query builder.query/mutation patterns.
-	for _, m := range rtkQueryEndpointRe.FindAllStringSubmatchIndex(content, -1) {
+	// useMutation({ mutationKey: ['resource'], ... }) patterns — #2117.
+	// Mutations default to POST; the mutationKey first string names the resource.
+	for _, m := range useMutationKeyRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
 		}
@@ -1082,11 +1086,36 @@ func synthesizeReactQueryCalls(content string, funcs []jsFuncSpan, syms map[stri
 		if normalized == "" || normalized == "/" {
 			continue
 		}
+		if resolved, ok := syms[resource]; ok {
+			normalized = normalizeBareName(resolved)
+		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, normalized)
 		caller := enclosingJSFuncAt(funcs, m[0])
-		// Determine verb from builder method: query → GET, mutation → POST.
+		emit("POST", canonical, "react_query_mutation", "Function", caller)
+	}
+
+	// RTK Query builder.query/mutation patterns.
+	// rtkQueryEndpointRe group layout: [0]=full match, [1,2]=method, [3,4]=resource.
+	for _, m := range rtkQueryEndpointRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		// Group 1: builder method ("query" or "mutation").
+		builderMethod := content[m[2]:m[3]]
+		// Group 2: resource name.
+		resource := content[m[4]:m[5]]
+		if resource == "" {
+			continue
+		}
+		normalized := normalizeBareName(resource)
+		if normalized == "" || normalized == "/" {
+			continue
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, normalized)
+		caller := enclosingJSFuncAt(funcs, m[0])
+		// Determine verb from captured builder method: query → GET, mutation → POST.
 		verb := "GET"
-		if strings.Contains(content[m[0]:m[0]+50], "mutation") {
+		if builderMethod == "mutation" {
 			verb = "POST"
 		}
 		emit(verb, canonical, "rtk_query", "Function", caller)
