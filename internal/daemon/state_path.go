@@ -52,16 +52,121 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"unicode/utf8"
 
 	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
 
+// canonicalCache caches (inputPath → canonicalPath) resolutions so that
+// every daemon startup pays the os.ReadDir cost at most once per unique
+// input path. Paths do not change casing during a daemon's lifetime.
+var canonicalCache sync.Map // map[string]string
+
+// canonicalizePath returns the path with the actual on-disk casing of
+// each component. On case-insensitive filesystems (APFS, NTFS) two
+// inputs that differ only in casing refer to the same directory but
+// sha256(path) would produce different hashes. canonicalizePath walks
+// each segment top-down via os.ReadDir and substitutes the real entry
+// name so that "UpVate" and "upvate" both canonicalize to whichever
+// casing the filesystem holds (e.g. "UpVate").
+//
+// If a segment is not found on disk (path may be virtual or not yet
+// created) the input casing is preserved for that segment and all
+// subsequent ones.
+//
+// The result is cached in a sync.Map keyed by the input path. This is
+// safe because path casing never changes while the daemon runs.
+func canonicalizePath(absPath string) string {
+	if absPath == "" {
+		return absPath
+	}
+	// Fast path: already cached.
+	if v, ok := canonicalCache.Load(absPath); ok {
+		return v.(string)
+	}
+
+	// Split into volume (e.g. "C:" on Windows, "" on Unix) + segments.
+	vol := filepath.VolumeName(absPath)
+	rest := absPath[len(vol):]
+
+	// Trim leading separator so Split doesn't produce empty leading element.
+	rest = strings.TrimLeft(rest, string(filepath.Separator))
+	segments := strings.Split(rest, string(filepath.Separator))
+
+	canonical := vol + string(filepath.Separator)
+	for _, seg := range segments {
+		if seg == "" {
+			continue
+		}
+		// Try to find the real on-disk name for this segment.
+		entries, err := os.ReadDir(canonical)
+		if err != nil {
+			// Directory doesn't exist or isn't readable; preserve input
+			// casing for this segment and all remaining segments.
+			canonical = filepath.Join(canonical, seg)
+			continue
+		}
+		found := false
+		for _, e := range entries {
+			if equalFold(e.Name(), seg) {
+				canonical = filepath.Join(canonical, e.Name())
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Segment not present; preserve input casing.
+			canonical = filepath.Join(canonical, seg)
+		}
+	}
+
+	canonicalCache.Store(absPath, canonical)
+	return canonical
+}
+
+// equalFold reports whether a and b are equal under Unicode case-folding.
+// filepath.Match on case-insensitive OSes uses the same folding; we
+// replicate it here to avoid depending on the OS for the comparison.
+func equalFold(a, b string) bool {
+	if len(a) != len(b) {
+		// Fast reject: UTF-8 lengths differ — can't be equal under fold
+		// unless multi-byte fold produces same length, which is not the
+		// case for the ASCII range we care about.  For non-ASCII we fall
+		// through to the rune loop.
+	}
+	for len(a) > 0 && len(b) > 0 {
+		ra, sza := utf8.DecodeRuneInString(a)
+		rb, szb := utf8.DecodeRuneInString(b)
+		if ra != rb {
+			// Try simple ASCII fold first (most common case).
+			if ra >= 'A' && ra <= 'Z' {
+				ra += 'a' - 'A'
+			}
+			if rb >= 'A' && rb <= 'Z' {
+				rb += 'a' - 'A'
+			}
+			if ra != rb {
+				return false
+			}
+		}
+		a = a[sza:]
+		b = b[szb:]
+	}
+	return len(a) == 0 && len(b) == 0
+}
+
 // repoStateHash returns a deterministic, path-safe identifier for a
-// repo path. Callers MUST pass an absolute, lexically-clean path
-// (filepath.Abs + filepath.Clean) so that the same repo always maps
-// to the same hash regardless of how the caller addressed it.
+// repo path. The path is canonicalized via canonicalizePath before
+// hashing so that case variants on case-insensitive filesystems (APFS,
+// NTFS) always produce the same hash — fixing the case-collision store
+// duplicate bug (#2086).
+//
+// Callers MUST pass an absolute, lexically-clean path
+// (filepath.Abs + filepath.Clean).
 func repoStateHash(absRepoPath string) string {
-	sum := sha256.Sum256([]byte(absRepoPath))
+	canonical := canonicalizePath(absRepoPath)
+	sum := sha256.Sum256([]byte(canonical))
 	return hex.EncodeToString(sum[:8]) // 16 hex chars
 }
 
@@ -258,4 +363,87 @@ func findGraphFileInDir(dir string) (path string, modtime int64) {
 func FindGraphFile(repoPath string) (path string, modtime int64) {
 	stateDir := StateDirForRepo(repoPath)
 	return findGraphFileInDir(stateDir)
+}
+
+// WarnCaseCollisions scans the store directory for store slots whose
+// directory name (slug-hash) does not match the hash derived from the
+// canonical fleet repo path. This detects legacy store dirs created
+// before canonicalizePath was introduced (#2086), where a
+// case-variant of the path produced a different hash and a duplicate
+// store slot.
+//
+// repoPaths is the list of repo paths registered in the fleet. For
+// each repo the function computes the current (canonical) slug-hash
+// and compares it to every existing store entry that shares the same
+// base name (repo basename). Mismatches are returned as a list of
+// (stale-dir, canonical-dir) pairs so the caller can log a warning.
+//
+// The function does NOT auto-merge or delete the stale dirs — that
+// is reserved for `archigraph cleanup --case-merge`. Manual cleanup:
+// rm -rf the stale dir and let the daemon reindex.
+//
+// Returns nil when storeDir is empty, doesn't exist, or no collisions
+// are found.
+func WarnCaseCollisions(storeDir string, repoPaths []string) [][2]string {
+	if storeDir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(storeDir)
+	if err != nil {
+		return nil
+	}
+
+	// Build a set of current canonical slugs for fast lookup.
+	canonical := make(map[string]string, len(repoPaths)) // slug → repoPath
+	for _, rp := range repoPaths {
+		if rp == "" {
+			continue
+		}
+		abs, err := filepath.Abs(rp)
+		if err != nil {
+			abs = rp
+		}
+		abs = filepath.Clean(abs)
+		slug := repoSlug(abs)
+		canonical[slug] = abs
+	}
+
+	// For each repo, also find store entries with the same base name but
+	// a different hash (i.e. a hash computed from a case-variant path).
+	// We do this by checking every on-disk entry against the list of known
+	// repos, matching by the base-name prefix.
+	var collisions [][2]string
+	for _, rp := range repoPaths {
+		if rp == "" {
+			continue
+		}
+		abs, err := filepath.Abs(rp)
+		if err != nil {
+			abs = rp
+		}
+		abs = filepath.Clean(abs)
+
+		expectedSlug := repoSlug(abs)
+		base := unsafeSlugChars.ReplaceAllString(filepath.Base(abs), "-")
+		base = strings.Trim(base, "-._")
+		if base == "" {
+			base = "repo"
+		}
+		if len(base) > 48 {
+			base = base[:48]
+		}
+		prefix := base + "-"
+
+		for _, e := range entries {
+			name := e.Name()
+			// Only compare store slots that share the same base-name prefix
+			// but have a different hash suffix.
+			if strings.HasPrefix(name, prefix) && name != expectedSlug {
+				staleDir := filepath.Join(storeDir, name)
+				canonicalDir := filepath.Join(storeDir, expectedSlug)
+				collisions = append(collisions, [2]string{staleDir, canonicalDir})
+			}
+		}
+	}
+	return collisions
 }

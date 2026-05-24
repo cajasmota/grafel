@@ -169,6 +169,7 @@ func Run(ctx context.Context, cfg Config) error {
 		} else {
 			logger.Printf("startup: MigrateToRefStore complete store=%s", storeDir)
 		}
+
 	}
 
 	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath)
@@ -281,6 +282,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 			// #1456: subscribe repos OFF the critical boot path.
 			if cfg.ReposToWatch != nil {
+				capturedStore := StoreDir()
 				go func() {
 					t0 := time.Now()
 					repos := cfg.ReposToWatch()
@@ -294,6 +296,19 @@ func Run(ctx context.Context, cfg Config) error {
 					}
 					logger.Printf("watcher: subscription complete repos=%d took=%s",
 						len(repos), time.Since(t0).Truncate(time.Millisecond))
+
+					// #2086: now that we have the full repo list, check for
+					// case-collision store dirs produced before canonicalizePath
+					// was introduced. Run here (inside the watcher goroutine)
+					// so ReposToWatch is called exactly once.
+					if capturedStore != "" {
+						if dups := WarnCaseCollisions(capturedStore, repos); len(dups) > 0 {
+							for _, pair := range dups {
+								logger.Printf("store: detected case-collision dup: stale=%s canonical=%s — remove stale dir to avoid confusion (archigraph cleanup --case-merge)",
+									pair[0], pair[1])
+							}
+						}
+					}
 				}()
 			}
 			if cfg.OnWatcherReady != nil {
