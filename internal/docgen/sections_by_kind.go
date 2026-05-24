@@ -96,19 +96,26 @@ type SectionProfile struct {
 // is the declarative form of the per-kind section curation expressed by the
 // profile registry — keep the two in sync when adding a new profile.
 //
-// Wiring (#1860 / #1873 / #2017):
+// Wiring (#1860 / #1873 / #2017 / #1863):
 //
 //   - reference-deployment, reference-scripts → suppressed for leaf entity
 //     kinds (view, class, function, operation) because deployment / script
 //     surface is a module-aggregate concern.
 //   - how-to-local-dev → suppressed for EVERY non-module kind (#1873).  Module
 //     pages are the single source of truth for local-dev workflows.
+//   - child-methods → suppressed for all non-class kinds (#1863).  Only
+//     class-like seeds (view, class) emit a per-method table; module, model,
+//     function, operation, and react kinds do not have a class_manifest to
+//     render.
 var SectionGating = map[string][]string{
 	"reference-deployment": {"view", "class", "function", "operation"},
 	"reference-scripts":    {"view", "class", "function", "operation"},
 	// react_hook does not expose deployment/scripts surface — those live in
 	// the owning js_module or the top-level module page.
 	"how-to-local-dev": {"view", "class", "function", "operation", "model", "react_component", "react_hook"},
+	// child-methods is only relevant for class-like seeds with a class_manifest.
+	// All non-class-like kinds are listed here as suppressed.
+	"child-methods": {"module", "model", "function", "operation", "react_component", "react_hook", "js_module"},
 }
 
 // ShouldSkipSectionForKind reports whether a given section is gated out for the
@@ -182,10 +189,23 @@ var sectionsByKind = map[string]SectionProfile{
 				"Highlight god-node or articulation-point status if applicable.",
 			"capabilities": "List the business capabilities this model supports: which features read it, which write it, " +
 				"and any invariants it enforces at the persistence layer. Group by business outcome, not by field name.",
-			"api": "Document the model's public interface: field names with types, associations (has-many, belongs-to, etc.), " +
-				"and validation rules. Include any scopes, callbacks, or computed attributes that are part of the public contract.",
-			"patterns": "Identify data modelling patterns present (aggregate root, polymorphic association, STI, soft-delete, " +
-				"event-sourced projection, etc.).  Cite specific neighbour relationships as evidence.",
+			// #1875 — ORM Model branch: models have no callable API of their own;
+			// document the natural API surface via viewsets/handlers in neighbours.
+			"api": "This entity is an ORM Model (Django/SQLAlchemy/Prisma/etc.) with no callable API of its own. " +
+				"Document its natural API surface in two parts:\n" +
+				"1. Data interface: field names with types, associations (has-many, belongs-to, etc.), validation rules, " +
+				"scopes, callbacks, and computed attributes that are part of the public contract.\n" +
+				"2. Handler surface: explicitly state that the model has no direct callable API. " +
+				"List the viewsets/handlers/resolvers visible in neighbour_briefs that operate on this model. " +
+				"For each, note the CRUD endpoints it exposes if present in the neighbour's brief or Properties. " +
+				"NEVER fabricate Contract.save() / Model.objects.filter() signatures — those are ORM internals, not the model's own API.",
+			// #1859 — anti-patterns / smells in model context.
+			"patterns": "Identify (a) data modelling patterns present (aggregate root, polymorphic association, STI, soft-delete, " +
+				"event-sourced projection, etc.) and (b) any anti-patterns or code smells visible in the source_window " +
+				"(missing db_index on high-cardinality FK fields, overly wide god-tables, nullable fields with no null-check logic, " +
+				"bare except on DoesNotExist, commented-out alternate implementations, etc.). " +
+				"Be specific; cite line ranges from source_window when possible. " +
+				"Cite specific neighbour relationships as evidence for structural patterns.",
 			"reference-dependencies": "List external libraries this model depends on " +
 				"(e.g. Devise, ActiveStorage, Paperclip, soft-delete gems, ORM adapters). " +
 				"Separate production from test-only dependencies.",
@@ -230,13 +250,32 @@ var sectionsByKind = map[string]SectionProfile{
 				"and any cross-cutting concerns it addresses. Highlight if it is a god node or articulation point.",
 			"capabilities": "Enumerate the product capabilities this module owns, grouped by business outcome. " +
 				"Reference the key entities, handlers, or service objects that implement each capability.",
-			"flows": "Trace the primary request or event flow through this module using a mermaid sequence or flowchart. " +
-				"Show the entry point, internal orchestration, and outbound calls to external modules or services. " +
+			// #1883 — Module flows: archetypal patterns + 2-3 mermaid diagrams.
+			"flows": "Describe ARCHETYPAL FLOW PATTERNS observed in this module — 2-3 representative flows that cover the module's " +
+				"common operations. Examples: HTTP-request-to-DB path, async-task-via-Celery/Sidekiq/Bull, scheduled-batch-job. " +
+				"Use 2-3 mermaid sequence or flowchart diagrams (one per archetype). " +
+				"Pick flows backed by the largest typed-edge sub-graphs visible in neighbour_briefs. " +
 				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`. " +
 				"Mermaid diagrams must only reference entities that exist in the bundle. " +
 				"If thin context yields a one-step chain, render that one step honestly — do not pad with invented destinations.",
-			"api": "Document the full public API surface of this module: exported functions, HTTP endpoints, event topics, or CLI flags. " +
-				"Include method signatures and a one-line usage note for each.",
+			// #1882 — Module api: catalog mode, not per-endpoint enumeration.
+			"api": "Summarise the API as a CATALOG — DO NOT enumerate individual endpoints (impossible at scale). " +
+				"Include:\n" +
+				"- Total endpoint count (e.g. 473)\n" +
+				"- Verb breakdown (e.g. 190 GET / 108 POST / 65 PUT / 42 PATCH / 36 DELETE)\n" +
+				"- URL-prefix shape (e.g. /api/v1/, /api/v2/)\n" +
+				"- List of top-level ViewSets/handlers/controllers with one-line descriptions\n" +
+				"Source endpoint counts and ViewSet names from module_manifest.endpoints and neighbour_briefs. " +
+				"Link to per-ViewSet pages for endpoint-level detail. " +
+				"If no endpoint data is available, describe exported functions, event topics, or CLI flags instead.",
+			// #1859 — anti-patterns / smells in module context.
+			"patterns": "Identify (a) architectural and structural patterns observed across this module " +
+				"(layered architecture, CQRS, event-driven, saga orchestration, hexagonal/ports-and-adapters, etc.) and " +
+				"(b) any anti-patterns or code smells visible in the source_window or inferable from neighbour_briefs " +
+				"(god-module with too many unrelated responsibilities, circular dependencies, missing transaction boundaries, " +
+				"bare exception handlers, hardcoded magic values, commented-out alternate code paths, etc.). " +
+				"Be specific; cite entity names and line ranges from source_window when possible. " +
+				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
 			"reference-config": "List every APPLICATION environment variable or configuration key this module reads, with type, default value, and effect. " +
 				"Separate required from optional keys. " +
 				"DO NOT include graph-metadata Properties (framework, module, role, language, etc.) — those are indexer-internal and not configuration. " +
@@ -244,10 +283,18 @@ var sectionsByKind = map[string]SectionProfile{
 			"reference-deployment": "Describe deployment concerns owned by this module: required env vars, exposed ports, " +
 				"scaling constraints, health-check endpoints, and any sidecar dependencies.",
 			"reference-scripts": "List all Makefile targets, npm/go scripts, or shell commands that operate on this module and explain what each does.",
+			// #1858 — module_configs[] grounding for how-to-local-dev.
 			"how-to-local-dev": "Provide a numbered step-by-step local development guide for this module: " +
-				"clone, configure env vars, build, run tests, start the local server, and observe output.",
+				"clone, configure env vars, build, run tests, start the local server, and observe output. " +
+				"IMPORTANT: consume `module_configs[]` to ground this section in repo-specific reality — " +
+				"use actual Makefile targets, pyproject.toml/package.json scripts, and README excerpts from module_configs " +
+				"instead of generic boilerplate. If module_configs includes a README excerpt, use it as the starting point.",
+			// #1858 — module_configs[] grounding for module-readme.
 			"module-readme": "Write a README-style introduction for this module: purpose, key entities, " +
 				"quickstart build/test/run commands, and link to the full documentation page. " +
+				"IMPORTANT: consume `module_configs[]` to ground this section in repo-specific reality — " +
+				"use actual pyproject.toml/package.json/go.mod data and any README excerpts present in module_configs " +
+				"for install/run instructions instead of generic boilerplate. " +
 				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
 				"`module_manifest.functions`, or `neighbour_briefs`. " +
 				"If you cite a sibling, name the bundle field it came from.",
@@ -581,14 +628,18 @@ var sectionsByKind = map[string]SectionProfile{
 				"HTTP method, URL pattern (include base URL or env-var reference if present), " +
 				"request body shape, response shape, and error handling contract. " +
 				"Include a minimal usage example for non-trivial exports.",
-			// #1870 — frontend pattern vocabulary for JS modules.
-			"patterns": "Identify JavaScript module patterns present: " +
+			// #1870 — frontend pattern vocabulary for JS modules; #1859 — anti-patterns.
+			"patterns": "Identify (a) JavaScript module patterns present: " +
 				"- Barrel re-export (index file aggregating sibling modules) " +
 				"- Singleton service (stateful module exporting a single shared instance) " +
 				"- API client wrapper (thin layer over fetch/axios exposing typed request helpers) " +
 				"- Factory function (creates and returns configured objects or instances) " +
 				"- Observer/event bus (exports subscribe/publish or addEventListener abstractions) " +
 				"- Configuration provider (reads env vars and exports typed config objects). " +
+				"and (b) any anti-patterns or code smells visible in the source_window " +
+				"(missing error handling on fetch/axios calls, uncaught promise rejections, hardcoded base URLs or API keys, " +
+				"barrel files that re-export everything causing large bundle sizes, circular imports, etc.). " +
+				"Be specific; cite line ranges from source_window when possible. " +
 				"Cite the specific exports or import graph edges that demonstrate each pattern. " +
 				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
 			// #1869 — frontend-specific reference-deployment.
@@ -615,8 +666,12 @@ var sectionsByKind = map[string]SectionProfile{
 				"Separate production from dev/test-only dependencies.",
 			"reference-misc": "Capture bundle-size impact notes, tree-shaking behaviour, known edge cases, or links to the ADR / issue that introduced this module.",
 			"glossary": "Define domain terms appearing in exported symbol names or type names. One term per row.",
+			// #1858 — module_configs[] grounding for js_module module-readme.
 			"module-readme": "Write a README-style introduction for this frontend module: purpose, key exports, " +
 				"quickstart dev/build commands, and any important caveats. " +
+				"IMPORTANT: consume `module_configs[]` to ground this section in repo-specific reality — " +
+				"use actual package.json scripts, README excerpts, or tsconfig data from module_configs " +
+				"for install/run instructions instead of generic boilerplate. " +
 				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
 				"`module_manifest.functions`, or `neighbour_briefs`. " +
 				"If you cite a sibling, name the bundle field it came from.",
@@ -639,6 +694,8 @@ var sectionsByKind = map[string]SectionProfile{
 	"view": {
 		Sections: []string{
 			"overview",
+			// #1863 — child-methods table placed after overview for at-a-glance method index.
+			"child-methods",
 			"capabilities",
 			"flows",
 			"patterns",
@@ -653,6 +710,12 @@ var sectionsByKind = map[string]SectionProfile{
 		GuidanceOverrides: map[string]string{
 			"overview": "Write a 2–3 sentence description of what this view/controller class exposes and the request lifecycle it owns. " +
 				"State its role in the routing layer (collection endpoint, detail endpoint, RPC-style action handler, etc.).",
+			// #1863 — child-methods: view-specific guidance with HTTP columns.
+			"child-methods": "Render a markdown table listing every action/handler method from class_manifest. " +
+				"Columns: Method | HTTP Verb | Path | Brief Description (~10 words). " +
+				"Populate HTTP Verb and Path from @action / @api_view / @router decorator metadata when present in source_window or neighbour Properties; " +
+				"otherwise mark as not-in-context. " +
+				"This section provides an at-a-glance index of the HTTP surface before the full api section.",
 			"capabilities": "List the HTTP-facing capabilities this class provides, one bullet per action or endpoint. " +
 				"Reference the action method name and the documented business outcome — not the implementation details, which live on per-method pages.",
 			"flows": "You will see only the source_window for the seed class header; method bodies are NOT in scope. " +
@@ -660,7 +723,11 @@ var sectionsByKind = map[string]SectionProfile{
 				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`. " +
 				"Mermaid diagrams must only reference entities that exist in the bundle. " +
 				"If thin context yields a one-step chain, render that one step honestly — do not pad with invented destinations.",
-			"patterns": "Identify class-level patterns (ViewSet mixin composition, generic-view inheritance, permission/throttle stacking, decorator-driven dispatch). " +
+			// #1859 — anti-patterns / smells in view context.
+			"patterns": "Identify (a) class-level patterns (ViewSet mixin composition, generic-view inheritance, permission/throttle stacking, decorator-driven dispatch) and " +
+				"(b) any anti-patterns or code smells visible in the source_window " +
+				"(missing permission_classes, bare except handlers, fabricated decorator parameters, missing transaction.atomic on multi-write actions, etc.). " +
+				"Be specific; cite line ranges from source_window when possible. " +
 				"Cite specific neighbour relationships as evidence. " +
 				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
 			"api": "Document the HTTP surface this class exposes: one row per action method. " +
@@ -694,6 +761,8 @@ var sectionsByKind = map[string]SectionProfile{
 	"class": {
 		Sections: []string{
 			"overview",
+			// #1863 — child-methods table placed after overview for at-a-glance method index.
+			"child-methods",
 			"capabilities",
 			"flows",
 			"patterns",
@@ -707,6 +776,12 @@ var sectionsByKind = map[string]SectionProfile{
 		GuidanceOverrides: map[string]string{
 			"overview": "Write a 2–3 sentence description of what this class represents and the responsibility it owns. " +
 				"State its role in the module (service, value object, adapter, coordinator, etc.).",
+			// #1863 — child-methods: generic class guidance (no HTTP columns).
+			"child-methods": "Render a markdown table listing every public method from class_manifest. " +
+				"Columns: Method | Signature | Visibility | Line | Brief Description (~10 words). " +
+				"Visibility is one of: public / private / protected / package-private. " +
+				"Brief Description should be derived from the method's own brief in neighbour_briefs or inferred from its name. " +
+				"This section provides an at-a-glance index of what the class exposes before the full api section.",
 			"capabilities": "List the discrete behaviours this class provides, one bullet per public method or observable contract. " +
 				"Defer per-method implementation details to the per-method pages.",
 			"flows": "You will see only the source_window for the seed class header; method bodies are NOT in scope. " +
@@ -714,7 +789,12 @@ var sectionsByKind = map[string]SectionProfile{
 				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`. " +
 				"Mermaid diagrams must only reference entities that exist in the bundle. " +
 				"If thin context yields a one-step chain, render that one step honestly — do not pad with invented destinations.",
-			"patterns": "Identify class-level structural patterns (template method, strategy, factory, builder, value object, etc.). " +
+			// #1859 — anti-patterns / smells in class context.
+			"patterns": "Identify (a) class-level structural patterns (template method, strategy, factory, builder, value object, etc.) and " +
+				"(b) any anti-patterns or code smells visible in the source_window " +
+				"(god-class with too many responsibilities, missing error handling, bare except/catch-all handlers, " +
+				"commented-out alternate implementations, hardcoded magic values, etc.). " +
+				"Be specific; cite line ranges from source_window when possible. " +
 				"Cite specific neighbour relationships as evidence. " +
 				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
 			"api": "Document the public method surface of this class: one row per public method (name, signature, returns, raises). " +

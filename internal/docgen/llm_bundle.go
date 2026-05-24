@@ -504,9 +504,22 @@ var defaultSectionGuidance = map[string]string{
 		"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`. " +
 		"Mermaid diagrams must only reference entities that exist in the bundle. " +
 		"If thin context yields a one-step chain, render that one step honestly — do not pad with invented destinations.",
-	"patterns": "Identify the structural design patterns present (adapter, gateway, orchestrator, saga, etc.). " +
-		"Cite specific neighbour relationships as evidence for each pattern identified. " +
+	// #1859 — anti-patterns / smells: both positive patterns and smells are requested.
+	"patterns": "Identify (a) structural design patterns present (adapter, gateway, orchestrator, saga, repository, etc.) and " +
+		"(b) any anti-patterns or code smells visible in the source_window (missing transaction.atomic on multi-write paths, " +
+		"bare except/catch-all exception handlers, dead branches, hardcoded magic values, commented-out code, N+1 query risks, etc.). " +
+		"Be specific; cite line ranges from source_window when possible. " +
+		"Cite specific neighbour relationships as evidence for each structural pattern identified. " +
 		"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
+	// #1863 — child-methods: tabular method index for class-like seeds.
+	// Listed before api so it appears naturally after patterns in reading order.
+	"child-methods": "Render a markdown table listing every public method from class_manifest. " +
+		"Columns: Method | HTTP Verb | Path | Visibility | Line | Brief Description (~10 words). " +
+		"Populate HTTP Verb and Path from @action / @route / @api_view decorator metadata when present in source_window or neighbour Properties; " +
+		"otherwise mark as n/a. " +
+		"Visibility is one of: public / private / protected / package-private. " +
+		"Brief Description should be derived from the method's own brief in neighbour_briefs or inferred from its name. " +
+		"This section gives readers an at-a-glance map of what the class exposes before diving into capabilities.",
 	"api": "Document the full public API surface: exported functions, HTTP endpoints, event topics, or CLI flags. " +
 		"Include method signatures and a one-line usage note for each. " +
 		"If decorator parameters (e.g. @action, @api_view, @route) that carry verb/path/options metadata are NOT in source_window or neighbour Properties, " +
@@ -542,6 +555,8 @@ func sectionMaxWords(section string) int {
 		return 250
 	case "api":
 		return 500
+	case "child-methods":
+		return 600 // table can be wide; allow more words than a prose section
 	case "reference-config", "reference-dependencies", "reference-deployment",
 		"reference-scripts", "reference-misc":
 		return 300

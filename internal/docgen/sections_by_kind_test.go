@@ -233,11 +233,23 @@ func TestSectionsForEntityKind_DelegatesProfile(t *testing.T) {
 }
 
 // TestSectionsForEntityKind_ModuleHasFullSuite verifies that Module kind returns
-// all 13 sections (the one kind that legitimately uses the full suite).
+// all KnownSections except "child-methods" (which is a class/view-level concern).
+// Module pages are the entry point and legitimately use the full reference suite
+// (deployment, scripts, how-to-local-dev), but they do not have a per-method table.
 func TestSectionsForEntityKind_ModuleHasFullSuite(t *testing.T) {
 	secs := docgen.SectionsForEntityKind("module")
-	if len(secs) != len(docgen.KnownSections) {
-		t.Errorf("module: want all %d sections, got %d: %v", len(docgen.KnownSections), len(secs), secs)
+	// child-methods is intentionally absent from the module profile.
+	if containsSection(secs, "child-methods") {
+		t.Errorf("module sections should NOT include child-methods (class/view concern); got %v", secs)
+	}
+	// All other KnownSections must be present.
+	for _, ks := range docgen.KnownSections {
+		if ks == "child-methods" {
+			continue
+		}
+		if !containsSection(secs, ks) {
+			t.Errorf("module: missing expected section %q; got %v", ks, secs)
+		}
 	}
 }
 

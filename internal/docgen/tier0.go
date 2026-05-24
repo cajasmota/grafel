@@ -60,6 +60,7 @@ var KnownSections = []string{
 	"flows",
 	"patterns",
 	"api",
+	"child-methods",
 	"reference-config",
 	"reference-dependencies",
 	"reference-deployment",
