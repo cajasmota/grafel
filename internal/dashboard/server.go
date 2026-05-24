@@ -714,6 +714,10 @@ func (s *Server) routes() http.Handler {
 	// Module-level GDS analysis (#1384, epic #1380) — SCC + PageRank +
 	// betweenness over the aggregated module graph.
 	mux.HandleFunc("GET /api/v2/groups/{group}/modules/analysis", s.handleV2ModulesAnalysis)
+	// S7a (#2169): daemon mode switcher — read + write the active mode without
+	// the user needing a terminal (`archigraph mode <m>` equivalent).
+	mux.HandleFunc("GET /api/v2/daemon/mode", s.handleV2GetDaemonMode)
+	mux.HandleFunc("POST /api/v2/daemon/mode", s.handleV2SetDaemonMode)
 
 	return s.withAuth(withGzip(mux))
 }

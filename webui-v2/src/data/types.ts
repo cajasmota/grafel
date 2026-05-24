@@ -1550,3 +1550,35 @@ export interface DiffResult {
     removed: DiffRelEntry[];
   };
 }
+
+// ---------------------------------------------------------------------------
+// Daemon mode (S7a #2169)
+// ---------------------------------------------------------------------------
+
+/** One mode option as returned in AllModes by GET /api/v2/daemon/mode. */
+export interface DaemonModeInfo {
+  name: string;
+  description: string;
+  env_defaults: Record<string, string>;
+}
+
+/** Wire shape for GET /api/v2/daemon/mode. */
+export interface DaemonModeReply {
+  /** Mode from daemon.config.json. Empty string when no config exists. */
+  mode: string;
+  /** Resolved mode (defaults to "background" when mode is empty). */
+  effective_mode: "background" | "workstation" | "readonly";
+  /** One-line description of the effective mode. */
+  description: string;
+  /** Env-var defaults the effective mode applies on daemon boot. */
+  env_defaults: Record<string, string>;
+  /** Full catalogue of all three modes for rendering the selection UI. */
+  all_modes: DaemonModeInfo[];
+}
+
+/** Wire shape for POST /api/v2/daemon/mode response. */
+export interface SetDaemonModeReply {
+  mode: string;
+  config_path: string;
+  restart_initiated: boolean;
+}

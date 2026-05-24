@@ -55,6 +55,8 @@ import type {
   ModuleAnalysisResponse,
   GroupRefsResponse,
   DiffResult,
+  DaemonModeReply,
+  SetDaemonModeReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -626,6 +628,24 @@ export const api = {
       `/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repo)}/diff` +
         `?refA=${encodeURIComponent(refA)}&refB=${encodeURIComponent(refB)}`,
     ),
+
+  // --- Daemon mode (S7a #2169) ---
+
+  /**
+   * GET /api/v2/daemon/mode — returns the currently configured daemon mode,
+   * the env-var defaults it applies, and the full mode catalogue for the UI.
+   */
+  getDaemonMode: () => requestV2<DaemonModeReply>(`/daemon/mode`),
+
+  /**
+   * POST /api/v2/daemon/mode — writes the mode to daemon.config.json and
+   * triggers a daemon restart. Equivalent to `archigraph mode <m>` via CLI.
+   */
+  setDaemonMode: (newMode: string) =>
+    requestV2<SetDaemonModeReply>(`/daemon/mode`, {
+      method: "POST",
+      body: JSON.stringify({ mode: newMode }),
+    }),
 };
 
 export type Api = typeof api;

@@ -3,7 +3,7 @@
    (prototype `.ag-topbar`)
 
    Left: breadcrumb — archigraph › <group> › <surface>.
-   Right: RefSelector (PH4 #2092) + PROJECT switcher (⌘K).
+   Right: ModeBadge (S7a #2169) + RefSelector (PH4 #2092) + PROJECT switcher (⌘K).
 
    The per-screen nav lives in the LEFT SIDEBAR (chrome/nav-rail.tsx).
    NAVIGATION ONLY — no numeric scope counts here (handoff rule).
@@ -17,6 +17,7 @@ import { useGroups } from "@/hooks/use-groups";
 import { healthDisplay, healthTooltip } from "@/lib/health";
 import { RefSelector } from "@/components/chrome/ref-selector";
 import { useRefState } from "@/lib/use-ref-state";
+import { ModeBadge } from "@/components/Topbar/ModeBadge";
 
 export interface TopBarProps {
   group: string;
@@ -46,6 +47,9 @@ export function TopBar({ group, surfaceLabel }: TopBarProps) {
       </nav>
 
       <div className="flex items-center gap-2">
+        {/* S7a: mode badge — always-visible chip showing active daemon mode */}
+        <ModeBadge />
+
         {/* PH4: ref selector — sits to the left of the group switcher */}
         <RefSelector
           groupId={resolvedGroupId}
