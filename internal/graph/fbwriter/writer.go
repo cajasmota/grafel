@@ -2,8 +2,11 @@
 // archigraph v2 FlatBuffers on-disk format described in
 // internal/graph/schema/graph.fbs and ADR-0016.
 //
-// This is a phase-1 prototype: callers continue to dual-write graph.json
-// via graph.WriteAtomic; fbwriter is invoked behind the --export-fb flag.
+// The primary write path is StreamingWriter (streaming.go), which serializes
+// each entity and relationship into the FlatBuffers builder immediately so
+// callers never need to assemble a complete *graph.Document in memory. The
+// legacy WriteAtomic / Marshal functions are thin wrappers that remain for
+// backward compatibility.
 package fbwriter
 
 import (
@@ -25,6 +28,10 @@ const FormatVersion = 2
 // WriteAtomic serializes doc to a FlatBuffers buffer and writes it to
 // outPath atomically via a sibling .tmp + rename. The on-disk file is
 // the canonical archigraph v2 binary graph.
+//
+// This is a thin wrapper around StreamingWriter for backward compatibility.
+// Callers that already hold a complete *graph.Document (e.g. PatchMetadata,
+// clone-from-parent PH7) continue to work unchanged.
 func WriteAtomic(outPath string, doc *graph.Document) error {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return fmt.Errorf("fbwriter: mkdir %s: %w", filepath.Dir(outPath), err)
@@ -50,90 +57,11 @@ func WriteAtomic(outPath string, doc *graph.Document) error {
 // Entity property maps are flattened into key-sorted PropertyEntry
 // vectors so the on-disk bytes are deterministic across runs (issue
 // #481 — bytewise stability).
+//
+// Internally delegates to streamingMarshal (streaming.go) so both paths
+// exercise identical serialization code.
 func Marshal(doc *graph.Document) ([]byte, error) {
-	if doc == nil {
-		return nil, fmt.Errorf("nil document")
-	}
-	b := flatbuffers.NewBuilder(1 << 20)
-
-	// Build all entities.
-	entityOffsets := make([]flatbuffers.UOffsetT, 0, len(doc.Entities))
-	for i := range doc.Entities {
-		e := &doc.Entities[i]
-		off := buildEntity(b, e)
-		entityOffsets = append(entityOffsets, off)
-	}
-	// EntitiesByKey relies on a sorted-by-key vector. The id (string key)
-	// is already canonical in graph.json emission order (#481), so we
-	// preserve insertion order. Callers that need sorted output should
-	// run sortDocumentForEmission before invoking Marshal.
-	fb.GraphStartEntitiesVector(b, len(entityOffsets))
-	for i := len(entityOffsets) - 1; i >= 0; i-- {
-		b.PrependUOffsetT(entityOffsets[i])
-	}
-	entitiesVec := b.EndVector(len(entityOffsets))
-
-	// Build all relationships.
-	relOffsets := make([]flatbuffers.UOffsetT, 0, len(doc.Relationships))
-	for i := range doc.Relationships {
-		r := &doc.Relationships[i]
-		relOffsets = append(relOffsets, buildRelationship(b, r))
-	}
-	fb.GraphStartRelationshipsVector(b, len(relOffsets))
-	for i := len(relOffsets) - 1; i >= 0; i-- {
-		b.PrependUOffsetT(relOffsets[i])
-	}
-	relsVec := b.EndVector(len(relOffsets))
-
-	// Build the aggregate community list (#1620). Empty when the algo pass
-	// did not run; the resulting vector is then a zero-length vector which
-	// the reader treats as "no communities".
-	commOffsets := make([]flatbuffers.UOffsetT, 0, len(doc.Communities))
-	for i := range doc.Communities {
-		commOffsets = append(commOffsets, buildCommunity(b, &doc.Communities[i]))
-	}
-	fb.GraphStartCommunitiesVector(b, len(commOffsets))
-	for i := len(commOffsets) - 1; i >= 0; i-- {
-		b.PrependUOffsetT(commOffsets[i])
-	}
-	commsVec := b.EndVector(len(commOffsets))
-
-	computedAt := b.CreateString(doc.GeneratedAt.UTC().Format("2006-01-02T15:04:05Z"))
-	repoTag := b.CreateString(doc.Repo)
-
-	// Phase 0 git metadata (#2088). Strings must be created before the table
-	// is opened (FlatBuffers ordering rule).
-	indexedRef := b.CreateString(doc.IndexedRef)
-	indexedSHA := b.CreateString(doc.IndexedSHA)
-
-	fb.GraphStart(b)
-	fb.GraphAddVersion(b, int32(FormatVersion))
-	fb.GraphAddComputedAt(b, computedAt)
-	fb.GraphAddRepoTag(b, repoTag)
-	fb.GraphAddEntities(b, entitiesVec)
-	fb.GraphAddRelationships(b, relsVec)
-	fb.GraphAddCommunities(b, commsVec)
-	if doc.AlgorithmStats != nil {
-		st := doc.AlgorithmStats
-		fb.GraphAddLouvainModularity(b, st.LouvainModularity)
-		fb.GraphAddNumGodNodes(b, int32(st.NumGodNodes))
-		fb.GraphAddNumArticulationPoints(b, int32(st.NumArticulationPts))
-		fb.GraphAddNumSurpriseEdges(b, int32(st.NumSurpriseEdges))
-		fb.GraphAddAlgoRuntimeMs(b, st.RuntimeMS)
-		fb.GraphAddDenoisedCommunities(b, int32(st.DenoisedCommunities))
-	}
-	// Phase 0 git metadata (#2088). Always add both string offsets (already
-	// created above); the FB runtime writes them as zero-length strings when
-	// the values are empty, which is indistinguishable from "not set" to
-	// older readers that don't know about these slots.
-	fb.GraphAddIndexedRef(b, indexedRef)
-	fb.GraphAddIndexedSha(b, indexedSHA)
-	if doc.IsWorktree {
-		fb.GraphAddIsWorktree(b, true)
-	}
-	root := fb.GraphEnd(b)
-	fb.FinishGraphBuffer(b, root)
-	return b.FinishedBytes(), nil
+	return streamingMarshal(doc)
 }
 
 // buildEntity serializes a single entity table and returns its offset.
