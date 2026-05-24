@@ -816,7 +816,8 @@ export interface PathsListResponse {
 /** One parameter on a path handler. */
 export interface PathParameter {
   name: string;
-  in: "path" | "query" | "body" | "header";
+  /** Source of the parameter. "cookie" and "form" are emitted by the Java extractor (#2113). */
+  in: "path" | "query" | "body" | "header" | "cookie" | "form";
   type: string;
   required: boolean;
   desc: string;
@@ -912,6 +913,32 @@ export interface PathEntity {
   protocol?: string;
 }
 
+/**
+ * One evidence signal in the resolved auth_policy source chain (#1942 Phase 1).
+ * Mirrors v2AuthSignal on the backend.
+ */
+export interface AuthSignal {
+  kind: string;
+  entity_id?: string;
+  text: string;
+  file: string;
+  line: number;
+}
+
+/**
+ * Structured auth posture resolved by the indexer (#1942 Phase 1).
+ * Mirrors v2AuthPolicy on the backend wire shape.
+ * Present only on Java endpoints (and future language phases).
+ */
+export interface AuthPolicy {
+  required: boolean;
+  method: string;
+  roles?: string[];
+  scopes?: string[];
+  confidence: string;
+  source_chain?: AuthSignal[];
+}
+
 /** Detail pane data — returned by GET /api/v2/groups/:id/paths/:hash. */
 export interface PathDetail {
   path_hash: string;
@@ -922,6 +949,15 @@ export interface PathDetail {
   webhook_provider?: string;
   auth: boolean;
   auth_scheme?: string;
+  /**
+   * Structured auth posture resolved by the indexer (#1942 Phase 1).
+   * When present, the UI renders an AuthSection between Description and Parameters.
+   */
+  auth_policy?: AuthPolicy;
+  /** Pre-resolved chip label from the backend (e.g. "[Roles: ADMIN]"). */
+  auth_chip?: string;
+  /** Chip tone: "accent" | "warning" | "muted". */
+  auth_chip_tone?: string;
   description: {
     has_docs: boolean;
     summary: string;

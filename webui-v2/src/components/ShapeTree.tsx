@@ -37,8 +37,16 @@ export interface ShapeTreeRow {
   name: string;
   /** Small categorical tag rendered as a chip ("path", "body", "200", "201", …). */
   inLabel?: string;
-  /** Tone for the chip — uses Paths page CSS vars. */
-  inTone?: "path" | "query" | "body" | "header" | "status";
+  /**
+   * Tone for the chip — colour-coded per the spec (#2113):
+   *   path   → amber/orange
+   *   query  → violet
+   *   body   → green
+   *   header → blue
+   *   cookie → slate
+   *   status → neutral
+   */
+  inTone?: "path" | "query" | "body" | "header" | "cookie" | "form" | "status";
   /** Type token (e.g. "TransferRequest", "List<UserDTO>", "String"). */
   type: string;
   /** Optional inline description (right-most column). */
@@ -67,7 +75,25 @@ export function ShapeTree({ groupId, rows, emptyText = "None" }: ShapeTreeProps)
     return <p className="text-xs text-text-4 py-1 px-4">{emptyText}</p>;
   }
   return (
-    <div className="px-4 py-2 text-xs font-mono">
+    <div
+      className="py-1 text-xs"
+      data-testid="shape-tree"
+      /*
+       * CSS grid column layout per #2113 spec:
+       *   col 1 — chevron glyph:  24px fixed (only on expandable rows)
+       *   col 2 — [in] chip:      64px min-width fixed
+       *   col 3 — name + *:      180px fixed, ellipsis overflow
+       *   col 4 — type chip:     200px fixed, monospaced
+       *   col 5 — description:   1fr (remaining space)
+       *
+       * The grid is set here on the container; each ShapeTreeNode renders
+       * its cells as direct children with `display: contents` so they
+       * participate in the same grid track.
+       *
+       * Note: nested (child) rows use a plain flex layout since they don't
+       * need the [in] column.
+       */
+    >
       {rows.map((row) => (
         <ShapeTreeNode key={row.key} groupId={groupId} row={row} depth={0} />
       ))}
@@ -77,9 +103,12 @@ export function ShapeTree({ groupId, rows, emptyText = "None" }: ShapeTreeProps)
 
 /**
  * One top-level row (Parameters or Response top row) — non-recursive.
- * The recursive subtree (one level of fields fetched on demand) is
- * handled by NestedFieldRows; this stays specialised for the
- * top-level row's richer chrome (`in` chip + description column).
+ *
+ * Column layout (#2113):
+ *   [chevron 24px] | [in chip min-64px] | [name 180px] | [type 200px] | [desc 1fr]
+ *
+ * Uses a flex row with explicit widths rather than CSS grid (grid + display:contents
+ * has poor Safari 15 support; flex is safer for the nested/indented case too).
  */
 function ShapeTreeNode({
   groupId,
@@ -93,10 +122,10 @@ function ShapeTreeNode({
   const [open, setOpen] = useState(false);
   const expandable = !!row.has_children;
   return (
-    <div>
+    <div data-testid={`shape-row-${row.key}`}>
       <div
         className={cn(
-          "flex items-start gap-2 py-1 border-b border-border-soft last:border-0",
+          "flex items-center gap-0 py-1.5 px-4 border-b border-border-soft last:border-0 min-w-0",
           expandable && "cursor-pointer hover:bg-surface-2/40",
         )}
         onClick={() => expandable && setOpen((v) => !v)}
@@ -109,23 +138,57 @@ function ShapeTreeNode({
             setOpen((v) => !v);
           }
         }}
-        style={{ paddingLeft: depth * 16 }}
+        style={{ paddingLeft: `calc(1rem + ${depth * 16}px)` }}
       >
-        <ExpandGlyph expandable={expandable} open={open} />
-        <span className="font-mono text-text shrink-0">
+        {/* Col 1 — chevron, 24px */}
+        <span className="w-6 shrink-0 flex items-center justify-center">
+          <ExpandGlyph expandable={expandable} open={open} />
+        </span>
+
+        {/* Col 2 — [in] chip, min-w-16 (64px) */}
+        <span
+          className="shrink-0 mr-2"
+          style={{ minWidth: 64 }}
+        >
+          {row.inLabel ? (
+            <span
+              data-testid={`in-chip-${row.inLabel}`}
+              className={cn(
+                "inline-flex items-center justify-center px-1.5 py-0.5 rounded-sm text-[10px] font-medium font-sans w-full",
+                inToneClass(row.inTone),
+              )}
+            >
+              {row.inLabel}
+            </span>
+          ) : null}
+        </span>
+
+        {/* Col 3 — name, 180px, ellipsis */}
+        <span
+          className="shrink-0 font-mono text-text overflow-hidden text-ellipsis whitespace-nowrap mr-2"
+          style={{ width: 180 }}
+          title={row.name + (row.required ? " (required)" : "")}
+        >
           {row.name}
           {row.required && <span className="text-danger ml-0.5">*</span>}
         </span>
-        {row.inLabel && (
-          <span className={cn("px-1.5 py-0.5 rounded-sm text-[10px] font-medium shrink-0", inToneClass(row.inTone))}>
-            {row.inLabel}
-          </span>
-        )}
-        <span className="font-mono text-text-3 shrink-0">{row.type}</span>
-        {row.desc && (
-          <span className="text-text-3 leading-snug truncate flex-1 ml-2 font-sans">
+
+        {/* Col 4 — type chip, 200px, monospaced */}
+        <span
+          className="shrink-0 font-mono text-text-3 overflow-hidden text-ellipsis whitespace-nowrap mr-2"
+          style={{ width: 200 }}
+          title={row.type}
+        >
+          {row.type}
+        </span>
+
+        {/* Col 5 — description, flex-1 */}
+        {row.desc ? (
+          <span className="text-text-3 leading-snug truncate flex-1 font-sans text-[11px]" title={row.desc}>
             {row.desc}
           </span>
+        ) : (
+          <span className="flex-1" />
         )}
       </div>
       {open && expandable && (
@@ -259,19 +322,33 @@ function ExpandGlyph({ expandable, open }: { expandable: boolean; open: boolean 
   );
 }
 
+/**
+ * Colour-coded chip classes for the `[in]` column (#2113 spec):
+ *   path   → amber/orange (warning palette)
+ *   query  → violet       (pastel-5)
+ *   body   → green        (success palette)
+ *   header → blue         (info palette)
+ *   cookie → slate        (surface-2 / neutral)
+ *   form   → teal         (pastel-2)
+ *   status → neutral
+ */
 function inToneClass(tone?: ShapeTreeRow["inTone"]): string {
   switch (tone) {
     case "path":
-      return "bg-[var(--info-soft)] text-[var(--info)]";
+      return "bg-warning-soft text-warning border border-warning-soft";
     case "query":
-      return "bg-[var(--pastel-1)] text-[var(--pastel-1-ink)]";
+      return "bg-[var(--pastel-5)] text-[var(--pastel-5-ink)] border border-[var(--pastel-5)]";
     case "body":
-      return "bg-[var(--success-soft)] text-[var(--success)]";
+      return "bg-[var(--success-soft)] text-[var(--success)] border border-[var(--success-soft)]";
     case "header":
-      return "bg-surface-2 text-text-3";
+      return "bg-[var(--info-soft)] text-[var(--info)] border border-[var(--info-soft)]";
+    case "cookie":
+      return "bg-surface-2 text-text-3 border border-border-strong";
+    case "form":
+      return "bg-[var(--pastel-2)] text-[var(--pastel-2-ink)] border border-[var(--pastel-2)]";
     case "status":
-      return "bg-surface-2 text-text-3";
+      return "bg-surface-2 text-text-3 border border-border";
     default:
-      return "bg-surface-2 text-text-3";
+      return "bg-surface-2 text-text-3 border border-border";
   }
 }

@@ -29,6 +29,7 @@ import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/com
 import { RefLine } from "@/components/RefLine";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ShapeTree, type ShapeTreeRow } from "@/components/ShapeTree";
+import { AuthSection } from "@/components/Paths/EndpointDetail/AuthSection";
 import { usePaths, usePathDetail, useOrphans } from "@/hooks/use-paths";
 import type {
   PathBackend, ControllerGroupShape, PathRoute, PathDetail,
@@ -601,13 +602,26 @@ function PerStatusResponseStrip({
  * class entity carry `type_entity_id` + `has_children=true` so the
  * tree renders the expand glyph; everything else stays a terminal
  * row identical to the old table layout.
+ *
+ * #2113: cookie + form are now valid `in` values from the Java extractor.
+ * Map them to the correct ShapeTreeRow tone so the colour-coded chips render.
  */
 function paramToShapeTreeRow(p: PathParameter): ShapeTreeRow {
+  // Map the `in` string to the union allowed by ShapeTreeRow["inTone"].
+  // Unmapped values (e.g. "matrix") fall through to "path" as a safe default.
+  const toneMap: Record<string, ShapeTreeRow["inTone"]> = {
+    path:   "path",
+    query:  "query",
+    body:   "body",
+    header: "header",
+    cookie: "cookie",
+    form:   "form",
+  };
   return {
     key: `${p.in}:${p.name}`,
     name: p.name,
     inLabel: p.in,
-    inTone: p.in as ShapeTreeRow["inTone"],
+    inTone: toneMap[p.in] ?? "path",
     type: p.type,
     desc: p.desc,
     required: p.required,
@@ -623,6 +637,11 @@ function paramToShapeTreeRow(p: PathParameter): ShapeTreeRow {
  * common non-Java case) still renders, falling back to the legacy
  * "keys" list as the type token so the visual replacement is
  * non-regressive for languages outside Phase 1 scope.
+ *
+ * #2113: the [PUT] / [POST] verb chip is DEFINITIVELY removed from the
+ * response row. The verb is already shown in the panel header. The `inLabel`
+ * now shows ONLY the status code (e.g. "200"), or is omitted for shapes with
+ * no resolved status code. This was previously `s.verb` or `${s.verb} ${status}`.
  */
 function responseToShapeTreeRows(s: ResponseShape, idx: number): ShapeTreeRow[] {
   const statusCodes = (s.status_codes ?? []).length > 0 ? s.status_codes : [undefined as number | undefined];
@@ -635,12 +654,13 @@ function responseToShapeTreeRows(s: ResponseShape, idx: number): ShapeTreeRow[] 
         : hasBody
           ? (s.keys ?? []).join(", ")
           : "—";
-    const statusLabel = status !== undefined ? String(status) : s.verb;
+    // #2113: show only the status code, NOT the verb (verb is in the panel header).
+    const statusLabel = status !== undefined ? String(status) : undefined;
     return {
-      key: `${idx}-${statusLabel}-${j}`,
+      key: `${idx}-${statusLabel ?? "nsc"}-${j}`,
       name: hasBody ? "response" : "(none)",
-      inLabel: status !== undefined ? `${s.verb} ${status}` : s.verb,
-      inTone: "status",
+      inLabel: statusLabel,           // "200", "404", … or undefined (no chip)
+      inTone: "status" as ShapeTreeRow["inTone"],
       type: typeDisplay,
       desc: s.dynamic ? "Shape determined at runtime" : undefined,
       type_entity_id: s.type_entity_id,
@@ -674,6 +694,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
   });
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     description: true,
+    auth: true,
     parameters: true,
     response: true,
     defined: true,
@@ -808,6 +829,13 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
             </div>
           )}
         </div>
+
+        {/* 1b. Auth section (#2113) — rendered between Description and Parameters.
+              Always shown (even for public endpoints) so auth posture is
+              immediately visible without expanding a separate section.
+              Uses auth_policy when present (Java, #1942 Phase 1); falls back
+              to legacy auth/auth_scheme flags. */}
+        <AuthSection detail={detail} />
 
         {/* 2. Parameters — ShapeTree subtree (#1935 Phase 1).
             Each parameter row is its own top-level entry; body params
