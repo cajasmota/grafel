@@ -60,7 +60,7 @@ func TestWatcherPausedOnCold(t *testing.T) {
 	m.SetWatcherHook(hook)
 
 	key := tier.SlotKey{RepoPath: "/repo/ph2a", Ref: "main"}
-	m.Register(key, false)
+	m.Register(key, false, tier.SlotKindBranchFeature)
 
 	// Drive HOT → WARM → COLD.
 	advance(6 * time.Minute)
@@ -116,7 +116,7 @@ func TestWatcherResumedOnColdWake(t *testing.T) {
 	_ = resumeOrder
 
 	key := tier.SlotKey{RepoPath: "/repo/ph2a-wake", Ref: "feat/x"}
-	m.Register(key, false)
+	m.Register(key, false, tier.SlotKindBranchFeature)
 
 	// Drive to COLD.
 	advance(6 * time.Minute)
@@ -157,7 +157,7 @@ func TestColdWakeResumeLatency(t *testing.T) {
 	m.SetWatcherHook(hook)
 
 	key := tier.SlotKey{RepoPath: "/repo/latency", Ref: "main"}
-	m.Register(key, false)
+	m.Register(key, false, tier.SlotKindBranchFeature)
 
 	// Drive to COLD.
 	advance(6 * time.Minute)
@@ -190,7 +190,7 @@ func TestNoPauseFiredForHotSlots(t *testing.T) {
 	m.SetWatcherHook(hook)
 
 	key := tier.SlotKey{RepoPath: "/repo/hot", Ref: "main"}
-	m.Register(key, true)
+	m.Register(key, true, tier.SlotKindBranchMain)
 
 	// Run a scan — slot should stay HOT (only 0s idle).
 	m.Scan()
@@ -219,7 +219,7 @@ func TestConcurrentColdWakesWithWatcherHook(t *testing.T) {
 	keys := make([]tier.SlotKey, N)
 	for i := 0; i < N; i++ {
 		keys[i] = tier.SlotKey{RepoPath: "/repo/concurrent", Ref: string(rune('a' + i))}
-		m.Register(keys[i], false)
+		m.Register(keys[i], false, tier.SlotKindBranchFeature)
 	}
 
 	// Drive all to COLD.
@@ -276,7 +276,7 @@ func TestSlotNotPausedAfterWake(t *testing.T) {
 	m.SetWatcherHook(hook)
 
 	key := tier.SlotKey{RepoPath: "/repo/stale", Ref: "main"}
-	m.Register(key, false)
+	m.Register(key, false, tier.SlotKindBranchFeature)
 
 	advance(6 * time.Minute)
 	m.Scan()
