@@ -185,6 +185,26 @@ func RunTier4(opts Tier4RunOpts) (outDir string, score Tier4Score, err error) {
 	// Load cross-repo links for this group (best-effort; missing file is not fatal).
 	crossRepoLinks, _ := loadGroupCrossRepoLinks(opts.Group)
 
+	// Count totals (needed before writing the index).
+	totalPages := 0
+	totalTokens := 0
+	for _, p := range allPages {
+		totalPages++
+		totalTokens += estimateTokens(p.MD)
+	}
+
+	// Write group-level index.md BEFORE running checkGroupIndex so the contract
+	// checker finds the file it is verifying (issue #1829: old ordering ran the
+	// check against a file that had not been written yet, always producing a
+	// group-index-unresolved violation).
+	var groupIndexWriteViolation string
+	groupIndexPath := filepath.Join(rootDir, "index.md")
+	if wErr := writeGroupIndex(opts.Group, succeededSlugs, groupIndexPath); wErr != nil {
+		// Non-fatal: record but continue. The contract check below will also
+		// flag the missing file, surfacing the root cause.
+		groupIndexWriteViolation = fmt.Sprintf("[group-index-write] %v", wErr)
+	}
+
 	// Run cross-repo contract checks.
 	crViolations, linkCount, linkUnresolved := checkCrossRepoCoverage(opts.Group, crossRepoLinks, repoPageMap)
 	groupIndexUnresolved := 0
@@ -194,24 +214,12 @@ func RunTier4(opts Tier4RunOpts) (outDir string, score Tier4Score, err error) {
 	// Aggregate violations.
 	var allViolations []string
 	allViolations = append(allViolations, score.Violations...) // tier3 errors collected above
+	if groupIndexWriteViolation != "" {
+		allViolations = append(allViolations, groupIndexWriteViolation)
+	}
 	allViolations = append(allViolations, crossRepoViolationStrings(crViolations)...)
 	allViolations = append(allViolations, crossRepoViolationStrings(giViolations)...)
 	allViolations = append(allViolations, crossRepoViolationStrings(flowViolations)...)
-
-	// Count totals.
-	totalPages := 0
-	totalTokens := 0
-	for _, p := range allPages {
-		totalPages++
-		totalTokens += estimateTokens(p.MD)
-	}
-
-	// Write group-level index.md.
-	groupIndexPath := filepath.Join(rootDir, "index.md")
-	if wErr := writeGroupIndex(opts.Group, succeededSlugs, groupIndexPath); wErr != nil {
-		// Non-fatal: record but continue.
-		allViolations = append(allViolations, fmt.Sprintf("[group-index-write] %v", wErr))
-	}
 
 	score = Tier4Score{
 		Tier:                         4,
