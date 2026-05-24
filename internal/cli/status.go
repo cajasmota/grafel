@@ -72,20 +72,27 @@ func runStatus(w io.Writer, filter string) error {
 					st.QueueLen, len(st.IndexInFlight), len(st.PendingAlgo), len(st.PendingLinks))
 			}
 			if st.RSSBudgetMB > 0 {
-				headroom := st.RSSBudgetMB - st.RSSUsedMB
-				if headroom < 0 {
-					headroom = 0
+				// Two separate lines: daemon idle RSS (informational) vs.
+				// admission budget (delta-based predicted in-flight sum).
+				// These are intentionally distinct — idle RSS can exceed the
+				// budget without blocking jobs, because jobs are only blocked
+				// when sum(predicted_in_flight) + new_job_pred > budget.
+				fmt.Fprintf(w, "  rss: daemon=%dMB (actual process RSS)\n", st.RSSUsedMB)
+				admHeadroom := st.RSSBudgetMB - st.AdmissionUsedMB
+				if admHeadroom < 0 {
+					admHeadroom = 0
 				}
-				fmt.Fprintf(w, "  rss budget: used=%dMB / %dMB (headroom=%dMB) blocked=%d\n",
-					st.RSSUsedMB, st.RSSBudgetMB, headroom, len(st.BlockedJobs))
+				fmt.Fprintf(w, "  admission: queued=%d admitted=%d predicted=%dMB / budget=%dMB (headroom=%dMB)\n",
+					len(st.BlockedJobs), len(st.InFlightJobs),
+					st.AdmissionUsedMB, st.RSSBudgetMB, admHeadroom)
 				if len(st.InFlightJobs) > 0 {
 					for _, j := range st.InFlightJobs {
-						fmt.Fprintf(w, "    running: %s (predicted=%dMB)\n", j.Path, j.PredictedMB)
+						fmt.Fprintf(w, "    admitted: %s (predicted=%dMB)\n", j.Path, j.PredictedMB)
 					}
 				}
 				if len(st.BlockedJobs) > 0 {
 					for _, p := range st.BlockedJobs {
-						fmt.Fprintf(w, "    blocked: %s\n", p)
+						fmt.Fprintf(w, "    queued:   %s\n", p)
 					}
 				}
 			}
