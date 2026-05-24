@@ -4,7 +4,7 @@
 // each entity kind gets an explicit, curated section list instead of the
 // flat 13-section default.  This is the unifying restructure that absorbs
 // the piecewise section-gate work from #1860, #1863, #1865, #1866, #1870,
-// #1873, #1882, and #1883.
+// #1873, #1882, #1883, #1869, #1870, and #1871.
 //
 // # Design
 //
@@ -106,7 +106,9 @@ type SectionProfile struct {
 var SectionGating = map[string][]string{
 	"reference-deployment": {"view", "class", "function", "operation"},
 	"reference-scripts":    {"view", "class", "function", "operation"},
-	"how-to-local-dev":     {"view", "class", "function", "operation", "model", "react_component"},
+	// react_hook does not expose deployment/scripts surface — those live in
+	// the owning js_module or the top-level module page.
+	"how-to-local-dev": {"view", "class", "function", "operation", "model", "react_component", "react_hook"},
 }
 
 // ShouldSkipSectionForKind reports whether a given section is gated out for the
@@ -419,6 +421,11 @@ var sectionsByKind = map[string]SectionProfile{
 	// workaround instead of a proper props-interface doc.  React components
 	// have a distinct public surface: props (not raw parameters), JSX.Element
 	// return semantics, and children/slot patterns.
+	// #1870: extend patterns guidance with the full frontend vocabulary —
+	// container/presentational, render-props, portal, route-level, form
+	// orchestrator, etc.
+	// #1871: extend api guidance to surface outbound HTTP calls that some
+	// components make directly via React Query / SWR hooks.
 	// -------------------------------------------------------------------------
 	"react_component": {
 		Sections: []string{
@@ -437,22 +444,179 @@ var sectionsByKind = map[string]SectionProfile{
 				"State its primary responsibility in the UI (layout, data display, interaction, form control, etc.).",
 			"capabilities": "List the visual/interactive capabilities this component provides. " +
 				"One bullet per user-facing behaviour or observable output.",
+			// #1871 — outbound HTTP api guidance for components that issue calls directly.
 			"api": "Document the props interface — NOT the generic function signature. " +
 				"For each prop: name, TypeScript type (or JSDoc @param type), default value, required/optional, and one-line purpose. " +
 				"If TypeScript: pull the interface or type alias from the declared Props type. " +
 				"If JavaScript with JSDoc: pull from @param tags on the component function. " +
 				"Show the JSX.Element return semantics (what markup is produced). " +
 				"Document children semantics: are children accepted, required, or forbidden? " +
+				"If this component issues outbound HTTP calls directly (via useQuery, useSWR, fetch, or axios inside the component body) " +
+				"document each call: HTTP method, URL pattern, request body shape, response shape, and error/loading state handling. " +
 				"Show a minimal JSX usage example. " +
 				"NEVER reuse the generic function-signature template for this section.",
-			"patterns": "Identify React composition patterns present " +
-				"(compound component, render prop, higher-order component, controlled/uncontrolled, context consumer, etc.). " +
-				"Cite specific prop names or hook calls as evidence.",
+			// #1870 — expanded frontend pattern vocabulary for components.
+			"patterns": "Identify React composition patterns present — consider all of the following: " +
+				"- Container/presentational split (this component fetches or transforms data; a sibling renders it, or vice-versa) " +
+				"- Render prop (accepts a function child or render prop for flexible slot rendering) " +
+				"- Higher-order component wrapper (wraps another component to inject props or context) " +
+				"- Controlled / uncontrolled input (manages its own state vs delegates to a parent via value+onChange) " +
+				"- Context consumer (reads from a React context provider up the tree) " +
+				"- Portal (renders children outside the normal DOM hierarchy via ReactDOM.createPortal) " +
+				"- Route-level component (registered directly with a router; owns a URL segment and lazy-loads children) " +
+				"- Form orchestrator (owns form state, validation schema, and submission lifecycle for a multi-field form). " +
+				"Cite specific prop names, hook calls, or JSX structure as evidence for each identified pattern. " +
+				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
 			"reference-config": "List any environment variables, feature flags, or config context values that alter this component's behaviour.",
 			"reference-dependencies": "List direct package dependencies (hooks, context providers, UI library components) used by this component.",
 			"reference-misc": "Capture accessibility notes (ARIA roles, keyboard nav), known edge cases, or performance considerations.",
 			"glossary": "Define any domain terms appearing in prop names or type names. One term per row.",
 			"module-readme": "Write a brief README-style intro for the module that owns this component. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
+		},
+	},
+
+	// -------------------------------------------------------------------------
+	// react_hook — React custom hook (function whose name starts with "use").
+	//
+	// #1869 (reference-deployment/scripts frontend branch): hooks are consumed
+	// inside components and never deployed directly; omit deployment/scripts/
+	// how-to-local-dev.  The scripts guidance is still present but scoped to
+	// the npm dev-server commands a hook author needs.
+	// #1870 (frontend patterns vocabulary): hooks are the canonical unit of
+	// logic extraction in React; guide the LLM toward hook-specific patterns.
+	// #1871 (outbound HTTP api section): hooks are the primary place fetch/
+	// axios/React Query calls live; document them as the outbound HTTP surface.
+	// -------------------------------------------------------------------------
+	"react_hook": {
+		Sections: []string{
+			"overview",
+			"capabilities",
+			"api",
+			"patterns",
+			"reference-config",
+			"reference-dependencies",
+			"reference-misc",
+			"glossary",
+			"module-readme",
+		},
+		GuidanceOverrides: map[string]string{
+			"overview": "Write a 2–3 sentence description of what this React custom hook provides and when it should be used. " +
+				"State its single responsibility: does it manage state, side-effects, data-fetching, or form logic?",
+			"capabilities": "List the observable behaviours this hook exposes. " +
+				"One bullet per returned value, callback, or side-effect that callers depend on.",
+			// #1871 — outbound HTTP api guidance for hooks.
+			"api": "Document the hook's public interface — NOT a generic function signature. " +
+				"For each parameter: name, TypeScript type, default value, required/optional, and purpose. " +
+				"For each return value: name, type, and when/why a caller uses it. " +
+				"If the hook issues outbound HTTP calls (fetch, axios, React Query, SWR, etc.) document each call: " +
+				"HTTP method, URL pattern, request body shape, response shape, and error handling contract. " +
+				"Include a minimal usage example showing the hook call and a representative return-value destructure.",
+			// #1870 — frontend pattern vocabulary for hooks.
+			"patterns": "Identify hook composition patterns present: " +
+				"- Data-fetching hook (wraps fetch/axios/React Query/SWR for a specific resource) " +
+				"- Form orchestrator (manages form state, validation, submission lifecycle) " +
+				"- State machine hook (models a finite set of states with explicit transitions) " +
+				"- Effect wrapper (encapsulates a useEffect with a cleanup contract) " +
+				"- Context accessor (reads from a React context and re-exposes values) " +
+				"- Derived-state hook (computes a memoised value from other hooks or props). " +
+				"Cite the specific useState/useEffect/useCallback/useQuery calls that demonstrate each pattern. " +
+				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
+			"reference-config": "List any environment variables, feature flags, or config context values that alter this hook's behaviour " +
+				"(e.g. API base URL, feature-flag toggles, timeout constants).",
+			"reference-dependencies": "List direct package dependencies used inside this hook " +
+				"(e.g. react-query, swr, axios, zod) and any internal context providers or service modules it calls.",
+			"reference-misc": "Capture accessibility notes, known edge cases (stale-closure bugs, infinite re-render traps), " +
+				"or performance considerations (memoisation strategy, query caching TTL).",
+			"glossary": "Define domain terms appearing in the hook name, parameter names, or return value names. One term per row.",
+			"module-readme": "Write a brief README-style intro for the module that owns this hook. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
+		},
+	},
+
+	// -------------------------------------------------------------------------
+	// js_module — JavaScript/TypeScript module (non-React, non-class file).
+	//
+	// Covers utility modules, service layers, API client files, store slices,
+	// configuration modules, and barrel index files emitted as "js_module" or
+	// "module" kind by the JS/TS extractor.
+	//
+	// #1869 (reference-deployment/scripts frontend branch):
+	//   - reference-deployment guidance asks for frontend build/hosting details
+	//     (CDN, Vite preview, Next.js server) rather than backend daemon config.
+	//   - reference-scripts guidance lists npm run dev / vite build / next start
+	//     and similar JS-ecosystem commands, not Gradle / manage.py / make.
+	// #1870 (frontend patterns vocabulary): guide the LLM toward JS module
+	//   patterns (barrel re-export, singleton service, factory, observer, etc.).
+	// #1871 (outbound HTTP api section): JS modules are the canonical location
+	//   for API client wrappers; document every fetch/axios/React Query call.
+	// -------------------------------------------------------------------------
+	"js_module": {
+		Sections: []string{
+			"overview",
+			"capabilities",
+			"api",
+			"patterns",
+			"reference-config",
+			"reference-dependencies",
+			"reference-deployment",
+			"reference-scripts",
+			"reference-misc",
+			"glossary",
+			"module-readme",
+		},
+		GuidanceOverrides: map[string]string{
+			"overview": "Write a 2–3 sentence description of what this JavaScript/TypeScript module owns and its role in the frontend. " +
+				"State whether it is a service layer, utility library, API client, state store slice, or barrel re-export.",
+			"capabilities": "Enumerate the product capabilities this module provides, grouped by consumer. " +
+				"One bullet per exported function, class, or constant that has a meaningful consumer contract.",
+			// #1871 — outbound HTTP api guidance for JS modules.
+			"api": "Document the full public export surface of this module. " +
+				"For each exported symbol: name, TypeScript type signature, and a one-line purpose. " +
+				"If this module issues outbound HTTP calls (fetch, axios, React Query, SWR, GraphQL client, etc.) document each call: " +
+				"HTTP method, URL pattern (include base URL or env-var reference if present), " +
+				"request body shape, response shape, and error handling contract. " +
+				"Include a minimal usage example for non-trivial exports.",
+			// #1870 — frontend pattern vocabulary for JS modules.
+			"patterns": "Identify JavaScript module patterns present: " +
+				"- Barrel re-export (index file aggregating sibling modules) " +
+				"- Singleton service (stateful module exporting a single shared instance) " +
+				"- API client wrapper (thin layer over fetch/axios exposing typed request helpers) " +
+				"- Factory function (creates and returns configured objects or instances) " +
+				"- Observer/event bus (exports subscribe/publish or addEventListener abstractions) " +
+				"- Configuration provider (reads env vars and exports typed config objects). " +
+				"Cite the specific exports or import graph edges that demonstrate each pattern. " +
+				"Do NOT mention entities or edges that are not in `neighbour_briefs` or `module_manifest`.",
+			// #1869 — frontend-specific reference-deployment.
+			"reference-deployment": "Describe frontend deployment concerns owned by this module: " +
+				"- Build artifact: where does Vite / webpack / Next.js emit this module's output? " +
+				"- Runtime environment: is it loaded in the browser, a Node.js server (Next.js SSR / API route), or both? " +
+				"- Environment variables referenced at build time (VITE_*, NEXT_PUBLIC_*) vs runtime. " +
+				"- CDN or static-hosting constraints (cache headers, asset hashing, chunk splitting). " +
+				"If the module has no deployment surface, say so in one sentence.",
+			// #1869 — frontend-specific reference-scripts.
+			"reference-scripts": "List the npm / yarn / pnpm scripts and CLI commands that operate on this module or its containing package. " +
+				"Include at minimum: " +
+				"- `npm run dev` (or `vite`, `next dev`) — local development server start command " +
+				"- `vite build` / `next build` / `tsc` — production build " +
+				"- `next start` / `vite preview` — preview the production build locally " +
+				"- Test runner command (jest, vitest, playwright) " +
+				"- Type-check command (tsc --noEmit). " +
+				"State what each command does and when a developer should use it. " +
+				"If the package.json scripts differ from the above, document the actual script names.",
+			"reference-config": "List APPLICATION configuration read by this module: environment variables (VITE_*, NEXT_PUBLIC_*, etc.), " +
+				"runtime config objects, or feature flags. Note which are required vs optional. " +
+				"DO NOT include graph-metadata Properties (framework, module, role, language, etc.) — those are indexer-internal and not configuration.",
+			"reference-dependencies": "List direct external package dependencies (npm packages) and internal module dependencies imported by this module. " +
+				"Separate production from dev/test-only dependencies.",
+			"reference-misc": "Capture bundle-size impact notes, tree-shaking behaviour, known edge cases, or links to the ADR / issue that introduced this module.",
+			"glossary": "Define domain terms appearing in exported symbol names or type names. One term per row.",
+			"module-readme": "Write a README-style introduction for this frontend module: purpose, key exports, " +
+				"quickstart dev/build commands, and any important caveats. " +
 				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
 				"`module_manifest.functions`, or `neighbour_briefs`. " +
 				"If you cite a sibling, name the bundle field it came from.",
@@ -664,18 +828,33 @@ func operationLineTier(lineCount int) string {
 	return "large"
 }
 
+// isFrontendLanguage returns true when the language string indicates a
+// JavaScript or TypeScript codebase.  Used to select frontend-aware profiles.
+func isFrontendLanguage(lang string) bool {
+	switch lang {
+	case "javascript", "typescript", "js", "ts", "jsx", "tsx":
+		return true
+	}
+	return false
+}
+
 // ResolveSectionProfile returns the SectionProfile for the given entity kind
 // and language.  The lookup rules are:
 //
-//  1. For Operation kinds, if lineCount is provided, a size tier is applied
+//  1. Language-specific Component override for Java (#1995).
+//  2. Language-aware frontend override (#1869 / #1870 / #1871): when language
+//     is JavaScript/TypeScript and kind contains "module", the js_module
+//     profile is used so that frontend-specific deployment/scripts/api
+//     guidance replaces the generic backend module guidance.
+//  3. For Operation kinds, if lineCount is provided, a size tier is applied
 //     first: "operation.small" (<30 lines), "operation" (30–149 lines),
 //     or "operation.large" (>=150 lines).  See #1986.
-//  2. Exact case-insensitive match on kind (e.g. "Model" → "model").
-//  3. Substring match — "SCOPE.Model" contains "model" → "model" profile.
-//  4. Fallback to "default" when no match is found.
+//  4. Exact case-insensitive match on kind (e.g. "Model" → "model").
+//  5. Substring match — "SCOPE.Model" contains "model" → "model" profile.
+//  6. Fallback to "default" when no match is found.
 //
-// The language parameter is accepted for future language-aware profiles
-// (e.g. Component kind differs for Java vs React); it is currently unused.
+// The language parameter selects language-aware profiles where they exist
+// (Java component → whole-body window; JS/TS module → frontend guidance).
 // Pass an empty string when language is not available.
 //
 // lineCount is the optional entity line span (end_line - start_line).  Pass
@@ -698,6 +877,19 @@ func ResolveSectionProfile(kind, language string, lineCount ...int) SectionProfi
 		}
 	}
 
+	// 0b. Language-aware frontend module override (#1869 / #1870 / #1871).
+	//     When language is JS/TS and the kind is a module (but NOT already an
+	//     exact "js_module" which is caught at step 2), select the js_module
+	//     profile so that frontend deployment/scripts/api guidance is used
+	//     instead of the backend-oriented module profile.
+	//     Exact "js_module" kind strings are handled below at the exact-match
+	//     step; this branch covers plain "module" with language=javascript/typescript.
+	if isFrontendLanguage(lang) && k != "js_module" && strings.Contains(k, "module") {
+		if p, ok := sectionsByKind["js_module"]; ok {
+			return p
+		}
+	}
+
 	// 1. Size-aware Operation tier selection (#1986).
 	//    Check whether the lowercased kind contains "operation" and a lineCount
 	//    was provided.
@@ -713,21 +905,31 @@ func ResolveSectionProfile(kind, language string, lineCount ...int) SectionProfi
 	}
 
 	// 2. Exact match (after lower-casing).
+	//    "js_module" and "react_hook" are resolved here before the substring
+	//    scan can confuse them with "module" or another partial key.
 	if p, ok := sectionsByKind[k]; ok {
 		return p
 	}
 
 	// 3. Substring match — covers dotted prefixes ("SCOPE.Model") and
 	//    compound kind names ("DataModel", "ServiceModule", "OperationHandler").
-	//    Skip internal size-tier keys (e.g. "operation.small") to avoid
-	//    accidentally matching "operation" when kind is unrelated.
+	//    Skip internal size-tier keys (e.g. "operation.small") and
+	//    underscore-compound keys (e.g. "js_module", "react_hook") to avoid
+	//    accidentally matching a substring when the exact match already failed.
 	for key, profile := range sectionsByKind {
 		if key == "default" {
 			continue
 		}
-		// Skip dotted internal size-tier keys from the substring scan —
-		// they are only reachable via the explicit tier path above.
+		// Skip dotted internal size-tier keys — only reachable via the explicit
+		// tier path above.
 		if strings.Contains(key, ".") {
+			continue
+		}
+		// Skip underscore-compound keys (js_module, react_hook, react_component)
+		// from the substring scan.  These are either already matched at the exact
+		// step above, or must NOT bleed into unrelated kinds via partial match
+		// (e.g. "module" appearing inside "js_module" would be a false positive).
+		if strings.Contains(key, "_") {
 			continue
 		}
 		if strings.Contains(k, key) {
