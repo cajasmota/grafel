@@ -688,13 +688,33 @@ func javaCallTarget(
 		if typ == nil {
 			return ""
 		}
-		// Walk to the rightmost type_identifier.
+		// Issue #2062 — constructor binding. `new ClassName(args)` was
+		// previously emitted as a CALLS stub "ClassName", which bound to
+		// the class entity (SCOPE.Component) instead of the constructor.
+		// As a result every Lombok-synthesized constructor (Name shape
+		// "ClassName.ClassName" from synthConstructor) ended up orphaned —
+		// no inbound CALLS edge ever pointed at it. Emit the qualified
+		// constructor form so the resolver's byName / byMember indexes
+		// route the edge to the synthesized (or extracted) constructor
+		// entity. The class entity still receives EXTENDS / IMPLEMENTS
+		// edges through their own code paths, so no class-level signal
+		// is lost.
+		//
+		// Falls back to the bare class name when the rightmost
+		// type_identifier could not be located (defensive — keeps the
+		// previous behaviour for malformed parses).
+		var className string
 		ids := findAllNodes(typ, "type_identifier")
 		if len(ids) > 0 {
 			n := ids[len(ids)-1]
-			return string(src[n.StartByte():n.EndByte()])
+			className = string(src[n.StartByte():n.EndByte()])
+		} else {
+			className = string(src[typ.StartByte():typ.EndByte()])
 		}
-		return string(src[typ.StartByte():typ.EndByte()])
+		if className == "" {
+			return ""
+		}
+		return className + "." + className
 	}
 	return ""
 }
