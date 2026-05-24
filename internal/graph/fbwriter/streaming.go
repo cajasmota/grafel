@@ -65,6 +65,9 @@ type GraphMetadata struct {
 	IndexedSHA string
 	// IsWorktree is true when the repo is a linked git worktree.
 	IsWorktree bool
+	// CoverageStatus is "" / "full" for a normal checkout or "partial" when
+	// git sparse-checkout is active (#2181 / M4 of #2175).
+	CoverageStatus string
 	// AlgorithmStats, when non-nil, writes the Pass-4 graph-algorithm
 	// aggregate scalars into the Graph table.
 	AlgorithmStats *graph.AlgorithmStats
@@ -222,6 +225,10 @@ func (sw *StreamingWriter) finalize(meta GraphMetadata) []byte {
 	// which is indistinguishable from "not set" to older readers.
 	indexedRef := b.CreateString(meta.IndexedRef)
 	indexedSHA := b.CreateString(meta.IndexedSHA)
+	// M4 sparse-checkout (#2181): create the coverage_status string offset.
+	// FlatBuffers omits the field when the value is "" (default), so older
+	// readers that don't know this slot see a clean zero.
+	coverageStatus := b.CreateString(meta.CoverageStatus)
 
 	// ── Graph root ─────────────────────────────────────────────────────────
 	fb.GraphStart(b)
@@ -244,6 +251,9 @@ func (sw *StreamingWriter) finalize(meta GraphMetadata) []byte {
 	fb.GraphAddIndexedSha(b, indexedSHA)
 	if meta.IsWorktree {
 		fb.GraphAddIsWorktree(b, true)
+	}
+	if meta.CoverageStatus != "" {
+		fb.GraphAddCoverageStatus(b, coverageStatus)
 	}
 	root := fb.GraphEnd(b)
 	fb.FinishGraphBuffer(b, root)
@@ -295,6 +305,7 @@ func streamingMarshal(doc *graph.Document) ([]byte, error) {
 		IndexedRef:     doc.IndexedRef,
 		IndexedSHA:     doc.IndexedSHA,
 		IsWorktree:     doc.IsWorktree,
+		CoverageStatus: doc.CoverageStatus,
 		AlgorithmStats: doc.AlgorithmStats,
 		Communities:    doc.Communities,
 	}), nil

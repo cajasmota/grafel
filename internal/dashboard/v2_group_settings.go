@@ -86,6 +86,11 @@ type v2SettingsRepo struct {
 	IndexedRef string `json:"indexed_ref,omitempty"`
 	IndexedSHA string `json:"indexed_sha,omitempty"`
 	IsWorktree bool   `json:"is_worktree,omitempty"`
+
+	// CoverageStatus — M4 sparse-checkout badge (#2181 / epic #2175).
+	// "" or "full" for a normal checkout; "partial" when git sparse-checkout
+	// was active at index time. Omitted for legacy graphs and full checkouts.
+	CoverageStatus string `json:"coverage_status,omitempty"`
 }
 
 // v2MonorepoInfo matches the SettingsRepo.monorepo shape.
@@ -193,8 +198,9 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 			ms := idxAt.UnixMilli()
 			sr.IndexedAt = &ms
 		}
-		// Phase 0 git metadata (#2088). Read cheaply from graph.fb header.
-		sr.IndexedRef, sr.IndexedSHA, sr.IsWorktree = repoGitMeta(stateDir)
+		// Phase 0 git metadata (#2088) + M4 sparse badge (#2181). Read cheaply
+		// from graph.fb header — no entity decode required.
+		sr.IndexedRef, sr.IndexedSHA, sr.IsWorktree, sr.CoverageStatus = repoGitMeta(stateDir)
 		// Monorepo: if the repo has Modules, surface them as a stub MonorepoInfo.
 		if len(r.Modules) > 0 {
 			pkgs := make([]v2MonorepoPkg, 0, len(r.Modules))
@@ -240,18 +246,18 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 
 // repoStats reads graph-stats.json for a repo's state dir and returns
 // (files, entities, lastIndexed). Zero values on any read error.
-// repoGitMeta reads the Phase-0 git metadata from graph.fb cheaply using
-// fbreader (no entity/relationship decode). Returns zero values for non-git
-// repos or graphs written before #2088.
-func repoGitMeta(stateDir string) (ref, sha string, isWorktree bool) {
+// repoGitMeta reads the Phase-0 git metadata and M4 coverage status from
+// graph.fb cheaply via fbreader (no entity/relationship decode). Returns zero
+// values for non-git repos or graphs written before these fields were added.
+func repoGitMeta(stateDir string) (ref, sha string, isWorktree bool, coverageStatus string) {
 	fbPath := filepath.Join(stateDir, "graph.fb")
 	r, err := fbreader.Open(fbPath)
 	if err != nil {
-		return "", "", false
+		return "", "", false, ""
 	}
 	defer r.Close()
 	meta := r.LoadGraphMeta()
-	return meta.IndexedRef, meta.IndexedSHA, meta.IsWorktree
+	return meta.IndexedRef, meta.IndexedSHA, meta.IsWorktree, meta.CoverageStatus
 }
 
 func repoStats(stateDir string) (files, entities int, lastIndexed time.Time) {

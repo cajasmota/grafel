@@ -37,6 +37,16 @@ type Document struct {
 	IndexedRef string `json:"indexed_ref,omitempty"`
 	IndexedSHA string `json:"indexed_sha,omitempty"`
 	IsWorktree bool   `json:"is_worktree,omitempty"`
+
+	// CoverageStatus indicates whether the indexed working tree is a full
+	// or partial checkout (#2181 / M4 of monorepo epic #2175).
+	//
+	// Values (see internal/gitmeta constants):
+	//   ""        — field absent / legacy graph (treated as "full" by readers).
+	//   "full"    — normal full checkout; all tracked files are present.
+	//   "partial" — git sparse-checkout is active; only a subset of paths
+	//               was indexed. Readers should surface a badge in the UI.
+	CoverageStatus string `json:"coverage_status,omitempty"`
 }
 
 // Stats summarises a Document.

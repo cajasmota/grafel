@@ -104,6 +104,14 @@ table Graph {
   indexed_ref: string;
   indexed_sha: string;
   is_worktree: bool = false;
+
+  // M4 sparse-checkout awareness (#2181 / epic #2175). Appended after
+  // is_worktree so existing field IDs are unchanged and old graph.fb files
+  // read back with this defaulted to "" (= "full" by convention).
+  //
+  // coverage_status — "" or "full" for a normal checkout; "partial" when
+  //   git sparse-checkout is active and only a subset of paths was indexed.
+  coverage_status: string;
 }
 
 root_type Graph;

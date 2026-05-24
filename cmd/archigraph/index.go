@@ -360,6 +360,12 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		doc.IndexedRef = gi.Ref
 		doc.IndexedSHA = gi.SHA
 		doc.IsWorktree = gi.IsWorktree
+		// M4 sparse-checkout (#2181): stamp the coverage status so dashboard /
+		// MCP readers can surface the "partial" badge without re-probing git.
+		// ProbeRepo is cheap (2-3 git config reads with a 2s timeout each);
+		// calling it here keeps the gitmeta block self-contained.
+		si := gitmeta.ProbeRepo(absRepo)
+		doc.CoverageStatus = si.CoverageStatus()
 		if gi.SHA != "" {
 			fmt.Fprintf(os.Stderr, "archigraph: git HEAD %s @ %s (worktree=%v)\n",
 				gi.SHA, func() string {
@@ -624,8 +630,19 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	trk := progress.NewTracker(pub, i.groupSlug, repoSlug)
 
+	// M4 sparse-checkout (#2181): probe the repo BEFORE the walk so the
+	// walker can filter out files that are not present locally. The result is
+	// also stored on the Document so the dashboard can show a "partial" badge.
+	sparseInfo := gitmeta.ProbeRepo(absRepo)
+	if sparseInfo.IsSparse {
+		fmt.Fprintf(os.Stderr,
+			"archigraph: sparse-checkout detected (%d pattern(s)) — indexing partial working tree\n",
+			len(sparseInfo.Patterns))
+	}
+
 	walkOpts := &walk.Options{
 		AdditionalSkipDirs: i.additionalSkipDirs,
+		Sparse:             &sparseInfo,
 	}
 	if i.printSkipped {
 		walkOpts.PrintSkipped = os.Stderr

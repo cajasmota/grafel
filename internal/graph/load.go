@@ -140,6 +140,8 @@ func loadFBDocument(path string) (*Document, error) {
 		IndexedRef: meta.IndexedRef,
 		IndexedSHA: meta.IndexedSHA,
 		IsWorktree: meta.IsWorktree,
+		// M4 sparse-checkout (#2181). Defaults to "" for legacy graphs.
+		CoverageStatus: meta.CoverageStatus,
 	}
 
 	// AlgorithmStats: only attach when the algo pass actually ran. We treat

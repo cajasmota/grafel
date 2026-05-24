@@ -184,6 +184,11 @@ type GraphMeta struct {
 	IndexedRef string
 	IndexedSHA string
 	IsWorktree bool
+
+	// CoverageStatus — "" / "full" for a normal checkout; "partial" when
+	// git sparse-checkout was active at index time (#2181 / M4 of #2175).
+	// Empty for graphs written before this field was added.
+	CoverageStatus string
 }
 
 // CommunityCount returns the number of aggregate Louvain communities
@@ -251,6 +256,8 @@ func (r *Reader) LoadGraphMeta() GraphMeta {
 		IndexedRef: string(r.root.IndexedRef()),
 		IndexedSHA: string(r.root.IndexedSha()),
 		IsWorktree: r.root.IsWorktree(),
+		// M4 sparse-checkout (#2181). Defaults to "" for legacy graphs.
+		CoverageStatus: string(r.root.CoverageStatus()),
 	}
 }
 

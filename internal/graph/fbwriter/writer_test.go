@@ -219,6 +219,54 @@ func TestRoundtripGitMeta(t *testing.T) {
 	}
 }
 
+// TestRoundtripCoverageStatus verifies that the M4 sparse-checkout
+// coverage_status field (#2181) survives a write→read cycle through graph.fb,
+// and that a graph written without it reads back with the zero-value default
+// ("" — treated as "full" by readers).
+func TestRoundtripCoverageStatus(t *testing.T) {
+	// Case 1: partial coverage (sparse checkout).
+	docPartial := &graph.Document{
+		Version:        1,
+		GeneratedAt:    time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC),
+		Repo:           "fixture-sparse",
+		Entities:       []graph.Entity{{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "services/payments/a.go"}},
+		CoverageStatus: "partial",
+	}
+	docPartial.Stats.Entities = 1
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, docPartial); err != nil {
+		t.Fatalf("write partial: %v", err)
+	}
+	gotPartial, err := graph.LoadGraphFromDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatalf("load partial: %v", err)
+	}
+	if gotPartial.CoverageStatus != "partial" {
+		t.Errorf("CoverageStatus: got %q want %q", gotPartial.CoverageStatus, "partial")
+	}
+
+	// Case 2: full coverage (field absent — default).
+	docFull := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Now().UTC(),
+		Repo:        "fixture-full",
+		Entities:    []graph.Entity{{ID: "ent0000000000000a", Name: "bar", Kind: "function", SourceFile: "main.go"}},
+		// CoverageStatus intentionally omitted → should read back as "".
+	}
+	docFull.Stats.Entities = 1
+	out2 := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out2, docFull); err != nil {
+		t.Fatalf("write full: %v", err)
+	}
+	gotFull, err := graph.LoadGraphFromDir(filepath.Dir(out2))
+	if err != nil {
+		t.Fatalf("load full: %v", err)
+	}
+	if gotFull.CoverageStatus != "" {
+		t.Errorf("CoverageStatus default: got %q want empty string", gotFull.CoverageStatus)
+	}
+}
+
 // TestRoundtripNoAlgoData verifies a graph written with NO community data
 // (the --skip-pass=graph-algo case) reads back with zero communities, nil
 // AlgorithmStats, and un-annotated entities (#1620 — old-file compatibility).

@@ -1,10 +1,13 @@
 // Package walk provides the repo file-walker used by the indexer.
-// It combines four skip layers at directory-entry time:
+// It combines five skip layers at directory-entry time:
 //
 //   - Layer 1 (P0): .gitignore semantics (root + nested, lazily loaded)
 //   - Layer 2 (P1): extended hard-coded skip list
 //   - Layer 3 (P2): .archigraphignore overlay
 //   - Layer 4 (P3): .gitattributes linguist-generated=true wildcard
+//   - Layer 5 (P4): git sparse-checkout — files not present in the sparse
+//     pattern set are silently skipped; directories that have no matching
+//     descendants are entered but yield no files (#2181 / M4 of #2175).
 //
 // Directory-level skipping avoids enumerating every file inside build/
 // cache trees — the key performance win for large mobile repos.
@@ -20,6 +23,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
 
 // SkipEntry is one directory that was skipped during a walk.
@@ -39,6 +44,15 @@ type Options struct {
 	// AdditionalSkipDirs extends the hard-coded skip list with per-repo
 	// names from fleet.json's additional_skip_dirs field.
 	AdditionalSkipDirs []string
+
+	// Sparse holds the result of probing the repo for git sparse-checkout
+	// state (Layer 5 / P4). When Sparse.IsSparse is true, files whose
+	// repo-relative path is not covered by the sparse pattern set are
+	// silently skipped — no extraction error is raised. Callers obtain
+	// this by calling gitmeta.ProbeRepo before invoking WalkRepo.
+	//
+	// When nil or zero-value (IsSparse=false), no sparse filtering is applied.
+	Sparse *gitmeta.SparseInfo
 }
 
 // WalkRepo walks root and returns repo-relative file paths (forward-slash,
@@ -163,6 +177,18 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 		if shouldSkipFileByExt(d.Name()) {
 			return nil
 		}
+
+		// Layer 5 (P4): sparse-checkout filter (#2181 / M4 of #2175).
+		// When the repo uses git sparse-checkout, only index files whose
+		// path is included in the sparse pattern set. Missing files are
+		// silently skipped — no error is raised, matching the semantics of
+		// a regular git sparse checkout (absent files are simply not present).
+		if opts.Sparse != nil && opts.Sparse.IsSparse {
+			if !gitmeta.IsPathIncluded(*opts.Sparse, rel) {
+				return nil
+			}
+		}
+
 		files = append(files, rel)
 		return nil
 	})
