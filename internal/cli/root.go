@@ -45,6 +45,7 @@ func newRoot() *cobra.Command {
 		newRebuildCmd(),
 		newResetCmd(),
 		newUninstallCmd(),
+		newModeCmd(),
 		newStartCmd(),
 		newStopCmd(),
 		newRestartCmd(),
@@ -122,6 +123,10 @@ Operate:
 Repair:
   rebuild [group] [slug]          Force AST rebuild (no cache, daemon RPC)
   reset [group] [slug]            Wipe .archigraph/ and rebuild via daemon
+
+Daemon modes (S7):
+  mode <background|workstation|readonly>
+                                  Switch operational mode + restart daemon
 
 Lifecycle:
   remove <group> <slug>           Remove a single repo from a group

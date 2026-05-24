@@ -170,6 +170,10 @@ type Service struct {
 	// bound to. Set by server.go after the dashboard goroutine starts.
 	// Zero means dashboard is not running. Read by Status RPC (#938).
 	dashboardPort int
+
+	// daemonMode is the operational mode the daemon booted in (S7 #2157).
+	// Surfaced by the Status RPC for `archigraph status`.
+	daemonMode string
 }
 
 // newService wires the injected entrypoints onto a fresh Service. The
@@ -227,6 +231,9 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	// Report the dashboard port so `archigraph dashboard` can construct
 	// the URL without a separate config read (#938).
 	reply.DashboardPort = s.dashboardPort
+
+	// S7 (#2157): surface the active operational mode.
+	reply.DaemonMode = s.daemonMode
 
 	if s.watcher != nil {
 		repos, dirs, events, dropped := s.watcher.Stats()

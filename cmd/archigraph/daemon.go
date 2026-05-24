@@ -20,6 +20,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/agents"
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/daemon/mode"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/dashboard"
@@ -138,6 +139,10 @@ func resolveEnvRebuildConcurrency() int {
 // the cap — the cap applies to repos within a single group rebuild.
 var rebuildConcurrency = defaultRebuildConcurrency()
 
+// activeDaemonMode is set by runDaemon after loading the mode config.
+// It is read-only after that point (written once before the RPC server starts).
+var activeDaemonMode string
+
 // rebuildIndexFunc is the per-repo index entrypoint used by daemonRebuildFunc.
 // It defaults to the package-level Index function but can be replaced in tests
 // to validate parallelism semantics without running a real extractor pass.
@@ -177,6 +182,9 @@ func runDaemon(argv []string) error {
 	// disabled for "daemon" so we own the argv. Unknown flags exit
 	// with a clear error rather than being silently ignored.
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
+	var daemonModeFlag string
+	fs.StringVar(&daemonModeFlag, "mode", "",
+		"operational mode: background, workstation, readonly (default: read from daemon.config.json)")
 	var maxRSSBudget int64
 	envBudget := defaultRSSBudgetMB()
 	if v := os.Getenv("ARCHIGRAPH_MAX_RSS_BUDGET_MB"); v != "" {
@@ -201,6 +209,28 @@ func runDaemon(argv []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve daemon layout: %w", err)
 	}
+
+	// S7 (#2157): load mode from daemon.config.json then apply env defaults.
+	// Precedence: --mode flag > daemon.config.json > Background default.
+	// Env vars always win over mode defaults (ApplyDefaults only sets unset vars).
+	{
+		cfgPath := mode.DefaultConfigPath(layout.Root)
+		modeCfg, _ := mode.LoadConfig(cfgPath) // missing file → zero value; not fatal
+		activeMode := modeCfg.Mode
+		if daemonModeFlag != "" {
+			if parsed, perr := mode.Parse(daemonModeFlag); perr == nil {
+				activeMode = parsed
+			}
+		}
+		if activeMode == "" {
+			activeMode = mode.Background // open-source default
+		}
+		mode.ApplyDefaults(activeMode)
+		gcLog.Printf("daemon mode: %s", activeMode)
+		// Store the active mode in a package-level var so the Status RPC can surface it.
+		activeDaemonMode = string(activeMode)
+	}
+
 	if err := daemon.EnsureLayout(layout); err != nil {
 		return fmt.Errorf("ensure layout: %w", err)
 	}
@@ -261,6 +291,10 @@ func runDaemon(argv []string) error {
 		MaxRSSBudgetMB:      maxRSSBudget,
 		RSSHistoryPath:      filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
 		MaxConcurrentGroups: maxConcurrentGroups,
+
+		// S7 (#2157): propagate the resolved operational mode so the Status
+		// RPC can surface it for `archigraph status`.
+		DaemonMode: activeDaemonMode,
 
 		// Pattern confidence time-decay: runs every 6 hours.
 		// PatternGroupDirs returns the patterns storage directory for each

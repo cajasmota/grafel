@@ -96,6 +96,11 @@ type StatusReply struct {
 	// has been suspended because the slot is COLD.
 	WatcherActiveSlots int `json:"watcher_active_slots,omitempty"`
 	WatcherPausedSlots int `json:"watcher_paused_slots,omitempty"`
+
+	// S7 (#2157): operational mode the daemon booted with.
+	// One of "background", "workstation", "readonly". Empty for daemons
+	// predating S7 (backwards-compatible; older clients ignore the field).
+	DaemonMode string `json:"daemon_mode,omitempty"`
 }
 
 // InFlightJobState mirrors sched.InFlightJob on the wire.

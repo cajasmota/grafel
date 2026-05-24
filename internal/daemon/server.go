@@ -117,6 +117,12 @@ type Config struct {
 	// Configurable via --max-concurrent-groups on the daemon subcommand
 	// or ARCHIGRAPH_MAX_CONCURRENT_GROUPS env var. Added in #1276.
 	MaxConcurrentGroups int
+
+	// DaemonMode is the operational mode the daemon was booted in (S7 #2157).
+	// One of "background", "workstation", "readonly". Empty string means
+	// the caller did not specify a mode (treated as background).
+	// Surfaced in Status RPC so `archigraph status` can display it.
+	DaemonMode string
 }
 
 // Run starts the daemon. It blocks until either:
@@ -192,6 +198,8 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.DashboardPort > 0 {
 		svc.dashboardPort = cfg.DashboardPort
 	}
+	// S7 (#2157): wire the operational mode so Status can surface it.
+	svc.daemonMode = cfg.DaemonMode
 	// PH2a (#2096): wire watcher pause/resume slot counts into Status RPC.
 	if cfg.WatcherMgrStats != nil {
 		svc.watcherMgrStats = cfg.WatcherMgrStats

@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/daemon/mode"
 	"github.com/cajasmota/archigraph/internal/daemon/service"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 	"github.com/cajasmota/archigraph/internal/install/skilllink"
@@ -68,6 +69,7 @@ func newInstallCmd() *cobra.Command {
 	var claudeConfigDirs []string
 	var skillsSourceDir string
 	var skipSkillLink bool
+	var installMode string
 
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -88,6 +90,9 @@ status and exits successfully (idempotent).
 
 Use --foreground to skip service registration and run the daemon directly
 in this terminal — useful for debugging launchd/systemd issues.
+
+Use --mode to select the operational preset (background, workstation, readonly).
+The default is background. See 'archigraph mode --help' for details.
 
 Install also symlinks the 6 archigraph skills into every detected Claude Code
 config directory's skills/ subdirectory. Use --skip-skill-link to disable this,
@@ -113,6 +118,25 @@ or --skills-source-dir to override the skills discovery location.`,
 			layout, err := daemon.DefaultLayout()
 			if err != nil {
 				return fmt.Errorf("resolve daemon layout: %w", err)
+			}
+
+			// Persist the selected mode so the daemon reads it on every boot.
+			// Default is background (low-footprint for open-source installs).
+			selectedMode := mode.Background
+			if installMode != "" {
+				parsed, merr := mode.Parse(installMode)
+				if merr != nil {
+					return merr
+				}
+				selectedMode = parsed
+			}
+			cfgPath := mode.DefaultConfigPath(layout.Root)
+			existing, _ := mode.LoadConfig(cfgPath) // best-effort; ignore missing-file error
+			existing.Mode = selectedMode
+			if serr := mode.SaveConfig(cfgPath, existing); serr != nil {
+				fmt.Fprintf(out, "  ⚠ save daemon config: %v\n", serr)
+			} else {
+				fmt.Fprintf(out, "  mode:    %s\n", selectedMode)
 			}
 
 			opts := service.Options{
@@ -164,5 +188,7 @@ or --skills-source-dir to override the skills discovery location.`,
 		"override the skills directory location (default: auto-detect from binary location or dev paths)")
 	cmd.Flags().BoolVar(&skipSkillLink, "skip-skill-link", false,
 		"skip symlinking skills into Claude Code's skills/ directories")
+	cmd.Flags().StringVar(&installMode, "mode", "",
+		"operational mode: background (default), workstation, or readonly")
 	return cmd
 }
