@@ -156,9 +156,10 @@ type DashRepo struct {
 
 // DashGroup holds loaded repos and links for one group.
 type DashGroup struct {
-	Name  string
-	Repos map[string]*DashRepo // slug -> repo
-	Links []CrossRepoLink
+	Name   string
+	Repos  map[string]*DashRepo // slug -> repo
+	Links  []CrossRepoLink
+	Search *SearchIndex // pre-built search index; nil until buildSearchIndex runs
 }
 
 // CrossRepoLink mirrors mcp.CrossRepoLink.
@@ -438,6 +439,11 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 			grp.Links = normalizeLinkEndpoints(links, grp.Repos)
 		}
 	}
+
+	// Build the in-memory search index once at load time so that
+	// /api/search/{group} does not need to scan all entities on every request
+	// (#2104).
+	grp.Search = buildSearchIndex(grp)
 
 	return grp, nil
 }
