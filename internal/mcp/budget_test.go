@@ -52,7 +52,10 @@ func TestMCPHandshakeBudget(t *testing.T) {
 		// when find_callers/find_callees aliases are removed.
 		// PH5 (#2093): +archigraph_diff_refs (ref_a, ref_b, repo, group, cwd params).
 		// Measured: 3,562 tokens (32 tools). Ceiling bumped to 3,600.
-		tokenCeiling  = 3600
+		// #2214 (epic #2207): +6 archigraph_docgen_* tools (start_run/status/validate/
+		// promote/abort/list). These are the daemon-side docgen staging tools.
+		// Measured: 4,128 tokens (38 tools). Ceiling bumped to 4,200.
+		tokenCeiling  = 4200
 		charsPerToken = 4
 		envelopeBytes = 512 // initEnvelopeBytes constant from cmd/mcp-audit
 		maxDescLen    = 80

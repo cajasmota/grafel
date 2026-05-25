@@ -656,6 +656,56 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_diff_refs", s.handleDiffRefs))
 
+	// archigraph_docgen_* — docgen-via-local-staging tools (epic #2207, issue #2214).
+	// start_run: create or resume a per-group staging run.
+	// status:    inspect in-flight run (files written + SHAs).
+	// validate:  lint frontmatter + cross-links (read-only).
+	// promote:   atomic staging → canonical rename; SSG guard.
+	// abort:     rm -rf staging, release lock.
+	// list:      read-only enumeration of canonical docs.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_docgen_start_run",
+		mcpapi.WithDescription("Start or resume a docgen staging run for a group. Returns run_id + staging_path."),
+		mcpapi.WithString("group", mcpapi.Required()),
+		mcpapi.WithBoolean("resume", mcpapi.DefaultBool(true)),
+		mcpapi.WithBoolean("no_git", mcpapi.DefaultBool(false)),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_docgen_start_run", s.handleDocgenStartRun))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_docgen_status",
+		mcpapi.WithDescription("Inspect an in-flight docgen run: files written, SHA-256 per file."),
+		mcpapi.WithString("run_id", mcpapi.Required()),
+		mcpapi.WithBoolean("no_git", mcpapi.DefaultBool(false)),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_docgen_status", s.handleDocgenStatus))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_docgen_validate",
+		mcpapi.WithDescription("Validate staging run: frontmatter + cross-links. Read-only, no file writes."),
+		mcpapi.WithString("run_id", mcpapi.Required()),
+		mcpapi.WithBoolean("no_git", mcpapi.DefaultBool(false)),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_docgen_validate", s.handleDocgenValidate))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_docgen_promote",
+		mcpapi.WithDescription("Atomic promote: staging → canonical. Blocks SSG scaffolding. Rotates previous."),
+		mcpapi.WithString("run_id", mcpapi.Required()),
+		mcpapi.WithBoolean("force", mcpapi.DefaultBool(false)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_docgen_promote", s.handleDocgenPromote))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_docgen_abort",
+		mcpapi.WithDescription("Abort a staging run: rm -rf staging, release per-group lock. Canonical safe."),
+		mcpapi.WithString("run_id", mcpapi.Required()),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_docgen_abort", s.handleDocgenAbort))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_docgen_list",
+		mcpapi.WithDescription("List canonical doc files for a group under ~/.archigraph/docs/<group>/."),
+		mcpapi.WithString("group", mcpapi.Required()),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_docgen_list", s.handleDocgenList))
+
 	// archigraph_status — cwd-gate sentinel (#1769).
 	// Registered as a real callable tool so agents can invoke it and receive
 	// guidance. Excluded from the full handshake returned to indexed sessions
