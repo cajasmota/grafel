@@ -92,7 +92,12 @@ func runDaemonForTest(t *testing.T, idx daemon.IndexFunc, rb daemon.RebuildFunc)
 	// On Unix we could stat the socket file, but named pipes on Windows are
 	// not filesystem objects — use a dial-based readiness probe that works on
 	// all platforms.
-	waitDaemonReady(t, layout.SocketPath, 3*time.Second)
+	//
+	// 10s timeout: a loaded ubuntu CI runner under -race occasionally exceeded
+	// the prior 3s window, causing TestDaemon_PingStatus and friends to flake
+	// even though the daemon log showed it was ready. 10s is generous enough
+	// for any reasonable CI runner while still failing fast on real bugs.
+	waitDaemonReady(t, layout.SocketPath, 10*time.Second)
 	return layout
 }
 
