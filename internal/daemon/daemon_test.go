@@ -134,12 +134,14 @@ func TestDaemon_IndexRPC(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer c.Close()
-	reply, err := c.Index(proto.IndexArgs{RepoPath: "/tmp/fake-repo"})
+	repoPath := filepath.Join(string(filepath.Separator)+"tmp", "fake-repo")
+	reply, err := c.Index(proto.IndexArgs{RepoPath: repoPath})
 	if err != nil {
 		t.Fatalf("index: %v", err)
 	}
-	if reply.GraphPath != "/tmp/fake-repo/.archigraph/graph.json" {
-		t.Fatalf("graph path: %q", reply.GraphPath)
+	wantGraphPath := filepath.Join(repoPath, ".archigraph", "graph.json")
+	if reply.GraphPath != wantGraphPath {
+		t.Fatalf("graph path: got %q want %q", reply.GraphPath, wantGraphPath)
 	}
 	if reply.StatsJSON == "" {
 		t.Fatalf("stats empty")
