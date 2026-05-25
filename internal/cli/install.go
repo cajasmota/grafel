@@ -83,6 +83,7 @@ func newInstallCmd() *cobra.Command {
 	var copyMode bool
 	var devMode bool
 	var force bool
+	var noHooks bool
 
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -143,6 +144,7 @@ Claude Code config directory's skills/ subdirectory.`,
 					SkillsSourceDir:  skillsSourceDir,
 					ClaudeConfigDirs: claudeConfigDirs,
 					Force:            force,
+					NoHooks:          noHooks,
 				})
 			}
 
@@ -158,6 +160,7 @@ Claude Code config directory's skills/ subdirectory.`,
 					SkillsSourceDir:  skillsSourceDir,
 					ClaudeConfigDirs: claudeConfigDirs,
 					Force:            force,
+					NoHooks:          noHooks,
 				})
 			}
 
@@ -246,6 +249,9 @@ Claude Code config directory's skills/ subdirectory.`,
 		"run the DEV-mode install transaction: symlinks skills from the repo working tree instead of copying them (for contributors; --dev takes precedence over --copy)")
 	cmd.Flags().BoolVar(&force, "force", false,
 		"bypass the partial-install guard; use after a failed install or 'archigraph uninstall && archigraph install'")
+	// #2222: git hooks opt-out.
+	cmd.Flags().BoolVar(&noHooks, "no-hooks", false,
+		"skip automatic git hook installation (post-checkout, post-merge, post-rewrite, pre-push)")
 	return cmd
 }
 

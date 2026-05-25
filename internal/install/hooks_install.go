@@ -1,9 +1,14 @@
-// hooks_install.go implements `archigraph install-hooks` (issue #2213).
+// hooks_install.go implements `archigraph install-hooks` (issues #2213, #2222).
 //
 // InstallPrePushHook writes a pre-push hook script into <repo>/.git/hooks/
 // (or delegates to husky / lefthook if detected). The hook runs
 // `archigraph doctor` before every push and warns on drift — it NEVER
 // blocks the push.
+//
+// InstallGitHooks (issue #2222) extends the above to also install
+// post-checkout, post-merge, and post-rewrite hooks that trigger
+// ref-aware reindex via the existing daemon. All 4 hooks are managed
+// idempotently and are tolerant of `archigraph` not being on PATH.
 package install
 
 import (
@@ -27,9 +32,44 @@ if command -v archigraph >/dev/null 2>&1; then
 fi
 %s
 `
+
+	// post-checkout hook: fires on branch switches; signals daemon via status RPC.
+	postCheckoutMarkerBegin = "# >>> archigraph post-checkout >>>"
+	postCheckoutMarkerEnd   = "# <<< archigraph post-checkout <<<"
+	postCheckoutHookScript  = `%s
+# Only act on branch switches (arg 3 == 1), not file checkouts.
+if [ "${3:-0}" = "1" ] && command -v archigraph >/dev/null 2>&1; then
+  archigraph status --ref @current >/dev/null 2>&1 &
+fi
+%s
+`
+
+	// post-merge hook: fires after git merge / git pull.
+	postMergeMarkerBegin = "# >>> archigraph post-merge >>>"
+	postMergeMarkerEnd   = "# <<< archigraph post-merge <<<"
+	postMergeHookScript  = `%s
+# Signal the daemon to reindex after the merge; run in background so the
+# hook returns immediately and never delays the user's merge workflow.
+if command -v archigraph >/dev/null 2>&1; then
+  archigraph status --ref @current >/dev/null 2>&1 &
+fi
+%s
+`
+
+	// post-rewrite hook: fires after git rebase / git commit --amend.
+	postRewriteMarkerBegin = "# >>> archigraph post-rewrite >>>"
+	postRewriteMarkerEnd   = "# <<< archigraph post-rewrite <<<"
+	postRewriteHookScript  = `%s
+# Signal the daemon to reindex after the rewrite; run in background so
+# the hook returns immediately and never delays the user's workflow.
+if command -v archigraph >/dev/null 2>&1; then
+  archigraph status --ref @current >/dev/null 2>&1 &
+fi
+%s
+`
 )
 
-// HookInstallOptions controls InstallPrePushHook behaviour.
+// HookInstallOptions controls InstallPrePushHook / InstallGitHooks behaviour.
 type HookInstallOptions struct {
 	// RepoPath is the root of the git repository.  Defaults to os.Getwd().
 	RepoPath string
@@ -77,6 +117,76 @@ func InstallPrePushHook(opts HookInstallOptions) error {
 	return writeHookBlock(hookPath, block)
 }
 
+// InstallGitHooks installs all 4 archigraph-managed git hooks into the repo:
+//
+//   - pre-push        (from #2213) — runs `archigraph doctor --quick`
+//   - post-checkout   (from #2222) — signals daemon on branch switch
+//   - post-merge      (from #2222) — signals daemon after merge
+//   - post-rewrite    (from #2222) — signals daemon after rebase/amend
+//
+// If husky, lefthook, or pre-commit is detected in the repo, advice is
+// printed instead and nil is returned (not an error). All hooks are
+// idempotent: re-running replaces the managed block without touching any
+// user-written content.
+func InstallGitHooks(opts HookInstallOptions) error {
+	if opts.RepoPath == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolve working dir: %w", err)
+		}
+		opts.RepoPath = cwd
+	}
+
+	// ── detect hook managers ──────────────────────────────────────────────────
+	if detected, name := detectHookManager(opts.RepoPath); detected {
+		printHookManagerAdvice(name, opts.RepoPath)
+		return nil
+	}
+
+	// ── find .git/hooks ───────────────────────────────────────────────────────
+	hooksDir := filepath.Join(opts.RepoPath, ".git", "hooks")
+	if _, err := os.Stat(hooksDir); err != nil {
+		return fmt.Errorf("no .git/hooks directory found at %s (is this a git repo?): %w", opts.RepoPath, err)
+	}
+
+	type hookDef struct {
+		name   string
+		script string
+	}
+
+	hooks := []hookDef{
+		{
+			name:   "pre-push",
+			script: fmt.Sprintf(prePushHookScript, prePushMarkerBegin, prePushMarkerEnd),
+		},
+		{
+			name:   "post-checkout",
+			script: fmt.Sprintf(postCheckoutHookScript, postCheckoutMarkerBegin, postCheckoutMarkerEnd),
+		},
+		{
+			name:   "post-merge",
+			script: fmt.Sprintf(postMergeHookScript, postMergeMarkerBegin, postMergeMarkerEnd),
+		},
+		{
+			name:   "post-rewrite",
+			script: fmt.Sprintf(postRewriteHookScript, postRewriteMarkerBegin, postRewriteMarkerEnd),
+		},
+	}
+
+	for _, h := range hooks {
+		hookPath := filepath.Join(hooksDir, h.name)
+		if opts.DryRun {
+			fmt.Fprintf(os.Stdout, "archigraph install-hooks (dry-run): would write %s hook to %s\n", h.name, hookPath)
+			fmt.Fprintf(os.Stdout, "Block content:\n%s\n", h.script)
+			continue
+		}
+		if err := writeHookBlock(hookPath, h.script); err != nil {
+			return fmt.Errorf("write %s hook: %w", h.name, err)
+		}
+	}
+	return nil
+}
+
 // writeHookBlock writes the archigraph managed block into hookPath.
 // If the file does not exist it is created with a shebang.
 // If the block already exists it is replaced (idempotent).
@@ -100,14 +210,15 @@ func writeHookBlock(hookPath, block string) error {
 }
 
 // mergeHookBlock inserts or replaces the archigraph managed block in content.
-// If the block already exists (marked by prePushMarkerBegin/End) it is
-// replaced.  Otherwise the block is appended.
+// The begin/end markers are extracted from the first and last "# >>> / # <<<"
+// lines of block itself so the function works for any hook type.
 // The result always starts with a sh shebang if the file was empty.
 func mergeHookBlock(existing, block string) string {
 	const shebang = "#!/bin/sh\n"
 
-	// Remove any existing managed block.
-	cleaned := removeHookBlock(existing)
+	// Remove any existing managed block of the same type.
+	markerBegin, markerEnd := extractMarkers(block)
+	cleaned := removeHookBlockMarked(existing, markerBegin, markerEnd)
 
 	if cleaned == "" {
 		// New file: start with shebang.
@@ -124,19 +235,47 @@ func mergeHookBlock(existing, block string) string {
 	return cleaned + "\n" + block
 }
 
-// removeHookBlock strips the archigraph-managed block from content.
+// extractMarkers scans block for lines of the form "# >>> … >>>" and
+// "# <<< … <<<" and returns them as the begin and end markers.
+// Falls back to the pre-push markers when none are found (backward compat).
+func extractMarkers(block string) (begin, end string) {
+	for _, line := range splitByNewline(block) {
+		if len(line) > 4 && line[:4] == "# >>" {
+			begin = line
+		}
+		if len(line) > 4 && line[:4] == "# <<" {
+			end = line
+		}
+	}
+	if begin == "" {
+		begin = prePushMarkerBegin
+	}
+	if end == "" {
+		end = prePushMarkerEnd
+	}
+	return
+}
+
+// removeHookBlock strips the archigraph pre-push managed block from content.
+// Kept for backward compatibility with existing call sites.
 func removeHookBlock(content string) string {
-	startIdx := indexOf(content, prePushMarkerBegin)
+	return removeHookBlockMarked(content, prePushMarkerBegin, prePushMarkerEnd)
+}
+
+// removeHookBlockMarked strips the archigraph managed block delimited by
+// markerBegin and markerEnd from content.
+func removeHookBlockMarked(content, markerBegin, markerEnd string) string {
+	startIdx := indexOf(content, markerBegin)
 	if startIdx < 0 {
 		return content
 	}
-	endIdx := indexOf(content, prePushMarkerEnd)
+	endIdx := indexOf(content, markerEnd)
 	if endIdx < 0 {
 		// Malformed: no end marker — remove from start to end of file.
 		return content[:startIdx]
 	}
 	// Include the newline after the end marker.
-	after := endIdx + len(prePushMarkerEnd)
+	after := endIdx + len(markerEnd)
 	if after < len(content) && content[after] == '\n' {
 		after++
 	}
@@ -174,20 +313,35 @@ func detectHookManager(repoPath string) (bool, string) {
 }
 
 // printHookManagerAdvice prints instructions for adding the archigraph
-// pre-push hook via the detected hook manager.
+// hooks via the detected hook manager (pre-push + post-checkout/merge/rewrite).
 func printHookManagerAdvice(manager, repoPath string) {
 	fmt.Fprintf(os.Stdout, "Detected %s in %s.\n", manager, repoPath)
 	fmt.Fprintln(os.Stdout, "")
 	switch manager {
 	case "husky":
-		fmt.Fprintln(os.Stdout, "Add the archigraph pre-push hook to husky:")
+		fmt.Fprintln(os.Stdout, "Add the archigraph hooks to husky:")
 		fmt.Fprintln(os.Stdout, "  npx husky add .husky/pre-push \"archigraph doctor --quick 2>/dev/null || echo 'archigraph: drift detected — run archigraph doctor' >&2\"")
+		fmt.Fprintln(os.Stdout, "  npx husky add .husky/post-checkout \"if [ \\\"${3:-0}\\\" = '1' ]; then archigraph status --ref @current >/dev/null 2>&1 & fi\"")
+		fmt.Fprintln(os.Stdout, "  npx husky add .husky/post-merge \"archigraph status --ref @current >/dev/null 2>&1 &\"")
+		fmt.Fprintln(os.Stdout, "  npx husky add .husky/post-rewrite \"archigraph status --ref @current >/dev/null 2>&1 &\"")
 	case "lefthook":
 		fmt.Fprintln(os.Stdout, "Add to lefthook.yml:")
 		fmt.Fprintln(os.Stdout, "  pre-push:")
 		fmt.Fprintln(os.Stdout, "    commands:")
 		fmt.Fprintln(os.Stdout, "      archigraph-doctor:")
 		fmt.Fprintln(os.Stdout, "        run: archigraph doctor --quick 2>/dev/null || echo 'archigraph: drift detected' >&2")
+		fmt.Fprintln(os.Stdout, "  post-checkout:")
+		fmt.Fprintln(os.Stdout, "    commands:")
+		fmt.Fprintln(os.Stdout, "      archigraph-reindex:")
+		fmt.Fprintln(os.Stdout, "        run: archigraph status --ref @current >/dev/null 2>&1")
+		fmt.Fprintln(os.Stdout, "  post-merge:")
+		fmt.Fprintln(os.Stdout, "    commands:")
+		fmt.Fprintln(os.Stdout, "      archigraph-reindex:")
+		fmt.Fprintln(os.Stdout, "        run: archigraph status --ref @current >/dev/null 2>&1")
+		fmt.Fprintln(os.Stdout, "  post-rewrite:")
+		fmt.Fprintln(os.Stdout, "    commands:")
+		fmt.Fprintln(os.Stdout, "      archigraph-reindex:")
+		fmt.Fprintln(os.Stdout, "        run: archigraph status --ref @current >/dev/null 2>&1")
 	case "pre-commit":
 		fmt.Fprintln(os.Stdout, "Add to .pre-commit-config.yaml:")
 		fmt.Fprintln(os.Stdout, "  - repo: local")
@@ -197,6 +351,8 @@ func printHookManagerAdvice(manager, repoPath string) {
 		fmt.Fprintln(os.Stdout, "        entry: archigraph doctor --quick")
 		fmt.Fprintln(os.Stdout, "        language: system")
 		fmt.Fprintln(os.Stdout, "        stages: [pre-push]")
+		fmt.Fprintln(os.Stdout, "  Note: pre-commit does not support post-checkout/merge/rewrite hooks.")
+		fmt.Fprintln(os.Stdout, "        Run 'archigraph install-hooks --force' to install those directly.")
 	}
 	fmt.Fprintln(os.Stdout, "")
 	fmt.Fprintln(os.Stdout, "Or run 'archigraph install-hooks --force' to install directly into .git/hooks/ instead.")

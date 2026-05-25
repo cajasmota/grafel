@@ -1,0 +1,26 @@
+#!/bin/sh
+# archigraph post-checkout hook
+#
+# Fires when the user runs `git checkout <branch>` (or `git switch`).
+# When the checkout changes the HEAD ref (arg 3 == 1), signals the
+# archigraph daemon to mark the new ref as HOT and trigger an
+# incremental reindex if needed.
+#
+# Git passes 3 arguments:
+#   $1 = previous HEAD (SHA)
+#   $2 = new HEAD (SHA)
+#   $3 = 1 if branch checkout (ref switch), 0 if file checkout
+#
+# Install this hook via:
+#   archigraph install-hooks
+#
+# Or copy it manually to .git/hooks/post-checkout and make it executable:
+#   cp scripts/git-hooks/post-checkout .git/hooks/post-checkout
+#   chmod +x .git/hooks/post-checkout
+
+# >>> archigraph post-checkout >>>
+# Only act on branch switches (arg 3 == 1), not file checkouts.
+if [ "${3:-0}" = "1" ] && command -v archigraph >/dev/null 2>&1; then
+  archigraph status --ref @current >/dev/null 2>&1 &
+fi
+# <<< archigraph post-checkout <<<

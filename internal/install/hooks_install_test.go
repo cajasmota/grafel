@@ -151,7 +151,221 @@ func TestInstallPrePushHook_NoGitRepo(t *testing.T) {
 	}
 }
 
+// ── InstallGitHooks tests (#2222) ─────────────────────────────────────────────
+
+// TestInstallGitHooks_AllFourHooks verifies that InstallGitHooks creates all
+// 4 hook files (pre-push, post-checkout, post-merge, post-rewrite).
+func TestInstallGitHooks_AllFourHooks(t *testing.T) {
+	repoDir := makeGitRepo(t)
+
+	opts := install.HookInstallOptions{RepoPath: repoDir}
+	if err := install.InstallGitHooks(opts); err != nil {
+		t.Fatalf("InstallGitHooks: %v", err)
+	}
+
+	hooksDir := filepath.Join(repoDir, ".git", "hooks")
+	for _, hookName := range []string{"pre-push", "post-checkout", "post-merge", "post-rewrite"} {
+		hookPath := filepath.Join(hooksDir, hookName)
+		assertHookExists(t, hookName, hookPath)
+	}
+}
+
+// TestInstallGitHooks_Idempotent verifies that running InstallGitHooks twice
+// does not duplicate any managed block.
+func TestInstallGitHooks_Idempotent(t *testing.T) {
+	repoDir := makeGitRepo(t)
+
+	opts := install.HookInstallOptions{RepoPath: repoDir}
+	if err := install.InstallGitHooks(opts); err != nil {
+		t.Fatalf("first InstallGitHooks: %v", err)
+	}
+	if err := install.InstallGitHooks(opts); err != nil {
+		t.Fatalf("second InstallGitHooks: %v", err)
+	}
+
+	hooksDir := filepath.Join(repoDir, ".git", "hooks")
+	for hookName, marker := range map[string]string{
+		"pre-push":      "# >>> archigraph pre-push >>>",
+		"post-checkout": "# >>> archigraph post-checkout >>>",
+		"post-merge":    "# >>> archigraph post-merge >>>",
+		"post-rewrite":  "# >>> archigraph post-rewrite >>>",
+	} {
+		hookPath := filepath.Join(hooksDir, hookName)
+		data, err := os.ReadFile(hookPath)
+		if err != nil {
+			t.Fatalf("read %s hook: %v", hookName, err)
+		}
+		count := strings.Count(string(data), marker)
+		if count != 1 {
+			t.Errorf("%s: expected exactly 1 managed block, found %d", hookName, count)
+		}
+	}
+}
+
+// TestInstallGitHooks_PreservesExistingContent verifies that pre-existing hook
+// content is preserved and the archigraph block is appended.
+func TestInstallGitHooks_PreservesExistingContent(t *testing.T) {
+	repoDir := makeGitRepo(t)
+
+	hooksDir := filepath.Join(repoDir, ".git", "hooks")
+	for _, hookName := range []string{"post-checkout", "post-merge", "post-rewrite"} {
+		hookPath := filepath.Join(hooksDir, hookName)
+		userContent := "#!/bin/sh\n# user's own " + hookName + " logic\nexit 0\n"
+		if err := os.WriteFile(hookPath, []byte(userContent), 0o755); err != nil {
+			t.Fatalf("write user %s hook: %v", hookName, err)
+		}
+	}
+
+	opts := install.HookInstallOptions{RepoPath: repoDir}
+	if err := install.InstallGitHooks(opts); err != nil {
+		t.Fatalf("InstallGitHooks: %v", err)
+	}
+
+	for _, hookName := range []string{"post-checkout", "post-merge", "post-rewrite"} {
+		hookPath := filepath.Join(hooksDir, hookName)
+		data, err := os.ReadFile(hookPath)
+		if err != nil {
+			t.Fatalf("read %s hook: %v", hookName, err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "user's own "+hookName+" logic") {
+			t.Errorf("%s: user content was lost; got: %q", hookName, content)
+		}
+	}
+}
+
+// TestInstallGitHooks_DryRun verifies that dry-run does not create hook files.
+func TestInstallGitHooks_DryRun(t *testing.T) {
+	repoDir := makeGitRepo(t)
+
+	opts := install.HookInstallOptions{RepoPath: repoDir, DryRun: true}
+	if err := install.InstallGitHooks(opts); err != nil {
+		t.Fatalf("InstallGitHooks --dry-run: %v", err)
+	}
+
+	hooksDir := filepath.Join(repoDir, ".git", "hooks")
+	for _, hookName := range []string{"pre-push", "post-checkout", "post-merge", "post-rewrite"} {
+		hookPath := filepath.Join(hooksDir, hookName)
+		if _, err := os.Stat(hookPath); err == nil {
+			t.Errorf("dry-run should not create %s hook file", hookName)
+		}
+	}
+}
+
+// TestInstallGitHooks_HuskyDetection verifies that husky detection skips
+// all hook installations and returns nil.
+func TestInstallGitHooks_HuskyDetection(t *testing.T) {
+	repoDir := makeGitRepo(t)
+
+	huskyDir := filepath.Join(repoDir, ".husky")
+	if err := os.MkdirAll(huskyDir, 0o755); err != nil {
+		t.Fatalf("create .husky: %v", err)
+	}
+
+	opts := install.HookInstallOptions{RepoPath: repoDir}
+	if err := install.InstallGitHooks(opts); err != nil {
+		t.Fatalf("InstallGitHooks with husky: %v", err)
+	}
+
+	hooksDir := filepath.Join(repoDir, ".git", "hooks")
+	for _, hookName := range []string{"pre-push", "post-checkout", "post-merge", "post-rewrite"} {
+		hookPath := filepath.Join(hooksDir, hookName)
+		if _, err := os.Stat(hookPath); err == nil {
+			t.Errorf("%s hook should not be written when husky is detected", hookName)
+		}
+	}
+}
+
+// TestInstallGitHooks_NoGitRepo verifies that an error is returned when there
+// is no .git directory.
+func TestInstallGitHooks_NoGitRepo(t *testing.T) {
+	noGitDir := t.TempDir()
+	opts := install.HookInstallOptions{RepoPath: noGitDir}
+	if err := install.InstallGitHooks(opts); err == nil {
+		t.Error("expected error when .git/hooks does not exist")
+	}
+}
+
+// TestInstallGitHooks_PostCheckoutBranchOnly verifies that the post-checkout
+// hook contains the branch-switch guard (arg $3 == 1).
+func TestInstallGitHooks_PostCheckoutBranchOnly(t *testing.T) {
+	repoDir := makeGitRepo(t)
+
+	opts := install.HookInstallOptions{RepoPath: repoDir}
+	if err := install.InstallGitHooks(opts); err != nil {
+		t.Fatalf("InstallGitHooks: %v", err)
+	}
+
+	hookPath := filepath.Join(repoDir, ".git", "hooks", "post-checkout")
+	data, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read post-checkout hook: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, `${3:-0}`) {
+		t.Errorf("post-checkout hook should guard on arg $3 (branch switch), got: %q", content)
+	}
+}
+
+// TestInstallGitHooks_DoesNotBreakPrePush verifies that the existing
+// InstallPrePushHook still works correctly after #2222 changes.
+func TestInstallGitHooks_DoesNotBreakPrePush(t *testing.T) {
+	repoDir := makeGitRepo(t)
+
+	opts := install.HookInstallOptions{RepoPath: repoDir}
+	if err := install.InstallPrePushHook(opts); err != nil {
+		t.Fatalf("InstallPrePushHook: %v", err)
+	}
+
+	hookPath := filepath.Join(repoDir, ".git", "hooks", "pre-push")
+	assertPrePushHookExists(t, hookPath)
+
+	// Verify the other 3 hooks were NOT installed by InstallPrePushHook.
+	hooksDir := filepath.Join(repoDir, ".git", "hooks")
+	for _, hookName := range []string{"post-checkout", "post-merge", "post-rewrite"} {
+		p := filepath.Join(hooksDir, hookName)
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("InstallPrePushHook should not create %s hook", hookName)
+		}
+	}
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+// assertHookExists checks that a hook file exists, is executable, and contains
+// the archigraph managed block markers.
+func assertHookExists(t *testing.T, hookName, hookPath string) {
+	t.Helper()
+
+	info, err := os.Stat(hookPath)
+	if err != nil {
+		t.Fatalf("%s hook not found at %s: %v", hookName, hookPath, err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Errorf("%s hook at %s is not executable (mode %v)", hookName, hookPath, info.Mode())
+	}
+
+	data, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read %s hook: %v", hookName, err)
+	}
+	content := string(data)
+
+	if !strings.HasPrefix(content, "#!/bin/sh") {
+		t.Errorf("%s hook does not start with shebang", hookName)
+	}
+
+	beginMarker := "# >>> archigraph " + hookName + " >>>"
+	endMarker := "# <<< archigraph " + hookName + " <<<"
+	if !strings.Contains(content, beginMarker) {
+		t.Errorf("%s hook missing begin marker %q; content: %q", hookName, beginMarker, content)
+	}
+	if !strings.Contains(content, endMarker) {
+		t.Errorf("%s hook missing end marker %q; content: %q", hookName, endMarker, content)
+	}
+}
+
+// ── legacy helpers (unchanged) ────────────────────────────────────────────────
 
 // makeGitRepo creates a temporary directory with a minimal .git structure.
 func makeGitRepo(t *testing.T) string {

@@ -10,12 +10,14 @@ import (
 
 // newInstallHooksCmd returns the `archigraph install-hooks` subcommand.
 //
-// It installs a pre-push git hook into the current (or specified) repo's
-// .git/hooks/pre-push that runs `archigraph doctor --quick` before every
-// push. The hook warns on drift but never blocks the push.
+// It installs 4 git hooks into the current (or specified) repo's .git/hooks/:
+//   - pre-push        — runs `archigraph doctor --quick` before every push
+//   - post-checkout   — signals daemon on branch switch
+//   - post-merge      — signals daemon after merge
+//   - post-rewrite    — signals daemon after rebase/amend
 //
 // If husky, lefthook, or pre-commit is detected in the repo, the command
-// prints advice on how to add the hook via those tools instead of writing
+// prints advice on how to add the hooks via those tools instead of writing
 // directly to .git/hooks/.
 func newInstallHooksCmd() *cobra.Command {
 	var (
@@ -26,15 +28,23 @@ func newInstallHooksCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install-hooks",
-		Short: "Install the archigraph pre-push hook into the current repo",
-		Long: `Install a pre-push git hook that runs 'archigraph doctor --quick'
-before every push. The hook warns on drift but never blocks the push.
+		Short: "Install archigraph git hooks into the current repo (pre-push, post-checkout, post-merge, post-rewrite)",
+		Long: `Install 4 archigraph-managed git hooks into the repo's .git/hooks/:
 
-If husky, lefthook, or pre-commit is detected in the repo, the command
-prints instructions for adding the hook via those tools instead.
+  pre-push        Runs 'archigraph doctor --quick' before every push.
+                  Warns on drift but never blocks the push.
+  post-checkout   Signals the daemon to mark the new ref as HOT when
+                  switching branches.
+  post-merge      Signals the daemon to trigger an incremental reindex
+                  after a git merge or git pull.
+  post-rewrite    Signals the daemon to trigger an incremental reindex
+                  after a git rebase or git commit --amend.
 
-The hook is idempotent: running install-hooks a second time replaces
-the existing managed block without touching user-written hook content.`,
+All hooks are idempotent: running install-hooks a second time replaces
+the managed block without touching user-written hook content.
+
+If husky, lefthook, or pre-commit is detected, the command prints
+instructions for adding the hooks via those tools instead.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 
@@ -44,15 +54,17 @@ the existing managed block without touching user-written hook content.`,
 				Force:    force,
 			}
 
-			if err := install.InstallPrePushHook(opts); err != nil {
+			if err := install.InstallGitHooks(opts); err != nil {
 				fmt.Fprintf(out, "✗ install-hooks failed: %v\n", err)
 				return err
 			}
 
 			if !dryRun {
-				fmt.Fprintln(out, "✓ archigraph pre-push hook installed")
-				fmt.Fprintln(out, "  The hook runs 'archigraph doctor --quick' before every push.")
-				fmt.Fprintln(out, "  It warns on drift but never blocks the push.")
+				fmt.Fprintln(out, "✓ archigraph git hooks installed (pre-push, post-checkout, post-merge, post-rewrite)")
+				fmt.Fprintln(out, "  pre-push:      runs 'archigraph doctor --quick' before every push")
+				fmt.Fprintln(out, "  post-checkout: signals daemon on branch switch")
+				fmt.Fprintln(out, "  post-merge:    signals daemon after merge")
+				fmt.Fprintln(out, "  post-rewrite:  signals daemon after rebase/amend")
 			}
 			return nil
 		},
@@ -62,6 +74,6 @@ the existing managed block without touching user-written hook content.`,
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"print what would be written without making changes")
 	cmd.Flags().BoolVar(&force, "force", false,
-		"overwrite an existing pre-push hook (replaces the managed block)")
+		"overwrite existing hooks (replaces the managed block)")
 	return cmd
 }
