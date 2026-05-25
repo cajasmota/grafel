@@ -1,8 +1,11 @@
 package cli
 
-// Tests for the storage-discipline helpers introduced by #2190:
-//   - `archigraph docgen migrate-in-repo`
-//   - `archigraph docgen audit`
+// Tests for the storage-discipline helpers introduced by #2190 and the
+// output-discipline helpers introduced by #2194:
+//   - `archigraph docgen migrate-in-repo`   (#2190)
+//   - `archigraph docgen audit`             (#2190)
+//   - `archigraph docgen cleanup-scaffolding` (#2194)
+//   - ssgArtifactReason / findSSGScaffoldingArtifacts unit tests
 //
 // Fixtures use synthetic ("client-fixture-X") directory names — no real
 // client or product names appear in any test path.
@@ -368,5 +371,232 @@ func seedRegistry(t *testing.T, tmpDir, cfgPath string) {
 	data, _ := json.Marshal(reg)
 	if err := os.WriteFile(regPath, data, 0o644); err != nil {
 		t.Fatalf("write registry: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// OUTPUT DISCIPLINE (#2194) — ssgArtifactReason unit tests
+// ---------------------------------------------------------------------------
+
+func TestSsgArtifactReason_Vitepress(t *testing.T) {
+	got := ssgArtifactReason(".vitepress", true)
+	if got == "" {
+		t.Error("expected non-empty reason for .vitepress dir")
+	}
+	if !strings.Contains(strings.ToLower(got), "vitepress") {
+		t.Errorf("expected 'vitepress' in reason, got %q", got)
+	}
+}
+
+func TestSsgArtifactReason_Docusaurus(t *testing.T) {
+	got := ssgArtifactReason(".docusaurus", true)
+	if got == "" {
+		t.Error("expected non-empty reason for .docusaurus dir")
+	}
+}
+
+func TestSsgArtifactReason_Sphinx(t *testing.T) {
+	got := ssgArtifactReason("sphinx", true)
+	if got == "" {
+		t.Error("expected non-empty reason for sphinx dir")
+	}
+}
+
+func TestSsgArtifactReason_MkdocsYml(t *testing.T) {
+	got := ssgArtifactReason("mkdocs.yml", false)
+	if got == "" {
+		t.Error("expected non-empty reason for mkdocs.yml")
+	}
+}
+
+func TestSsgArtifactReason_ConfigTs(t *testing.T) {
+	got := ssgArtifactReason("config.ts", false)
+	if got == "" {
+		t.Error("expected non-empty reason for config.ts")
+	}
+}
+
+func TestSsgArtifactReason_PackageJson(t *testing.T) {
+	got := ssgArtifactReason("package.json", false)
+	if got == "" {
+		t.Error("expected non-empty reason for package.json at docs root")
+	}
+}
+
+func TestSsgArtifactReason_CleanFile(t *testing.T) {
+	for _, name := range []string{"index.md", "overview.md", "README.md", "score.json", "plan.md"} {
+		got := ssgArtifactReason(name, false)
+		if got != "" {
+			t.Errorf("expected empty reason for clean file %q, got %q", name, got)
+		}
+	}
+}
+
+func TestSsgArtifactReason_VitepressAsFile(t *testing.T) {
+	// .vitepress as a FILE (not dir) should not be flagged.
+	got := ssgArtifactReason(".vitepress", false)
+	if got != "" {
+		t.Errorf("expected empty reason for .vitepress as file, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// OUTPUT DISCIPLINE (#2194) — findSSGScaffoldingArtifacts unit tests
+// ---------------------------------------------------------------------------
+
+func TestFindSSGScaffoldingArtifacts_NoArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+	docsDir := filepath.Join(tmpDir, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Plant only clean markdown files.
+	for _, f := range []string{"index.md", "overview.md"} {
+		if err := os.WriteFile(filepath.Join(docsDir, f), []byte("# doc"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	artifacts := findSSGScaffoldingArtifacts([]string{docsDir})
+	if len(artifacts) != 0 {
+		t.Errorf("expected 0 artifacts in clean docs dir, got %d: %v", len(artifacts), artifacts)
+	}
+}
+
+func TestFindSSGScaffoldingArtifacts_VitePress(t *testing.T) {
+	tmpDir := t.TempDir()
+	docsDir := filepath.Join(tmpDir, "docs")
+	if err := os.MkdirAll(filepath.Join(docsDir, ".vitepress"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	artifacts := findSSGScaffoldingArtifacts([]string{docsDir})
+	if len(artifacts) != 1 {
+		t.Fatalf("expected 1 artifact (.vitepress), got %d: %v", len(artifacts), artifacts)
+	}
+	if !strings.Contains(artifacts[0].path, ".vitepress") {
+		t.Errorf("expected .vitepress in artifact path, got %q", artifacts[0].path)
+	}
+}
+
+func TestFindSSGScaffoldingArtifacts_MkdocsYml(t *testing.T) {
+	tmpDir := t.TempDir()
+	docsDir := filepath.Join(tmpDir, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "mkdocs.yml"), []byte("site_name: test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	artifacts := findSSGScaffoldingArtifacts([]string{docsDir})
+	if len(artifacts) != 1 {
+		t.Fatalf("expected 1 artifact (mkdocs.yml), got %d: %v", len(artifacts), artifacts)
+	}
+}
+
+func TestFindSSGScaffoldingArtifacts_MultipleRoots(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Root 1: clean.
+	root1 := filepath.Join(tmpDir, "clean")
+	if err := os.MkdirAll(root1, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root1, "index.md"), []byte("# doc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Root 2: has .vitepress dir + mkdocs.yml.
+	root2 := filepath.Join(tmpDir, "dirty")
+	if err := os.MkdirAll(filepath.Join(root2, ".vitepress"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root2, "mkdocs.yml"), []byte("site_name: test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	artifacts := findSSGScaffoldingArtifacts([]string{root1, root2})
+	if len(artifacts) != 2 {
+		t.Errorf("expected 2 artifacts, got %d: %v", len(artifacts), artifacts)
+	}
+}
+
+// TestCleanupScaffoldingCmd_RemovesArtifactsWithYes verifies the --yes flag
+// auto-removes all detected SSG-scaffolding artifacts without prompting.
+func TestCleanupScaffoldingCmd_RemovesArtifactsWithYes(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath, repoA, _ := makeFixtureGroup(t, tmpDir)
+	t.Setenv("ARCHIGRAPH_HOME", filepath.Join(tmpDir, "store"))
+	seedRegistry(t, tmpDir, cfgPath)
+
+	// Plant a .vitepress dir in repoA/docs/ (simulating a misbehaving agent).
+	repoADocs := filepath.Join(repoA, "docs")
+	vitepressDir := filepath.Join(repoADocs, ".vitepress")
+	if err := os.MkdirAll(vitepressDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vitepressDir, "config.ts"), []byte("export default {}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Also plant a mkdocs.yml.
+	if err := os.WriteFile(filepath.Join(repoADocs, "mkdocs.yml"), []byte("site_name: x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newDocgenCleanupScaffoldingCmd()
+	cmd.SetArgs([]string{"--group", "fixture-group", "--yes"})
+
+	var outBuf strings.Builder
+	cmd.SetOut(&outBuf)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cleanup-scaffolding returned error: %v", err)
+	}
+
+	out := outBuf.String()
+	if !strings.Contains(out, "removed") {
+		t.Errorf("expected 'removed' in output, got:\n%s", out)
+	}
+
+	// The artifacts must be gone.
+	if _, statErr := os.Stat(vitepressDir); statErr == nil {
+		t.Error(".vitepress dir still exists after cleanup-scaffolding --yes")
+	}
+	if _, statErr := os.Stat(filepath.Join(repoADocs, "mkdocs.yml")); statErr == nil {
+		t.Error("mkdocs.yml still exists after cleanup-scaffolding --yes")
+	}
+}
+
+// TestCleanupScaffoldingCmd_NoArtifacts verifies idempotency on a clean tree.
+func TestCleanupScaffoldingCmd_NoArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath, repoA, _ := makeFixtureGroup(t, tmpDir)
+	t.Setenv("ARCHIGRAPH_HOME", filepath.Join(tmpDir, "store"))
+	seedRegistry(t, tmpDir, cfgPath)
+
+	// Clean docs dir (only markdown).
+	repoADocs := filepath.Join(repoA, "docs")
+	if err := os.MkdirAll(repoADocs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoADocs, "index.md"), []byte("# doc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newDocgenCleanupScaffoldingCmd()
+	cmd.SetArgs([]string{"--group", "fixture-group", "--yes"})
+
+	var outBuf strings.Builder
+	cmd.SetOut(&outBuf)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cleanup-scaffolding on clean tree returned error: %v", err)
+	}
+
+	out := outBuf.String()
+	if !strings.Contains(out, "No SSG-scaffolding artifacts detected") {
+		t.Errorf("expected clean message, got:\n%s", out)
 	}
 }
