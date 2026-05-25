@@ -413,6 +413,15 @@ const (
 	// kept narrow today to the DRF extractor producer.
 	RelationshipKindResolvedBy RelationshipKind = "RESOLVED_BY"
 
+	// #2142: DRF plain serializer field → custom field class.
+	//   USES_SCHEMA : SCOPE.Schema/field → custom field class entity
+	// Emitted by the DRF serializer-fields extractor when a plain
+	// serializers.Serializer field references a capitalised, non-DRF-scalar
+	// type (e.g. MoneyField, PhoneField) that may be a project-local custom
+	// field class. Lets the resolver bind the field to its custom type entity
+	// and prevents the field from becoming an orphan node.
+	RelationshipKindUsesSchema RelationshipKind = "USES_SCHEMA"
+
 	// #2183 — Monorepo M6: Bazel BUILD-graph fusion.
 	//   BAZEL_DEPENDS_ON : bazel_target → bazel_target
 	//     Emitted for every entry in a BUILD rule's deps= list that can be
@@ -507,6 +516,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindConfigures,
 		// #2008 DRF SerializerMethodField → method link:
 		RelationshipKindResolvedBy,
+		// #2142 DRF plain serializer field → custom field class:
+		RelationshipKindUsesSchema,
 		// #2183 Bazel BUILD-graph fusion:
 		RelationshipKindBazelDependsOn,
 		RelationshipKindBazelDepStatus,
