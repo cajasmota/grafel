@@ -19,7 +19,7 @@ You are STRICTLY FORBIDDEN from using:
 The MCP daemon has the resolved graph; trust it. Use Bash ONLY for:
 - Reading specific source line ranges that `archigraph_get_source` returns
 - Running `archigraph docgen --llm-mode=apply` at the end of Pass 20
-- Writing output files under `~/.archigraph/docs/<group>/...`
+- Writing output files into the staging directory (`<project>/.archigraph/staging/<run_id>/`)
 
 If the MCP returns empty or seems wrong, file a side ticket and ABORT --
 do NOT silently substitute grep results for graph queries.
@@ -38,9 +38,10 @@ ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix
 ### Tool whitelist
 
 - `mcp__archigraph__*` (all archigraph MCP tools) -- primary navigation
-- `Read` -- source_window reads (specific line ranges from `archigraph_get_source` output) and output file reads/writes
-- `Write` / `Edit` -- output doc files under `~/.archigraph/docs/<group>/...` only
-- `Bash` -- ONLY for `archigraph docgen --llm-mode=apply` invocations and writing output files
+- `archigraph_docgen_start_run` / `_status` / `_validate` / `_promote` / `_abort` / `_list` -- docgen lifecycle MCP tools (epic #2207, landed #2214)
+- `Read` -- source_window reads (specific line ranges from `archigraph_get_source` output) and output file reads
+- `Write` / `Edit` -- output doc files into the staging directory ONLY (`<staging_path>/<relative-path>`)
+- `Bash` -- ONLY for `archigraph docgen --llm-mode=apply` invocations and writing output files to staging
 
 Explicitly EXCLUDED for entity discovery:
 - `Grep` for structural/inventory queries (these enable the grep-fallback anti-pattern)
@@ -100,54 +101,45 @@ single group-level directory `~/.archigraph/docs/<group>/business/`, regardless
 of how many repos make up the group. The webui surfaces this set directly under
 the Business tab.
 
-## CRITICAL STORAGE DISCIPLINE (enforced on every pass — parallel to TOOL DISCIPLINE)
-===========================
+## Staging-dir + atomic promote architecture (#2207, #2214, #2215)
 
-All generated documentation MUST be written under:
-  `~/.archigraph/docs/<group>/...`
+Documentation is written into a **staging directory** during the run and
+atomically promoted to the canonical store only when all passes complete without
+errors. This makes the 2026-05-25 docgen-writes-to-repo incident (#2191)
+architecturally impossible — the daemon owns the move from staging to canonical.
 
-This applies to BOTH the technical tier and the business tier. The `<group>` value
-comes from `archigraph_whoami` (called in the Pre-flight assertion above). Every pass
-computes `OUTPUT_ROOT=$HOME/.archigraph/docs/<group>/` and verifies it is writable
-before writing any file.
+### Flow
 
-You are STRICTLY FORBIDDEN from writing documentation files into:
-- The source repo's working tree (anywhere under `<repo>/docs/`, `<repo>/doc/`, etc.)
-- The CWD unless CWD is already inside `~/.archigraph/docs/<group>/`
-- Any path that is a git working directory
+1. **Pass 2** calls `archigraph_docgen_start_run(group="<group>")` → receives
+   `run_id` and `staging_path` (`<project>/.archigraph/staging/<run_id>/`).
+2. **Passes 3–19** write every doc file natively (Write tool) into
+   `<staging_path>/<relative-path>`.
+3. **Pass 8** and **Pass 14** call `archigraph_docgen_validate(run_id)` to lint
+   the staging tree for broken links and frontmatter errors.
+4. **Pass 20** (or the orchestrator after Pass 19) calls
+   `archigraph_docgen_promote(run_id)` to atomically move staging → canonical
+   (`~/.archigraph/docs/<group>/`). The daemon refuses promote if SSG
+   scaffolding is detected (physical OUTPUT DISCIPLINE guard).
 
-If you find yourself about to write to a repo path, STOP and redirect to the
-store path. Writing elsewhere breaks the storage contract, pollutes the user's
-source repo with commit noise, and produces output invisible to the daemon dashboard.
+### Storage contract (enforced by daemon)
+
+The daemon's `_promote` handler physically enforces:
+- **No SSG scaffolding** — if `.vitepress`, `.docusaurus`, `mkdocs.yml`,
+  `package.json`, `config.ts`, or similar files exist in staging, promote is
+  refused with a clear error.
+- **No in-repo writes** — staging lives under `<project>/.archigraph/staging/`,
+  which the daemon owns; writers never have a path that touches the user's
+  working tree.
+
+The old STORAGE DISCIPLINE and OUTPUT DISCIPLINE prompt blocks have been removed
+(#2215) because the daemon now enforces these contracts physically. TOOL
+DISCIPLINE (#2177) is retained — MCP-first graph navigation is independent of
+write target.
 
 **Recovery:** If you encounter legacy in-repo docs from a pre-#1624 run, use
 `archigraph docgen migrate-in-repo <group>` to move them to the store. Use
 `archigraph docgen audit <group>` (or `archigraph doctor --audit-docs`) to detect
 in-repo docgen output without moving anything.
-
-The daemon dashboard reads exclusively from `~/.archigraph/docs/<group>/`.
-Closes #1624. Parallel to TOOL DISCIPLINE (#2177). Enforced by #2190.
-
-## CRITICAL OUTPUT DISCIPLINE (enforced on every pass — parallel to TOOL DISCIPLINE + STORAGE DISCIPLINE)
-==========================
-
-The generate-docs skill produces markdown files in the canonical store
-at `~/.archigraph/docs/<group>/`. It does NOT produce:
-- VitePress / Docusaurus / Sphinx / mkdocs scaffolding
-- `package.json` or any build manifests for static site generators
-- Any non-markdown asset that wraps the docs for publishing
-- `.gitignore` entries
-
-Publishing is downstream — handled by the archigraph dashboard or
-external tooling. If you find yourself about to write a `config.ts`,
-`package.json`, `mkdocs.yml`, `.vitepress/config.ts`, or any build
-manifest, STOP. The skill's job is content, not infrastructure.
-
-The apply step (`archigraph docgen --llm-mode=apply`) actively refuses
-writes to SSG-scaffolding paths. Any result file that names such a path
-will be rejected with a logged violation. Closes #2194.
-Parallel to TOOL DISCIPLINE (#2177) and STORAGE DISCIPLINE (#2193).
-Third instance of the agent-treats-skill-as-suggestion pattern.
 
 ## LLM-mode orchestrate (Pass 20)
 
@@ -701,8 +693,15 @@ The skill is built around the archigraph MCP server. The agent should call these
 
 ## Output layout
 
-For each repo `<r>` in the group, the skill writes into
-`~/.archigraph/docs/<group>/<r>/` (NOT the repo working tree — #1624):
+**During the run:** files are written into the staging directory
+`<project>/.archigraph/staging/<run_id>/` (set by Pass 2). The layout mirrors
+the canonical layout below; `<staging_path>/` substitutes for
+`~/.archigraph/docs/<group>/`.
+
+**After promote** (`archigraph_docgen_promote` in Pass 20): the daemon moves
+staging to canonical `~/.archigraph/docs/<group>/` atomically.
+
+For each repo `<r>` in the group, the canonical output layout is:
 
 ```
 ~/.archigraph/docs/<group>/<r>/
@@ -858,3 +857,4 @@ After applying, `archigraph_stats` now includes `fidelity` (0–1 ratio), `fidel
 - `skills/generate-docs/templates/` - per-kind frontmatter template files for Pass 13.
 - `skills/generate-docs/examples/` - fully-populated example enriched doc files per kind.
 - `docs/agent-hosts.md` - how to configure Haiku in Claude Code, Cursor, and Windsurf before running Pass 13 (see #1288).
+- `internal/mcp/docgen.go` - the 6 `archigraph_docgen_*` MCP tools: `start_run`, `status`, `validate`, `promote`, `abort`, `list`. Landed in #2214 (epic #2207). `start_run` creates the staging directory; `validate` lints frontmatter + links; `promote` atomically moves staging → canonical; `abort` cleans up an aborted run. The skill prompts were updated to use these tools in #2215.

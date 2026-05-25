@@ -23,59 +23,23 @@ do NOT silently substitute grep results for graph queries.
 Call `archigraph_whoami` before doing anything else in this pass. If it errors:
 ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
-## CRITICAL STORAGE DISCIPLINE
-===========================
-All generated documentation MUST be written under:
-  `~/.archigraph/docs/<group>/...`
-
-Determine `<group>` via the `archigraph_whoami` MCP call (the Pre-flight assertion
-above). Pass it through every subsequent file write as `${OUTPUT_ROOT}`.
-
-You are STRICTLY FORBIDDEN from writing documentation files into:
-- The source repo's working tree (anywhere under `<repo>/docs/`, `<repo>/doc/`, etc.)
-- The CWD unless CWD is already inside `~/.archigraph/docs/<group>/`
-- Any path that is a git working directory
-
-If you find yourself about to write to a repo path, STOP. The skill assumes
-the archigraph-owned store. Writing elsewhere breaks the storage contract
-and pollutes the user's source repo.
-
-The daemon dashboard reads from `~/.archigraph/docs/<group>/` -- any output
-written elsewhere is invisible to it.
-
-### Pre-flight storage assertion -- SECOND action in this pass
-
-Compute and verify the output root immediately after the `archigraph_whoami` call:
-
-```bash
-OUTPUT_ROOT="$HOME/.archigraph/docs/<group>/"   # substitute <group> from whoami
-mkdir -p "$OUTPUT_ROOT"
-echo "OUTPUT_ROOT=$OUTPUT_ROOT"
-```
-
-All file writes in this pass MUST use `${OUTPUT_ROOT}<relative-path>`. Never write to any
-other location. If `mkdir -p` fails, ABORT: "Cannot create output directory at $OUTPUT_ROOT."
-## CRITICAL OUTPUT DISCIPLINE
-==========================
-The generate-docs skill produces markdown files in the canonical store
-at `~/.archigraph/docs/<group>/`. It does NOT produce:
-- VitePress / Docusaurus / Sphinx / mkdocs scaffolding
-- `package.json` or any build manifests for static site generators
-- Any non-markdown asset that wraps the docs for publishing
-- `.gitignore` entries
-
-Publishing is downstream — handled by the archigraph dashboard or
-external tooling. If you find yourself about to write a `config.ts`,
-`package.json`, `mkdocs.yml`, `.vitepress/config.ts`, or any build
-manifest, STOP. The skill's job is content, not infrastructure.
-
-
-
 
 ---
 
-
 Convert the raw community list from Pass 1 into a documentation plan. The plan is the contract that Passes 3-6 execute against.
+
+## Staging run
+
+**FIRST action in this pass** (after `archigraph_whoami`): call `archigraph_docgen_start_run` to create a staging run for this group. Capture `run_id` and `staging_path` from the response and carry them through every subsequent write in this pass and all downstream passes.
+
+```
+archigraph_docgen_start_run(group="<group>")
+# response: { "run_id": "<id>", "staging_path": "<project>/.archigraph/staging/<id>/" }
+```
+
+All doc files written in Passes 2–19 MUST target `<staging_path>/<relative-path>` rather than `~/.archigraph/docs/<group>/`. The daemon promotes the staging directory to canonical at the end of Pass 20 via `archigraph_docgen_promote`. Do NOT write to `~/.archigraph/docs/` directly.
+
+Pass the `run_id` and `staging_path` to every downstream writer subagent and the orchestrator.
 
 ## Inputs
 
@@ -115,11 +79,13 @@ For each module, estimate:
 
 ### Step 4 — Produce the plan file
 
-Write `~/.archigraph/groups/<group>/plan.json`:
+Write `~/.archigraph/groups/<group>/plan.json` (this is group metadata, NOT a doc file — write it to the groups directory directly, not to staging):
 
 ```json
 {
   "group": "<group>",
+  "run_id": "<run_id from archigraph_docgen_start_run>",
+  "staging_path": "<staging_path from archigraph_docgen_start_run>",
   "tiers": ["technical", "business"],
   "primary_repo": "<slug>",
   "volume_control": {

@@ -2,6 +2,10 @@
 
 ---
 
+## Staging path
+
+Read `run_id` and `staging_path` from `~/.archigraph/groups/<group>/plan.json` (written by Pass 2). All doc files produced by this pass MUST be written into `<staging_path>/<relative-path>` — NOT directly to `~/.archigraph/docs/<group>/`. Wherever this prompt says `~/.archigraph/docs/<group>/`, substitute `<staging_path>/`. The daemon promotes staging to canonical at the end of Pass 20.
+
 ## CRITICAL TOOL DISCIPLINE
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
@@ -23,98 +27,44 @@ do NOT silently substitute grep results for graph queries.
 Call `archigraph_whoami` before doing anything else in this pass. If it errors:
 ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
-## CRITICAL STORAGE DISCIPLINE
-===========================
-All generated documentation MUST be written under:
-  `~/.archigraph/docs/<group>/...`
-
-Determine `<group>` via the `archigraph_whoami` MCP call (the Pre-flight assertion
-above). Pass it through every subsequent file write as `${OUTPUT_ROOT}`.
-
-You are STRICTLY FORBIDDEN from writing documentation files into:
-- The source repo's working tree (anywhere under `<repo>/docs/`, `<repo>/doc/`, etc.)
-- The CWD unless CWD is already inside `~/.archigraph/docs/<group>/`
-- Any path that is a git working directory
-
-If you find yourself about to write to a repo path, STOP. The skill assumes
-the archigraph-owned store. Writing elsewhere breaks the storage contract
-and pollutes the user's source repo.
-
-The daemon dashboard reads from `~/.archigraph/docs/<group>/` -- any output
-written elsewhere is invisible to it.
-
-### Pre-flight storage assertion -- SECOND action in this pass
-
-Compute and verify the output root immediately after the `archigraph_whoami` call:
-
-```bash
-OUTPUT_ROOT="$HOME/.archigraph/docs/<group>/"   # substitute <group> from whoami
-mkdir -p "$OUTPUT_ROOT"
-echo "OUTPUT_ROOT=$OUTPUT_ROOT"
-```
-
-All file writes in this pass MUST use `${OUTPUT_ROOT}<relative-path>`. Never write to any
-other location. If `mkdir -p` fails, ABORT: "Cannot create output directory at $OUTPUT_ROOT."
-## CRITICAL OUTPUT DISCIPLINE
-==========================
-The generate-docs skill produces markdown files in the canonical store
-at `~/.archigraph/docs/<group>/`. It does NOT produce:
-- VitePress / Docusaurus / Sphinx / mkdocs scaffolding
-- `package.json` or any build manifests for static site generators
-- Any non-markdown asset that wraps the docs for publishing
-- `.gitignore` entries
-
-Publishing is downstream — handled by the archigraph dashboard or
-external tooling. If you find yourself about to write a `config.ts`,
-`package.json`, `mkdocs.yml`, `.vitepress/config.ts`, or any build
-manifest, STOP. The skill's job is content, not infrastructure.
-
-
-
 
 ---
-
 
 Two responsibilities:
 
 1. Validate that every relative link inside the generated docs resolves.
 2. Walk every pending cross-repo link candidate and decide accept/reject with a rationale.
 
-## Step 1 — Static link check
+## Step 1 — Static link check via MCP
 
-Apply `snippets/link-hygiene.md` and `snippets/anchor-contract.md` — they are the
-source of truth for what a valid link/anchor is. This pass enforces them across
-the whole tree (technical + business). For each generated markdown file, parse
-every `[text](path)` and confirm:
+Call `archigraph_docgen_validate` to lint frontmatter and cross-links across the
+entire staging tree in a single structured response. Pass the `run_id` from
+`plan.json`:
 
-- The path resolves to an existing file under a `docs/` tree (relative paths) or
-  a known anchor (`#section-slug`).
-- **No link points into a source-code directory** (`src/`, `core/`,
-  `dockerfile`, etc.). Those must be backticked paths, not links — rewrite any
-  that slipped through (link-hygiene rule 2).
-- **No bare-directory link** (`](modules/)`, `](reference/)`) without a real
-  index file target. Either repoint to a concrete page or to a generated
-  `<dir>/README.md` that exists; if neither exists, drop the link and leave the
-  text in backticks (link-hygiene rule 3).
-- **Relative paths use the filesystem dirname, prose uses the slug.** The
-  registry slug (`upvate-core`) and the on-disk dir (`upvate_core`) can differ.
-  A link path with the slug where the directory uses an underscore is the
-  `core-mobile → ../../upvate-core/docs/` 404 from the audit. Resolve the real
-  dirname from `inventory.json` `repo.path` and rewrite (link-hygiene rule 4).
-- The anchor matches the heading slug exactly per `snippets/anchor-contract.md`
-  slugification. Additionally verify each file's declared `anchors:` frontmatter
-  list: every declared anchor MUST have a matching heading in that same file
-  (the 17-mismatch bug). If a file declares anchors with no matching heading,
-  the writer built the list by hand — re-derive `anchors:` from the actual
-  headings (anchor-contract procedure) and fix in place.
-- **Don't keep links to optional pages that were never generated**
-  (`how-to/local-dev.md`, a missing `reference/` index): drop them
-  (link-hygiene rule 6).
+```
+archigraph_docgen_validate(run_id="<run_id>")
+# response: { "frontmatter_errors": [...], "link_errors": [...], "ok": true|false }
+```
 
-Broken links are auto-fixed where the target is unambiguous; otherwise log them
-and report at the end. The report's "Broken intra-doc links" section must be
-empty for the run to be considered clean — every broken link is either repaired
-or downgraded to a backticked identifier.
+Report every entry in `link_errors` to the user; these are the broken intra-doc
+links. Broken links must be repaired (or downgraded to backticked identifiers)
+before the run can be considered clean — the report's "Broken intra-doc links"
+section must be empty.
+
+The `archigraph_docgen_validate` tool applies the same rules as
+`snippets/link-hygiene.md` and `snippets/anchor-contract.md` (which remain the
+source-of-truth documentation for WHAT constitutes a valid link/anchor). The
+tool enforces them across the whole staging tree including:
+
+- Paths that resolve to existing files (relative links)
+- No links into source-code directories (`src/`, `core/`, `dockerfile`, etc.)
+- No bare-directory links without a real index target
+- Relative paths using the filesystem dirname (not the registry slug)
+- Anchor slugs matching actual headings; declared `anchors:` frontmatter matching headings
+- No links to optional pages that were never generated
+
+For any `link_error` the tool flags, auto-fix where the target is unambiguous;
+otherwise log it and escalate to the user.
 
 ## Step 2 — Cross-repo link candidates
 

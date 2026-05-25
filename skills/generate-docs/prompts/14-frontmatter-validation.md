@@ -23,57 +23,8 @@ do NOT silently substitute grep results for graph queries.
 Call `archigraph_whoami` before doing anything else in this pass. If it errors:
 ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
-## CRITICAL STORAGE DISCIPLINE
-===========================
-All generated documentation MUST be written under:
-  `~/.archigraph/docs/<group>/...`
-
-Determine `<group>` via the `archigraph_whoami` MCP call (the Pre-flight assertion
-above). Pass it through every subsequent file write as `${OUTPUT_ROOT}`.
-
-You are STRICTLY FORBIDDEN from writing documentation files into:
-- The source repo's working tree (anywhere under `<repo>/docs/`, `<repo>/doc/`, etc.)
-- The CWD unless CWD is already inside `~/.archigraph/docs/<group>/`
-- Any path that is a git working directory
-
-If you find yourself about to write to a repo path, STOP. The skill assumes
-the archigraph-owned store. Writing elsewhere breaks the storage contract
-and pollutes the user's source repo.
-
-The daemon dashboard reads from `~/.archigraph/docs/<group>/` -- any output
-written elsewhere is invisible to it.
-
-### Pre-flight storage assertion -- SECOND action in this pass
-
-Compute and verify the output root immediately after the `archigraph_whoami` call:
-
-```bash
-OUTPUT_ROOT="$HOME/.archigraph/docs/<group>/"   # substitute <group> from whoami
-mkdir -p "$OUTPUT_ROOT"
-echo "OUTPUT_ROOT=$OUTPUT_ROOT"
-```
-
-All file writes in this pass MUST use `${OUTPUT_ROOT}<relative-path>`. Never write to any
-other location. If `mkdir -p` fails, ABORT: "Cannot create output directory at $OUTPUT_ROOT."
-## CRITICAL OUTPUT DISCIPLINE
-==========================
-The generate-docs skill produces markdown files in the canonical store
-at `~/.archigraph/docs/<group>/`. It does NOT produce:
-- VitePress / Docusaurus / Sphinx / mkdocs scaffolding
-- `package.json` or any build manifests for static site generators
-- Any non-markdown asset that wraps the docs for publishing
-- `.gitignore` entries
-
-Publishing is downstream — handled by the archigraph dashboard or
-external tooling. If you find yourself about to write a `config.ts`,
-`package.json`, `mkdocs.yml`, `.vitepress/config.ts`, or any build
-manifest, STOP. The skill's job is content, not infrastructure.
-
-
-
 
 ---
-
 
 Validate every enriched doc file written by Pass 13. Catch schema drift between
 the skill output and the backend parser's expectations before the user sees a
@@ -82,24 +33,42 @@ blank panel in the dashboard.
 > **Read-only pass** — Pass 14 does not modify any doc file. It only reports.
 > Re-run Pass 13 to fix any entity with validation failures.
 
+> **Note:** Pass 14 and Pass 8 both call `archigraph_docgen_validate`. They are
+> not consolidated (out of scope for #2215) but the duplication is intentional:
+> Pass 8 focuses on link hygiene and cross-repo candidates; Pass 14 focuses on
+> enrichment frontmatter schema correctness. The `validate` response contains
+> both `frontmatter_errors` and `link_errors` — each pass reads the slice it owns.
+
 ## Inputs
 
-- `docgen-state.json` `GeneratedPaths` list — the set of files to validate.
-- The enriched doc files themselves.
+- `run_id` from `~/.archigraph/groups/<group>/plan.json` (written by Pass 2).
+- The enriched doc files in the staging directory.
 - The field matrix in `SKILL.md § Per-kind field matrix` — source of truth for
   which fields are consumed vs. prose-only.
 
 ## Procedure
 
-### Step 1 — Load file list
+### Step 1 — Run structured validation via MCP
 
-Read `docgen-state.json` for the group and collect all entries in `GeneratedPaths`.
+Call `archigraph_docgen_validate` with the `run_id` from `plan.json`:
+
+```
+archigraph_docgen_validate(run_id="<run_id>")
+# response: { "frontmatter_errors": [...], "link_errors": [...], "ok": true|false }
+```
+
+Each entry in `frontmatter_errors` includes: `path`, `entity_id`, `kind`, `check`, `detail`.
+Use these as the primary validation signal. The manual per-file checks below supplement the
+MCP result with daemon-aware context (entity kind lookup, merged_into integrity).
+
+Collect all entries in `frontmatter_errors`.
 Filter to files that contain a frontmatter block (i.e., the file begins with `---`).
 
 ### Step 2 — Per-file validation
 
-For each file in the filtered list, run all checks below. Record pass/fail per
-check per file.
+For each file flagged in `frontmatter_errors` (and for any additional enrichment
+file in the staging directory not yet covered), run all checks below. Record
+pass/fail per check per file.
 
 #### Check A — Structural validity
 

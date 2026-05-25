@@ -2,6 +2,10 @@
 
 ---
 
+## Staging path
+
+Read `run_id` and `staging_path` from `~/.archigraph/groups/<group>/plan.json` (written by Pass 2). All doc files produced by this pass MUST be written into `<staging_path>/<relative-path>` — NOT directly to `~/.archigraph/docs/<group>/`. Wherever this prompt says `~/.archigraph/docs/<group>/`, substitute `<staging_path>/`. The daemon promotes staging to canonical at the end of Pass 20.
+
 ## CRITICAL TOOL DISCIPLINE
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
@@ -23,57 +27,8 @@ do NOT silently substitute grep results for graph queries.
 Call `archigraph_whoami` before doing anything else in this pass. If it errors:
 ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
-## CRITICAL STORAGE DISCIPLINE
-===========================
-All generated documentation MUST be written under:
-  `~/.archigraph/docs/<group>/...`
-
-Determine `<group>` via the `archigraph_whoami` MCP call (the Pre-flight assertion
-above). Pass it through every subsequent file write as `${OUTPUT_ROOT}`.
-
-You are STRICTLY FORBIDDEN from writing documentation files into:
-- The source repo's working tree (anywhere under `<repo>/docs/`, `<repo>/doc/`, etc.)
-- The CWD unless CWD is already inside `~/.archigraph/docs/<group>/`
-- Any path that is a git working directory
-
-If you find yourself about to write to a repo path, STOP. The skill assumes
-the archigraph-owned store. Writing elsewhere breaks the storage contract
-and pollutes the user's source repo.
-
-The daemon dashboard reads from `~/.archigraph/docs/<group>/` -- any output
-written elsewhere is invisible to it.
-
-### Pre-flight storage assertion -- SECOND action in this pass
-
-Compute and verify the output root immediately after the `archigraph_whoami` call:
-
-```bash
-OUTPUT_ROOT="$HOME/.archigraph/docs/<group>/"   # substitute <group> from whoami
-mkdir -p "$OUTPUT_ROOT"
-echo "OUTPUT_ROOT=$OUTPUT_ROOT"
-```
-
-All file writes in this pass MUST use `${OUTPUT_ROOT}<relative-path>`. Never write to any
-other location. If `mkdir -p` fails, ABORT: "Cannot create output directory at $OUTPUT_ROOT."
-## CRITICAL OUTPUT DISCIPLINE
-==========================
-The generate-docs skill produces markdown files in the canonical store
-at `~/.archigraph/docs/<group>/`. It does NOT produce:
-- VitePress / Docusaurus / Sphinx / mkdocs scaffolding
-- `package.json` or any build manifests for static site generators
-- Any non-markdown asset that wraps the docs for publishing
-- `.gitignore` entries
-
-Publishing is downstream — handled by the archigraph dashboard or
-external tooling. If you find yourself about to write a `config.ts`,
-`package.json`, `mkdocs.yml`, `.vitepress/config.ts`, or any build
-manifest, STOP. The skill's job is content, not infrastructure.
-
-
-
 
 ---
-
 
 Produce structured YAML frontmatter enrichments for every `http_endpoint`,
 `process_flow`, and `message_topic` entity in the group. The dashboard Paths,
