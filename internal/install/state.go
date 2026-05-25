@@ -39,7 +39,13 @@ type CLIRecord struct {
 // SkillRecord holds the per-file SHA-256 manifest for one installed skill.
 type SkillRecord struct {
 	// Files maps relative-path-within-skill → hex SHA-256 of that file.
-	Files map[string]string `json:"files"`
+	// Populated in COPY mode; empty (or nil) in DEV mode (skills are live symlinks).
+	Files map[string]string `json:"files,omitempty"`
+
+	// DevTarget is the absolute path of the repo skill directory that the
+	// symlink/junction points to.  Only set when install_mode = "dev".
+	// Doctor uses this to verify the symlink target still matches.
+	DevTarget string `json:"dev_target,omitempty"`
 }
 
 // MCPRecord holds the MCP registration state.

@@ -70,7 +70,10 @@ func installSkillsInClaudeConfigs(out io.Writer, binPath, skillsSourceDir string
 // transaction: skill copy, MCP registration, daemon restart, .gitignore
 // update, and install.json state persistence. This is the new default
 // per epic #2197; use --copy=false to revert to the legacy symlink path.
-// TODO(#2212): --dev flag for symlink mode.
+//
+// The --dev flag (issue #2212) runs the DEV-mode install transaction:
+// identical to --copy but symlinks skills from the repo working tree
+// instead of copying them, so edits are instantly visible to Claude Code.
 func newInstallCmd() *cobra.Command {
 	var foreground bool
 	var claudeConfigDirs []string
@@ -78,6 +81,7 @@ func newInstallCmd() *cobra.Command {
 	var skipSkillLink bool
 	var installMode string
 	var copyMode bool
+	var devMode bool
 	var force bool
 
 	cmd := &cobra.Command{
@@ -127,6 +131,19 @@ Claude Code config directory's skills/ subdirectory.`,
 			bin, err := os.Executable()
 			if err != nil {
 				return fmt.Errorf("resolve binary path: %w", err)
+			}
+
+			// ── DEV mode path (issue #2212) ────────────────────────────────────
+			// When --dev is set, run the DEV-mode install: symlinks skills from
+			// the repo working tree so edits are instantly visible.  --dev takes
+			// precedence over --copy when both are specified.
+			if devMode {
+				return runInstallDev(out, install.DevOptions{
+					BinPath:          bin,
+					SkillsSourceDir:  skillsSourceDir,
+					ClaudeConfigDirs: claudeConfigDirs,
+					Force:            force,
+				})
 			}
 
 			// ── COPY mode path (issue #2210, epic #2197) ──────────────────────
@@ -224,9 +241,60 @@ Claude Code config directory's skills/ subdirectory.`,
 	// #2210: COPY mode flags.
 	cmd.Flags().BoolVar(&copyMode, "copy", true,
 		"run the full atomic COPY-mode install transaction (copies skills, registers MCP, restarts daemon, updates .gitignore, writes install.json)")
+	// #2212: DEV mode flag.
+	cmd.Flags().BoolVar(&devMode, "dev", false,
+		"run the DEV-mode install transaction: symlinks skills from the repo working tree instead of copying them (for contributors; --dev takes precedence over --copy)")
 	cmd.Flags().BoolVar(&force, "force", false,
 		"bypass the partial-install guard; use after a failed install or 'archigraph uninstall && archigraph install'")
 	return cmd
+}
+
+// runInstallDev runs the DEV-mode install transaction (issue #2212) and
+// prints a structured summary. Called from newInstallCmd when --dev is set.
+//
+// It warns the user when they are switching from a previous COPY install,
+// because the mode switch removes the old COPY skills and replaces them
+// with symlinks.  The user is advised that `archigraph uninstall &&
+// archigraph install --dev` is the one-command mode switch.
+func runInstallDev(out io.Writer, opts install.DevOptions) error {
+	result, err := install.RunDev(opts)
+	if err != nil {
+		fmt.Fprintf(out, "✗ install (dev mode) failed: %v\n", err)
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Run 'archigraph install --dev --force' to retry, or")
+		fmt.Fprintln(out, "'archigraph uninstall && archigraph install --dev' to start clean.")
+		return err
+	}
+
+	fmt.Fprintf(out, "✓ archigraph installed (dev/symlink mode)\n")
+	fmt.Fprintf(out, "  binary:  %s\n", result.CLIPath)
+	if len(result.CLISHA256) >= 16 {
+		fmt.Fprintf(out, "  sha256:  %s...\n", result.CLISHA256[:16])
+	}
+	if len(result.SkillsLinked) > 0 {
+		fmt.Fprintf(out, "  skills:  %d symlinked (live links to repo working tree)\n", len(result.SkillsLinked))
+	}
+	if len(result.SkillsFallbackCopied) > 0 {
+		fmt.Fprintf(out, "  skills:  %d fell back to COPY (symlink not available — privilege required?): %v\n",
+			len(result.SkillsFallbackCopied), result.SkillsFallbackCopied)
+	}
+	if len(result.MCPPaths) > 0 {
+		fmt.Fprintf(out, "  MCP:     registered in %d config file(s)\n", len(result.MCPPaths))
+		fmt.Fprintln(out, "           Restart Claude Code to load the archigraph MCP tools.")
+	}
+	if result.DaemonVersion != "" {
+		fmt.Fprintf(out, "  daemon:  %s\n", result.DaemonVersion)
+	}
+	if result.GitignoreRepo != "" {
+		fmt.Fprintf(out, "  .gitignore: /.archigraph/ added in %s\n", result.GitignoreRepo)
+	}
+	if result.StatePath != "" {
+		fmt.Fprintf(out, "  state:   %s\n", result.StatePath)
+	}
+	fmt.Fprintln(out, "")
+	fmt.Fprintln(out, "  Tip: to switch back to copy mode, run:")
+	fmt.Fprintln(out, "       archigraph uninstall && archigraph install")
+	return nil
 }
 
 // runInstallCopy runs the COPY-mode install transaction (issue #2210) and

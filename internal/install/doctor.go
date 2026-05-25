@@ -177,9 +177,13 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	// ── Check 2: Daemon /healthz ────────────────────────────────────────────
 	report.Checks = append(report.Checks, checkDaemon(state, opts.DaemonPort, opts.DaemonTimeout))
 
-	// ── Check 3: Skills per-file SHA manifests ──────────────────────────────
+	// ── Check 3: Skills per-file SHA manifests (COPY) or symlink targets (DEV) ─
 	for skillName, skillRecord := range state.Skills {
-		report.Checks = append(report.Checks, checkSkill(skillName, skillRecord, skillsDir))
+		if state.InstallMode == ModeDev {
+			report.Checks = append(report.Checks, checkSkillDev(skillName, skillRecord, skillsDir))
+		} else {
+			report.Checks = append(report.Checks, checkSkill(skillName, skillRecord, skillsDir))
+		}
 	}
 
 	// ── Check 4: MCP registration ───────────────────────────────────────────
@@ -356,6 +360,84 @@ func checkSkill(skillName string, record SkillRecord, skillsDir string) CheckRes
 		cr.OK = false
 		cr.Severity = SeverityCritical
 	}
+	return cr
+}
+
+// checkSkillDev verifies that a DEV-mode skill is correctly symlinked:
+//  1. The destination path exists.
+//  2. It is a symlink (not a regular directory — that would indicate drift).
+//  3. The symlink's resolved target matches the DevTarget recorded in install.json.
+func checkSkillDev(skillName string, record SkillRecord, skillsDir string) CheckResult {
+	cr := CheckResult{Surface: "skills/" + skillName, OK: true, Severity: SeverityCritical}
+
+	if skillsDir == "" {
+		cr.OK = false
+		cr.Drift = []string{"skills directory not determined (install.json has no MCP registered_paths?)"}
+		return cr
+	}
+
+	skillDst := filepath.Join(skillsDir, skillName)
+
+	// Use Lstat to see the symlink itself, not what it points to.
+	info, err := os.Lstat(skillDst)
+	if err != nil {
+		if os.IsNotExist(err) {
+			cr.OK = false
+			cr.Drift = []string{fmt.Sprintf("skill symlink missing: %s", skillDst)}
+		} else {
+			cr.OK = false
+			cr.Drift = []string{fmt.Sprintf("cannot stat skill destination %s: %v", skillDst, err)}
+		}
+		return cr
+	}
+
+	// If the record has a fallback copy (Files set, no DevTarget), use COPY-mode check.
+	if record.DevTarget == "" && len(record.Files) > 0 {
+		return checkSkill(skillName, record, skillsDir)
+	}
+
+	// Must be a symlink.
+	if info.Mode()&os.ModeSymlink == 0 {
+		cr.OK = false
+		cr.Drift = []string{fmt.Sprintf("%s is not a symlink (replaced with a copy?); run `archigraph install --dev --force` to restore", skillDst)}
+		return cr
+	}
+
+	// Resolve the symlink target.
+	target, err := os.Readlink(skillDst)
+	if err != nil {
+		cr.OK = false
+		cr.Drift = []string{fmt.Sprintf("cannot read symlink %s: %v", skillDst, err)}
+		return cr
+	}
+
+	// Compare against recorded DevTarget. Both should be absolute paths; if
+	// the target is relative, resolve it relative to the symlink's directory.
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(skillDst), target)
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		cr.OK = false
+		cr.Drift = []string{fmt.Sprintf("cannot resolve symlink target %s: %v", target, err)}
+		return cr
+	}
+
+	absExpected, err := filepath.Abs(record.DevTarget)
+	if err != nil {
+		cr.OK = false
+		cr.Drift = []string{fmt.Sprintf("cannot resolve expected dev_target %s: %v", record.DevTarget, err)}
+		return cr
+	}
+
+	if absTarget != absExpected {
+		cr.OK = false
+		cr.Drift = []string{fmt.Sprintf(
+			"symlink target mismatch: link points to %s, install.json says %s",
+			absTarget, absExpected,
+		)}
+	}
+
 	return cr
 }
 
