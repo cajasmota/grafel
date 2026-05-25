@@ -16,8 +16,21 @@ import (
 // docstate unit tests
 // ---------------------------------------------------------------------------
 
+// setTestHome sets both HOME and ARCHIGRAPH_HOME so that docstate functions
+// write to the test's temporary directory on all platforms.
+//
+// On Windows, os.UserHomeDir() reads USERPROFILE (not HOME), so setting only
+// HOME is insufficient. ARCHIGRAPH_HOME is checked first by defaultDocstateDir
+// and sidesteps the platform difference entirely.
+func setTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("ARCHIGRAPH_HOME", filepath.Join(dir, ".archigraph"))
+}
+
 func TestLoadDocgenState_absent(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	tmp := t.TempDir()
+	setTestHome(t, tmp)
 	st, err := LoadDocgenState("mygroup")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -29,7 +42,7 @@ func TestLoadDocgenState_absent(t *testing.T) {
 
 func TestLoadDocgenState_present(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	now := time.Now().UTC().Truncate(time.Second)
 	st := DocgenState{
@@ -58,7 +71,7 @@ func TestLoadDocgenState_present(t *testing.T) {
 
 func TestComputeDocState_neverGenerated(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	lg := &LoadedGroup{Name: "g", Repos: map[string]*LoadedRepo{}}
 	res := ComputeDocState("g", lg)
@@ -76,7 +89,7 @@ func TestComputeDocState_neverGenerated(t *testing.T) {
 
 func TestComputeDocState_fresh(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	// Create a repo with one source file.
 	repoDir := filepath.Join(tmp, "repo-a")
@@ -113,7 +126,7 @@ func TestComputeDocState_fresh(t *testing.T) {
 
 func TestComputeDocState_stale(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	// Docgen happened *before* the file was written.
 	pastDocgen := time.Now().UTC().Add(-1 * time.Hour)
@@ -208,7 +221,7 @@ func TestComposeSuggestedAction_transitions(t *testing.T) {
 
 func TestHandleWhoami_enrichedResponse_neverGenerated(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "") // ensure nudge enabled
 
 	repoDir := filepath.Join(tmp, "repo-a")
@@ -245,7 +258,7 @@ func TestHandleWhoami_enrichedResponse_neverGenerated(t *testing.T) {
 
 func TestHandleWhoami_enrichedResponse_afterDocgen_fresh(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "")
 
 	repoDir := filepath.Join(tmp, "repo-a")
@@ -286,7 +299,7 @@ func TestHandleWhoami_enrichedResponse_afterDocgen_fresh(t *testing.T) {
 
 func TestHandleWhoami_enrichedResponse_stale(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "")
 
 	// Write a source file to the repo dir.
@@ -344,7 +357,7 @@ func TestHandleWhoami_enrichedResponse_stale(t *testing.T) {
 
 func TestHandleWhoami_quietMode(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "quiet")
 
 	repoDir := filepath.Join(tmp, "repo-a")
@@ -395,7 +408,7 @@ func TestHandleWhoami_wireVersion(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			tmp := t.TempDir()
-			t.Setenv("HOME", tmp)
+			setTestHome(t, tmp)
 			t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", quiet)
 
 			repoDir := filepath.Join(tmp, "repo-a")

@@ -922,6 +922,9 @@ func TestPathDetail_DocgenFields(t *testing.T) {
 func TestPathDetail_DocgenFields_WithDocumentation(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	// Also set ARCHIGRAPH_HOME so docstate functions find the right directory
+	// on Windows, where os.UserHomeDir() reads USERPROFILE instead of HOME.
+	t.Setenv("ARCHIGRAPH_HOME", filepath.Join(tmp, ".archigraph"))
 
 	ts, _ := newPhase1Server(t)
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -24,16 +25,21 @@ func TestCleanupDryRun(t *testing.T) {
 	os.WriteFile(existingConfig, []byte(`{"name":"existing"}`), 0o644)
 
 	// Manually create registry.json with one valid and one orphaned entry.
+	// Use json.MarshalIndent so Windows path separators are properly escaped.
 	regPath := filepath.Join(tmpHome, "registry.json")
 	os.MkdirAll(filepath.Dir(regPath), 0o755)
-	registryData := `{
-	"version": 1,
-	"groups": [
-		{"name": "existing", "config_path": "` + existingConfig + `"},
-		{"name": "orphaned", "config_path": "` + filepath.Join(configArchDir, "orphaned.fleet.json") + `"}
-	]
-}`
-	os.WriteFile(regPath, []byte(registryData), 0o644)
+	regObj := registry.Registry{
+		Version: 1,
+		Groups: []registry.GroupRef{
+			{Name: "existing", ConfigPath: existingConfig},
+			{Name: "orphaned", ConfigPath: filepath.Join(configArchDir, "orphaned.fleet.json")},
+		},
+	}
+	registryData, err := json.MarshalIndent(regObj, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal registry: %v", err)
+	}
+	os.WriteFile(regPath, registryData, 0o644)
 
 	// Run cleanup with --dry-run.
 	var buf bytes.Buffer

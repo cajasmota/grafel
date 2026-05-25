@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -26,6 +27,11 @@ import (
 // behaviour when running under a non-/tmp test binary (Go test binaries compile
 // to TMPDIR which is NOT /tmp on macOS — it's something like /var/folders/...).
 func TestSelfDefenseCheck_AllowsCanonicalBinary(t *testing.T) {
+	// Self-defense is a Unix concept; on Windows /tmp does not exist and
+	// isTmpPath is a no-op, so the check always passes.
+	if runtime.GOOS == "windows" {
+		t.Skip("self-defense /tmp check is Unix-only")
+	}
 	// Skip this test if the test binary itself happens to live under /tmp.
 	// That would make SelfDefenseCheck try to scan for a canonical daemon,
 	// which is environment-dependent and would flap in CI.
@@ -50,6 +56,11 @@ func TestSelfDefenseCheck_AllowsCanonicalBinary(t *testing.T) {
 // because we can only simulate the /tmp-binary scenario by building and running the
 // real binary — which requires a pre-existing canonical daemon to conflict with.
 func TestSelfDefenseCheck_RunRefusesWhenCalledFromTmpBinary(t *testing.T) {
+	// Self-defense is a Unix concept; on Windows /tmp does not exist and
+	// isTmpPath is a no-op, so the binary-under-tmp scenario cannot occur.
+	if runtime.GOOS == "windows" {
+		t.Skip("self-defense /tmp check is Unix-only")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("running as root — PPID/ps signal checks behave differently")
 	}
@@ -129,6 +140,10 @@ func TestSelfDefenseCheck_RunRefusesWhenCalledFromTmpBinary(t *testing.T) {
 // This is primarily a smoke test; the core invariant is: if findCanonicalDaemon()
 // finds a process, it must have a non-/tmp binary path.
 func TestFindCanonicalDaemon_SkipsTmpProcesses(t *testing.T) {
+	// Self-defense is a Unix concept; on Windows /tmp does not exist.
+	if runtime.GOOS == "windows" {
+		t.Skip("self-defense /tmp check is Unix-only")
+	}
 	// We test the isTmpPath helper via exported SelfDefenseCheck + current binary.
 	self, _ := os.Executable()
 	if strings.HasPrefix(self, "/tmp/") {

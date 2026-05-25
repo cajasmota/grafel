@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/quality/audit"
@@ -35,8 +36,10 @@ func TestOrphanAuditStore_RoundTrip(t *testing.T) {
 }
 
 func TestOrphanAuditPath_NoTraversal(t *testing.T) {
-	p := orphanAuditPath("/root", "../../etc/passwd")
-	if want := "/root/orphan-audits/passwd.json"; p != want {
+	root := filepath.FromSlash("/root")
+	want := filepath.Join(root, "orphan-audits", "passwd.json")
+	p := orphanAuditPath(root, "../../etc/passwd")
+	if p != want {
 		t.Fatalf("path traversal not sanitised: got %q want %q", p, want)
 	}
 }

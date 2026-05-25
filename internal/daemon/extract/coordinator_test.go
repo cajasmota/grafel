@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -182,7 +183,11 @@ func TestCoordinate_EmitsConfigEntities(t *testing.T) {
 func buildArchigraph(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	out := filepath.Join(dir, "archigraph")
+	name := "archigraph"
+	if runtime.GOOS == "windows" {
+		name = "archigraph.exe"
+	}
+	out := filepath.Join(dir, name)
 	cmd := exec.Command("go", "build", "-o", out, "github.com/cajasmota/archigraph/cmd/archigraph")
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout

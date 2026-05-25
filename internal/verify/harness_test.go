@@ -66,7 +66,11 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		t.Skip("short mode")
 	}
 	root := repoRoot(t)
-	bin := filepath.Join(t.TempDir(), "archigraph")
+	binName := "archigraph"
+	if runtime.GOOS == "windows" {
+		binName = "archigraph.exe"
+	}
+	bin := filepath.Join(t.TempDir(), binName)
 
 	build := exec.Command("go", "build", "-o", bin, "./cmd/archigraph")
 	build.Dir = root
@@ -82,12 +86,22 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	// stops the daemon on cleanup.
 	//
 	// macOS limits AF_UNIX sun_path to ~103 bytes — t.TempDir() can
-	// easily exceed that, so we mint a short /tmp-rooted dir instead.
-	daemonRoot, err := os.MkdirTemp("/tmp", "archi-d-")
+	// easily exceed that, so we mint a short dir under os.TempDir() instead.
+	// On Windows, os.TempDir() returns the correct system temp directory.
+	daemonRoot, err := os.MkdirTemp(os.TempDir(), "archi-d-")
 	if err != nil {
 		t.Fatalf("mktemp daemon root: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(daemonRoot) })
+
+	// Derive the layout to get the correct socket path (named pipe on Windows,
+	// Unix domain socket on other platforms).
+	t.Setenv(daemon.EnvRoot, daemonRoot)
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		t.Fatalf("daemon layout: %v", err)
+	}
+
 	dcmd := exec.Command(bin, "daemon")
 	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot)
 	var daemonOut bytes.Buffer
@@ -97,7 +111,7 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		t.Fatalf("start daemon: %v", err)
 	}
 	t.Cleanup(func() {
-		if c, err := client.DialPath(filepath.Join(daemonRoot, "sockets", "daemon.sock")); err == nil {
+		if c, err := client.DialPath(layout.SocketPath); err == nil {
 			_ = c.Stop()
 			_ = c.Close()
 		}
@@ -107,12 +121,19 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		}
 	})
 
-	// Wait for the daemon's socket to appear.
-	socketPath := filepath.Join(daemonRoot, "sockets", "daemon.sock")
+	// Wait for the daemon to become connectable.
+	// On Unix we can stat the socket file; on Windows named pipes are not
+	// filesystem objects, so we always poll via DialPath.
 	deadline := time.Now().Add(10 * time.Second)
 	var dc *client.Client
 	for time.Now().Before(deadline) {
-		c, err := client.DialPath(socketPath)
+		if runtime.GOOS != "windows" {
+			if _, err := os.Stat(layout.SocketPath); err != nil {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+		}
+		c, err := client.DialPath(layout.SocketPath)
 		if err == nil {
 			dc = c
 			break
@@ -120,7 +141,7 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if dc == nil {
-		t.Fatalf("daemon never came up; socket=%s; output=%s", socketPath, daemonOut.String())
+		t.Fatalf("daemon never came up; socket=%s; output=%s", layout.SocketPath, daemonOut.String())
 	}
 	defer dc.Close()
 

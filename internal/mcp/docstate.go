@@ -54,14 +54,25 @@ type DocStateResult struct {
 	PerRepoStale map[string]int `json:"per_repo_stale,omitempty"`
 }
 
-// defaultDocstateDir returns ~/.archigraph/groups/<group>/ — the group-level
-// archigraph directory where docgen-state.json lives.
+// defaultDocstateDir returns the per-group docstate directory.
+//
+// Priority order:
+//  1. $ARCHIGRAPH_HOME — explicit override used in tests and custom installs.
+//     On Windows, os.UserHomeDir() reads USERPROFILE (not HOME), so tests that
+//     only set HOME would silently write to the wrong location. ARCHIGRAPH_HOME
+//     sidesteps this platform difference entirely.
+//  2. $HOME/.archigraph (Unix) / %USERPROFILE%/.archigraph (Windows) via
+//     os.UserHomeDir().
 func defaultDocstateDir(group string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	base := os.Getenv("ARCHIGRAPH_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		base = filepath.Join(home, ".archigraph")
 	}
-	return filepath.Join(home, ".archigraph", "groups", group)
+	return filepath.Join(base, "groups", group)
 }
 
 // docstateFilePath returns the full path to docgen-state.json for a group.

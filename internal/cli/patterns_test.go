@@ -2,10 +2,11 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -170,8 +171,16 @@ func TestPatternsEditCommand_rejectsInvalidJSON(t *testing.T) {
 	_, dir := withTempHome(t)
 	seedPatterns(t, dir)
 
-	// Stub EDITOR with a shell that corrupts the file.
-	editor := writeEditorScript(t, `printf '{not json' > "$1"`)
+	// Stub EDITOR with a script/binary that corrupts the file.
+	const goCorruptBody = `
+	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}`
+	editor := writeEditorScript(t,
+		`printf '{not json' > "$1"`,
+		goCorruptBody,
+	)
 	t.Setenv("EDITOR", editor)
 
 	cmd := newPatternsEditCmd()
@@ -188,7 +197,27 @@ func TestPatternsEditCommand_savesValidEdit(t *testing.T) {
 	seedPatterns(t, dir)
 
 	// Editor that bumps confidence to 0.95.
-	editor := writeEditorScript(t, `python3 -c "import json,sys; p=json.load(open(sys.argv[1])); p['confidence']=0.95; json.dump(p, open(sys.argv[1],'w'))" "$1"`)
+	const goBumpBody = `
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(data, &p); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	p["confidence"] = 0.95
+	out, _ := json.Marshal(p)
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}`
+	editor := writeEditorScript(t,
+		`python3 -c "import json,sys; p=json.load(open(sys.argv[1])); p['confidence']=0.95; json.dump(p, open(sys.argv[1],'w'))" "$1"`,
+		goBumpBody,
+	)
 	t.Setenv("EDITOR", editor)
 
 	cmd := newPatternsEditCmd()
@@ -204,14 +233,51 @@ func TestPatternsEditCommand_savesValidEdit(t *testing.T) {
 	}
 }
 
-func writeEditorScript(t *testing.T, body string) string {
+// writeEditorScript creates an editor stub for use as $EDITOR in tests.
+//
+// On Unix a shell script (shellBody) is written and made executable.
+// On Windows .sh files cannot be executed; instead a Go source file is
+// compiled to a .exe binary using the goBody snippet, which must be a
+// series of statements that operate on the variable `path` (the file to
+// edit) and may use os, fmt, and encoding/json from the scaffold.
+func writeEditorScript(t *testing.T, shellBody, goBody string) string {
 	t.Helper()
-	script := filepath.Join(t.TempDir(), "editor.sh")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	if runtime.GOOS != "windows" {
+		script := filepath.Join(t.TempDir(), "editor.sh")
+		if err := os.WriteFile(script, []byte("#!/bin/sh\n"+shellBody+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return script
+	}
+
+	// Windows: compile a Go binary that performs the same operation.
+	src := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: editor <file>")
+		os.Exit(1)
+	}
+	path := os.Args[1]
+	_ = json.Marshal // keep import live if goBody doesn't use it
+` + goBody + `
+}
+`
+	dir := t.TempDir()
+	srcFile := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(srcFile, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return script
+	bin := filepath.Join(dir, "editor.exe")
+	cmd := exec.Command("go", "build", "-o", bin, srcFile)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build editor binary: %v\n%s", err, out)
+	}
+	return bin
 }
-
-// Defeat unused-import warning for json when only used transitively.
-var _ = json.Marshal
