@@ -34,6 +34,7 @@
 package engine
 
 import (
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -316,30 +317,44 @@ func isPythonIdentifier(s string) bool {
 // "apps.users.urls") to a repo-relative file path (e.g. "api/urls.py").
 // Returns "" when the module path is not convertible (e.g. it references a
 // third-party package without a recognisable path component).
+//
+// We use path.Join (from "path", not "path/filepath") so the result always
+// uses forward slashes. Repo-relative paths are always forward-slash-separated
+// in the archigraph entity store and file-reader callbacks — using
+// filepath.Join here would produce backslash paths on Windows, breaking
+// fileReader lookups and causing all nested-include route composition to
+// silently produce zero entities on that platform (P6 of #2196).
 func modulePathToFilePath(modulePath string) string {
 	if modulePath == "" {
 		return ""
 	}
-	// Replace dots with path separators and append .py.
-	// "api.urls"       → "api/urls.py"
+	// Replace dots with forward slashes and append .py.
+	// "api.urls"        → "api/urls.py"
 	// "apps.users.urls" → "apps/users/urls.py"
 	parts := strings.Split(modulePath, ".")
-	return filepath.Join(parts...) + ".py"
+	return path.Join(parts...) + ".py"
 }
 
 // modulePathToFilePath_relToParent tries to resolve a Python module path
 // relative to the parent file's directory. This handles the common pattern
 // where include("urls") is used within the same app directory.
+//
+// Like modulePathToFilePath, we use path.Join (forward slashes) so the
+// resulting repo-relative path is consistent with the rest of the system on
+// all platforms.
 func modulePathToFilePath_relToParent(modulePath, parentPath string) string {
 	if modulePath == "" || parentPath == "" {
 		return ""
 	}
-	parentDir := filepath.Dir(parentPath)
+	// filepath.Dir is safe here: it normalises the parent path for the
+	// platform and we immediately convert back to forward slashes via
+	// path.Join for the returned value.
+	parentDir := filepath.ToSlash(filepath.Dir(parentPath))
 	if parentDir == "." {
 		return ""
 	}
 	parts := strings.Split(modulePath, ".")
-	return filepath.Join(append([]string{parentDir}, parts...)...) + ".py"
+	return path.Join(append([]string{parentDir}, parts...)...) + ".py"
 }
 
 // isDjangoURLFile reports whether the repo-relative path looks like a Django
