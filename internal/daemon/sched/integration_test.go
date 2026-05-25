@@ -112,6 +112,15 @@ func TestIntegrationThreeRepoBudgetSerialisesLargest(t *testing.T) {
 // three repos but with a tighter 350MB cap. The big repo (predicted
 // 280MB) MUST wait until at least one small finishes — otherwise the
 // ledger would hit 60+60+280=400MB > 350MB.
+//
+// The previous implementation used time.Sleep(300ms) to wait for the
+// scheduler to reach steady-state before taking a mid-run snapshot.
+// Under -race on a loaded CI runner (ubuntu-latest) the sleep was not
+// long enough and the snapshot could race with job dispatch, causing
+// intermittent "expected /repo-big-c to be blocked" failures. Fixed by
+// using a buffered channel (smallsStarted) so the test waits until both
+// small Index callbacks have actually been entered — i.e. we observe
+// the exact state we intend to assert on.
 func TestIntegrationThreeRepoTightBudgetDefersBig(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("macos: TODO #2121-C (timing-sensitive scheduler test times out on macos-latest CI)")
@@ -132,6 +141,13 @@ func TestIntegrationThreeRepoTightBudgetDefersBig(t *testing.T) {
 		"/repo-small-b": make(chan struct{}),
 		"/repo-big-c":   make(chan struct{}),
 	}
+	// smallsStarted receives one notification per small-repo Index
+	// invocation. Buffered for 2 so the workers never block on send.
+	smallsStarted := make(chan struct{}, 2)
+	// bigStarted is closed when the big repo's Index callback begins,
+	// signalling that big-c was eventually admitted (after a small finishes).
+	bigStarted := make(chan struct{})
+
 	var sched *Scheduler
 	s := New(Config{
 		Workers:  3,
@@ -157,6 +173,14 @@ func TestIntegrationThreeRepoTightBudgetDefersBig(t *testing.T) {
 				}
 			}
 			mu.Unlock()
+
+			// Signal callers that this Index invocation has begun.
+			if p == "/repo-small-a" || p == "/repo-small-b" {
+				smallsStarted <- struct{}{}
+			} else if p == "/repo-big-c" {
+				close(bigStarted)
+			}
+
 			<-gates[p]
 			mu.Lock()
 			delete(concurrent, p)
@@ -171,7 +195,18 @@ func TestIntegrationThreeRepoTightBudgetDefersBig(t *testing.T) {
 	s.Enqueue("/repo-small-a")
 	s.Enqueue("/repo-small-b")
 	s.Enqueue("/repo-big-c")
-	time.Sleep(300 * time.Millisecond)
+
+	// Wait until BOTH small Index callbacks are running before we take the
+	// mid-run snapshot. This is deterministic under -race on any hardware:
+	// we assert only when we know the scheduler has reached the exact state
+	// we intend to inspect.
+	for i := 0; i < 2; i++ {
+		select {
+		case <-smallsStarted:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for both small-repo index jobs to start")
+		}
+	}
 
 	// Snapshot mid-run: the big repo should be in BlockedJobs
 	// because 60+60+280=400 > 350.
@@ -190,14 +225,20 @@ func TestIntegrationThreeRepoTightBudgetDefersBig(t *testing.T) {
 			snap.BlockedJobs, snap.InFlight)
 	}
 
-	// Release smalls one by one.
+	// Release smalls one by one; then wait for big-c to actually start
+	// before releasing its gate (confirms deferral + eventual admission).
 	close(gates["/repo-small-a"])
-	time.Sleep(150 * time.Millisecond)
 	close(gates["/repo-small-b"])
-	time.Sleep(150 * time.Millisecond)
-	// Now budget should be 0+280=280, big should run.
+	select {
+	case <-bigStarted:
+		// big-c was admitted after smalls drained — correct.
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for big-c to be admitted after smalls finished")
+	}
 	close(gates["/repo-big-c"])
-	time.Sleep(300 * time.Millisecond)
+
+	// Give workers time to finish and update peakUsedMB.
+	time.Sleep(100 * time.Millisecond)
 
 	if peakUsedMB > 350 {
 		t.Errorf("peak ledger=%dMB exceeded 350MB cap", peakUsedMB)
