@@ -1,0 +1,24 @@
+#!/bin/sh
+# archigraph post-merge hook
+#
+# Fires after a successful `git merge` (including `git pull`).
+# Signals the archigraph daemon to trigger an incremental reindex on
+# the new HEAD so the graph reflects merged code immediately.
+#
+# Git passes 1 argument:
+#   $1 = 1 if it was a squash merge, 0 otherwise
+#
+# Install this hook via:
+#   archigraph install-hooks
+#
+# Or copy it manually to .git/hooks/post-merge and make it executable:
+#   cp scripts/git-hooks/post-merge .git/hooks/post-merge
+#   chmod +x .git/hooks/post-merge
+
+# >>> archigraph post-merge >>>
+# Signal the daemon to reindex after the merge; run in background so the
+# hook returns immediately and never delays the user's merge workflow.
+if command -v archigraph >/dev/null 2>&1; then
+  archigraph status --ref @current >/dev/null 2>&1 &
+fi
+# <<< archigraph post-merge <<<

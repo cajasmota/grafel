@@ -74,6 +74,10 @@ type DevOptions struct {
 	// production implementation (service.Install + waitForHealthz) is used.
 	// Inject a stub in tests to avoid calling launchctl/systemctl.
 	RestartDaemon DaemonRestartFunc
+
+	// NoHooks skips automatic git hook installation (step 7).
+	// Equivalent to passing --no-hooks on the CLI.
+	NoHooks bool
 }
 
 // DevResult reports what RunDev accomplished.
@@ -261,6 +265,23 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 	}
 	result.StatePath = opts.StatePath
 	completedSteps = append(completedSteps, 6)
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Step 7: Git hook installation (post-checkout, post-merge, post-rewrite,
+	//         pre-push). Non-fatal: a hook install failure warns but does not
+	//         roll back the rest of the install.  Can be opted-out with
+	//         --no-hooks.
+	// ─────────────────────────────────────────────────────────────────────────
+	if !opts.NoHooks {
+		hookOpts := HookInstallOptions{
+			RepoPath: opts.WorkingDir,
+			DryRun:   opts.DryRun,
+		}
+		if err := InstallGitHooks(hookOpts); err != nil {
+			// Non-fatal: hooks are a convenience; don't abort a successful install.
+			fmt.Fprintf(os.Stderr, "archigraph install --dev: step 7 warning – git hooks: %v\n", err)
+		}
+	}
 
 	return result, nil
 }
