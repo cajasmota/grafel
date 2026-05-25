@@ -11,12 +11,14 @@ package daemon_test
 // Layer 3: doctor --kill-stale is tested in internal/cli.
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 )
@@ -93,38 +95,59 @@ func TestSelfDefenseCheck_RunRefusesWhenCalledFromTmpBinary(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(daemonRoot) })
 
 	// Run the binary as `archigraph daemon` from /tmp with ARCHIGRAPH_DAEMON_ROOT set.
-	// If there's no canonical daemon, it should start and then we stop it.
-	// If there IS a canonical daemon, it should refuse with exit code 1.
+	// Two outcomes:
+	//   - Canonical daemon present: SelfDefenseCheck exits immediately with code 1.
+	//   - No canonical daemon: the daemon starts successfully and runs as a server forever.
+	//
+	// Use a short deadline (10s) so the test never blocks indefinitely. When the daemon
+	// starts successfully (no conflict) it won't exit on its own; the context cancellation
+	// sends SIGKILL, and cmd.Wait returns context.DeadlineExceeded — that is the expected
+	// "no-conflict" path. When the daemon self-refuses (Layer 1), it exits with code 1
+	// well within the 10s window.
+	const daemonStartTimeout = 10 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), daemonStartTimeout)
+	defer cancel()
+
 	var stderrBuf strings.Builder
-	cmd := exec.Command(helperBin, "daemon")
+	cmd := exec.CommandContext(ctx, helperBin, "daemon")
 	cmd.Env = append(os.Environ(), "ARCHIGRAPH_DAEMON_ROOT="+daemonRoot)
 	cmd.Stderr = &stderrBuf
-	_ = cmd.Run() // may or may not exit immediately
 
-	exitCode := cmd.ProcessState.ExitCode()
+	waitErr := cmd.Run()
+
+	// Determine whether the daemon exited on its own (Layer 1 refusal) or was
+	// killed by context timeout (normal startup — no conflict).
+	timedOut := ctx.Err() == context.DeadlineExceeded
 	combined := stderrBuf.String()
-	t.Logf("archigraph daemon exit=%d stderr=%s", exitCode, combined)
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
+	t.Logf("archigraph daemon exit=%d timedOut=%v waitErr=%v stderr=%s",
+		exitCode, timedOut, waitErr, combined)
 
 	// Key regression assertion: if a canonical daemon exists (detected by ps),
-	// the binary MUST exit 1 with the Layer 1 refusal message.
-	// We call findCanonicalDaemon to check — same function the daemon uses.
+	// the binary MUST exit 1 with the Layer 1 refusal message — and it must do
+	// so quickly (well within the 10s timeout, so timedOut must be false).
 	canonPID, canonExe := daemon.FindCanonicalDaemon()
 	if canonPID > 0 {
 		// A canonical daemon is running — the /tmp binary MUST have refused.
-		if exitCode != 1 {
+		if timedOut {
+			t.Errorf("Layer 1 FAIL: canonical daemon at pid=%d %s, but /tmp binary did not exit within %s (still running)",
+				canonPID, canonExe, daemonStartTimeout)
+		} else if exitCode != 1 {
 			t.Errorf("Layer 1 FAIL: canonical daemon at pid=%d %s, but /tmp binary did not refuse (exit=%d)",
 				canonPID, canonExe, exitCode)
-		}
-		if !strings.Contains(combined, "refusing to start") {
+		} else if !strings.Contains(combined, "refusing to start") {
 			t.Errorf("Layer 1 FAIL: expected 'refusing to start' in stderr, got: %s", combined)
+		} else {
+			t.Logf("Layer 1 PASS: /tmp binary correctly refused (canonical daemon pid=%d %s)", canonPID, canonExe)
 		}
-		t.Logf("Layer 1 PASS: /tmp binary correctly refused (canonical daemon pid=%d %s)", canonPID, canonExe)
 	} else {
-		// No canonical daemon — binary may have bound the socket and be running.
-		// Kill it if so.
-		if cmd.ProcessState == nil || cmd.ProcessState.ExitCode() < 0 {
-			// Process still running — that's fine, there's no canonical daemon to conflict with.
-			t.Log("no canonical daemon — /tmp binary would have started (test killed it)")
+		// No canonical daemon — daemon should have started and kept running until
+		// the context timeout killed it.
+		if timedOut {
+			t.Log("no canonical daemon — /tmp binary started successfully (killed by test timeout as expected)")
 		} else {
 			t.Logf("no canonical daemon — /tmp binary exited %d (may be pid-file conflict or other)", exitCode)
 		}
