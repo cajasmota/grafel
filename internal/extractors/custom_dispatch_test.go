@@ -8,14 +8,13 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // ---- CustomExtractorsFor -----------------------------------------------------
 
 func TestCustomExtractorsForPythonReturnsPythonPrefixedKeys(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	// Base python extractor should NOT be returned (exact key match excluded).
 	Register("python", &mockExtractor{language: "python"})
@@ -39,7 +38,7 @@ func TestCustomExtractorsForPythonReturnsPythonPrefixedKeys(t *testing.T) {
 }
 
 func TestCustomExtractorsForGoReturnsCustomGoPrefixedKeys(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	Register("go", &mockExtractor{language: "go"})
 	Register("custom_go_gin", &mockExtractor{language: "custom_go_gin"})
@@ -59,7 +58,7 @@ func TestCustomExtractorsForGoReturnsCustomGoPrefixedKeys(t *testing.T) {
 }
 
 func TestCustomExtractorsForTypescriptSharesJavascriptPrefix(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	Register("custom_js_react", &mockExtractor{language: "custom_js_react"})
 	Register("custom_js_nextjs", &mockExtractor{language: "custom_js_nextjs"})
 
@@ -70,7 +69,7 @@ func TestCustomExtractorsForTypescriptSharesJavascriptPrefix(t *testing.T) {
 }
 
 func TestCustomExtractorsForUnknownLanguageReturnsEmpty(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	Register("custom_go_gin", &mockExtractor{language: "custom_go_gin"})
 
 	got := CustomExtractorsFor("cobol")
@@ -83,7 +82,7 @@ func TestCustomExtractorsForUnknownLanguageReturnsEmpty(t *testing.T) {
 }
 
 func TestCustomExtractorsForLanguageWithoutRegisteredCustomsReturnsEmpty(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	// Only base extractor registered, no prefix hits.
 	Register("swift", &mockExtractor{language: "swift"})
 
@@ -98,7 +97,7 @@ func TestCustomExtractorsForLanguageWithoutRegisteredCustomsReturnsEmpty(t *test
 // new language is added to the map without fixture registration here, the
 // test helps catch drift.
 func TestCustomExtractorsForEveryMappedLanguageIsReachable(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	// Register exactly one custom extractor per prefix.
 	fixtures := map[string]string{
@@ -136,7 +135,7 @@ func TestCustomExtractorsForEveryMappedLanguageIsReachable(t *testing.T) {
 // ---- RunCustomExtractors -----------------------------------------------------
 
 func TestRunCustomExtractorsDispatchesAllMatchingExtractors(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	Register("python_django", &mockExtractor{
 		language: "python_django",
@@ -177,7 +176,7 @@ func TestRunCustomExtractorsDispatchesAllMatchingExtractors(t *testing.T) {
 }
 
 func TestRunCustomExtractorsRecoversFromPanic(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	Register("python_django", &mockExtractor{
 		language: "python_django",
@@ -214,7 +213,7 @@ func TestRunCustomExtractorsRecoversFromPanic(t *testing.T) {
 }
 
 func TestRunCustomExtractorsWithNoMatchingExtractorsReturnsEmpty(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	Register("python_django", &mockExtractor{language: "python_django"})
 
 	ctx := context.Background()
@@ -231,7 +230,7 @@ func TestRunCustomExtractorsWithNoMatchingExtractorsReturnsEmpty(t *testing.T) {
 }
 
 func TestRunCustomExtractorsEmitsOTelSpanWithCustomExtractorCount(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	Register("python_django", &mockExtractor{
 		language: "python_django",
 		records:  []types.EntityRecord{{Name: "V1"}},
@@ -279,7 +278,7 @@ func TestRunCustomExtractorsEmitsOTelSpanWithCustomExtractorCount(t *testing.T) 
 }
 
 func TestRunCustomExtractorsCollectsErrorsButPreservesPartialOutput(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	Register("python_django", &mockExtractor{
 		language: "python_django",
@@ -398,6 +397,7 @@ func extractNames(recs []types.EntityRecord) []string {
 }
 
 // Guard: assert the registry testing hook exists (catch refactors that remove it).
+// Uses cleanRegistry so the snapshot/restore cycle is also exercised here.
 func TestClearForTestingExists(t *testing.T) {
-	extractor.ClearForTesting()
+	cleanRegistry(t)
 }

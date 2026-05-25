@@ -35,8 +35,13 @@ func (m *mockExtractor) Extract(_ context.Context, _ FileInput) ([]types.EntityR
 	return m.records, m.err
 }
 
-// cleanRegistry resets the global registry between tests.
-func cleanRegistry() {
+// cleanRegistry snapshots the current global registry, clears it for the
+// duration of the test, and schedules a restore via t.Cleanup so that
+// real-extractor registrations (from registry_gen.go init functions) are
+// intact when other test packages run in the same binary.
+func cleanRegistry(t *testing.T) {
+	t.Helper()
+	t.Cleanup(extractor.SnapshotForTesting())
 	extractor.ClearForTesting()
 }
 
@@ -50,7 +55,7 @@ func newTestTracer() (trace.Tracer, *tracetest.SpanRecorder) {
 // ---- tests ------------------------------------------------------------------
 
 func TestRegisterAndGet(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	ext := &mockExtractor{language: "python"}
 	Register("python", ext)
 
@@ -64,7 +69,7 @@ func TestRegisterAndGet(t *testing.T) {
 }
 
 func TestGetUnregisteredLanguage(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	_, ok := Get("cobol")
 	if ok {
@@ -73,7 +78,7 @@ func TestGetUnregisteredLanguage(t *testing.T) {
 }
 
 func TestExtractDispatchesToRegisteredExtractor(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	want := []types.EntityRecord{{Name: "Foo", Kind: "function", SourceFile: "foo.go"}}
 	Register("go", &mockExtractor{language: "go", records: want})
 
@@ -91,7 +96,7 @@ func TestExtractDispatchesToRegisteredExtractor(t *testing.T) {
 }
 
 func TestExtractUnknownLanguageReturnsErrNoExtractor(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	ctx := context.Background()
 	_, err := Extract(ctx, FileInput{Path: "x.xyz", Language: "xyz"})
@@ -104,7 +109,7 @@ func TestExtractUnknownLanguageReturnsErrNoExtractor(t *testing.T) {
 }
 
 func TestExtractPanicRecoveredAsError(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	Register("rust", &mockExtractor{language: "rust", panic: true})
 
 	ctx := context.Background()
@@ -119,7 +124,7 @@ func TestExtractPanicRecoveredAsError(t *testing.T) {
 }
 
 func TestExtractPanicSpanHasErrorAttribute(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	Register("rust", &mockExtractor{language: "rust", panic: true})
 
 	tr, rec := newTestTracer()
@@ -143,7 +148,7 @@ func TestExtractPanicSpanHasErrorAttribute(t *testing.T) {
 }
 
 func TestExtractSuccessSpanEmitted(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	records := []types.EntityRecord{{Name: "Bar", Kind: "class", SourceFile: "bar.py"}}
 	Register("python", &mockExtractor{language: "python", records: records})
 
@@ -179,7 +184,7 @@ func TestExtractSuccessSpanEmitted(t *testing.T) {
 }
 
 func TestListReturnsSortedLanguages(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	for _, lang := range []string{"typescript", "go", "python", "java", "rust"} {
 		Register(lang, &mockExtractor{language: lang})
 	}
@@ -197,7 +202,7 @@ func TestListReturnsSortedLanguages(t *testing.T) {
 }
 
 func TestListEmptyRegistry(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 	got := List()
 	if len(got) != 0 {
 		t.Errorf("expected empty list, got %v", got)
@@ -205,7 +210,7 @@ func TestListEmptyRegistry(t *testing.T) {
 }
 
 func TestConcurrentRegisterAndGet(t *testing.T) {
-	cleanRegistry()
+	cleanRegistry(t)
 
 	const n = 100
 	var wg sync.WaitGroup
