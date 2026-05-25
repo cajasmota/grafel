@@ -29,23 +29,6 @@ jobs:
         run: go build -o archigraph ./cmd/archigraph
         timeout-minutes: 2
 
-      - name: Start daemon
-        run: |
-          set -x
-          export ARCHIGRAPH_DAEMON_ROOT=$(mktemp -d)
-          timeout 30 ./archigraph daemon &
-          DAEMON_PID=$!
-          sleep 2
-
-          # Verify daemon is running
-          if ! kill -0 $DAEMON_PID 2>/dev/null; then
-            echo "Daemon failed to start"
-            exit 1
-          fi
-
-          echo "DAEMON_PID=$DAEMON_PID" >> $GITHUB_ENV
-          echo "ARCHIGRAPH_DAEMON_ROOT=$ARCHIGRAPH_DAEMON_ROOT" >> $GITHUB_ENV
-
       - name: Initialize golden fixture as git repo
         run: |
           cd ./internal/quality/golden/go-chi-mini
@@ -55,28 +38,92 @@ jobs:
           git add -A
           git commit -m "Golden fixture for smoke test"
 
-      - name: Onboard golden fixture
+      - name: Set up isolated environment and register group
         run: |
-          export ARCHIGRAPH_DAEMON_ROOT=${{ env.ARCHIGRAPH_DAEMON_ROOT }}
-          timeout 30 ./archigraph onboard ./internal/quality/golden/go-chi-mini
+          set -x
+          SMOKE_ROOT=$(mktemp -d)
+          echo "SMOKE_ROOT=$SMOKE_ROOT" >> $GITHUB_ENV
 
-      - name: Check daemon indexed the repo
+          # Both env vars must point to the same dir so the daemon and all CLI
+          # commands use the same isolated registry/socket/log. Without
+          # ARCHIGRAPH_HOME the registry writes to ~/.archigraph while the
+          # daemon socket lives in $SMOKE_ROOT — two separate namespaces that
+          # can never see each other's state.
+          export ARCHIGRAPH_DAEMON_ROOT="$SMOKE_ROOT"
+          export ARCHIGRAPH_HOME="$SMOKE_ROOT"
+          echo "ARCHIGRAPH_DAEMON_ROOT=$SMOKE_ROOT" >> $GITHUB_ENV
+          echo "ARCHIGRAPH_HOME=$SMOKE_ROOT" >> $GITHUB_ENV
+
+          # Register the fixture as a group BEFORE starting the daemon so the
+          # daemon's startup repo-scan picks it up. Use wizard --non-interactive
+          # to skip watcher-unit installation (no user systemd session in GitHub
+          # Actions) and git-hook installation (unnecessary for a smoke test).
+          # --install=false also skips the daemon service registration step which
+          # would fail in CI without a user-session systemd/launchd.
+          FIXTURE_SRC=$(realpath ./internal/quality/golden/go-chi-mini/src)
+          ./archigraph wizard \
+            --non-interactive \
+            --group=go-chi-mini \
+            "--repos=$FIXTURE_SRC" \
+            --watchers=false \
+            --git-hooks=false \
+            --install=false
+
+      - name: Start daemon
         run: |
+          set -x
           export ARCHIGRAPH_DAEMON_ROOT=${{ env.ARCHIGRAPH_DAEMON_ROOT }}
+          export ARCHIGRAPH_HOME=${{ env.ARCHIGRAPH_HOME }}
 
-          # Poll for indexed status (async subprocess indexer may need up to 60s)
-          for i in $(seq 1 60); do
-            output=$(./archigraph status 2>&1 || true)
-            if echo "$output" | grep -q '"indexed":true'; then
-              echo "✓ Indexed after ${i}s"
-              echo "$output"
-              exit 0
+          # Run without a timeout wrapper: the daemon must outlive the 120s
+          # rebuild window below. The job-level timeout-minutes: 5 is the hard
+          # ceiling that keeps CI from hanging forever.
+          ./archigraph daemon &
+          DAEMON_PID=$!
+          echo "DAEMON_PID=$DAEMON_PID" >> $GITHUB_ENV
+
+          # Wait up to 10s for the daemon to be alive (socket creation + layout
+          # init usually completes in < 1s; allow extra headroom for slow runners).
+          READY=0
+          for i in $(seq 1 10); do
+            if kill -0 $DAEMON_PID 2>/dev/null; then
+              echo "Daemon running (pid=$DAEMON_PID) after ${i}s"
+              READY=1
+              break
             fi
             sleep 1
           done
-          echo "✗ Repository not indexed after 60s"
+          if [ "$READY" -eq 0 ]; then
+            echo "Daemon failed to start within 10s"
+            cat "${{ env.SMOKE_ROOT }}/logs/daemon.log" 2>/dev/null || echo "(no log)"
+            exit 1
+          fi
+
+      - name: Trigger rebuild and verify indexed
+        run: |
+          export ARCHIGRAPH_DAEMON_ROOT=${{ env.ARCHIGRAPH_DAEMON_ROOT }}
+          export ARCHIGRAPH_HOME=${{ env.ARCHIGRAPH_HOME }}
+
+          # Explicit synchronous rebuild: sends the Rebuild RPC to the daemon
+          # and blocks until indexing completes. This exercises the full
+          # daemon -> extractor -> graph.fb path in one step, and replaces
+          # the previous passive-wait approach that polled for a JSON field
+          # ("indexed":true) that archigraph status never emits.
+          # --plain disables ANSI control codes for clean CI log output.
+          timeout 120 ./archigraph rebuild go-chi-mini --plain
+
+          # Verify the daemon reports the repo as indexed in its status output.
+          # status prints: "  <slug>  N files  M entities  K rels  indexed Xs ago"
+          # We confirm by checking "indexed" appears and is NOT "(never)".
+          output=$(./archigraph status 2>&1 || true)
           echo "$output"
-          exit 1
+
+          if echo "$output" | grep -q "indexed" && ! echo "$output" | grep -qF "(never)"; then
+            echo "OK: repository indexed"
+          else
+            echo "FAIL: repository not indexed or status shows (never)"
+            exit 1
+          fi
 
       - name: Kill daemon
         if: always()
@@ -85,3 +132,11 @@ jobs:
             kill ${{ env.DAEMON_PID }} 2>/dev/null || true
             sleep 1
           fi
+
+      - name: Upload daemon log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daemon-log
+          path: ${{ env.SMOKE_ROOT }}/logs/daemon.log
+          if-no-files-found: warn
