@@ -427,6 +427,9 @@ func TestResolveFBVHandler(t *testing.T) {
 }
 
 // TestModulePathToFilePath verifies the module-path to file-path conversion.
+// The output must always use forward slashes regardless of the host OS so that
+// fileReader lookups (which use the same forward-slash convention) succeed on
+// Windows (P6 of #2196).
 func TestModulePathToFilePath(t *testing.T) {
 	tests := []struct {
 		modulePath string
@@ -440,6 +443,32 @@ func TestModulePathToFilePath(t *testing.T) {
 		got := modulePathToFilePath(tt.modulePath)
 		if got != tt.want {
 			t.Errorf("modulePathToFilePath(%q) = %q, want %q", tt.modulePath, got, tt.want)
+		}
+	}
+}
+
+// TestModulePathToFilePath_relToParent verifies the relative-to-parent module
+// resolution. The output must always use forward slashes (P6 of #2196).
+func TestModulePathToFilePath_relToParent(t *testing.T) {
+	tests := []struct {
+		modulePath string
+		parentPath string
+		want       string
+	}{
+		// Standard case: child module inside same app directory.
+		{"urls", "myapp/urls.py", "myapp/urls.py"},
+		// Two-level parent: core/routers.py included from api/v1/urls.py.
+		{"routers", "api/v1/urls.py", "api/v1/routers.py"},
+		// Empty module path → empty result.
+		{"", "api/urls.py", ""},
+		// Parent with no directory component → empty result (no relative base).
+		{"urls", "urls.py", ""},
+	}
+	for _, tt := range tests {
+		got := modulePathToFilePath_relToParent(tt.modulePath, tt.parentPath)
+		if got != tt.want {
+			t.Errorf("modulePathToFilePath_relToParent(%q, %q) = %q, want %q",
+				tt.modulePath, tt.parentPath, got, tt.want)
 		}
 	}
 }
