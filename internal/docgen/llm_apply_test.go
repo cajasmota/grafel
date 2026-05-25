@@ -14,6 +14,7 @@
 //  7. Missing result file: apply with non-existent result → clear error.
 //  8. Missing --bundle-file flag: ApplyResult without BundleFile → clear error.
 //  9. Missing --result-file flag: ApplyResult without ResultFile → clear error.
+//
 // 10. OUTPUT DISCIPLINE (#2194): apply with outDir matching .vitepress path → refused.
 // 11. OUTPUT DISCIPLINE (#2194): apply with outDir matching .docusaurus path → refused.
 // 12. OUTPUT DISCIPLINE (#2194): ssgScaffoldingPath unit tests for all patterns.
