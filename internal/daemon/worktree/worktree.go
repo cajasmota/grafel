@@ -199,11 +199,20 @@ func (s *Store) Active() []*WorktreeChild {
 	return out
 }
 
+// normPath returns a canonical path for Store key comparison.
+// On Windows, git worktree list --porcelain emits forward-slash paths
+// while filepath.Join produces backslash paths; Clean+FromSlash normalises
+// both to the OS separator so Lookup / upsert are consistent.
+func normPath(p string) string {
+	return filepath.Clean(filepath.FromSlash(p))
+}
+
 // findLocked returns the first child whose Path matches, or nil.
 // Caller must hold s.mu.
 func (s *Store) findLocked(path string) *WorktreeChild {
+	norm := normPath(path)
 	for _, c := range s.children {
-		if c.Path == path {
+		if normPath(c.Path) == norm {
 			return c
 		}
 	}
@@ -212,8 +221,9 @@ func (s *Store) findLocked(path string) *WorktreeChild {
 
 // upsert adds or updates a child record.  Caller must hold s.mu.
 func (s *Store) upsert(c *WorktreeChild) {
+	norm := normPath(c.Path)
 	for i, existing := range s.children {
-		if existing.Path == c.Path {
+		if normPath(existing.Path) == norm {
 			s.children[i] = c
 			return
 		}
@@ -223,8 +233,9 @@ func (s *Store) upsert(c *WorktreeChild) {
 
 // markExpired sets StatusExpired on the entry at path.  Caller must hold s.mu.
 func (s *Store) markExpired(path string) {
+	norm := normPath(path)
 	for _, c := range s.children {
-		if c.Path == path {
+		if normPath(c.Path) == norm {
 			if c.Status != StatusExpired {
 				now := time.Now().UTC()
 				c.StaleAt = &now
@@ -247,8 +258,9 @@ func (s *Store) Lookup(path string) *WorktreeChild {
 func (s *Store) LookupPath(wtPath string) (group, slug, branch string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	norm := normPath(wtPath)
 	for _, c := range s.children {
-		if c.Path == wtPath && c.Status == StatusActive {
+		if normPath(c.Path) == norm && c.Status == StatusActive {
 			return c.GroupName, c.ParentSlug, c.Branch
 		}
 	}
@@ -510,7 +522,7 @@ func (w *Watcher) poll() {
 
 		w.store.mu.Lock()
 		for _, raw := range kept {
-			seenPaths[raw.Path] = true
+			seenPaths[normPath(raw.Path)] = true
 			existing := w.store.findLocked(raw.Path)
 			if existing == nil {
 				child := &WorktreeChild{
@@ -545,7 +557,7 @@ func (w *Watcher) poll() {
 	// Mark removed worktrees as expired.
 	w.store.mu.Lock()
 	for _, c := range w.store.children {
-		if c.Status == StatusActive && !seenPaths[c.Path] {
+		if c.Status == StatusActive && !seenPaths[normPath(c.Path)] {
 			w.store.markExpired(c.Path)
 			w.logger.Printf("worktree: expired %s/%s worktree %s (no longer listed by git)",
 				c.GroupName, c.ParentSlug, c.Path)
