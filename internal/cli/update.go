@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -14,20 +15,48 @@ import (
 
 func newUpdateCmd() *cobra.Command {
 	var (
+		// Legacy flags (preserved for backward compat).
 		refreshLite bool
-		pinVersion  string
+
+		// New self-update flags (#2213).
+		tag string
+		pre bool
 	)
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update archigraph and reapply hooks",
+		Short: "Update archigraph to the latest release (or a pinned version)",
+		Long: `Update downloads the latest archigraph release from GitHub, atomically
+replaces the current binary, and re-runs the install transaction
+(skills, MCP, daemon restart).
+
+On success the previous binary is removed. On failure the previous
+binary is restored automatically (rollback).
+
+  archigraph update                # latest stable release
+  archigraph update --pre          # latest pre-release
+  archigraph update --tag v1.2.3   # pin to a specific version
+
+The update is idempotent: if the binary is already at the target
+version the command exits 0 without downloading anything.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
-			if pinVersion != "" {
-				fmt.Fprintf(out, "pin requested: %s (handled by install.sh self-update)\n", pinVersion)
+
+			// Legacy behaviour: when neither --tag nor --pre is set AND no
+			// GitHub connectivity is needed, fall through to the old group-
+			// refresh path.  The presence of --tag or --pre signals the new
+			// self-update path.
+			if tag != "" || pre {
+				return runSelfUpdate(out, install.UpdateOptions{
+					Tag: tag,
+					Pre: pre,
+				})
 			}
+
 			if refreshLite {
 				fmt.Fprintln(out, "refreshing rules-lite (no-op in current build)")
 			}
+
+			// ── legacy group-refresh path ─────────────────────────────────
 			bin, _ := os.Executable()
 			groups, err := registry.Groups()
 			if err != nil {
@@ -57,11 +86,54 @@ func newUpdateCmd() *cobra.Command {
 			regPath, _ := registry.RegistryPath()
 			_, _ = mcpreg.Register(mcpreg.ClaudeCode, bin, regPath)
 			_, _ = mcpreg.Register(mcpreg.Windsurf, bin, regPath)
-			fmt.Fprintln(out, "update complete")
-			return nil
+
+			// Also run the new self-update with latest stable tag (downloads).
+			return runSelfUpdate(out, install.UpdateOptions{})
 		},
 	}
-	cmd.Flags().BoolVar(&refreshLite, "refresh-rules-lite", false, "refresh the lite rule-pack")
-	cmd.Flags().StringVar(&pinVersion, "pin-version", "", "pin archigraph to a specific version on self-update")
+	cmd.Flags().BoolVar(&refreshLite, "refresh-rules-lite", false, "refresh the lite rule-pack (no-op)")
+	cmd.Flags().StringVar(&tag, "tag", "",
+		"pin update to a specific release tag (e.g. v1.2.3)")
+	cmd.Flags().BoolVar(&pre, "pre", false,
+		"allow pre-release tags when resolving 'latest'")
 	return cmd
+}
+
+// runSelfUpdate executes the new atomic self-update path (#2213) and prints a
+// summary to out.
+func runSelfUpdate(out io.Writer, opts install.UpdateOptions) error {
+	opts.SkipDaemonRestart = false // let install handle it
+
+	result, err := install.RunUpdate(opts)
+	if err != nil {
+		fmt.Fprintf(out, "✗ update failed: %v\n", err)
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "The previous binary has been restored.")
+		return err
+	}
+
+	if result.Skipped {
+		fmt.Fprintf(out, "✓ archigraph is already at the latest version (%s)\n", result.Tag)
+		return nil
+	}
+
+	fmt.Fprintf(out, "✓ archigraph updated to %s\n", result.Tag)
+	if result.PreviousVersion != "" && len(result.PreviousVersion) >= 16 {
+		fmt.Fprintf(out, "  previous: %s...\n", result.PreviousVersion[:16])
+	}
+	if result.NewVersion != "" && len(result.NewVersion) >= 16 {
+		fmt.Fprintf(out, "  new:      %s...\n", result.NewVersion[:16])
+	}
+	if result.InstallResult != nil {
+		if len(result.InstallResult.SkillsInstalled) > 0 {
+			fmt.Fprintf(out, "  skills:   %d refreshed\n", len(result.InstallResult.SkillsInstalled))
+		}
+		if len(result.InstallResult.MCPPaths) > 0 {
+			fmt.Fprintf(out, "  MCP:      refreshed in %d config file(s)\n", len(result.InstallResult.MCPPaths))
+		}
+		if result.InstallResult.DaemonVersion != "" {
+			fmt.Fprintf(out, "  daemon:   %s\n", result.InstallResult.DaemonVersion)
+		}
+	}
+	return nil
 }

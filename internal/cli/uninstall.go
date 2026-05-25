@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon/service"
+	"github.com/cajasmota/archigraph/internal/install"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 	"github.com/cajasmota/archigraph/internal/install/skilllink"
 )
@@ -55,27 +56,77 @@ func removeSkillsFromClaudeConfigs(out io.Writer, claudeConfigDirs []string) []s
 // daemon OS service (launchd plist / systemd unit) and removes the
 // archigraph MCP entry from every detected Claude config dir.
 // Idempotent: if the service is not installed the command succeeds silently.
+//
+// When install.json is present (new COPY/DEV install path, #2213), the
+// atomic RunUninstall path is used instead, which operates precisely on
+// what install.json records.
 func newUninstallCmd() *cobra.Command {
-	var claudeConfigDirs []string
-	var skipSkillUnlink bool
+	var (
+		claudeConfigDirs []string
+		skipSkillUnlink  bool
+		purge            bool
+		yes              bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "uninstall",
-		Short: "Stop and remove the archigraph daemon service",
-		Long: `Uninstall stops the archigraph daemon and removes its OS service
-registration (launchd plist on macOS, systemd unit on Linux).
+		Short: "Remove the archigraph install (daemon, MCP, skills)",
+		Long: `Uninstall removes the archigraph install:
 
-Also removes the archigraph MCP entry from ~/.claude.json and any
-~/.claude-*/.claude.json files, so Claude Code no longer tries to
-connect to the daemon.
+  - Removes copied/linked skills from ~/.claude/skills/ (only those in install.json)
+  - Deregisters the archigraph MCP entry from all detected .claude.json files
+  - Stops the archigraph daemon (OS service)
+  - Removes the CLI binary (with confirmation unless --yes)
+  - Removes ~/.archigraph/install.json
 
-Also removes the symlinked archigraph skills from every detected Claude Code
-config directory's skills/ subdirectory. Use --skip-skill-unlink to disable this.
+Default: leaves ~/.archigraph/store/ (your graphs) intact.
+Use --purge to also remove store/ and docs/.
 
-Idempotent: if the service is not installed the command exits 0 without
-printing an error.`,
+Idempotent: if archigraph is not installed the command exits 0.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
+
+			// ── New atomic path: uses install.json when available ──────────────
+			// RunUninstall returns (non-nil result, nil error) even when there is
+			// no install.json — in that case all fields are zero and we fall through
+			// to the legacy path.
+			result, err := install.RunUninstall(install.UninstallOptions{
+				Purge: purge,
+				Yes:   yes,
+			})
+			if err != nil {
+				return fmt.Errorf("uninstall: %w", err)
+			}
+
+			// If any structured work was done, report it and return.
+			if result != nil && (len(result.SkillsRemoved) > 0 || len(result.MCPPaths) > 0 ||
+				result.DaemonStopped || result.BinaryRemoved || result.StateRemoved) {
+				if len(result.SkillsRemoved) > 0 {
+					fmt.Fprintf(out, "  skills removed: %v\n", result.SkillsRemoved)
+				}
+				if len(result.MCPPaths) > 0 {
+					fmt.Fprintf(out, "  MCP deregistered from: %v\n", result.MCPPaths)
+				}
+				if result.DaemonStopped {
+					fmt.Fprintln(out, "  daemon stopped")
+				}
+				if result.BinaryRemoved {
+					fmt.Fprintln(out, "  binary removed")
+				}
+				if result.StateRemoved {
+					fmt.Fprintln(out, "  install.json removed")
+				}
+				if result.StoreRemoved {
+					fmt.Fprintln(out, "  store/ removed")
+				}
+				if result.DocsRemoved {
+					fmt.Fprintln(out, "  docs/ removed")
+				}
+				fmt.Fprintln(out, "✓ archigraph uninstalled")
+				return nil
+			}
+
+			// ── Legacy path: no install.json or nothing to do ─────────────────
 			if err := service.Uninstall(service.Options{}); err != nil {
 				return err
 			}
@@ -96,5 +147,9 @@ printing an error.`,
 		"explicit list of .claude.json paths to deregister from (default: auto-detect)")
 	cmd.Flags().BoolVar(&skipSkillUnlink, "skip-skill-unlink", false,
 		"skip removing skills from Claude Code's skills/ directories")
+	cmd.Flags().BoolVar(&purge, "purge", false,
+		"also remove ~/.archigraph/store/ and ~/.archigraph/docs/ (user graphs and docs)")
+	cmd.Flags().BoolVar(&yes, "yes", false,
+		"skip confirmation prompt before removing the CLI binary")
 	return cmd
 }

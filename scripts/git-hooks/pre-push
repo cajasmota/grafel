@@ -1,0 +1,20 @@
+#!/bin/sh
+# archigraph pre-push hook
+#
+# Runs `archigraph doctor --quick` before every push.
+# Warns on install drift but NEVER blocks the push.
+#
+# Install this hook via:
+#   archigraph install-hooks
+#
+# Or copy it manually to .git/hooks/pre-push and make it executable:
+#   cp scripts/git-hooks/pre-push .git/hooks/pre-push
+#   chmod +x .git/hooks/pre-push
+
+# >>> archigraph pre-push >>>
+# archigraph doctor — warns on install drift but NEVER blocks the push.
+if command -v archigraph >/dev/null 2>&1; then
+  archigraph doctor --quick 2>/dev/null || \
+    echo "archigraph: drift detected — run 'archigraph doctor' to investigate" >&2
+fi
+# <<< archigraph pre-push <<<

@@ -1,0 +1,439 @@
+// update.go implements `archigraph update` (issue #2213).
+//
+// Update downloads the latest (or a pinned) release artifact from GitHub,
+// replaces the CLI binary atomically, and re-runs the install transaction
+// (COPY or DEV mode, as recorded in install.json).
+//
+// The rollback path is:
+//  1. Before overwriting, stash the current binary at <binPath>.prev
+//  2. If the download or re-install fails, rename .prev back to the original
+//  3. Remove the stash on success
+//
+// The update command is idempotent: running it a second time with the same
+// tag is a fast no-op at the download step (checksums match).
+package install
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+)
+
+const (
+	// githubReleasesAPI is the GitHub API endpoint for release lookup.
+	githubReleasesAPI = "https://api.github.com/repos/cajasmota/archigraph/releases"
+
+	// defaultUpdateTimeout is the HTTP timeout for GitHub API calls.
+	defaultUpdateTimeout = 60 * time.Second
+)
+
+// UpdateOptions controls RunUpdate behaviour.
+type UpdateOptions struct {
+	// Tag is the release tag to install (e.g. "v1.2.3").
+	// When empty, the latest stable release is used.
+	Tag string
+
+	// Pre, when true, allows pre-release tags in the "latest" resolution.
+	// Only used when Tag is empty.
+	Pre bool
+
+	// BinPath is the path of the current archigraph binary.
+	// Defaults to os.Executable().
+	BinPath string
+
+	// StatePath is the path for install.json.
+	// Defaults to DefaultStatePath().
+	StatePath string
+
+	// WorkingDir is used for git repo detection when re-running install.
+	// Defaults to os.Getwd().
+	WorkingDir string
+
+	// SkillsSourceDir overrides skills discovery during re-install.
+	SkillsSourceDir string
+
+	// ClaudeConfigDirs overrides .claude.json auto-detection during re-install.
+	ClaudeConfigDirs []string
+
+	// Force bypasses the partial-install guard during re-install.
+	Force bool
+
+	// DryRun prints actions without writing anything.
+	DryRun bool
+
+	// SkipDaemonRestart skips the daemon restart step during re-install.
+	// Useful in tests.
+	SkipDaemonRestart bool
+
+	// RestartDaemon is the injectable daemon restart function.
+	RestartDaemon DaemonRestartFunc
+
+	// HTTPClient is the HTTP client to use for downloading. When nil the
+	// production client (defaultUpdateHTTPClient) is used.
+	HTTPClient *http.Client
+
+	// DownloadBinary is an injectable function that downloads the binary for
+	// a given release tag and GOOS/GOARCH into destPath.  When nil the
+	// production implementation (downloadReleaseBinary) is used.
+	// Signature: func(client, tag, goos, goarch, destPath) error
+	DownloadBinary func(client *http.Client, tag, goos, goarch, destPath string) error
+}
+
+// UpdateResult reports what RunUpdate accomplished.
+type UpdateResult struct {
+	// PreviousVersion is the SHA of the binary that was replaced.
+	PreviousVersion string
+
+	// NewVersion is the SHA of the newly installed binary.
+	NewVersion string
+
+	// Tag is the release tag that was installed.
+	Tag string
+
+	// InstallResult is the result of the re-install step.
+	InstallResult *CopyResult
+
+	// Skipped is true when the binary was already at the target version.
+	Skipped bool
+}
+
+func (o *UpdateOptions) applyDefaults() error {
+	if o.BinPath == "" {
+		bin, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("resolve binary path: %w", err)
+		}
+		o.BinPath = bin
+	}
+	if o.StatePath == "" {
+		p, err := DefaultStatePath()
+		if err != nil {
+			return err
+		}
+		o.StatePath = p
+	}
+	if o.WorkingDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolve working dir: %w", err)
+		}
+		o.WorkingDir = cwd
+	}
+	if o.HTTPClient == nil {
+		o.HTTPClient = &http.Client{Timeout: defaultUpdateTimeout}
+	}
+	if o.DownloadBinary == nil {
+		o.DownloadBinary = downloadReleaseBinary
+	}
+	return nil
+}
+
+// RunUpdate downloads the target release and atomically replaces the CLI
+// binary, then re-runs the install transaction to refresh skills, MCP, and
+// the daemon.
+func RunUpdate(opts UpdateOptions) (*UpdateResult, error) {
+	if err := opts.applyDefaults(); err != nil {
+		return nil, err
+	}
+
+	// ── resolve target tag ────────────────────────────────────────────────────
+	tag := opts.Tag
+	if tag == "" {
+		var err error
+		tag, err = resolveLatestTag(opts.HTTPClient, opts.Pre)
+		if err != nil {
+			return nil, fmt.Errorf("resolve latest release tag: %w", err)
+		}
+	}
+
+	result := &UpdateResult{Tag: tag}
+
+	// ── read current state ────────────────────────────────────────────────────
+	prevSHA, err := sha256File(opts.BinPath)
+	if err != nil {
+		return nil, fmt.Errorf("hash current binary: %w", err)
+	}
+	result.PreviousVersion = prevSHA
+
+	// ── download to a temp file ───────────────────────────────────────────────
+	tmpDownload := opts.BinPath + ".update-download"
+	defer func() { _ = os.Remove(tmpDownload) }()
+
+	if !opts.DryRun {
+		if err := opts.DownloadBinary(opts.HTTPClient, tag, runtime.GOOS, runtime.GOARCH, tmpDownload); err != nil {
+			return nil, fmt.Errorf("download release %s: %w", tag, err)
+		}
+
+		// Check if the downloaded binary is identical to what we already have.
+		newSHA, err := sha256File(tmpDownload)
+		if err != nil {
+			return nil, fmt.Errorf("hash downloaded binary: %w", err)
+		}
+		result.NewVersion = newSHA
+
+		if newSHA == prevSHA {
+			result.Skipped = true
+			return result, nil
+		}
+	} else {
+		result.NewVersion = "(dry-run)"
+	}
+
+	// ── stash the current binary for rollback ─────────────────────────────────
+	stashPath := opts.BinPath + ".prev"
+	if !opts.DryRun {
+		if err := copyFile(opts.BinPath, stashPath); err != nil {
+			return nil, fmt.Errorf("stash current binary for rollback: %w", err)
+		}
+	}
+
+	// rollbackBinary restores the stashed binary if something goes wrong.
+	rollbackBinary := func() {
+		if opts.DryRun {
+			return
+		}
+		if err := os.Rename(stashPath, opts.BinPath); err != nil {
+			fmt.Fprintf(os.Stderr, "archigraph update: rollback failed — could not restore %s from %s: %v\n",
+				opts.BinPath, stashPath, err)
+			fmt.Fprintf(os.Stderr, "  Manual recovery: mv %s %s\n", stashPath, opts.BinPath)
+		}
+	}
+
+	// ── atomically replace the binary ─────────────────────────────────────────
+	if !opts.DryRun {
+		// Preserve permissions of the original binary.
+		info, err := os.Stat(opts.BinPath)
+		if err != nil {
+			rollbackBinary()
+			return nil, fmt.Errorf("stat current binary: %w", err)
+		}
+		if err := os.Chmod(tmpDownload, info.Mode()); err != nil {
+			rollbackBinary()
+			return nil, fmt.Errorf("chmod downloaded binary: %w", err)
+		}
+		if err := os.Rename(tmpDownload, opts.BinPath); err != nil {
+			rollbackBinary()
+			return nil, fmt.Errorf("replace binary: %w", err)
+		}
+	}
+
+	// ── re-run install ────────────────────────────────────────────────────────
+	installOpts := CopyOptions{
+		BinPath:           opts.BinPath,
+		SkillsSourceDir:   opts.SkillsSourceDir,
+		ClaudeConfigDirs:  opts.ClaudeConfigDirs,
+		StatePath:         opts.StatePath,
+		WorkingDir:        opts.WorkingDir,
+		Force:             true, // update always re-installs
+		DryRun:            opts.DryRun,
+		SkipDaemonRestart: opts.SkipDaemonRestart,
+		RestartDaemon:     opts.RestartDaemon,
+	}
+
+	installResult, err := RunCopy(installOpts)
+	if err != nil {
+		rollbackBinary()
+		return nil, fmt.Errorf("re-install after update: %w", err)
+	}
+	result.InstallResult = installResult
+
+	// ── remove stash on success ───────────────────────────────────────────────
+	if !opts.DryRun {
+		_ = os.Remove(stashPath)
+	}
+
+	return result, nil
+}
+
+// ── GitHub release helpers ────────────────────────────────────────────────────
+
+// resolveLatestTag calls the GitHub releases API and returns the tag of the
+// latest stable (or, when pre=true, latest including pre-release) release.
+func resolveLatestTag(client *http.Client, pre bool) (string, error) {
+	url := githubReleasesAPI + "/latest"
+	if pre {
+		// For pre-releases we must list all releases and pick the first.
+		url = githubReleasesAPI + "?per_page=1"
+	}
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GET %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned HTTP %d for %s", resp.StatusCode, url)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+
+	// Simple JSON extraction without importing encoding/json (to keep deps light).
+	// We only need the tag_name field.
+	tag := extractJSONStringField(string(body), "tag_name")
+	if tag == "" {
+		return "", fmt.Errorf("could not extract tag_name from GitHub API response")
+	}
+	return tag, nil
+}
+
+// extractJSONStringField is a minimal JSON field extractor for a flat JSON
+// object.  It handles the common case where the value is a double-quoted
+// string.  This avoids encoding/json for a trivial parse of a single field.
+func extractJSONStringField(json, field string) string {
+	key := `"` + field + `":`
+	idx := strings.Index(json, key)
+	if idx < 0 {
+		return ""
+	}
+	rest := strings.TrimSpace(json[idx+len(key):])
+	if len(rest) == 0 || rest[0] != '"' {
+		return ""
+	}
+	// Find closing quote (simple: assume no escaped quotes in tag names).
+	end := strings.Index(rest[1:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return rest[1 : end+1]
+}
+
+// downloadReleaseBinary fetches the archigraph binary for the given tag/os/arch
+// from the GitHub release assets and writes it to destPath.
+//
+// The asset naming convention is:
+//
+//	archigraph-<goos>-<goarch>[.exe]
+//
+// e.g.:
+//
+//	archigraph-darwin-amd64
+//	archigraph-darwin-arm64
+//	archigraph-linux-amd64
+//	archigraph-windows-amd64.exe
+func downloadReleaseBinary(client *http.Client, tag, goos, goarch, destPath string) error {
+	assetName := fmt.Sprintf("archigraph-%s-%s", goos, goarch)
+	if goos == "windows" {
+		assetName += ".exe"
+	}
+
+	// First, get the release to find the asset download URL.
+	releaseURL := fmt.Sprintf("%s/tags/%s", githubReleasesAPI, tag)
+	req, err := http.NewRequest(http.MethodGet, releaseURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("GET release %s: %w", tag, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitHub API returned HTTP %d for release %s", resp.StatusCode, tag)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read release response: %w", err)
+	}
+
+	// Find the download URL for our asset.
+	downloadURL, err := findAssetDownloadURL(string(body), assetName)
+	if err != nil {
+		return fmt.Errorf("find asset %s in release %s: %w", assetName, tag, err)
+	}
+
+	// Download the binary.
+	dlReq, err := http.NewRequest(http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+
+	dlResp, err := client.Do(dlReq)
+	if err != nil {
+		return fmt.Errorf("download %s: %w", downloadURL, err)
+	}
+	defer dlResp.Body.Close()
+
+	if dlResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download returned HTTP %d for %s", dlResp.StatusCode, downloadURL)
+	}
+
+	// Write to destination.
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("create dest dir: %w", err)
+	}
+	f, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return fmt.Errorf("create dest file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, dlResp.Body); err != nil {
+		return fmt.Errorf("write binary: %w", err)
+	}
+	return nil
+}
+
+// findAssetDownloadURL parses a GitHub releases API JSON response and returns
+// the browser_download_url for the asset whose name matches assetName.
+func findAssetDownloadURL(json, assetName string) (string, error) {
+	// Look for the asset name in the JSON.  The structure is:
+	//   "assets": [ { "name": "...", "browser_download_url": "..." }, ... ]
+	// We scan for the name match, then find the download URL nearby.
+	nameKey := `"name":"` + assetName + `"`
+	// Also accept with spaces: "name": "archigraph-..."
+	if !strings.Contains(json, `"name":"`+assetName+`"`) &&
+		!strings.Contains(json, `"name": "`+assetName+`"`) {
+		return "", fmt.Errorf("asset %q not found in release", assetName)
+	}
+
+	// Find the position of the name.
+	idx := strings.Index(json, nameKey)
+	if idx < 0 {
+		// Try with space.
+		nameKey = `"name": "` + assetName + `"`
+		idx = strings.Index(json, nameKey)
+	}
+	if idx < 0 {
+		return "", fmt.Errorf("asset %q not found in release assets", assetName)
+	}
+
+	// Look for browser_download_url within the next 512 bytes.
+	window := json[idx:]
+	if len(window) > 512 {
+		window = window[:512]
+	}
+	urlKey := `"browser_download_url":"`
+	urlIdx := strings.Index(window, urlKey)
+	if urlIdx < 0 {
+		urlKey = `"browser_download_url": "`
+		urlIdx = strings.Index(window, urlKey)
+	}
+	if urlIdx < 0 {
+		return "", fmt.Errorf("browser_download_url not found near asset %q", assetName)
+	}
+	rest := window[urlIdx+len(urlKey):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		return "", fmt.Errorf("malformed browser_download_url for asset %q", assetName)
+	}
+	return rest[:end], nil
+}
