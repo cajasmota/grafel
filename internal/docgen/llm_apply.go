@@ -13,6 +13,10 @@
 //
 // No LLM calls are made here.  No network access.  Pure file I/O + the
 // existing Tier 1 assembly and contract machinery.
+//
+// OUTPUT DISCIPLINE (#2194): the apply step refuses writes to any path that
+// matches an SSG-scaffolding pattern (VitePress, Docusaurus, Sphinx, mkdocs).
+// See ssgScaffoldingPath for the full pattern list.
 package docgen
 
 import (
@@ -230,6 +234,17 @@ func ApplyResult(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier
 			return
 		}
 	}
+
+	// OUTPUT DISCIPLINE (#2194): refuse writes to SSG-scaffolding paths.
+	if ssgViolation := ssgScaffoldingPath(outDir); ssgViolation != "" {
+		err = fmt.Errorf(
+			"[OUTPUT DISCIPLINE] apply refused: output-dir %q matches SSG-scaffolding pattern %q — "+
+				"generate-docs produces markdown only; publishing scaffolding is out of scope (closes #2194)",
+			outDir, ssgViolation,
+		)
+		return
+	}
+
 	if mkErr := os.MkdirAll(outDir, 0o755); mkErr != nil {
 		err = fmt.Errorf("create output dir %s: %w", outDir, mkErr)
 		return
@@ -242,6 +257,18 @@ func ApplyResult(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier
 	}
 	if pageID == "" {
 		pageID = sanitizeFilename(bundle.SeedEntityID)
+	}
+
+	// OUTPUT DISCIPLINE (#2194): also refuse if the resolved file path is an
+	// SSG artifact (e.g. an agent set pageID to "config" inside a .vitepress dir).
+	candidateMdFile := filepath.Join(outDir, pageID+"-page.md")
+	if ssgViolation := ssgScaffoldingPath(candidateMdFile); ssgViolation != "" {
+		err = fmt.Errorf(
+			"[OUTPUT DISCIPLINE] apply refused: target path %q matches SSG-scaffolding pattern %q — "+
+				"generate-docs produces markdown only; publishing scaffolding is out of scope (closes #2194)",
+			candidateMdFile, ssgViolation,
+		)
+		return
 	}
 
 	// Write final page markdown.
@@ -266,4 +293,47 @@ func ApplyResult(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier
 	mdPath = mdFile
 	scorePath = scoreFile
 	return
+}
+
+// ssgScaffoldingPath returns the matched pattern name if p (a file or directory
+// path) looks like an SSG-scaffolding artifact that generate-docs must never
+// produce. Returns "" when the path is clean.
+//
+// Patterns (#2194 — OUTPUT DISCIPLINE):
+//   - .vitepress/*          (VitePress)
+//   - .docusaurus/*         (Docusaurus)
+//   - sphinx/*              (Sphinx)
+//   - mkdocs.yml            (MkDocs config file)
+//   - config.ts / config.js at docs root (VitePress / generic SSG)
+//   - package.json          at docs root (SSG build manifest)
+//
+// "At docs root" is approximated as: the file's Base name matches, regardless
+// of directory depth — the call site passes resolved absolute paths so a
+// package.json buried under a module dir would still be caught. This is
+// intentionally conservative: the skill should never produce these files.
+func ssgScaffoldingPath(p string) string {
+	// Normalise to forward slashes for consistent matching.
+	norm := filepath.ToSlash(p)
+
+	// Directory segment patterns (check every component of the path).
+	for _, seg := range []string{".vitepress", ".docusaurus", "sphinx"} {
+		// Match as a path component: either the full path equals seg, or the
+		// path contains /<seg>/ or ends with /<seg>.
+		if strings.Contains(norm, "/"+seg+"/") || strings.HasSuffix(norm, "/"+seg) {
+			return seg + "/*"
+		}
+	}
+
+	// File-name patterns (match the Base name).
+	base := filepath.Base(p)
+	switch base {
+	case "mkdocs.yml":
+		return "mkdocs.yml"
+	case "config.ts", "config.js":
+		return base + " (SSG config)"
+	case "package.json":
+		return "package.json (SSG build manifest)"
+	}
+
+	return ""
 }

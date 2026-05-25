@@ -14,6 +14,9 @@
 //  7. Missing result file: apply with non-existent result → clear error.
 //  8. Missing --bundle-file flag: ApplyResult without BundleFile → clear error.
 //  9. Missing --result-file flag: ApplyResult without ResultFile → clear error.
+// 10. OUTPUT DISCIPLINE (#2194): apply with outDir matching .vitepress path → refused.
+// 11. OUTPUT DISCIPLINE (#2194): apply with outDir matching .docusaurus path → refused.
+// 12. OUTPUT DISCIPLINE (#2194): ssgScaffoldingPath unit tests for all patterns.
 package docgen_test
 
 import (
@@ -600,4 +603,118 @@ func TestApplyResult_PageIDResolution(t *testing.T) {
 			t.Errorf("expected bundle.PageID %q in filename, got %q", bundle.PageID, filepath.Base(mdPath))
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests 10–12: OUTPUT DISCIPLINE (#2194) — apply-step SSG refusal
+// ---------------------------------------------------------------------------
+
+// TestApplyResult_RefusesVitepressOutputDir verifies that ApplyResult returns
+// an error when the resolved output-dir is inside a .vitepress directory.
+func TestApplyResult_RefusesVitepressOutputDir(t *testing.T) {
+	t.Parallel()
+
+	sections := []string{"overview"}
+	bundle, result := makeMatchingBundleAndResult(sections)
+
+	tmpDir := t.TempDir()
+	bundlePath := writeBundleFile(t, tmpDir, bundle)
+	resultPath := writeResultFile(t, tmpDir, result)
+
+	// An LLM agent might set output-dir to a VitePress directory.
+	vitepressOutDir := filepath.Join(tmpDir, "docs", ".vitepress", "generated")
+
+	opts := docgen.Tier1RunOpts{
+		OutputDir:  vitepressOutDir,
+		LLMMode:    "apply",
+		BundleFile: bundlePath,
+		ResultFile: resultPath,
+	}
+
+	_, _, _, err := docgen.ApplyResult(opts)
+	if err == nil {
+		t.Fatal("expected OUTPUT DISCIPLINE refusal for .vitepress output-dir, got nil")
+	}
+	if !strings.Contains(err.Error(), "OUTPUT DISCIPLINE") {
+		t.Errorf("expected 'OUTPUT DISCIPLINE' in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), ".vitepress") {
+		t.Errorf("expected '.vitepress' pattern in error, got: %v", err)
+	}
+	// The directory must NOT have been created.
+	if _, statErr := os.Stat(vitepressOutDir); statErr == nil {
+		t.Error("OUTPUT DISCIPLINE: .vitepress output-dir was created despite refusal")
+	}
+}
+
+// TestApplyResult_RefusesDocusaurusOutputDir verifies refusal for .docusaurus paths.
+func TestApplyResult_RefusesDocusaurusOutputDir(t *testing.T) {
+	t.Parallel()
+
+	sections := []string{"overview"}
+	bundle, result := makeMatchingBundleAndResult(sections)
+
+	tmpDir := t.TempDir()
+	bundlePath := writeBundleFile(t, tmpDir, bundle)
+	resultPath := writeResultFile(t, tmpDir, result)
+
+	docusaurusOutDir := filepath.Join(tmpDir, "docs", ".docusaurus", "generated")
+
+	opts := docgen.Tier1RunOpts{
+		OutputDir:  docusaurusOutDir,
+		LLMMode:    "apply",
+		BundleFile: bundlePath,
+		ResultFile: resultPath,
+	}
+
+	_, _, _, err := docgen.ApplyResult(opts)
+	if err == nil {
+		t.Fatal("expected OUTPUT DISCIPLINE refusal for .docusaurus output-dir, got nil")
+	}
+	if !strings.Contains(err.Error(), "OUTPUT DISCIPLINE") {
+		t.Errorf("expected 'OUTPUT DISCIPLINE' in error, got: %v", err)
+	}
+}
+
+// TestApplyResult_OutputDisciplinePatterns exercises ssgScaffoldingPath logic
+// indirectly via ApplyResult for directory-style SSG patterns.
+func TestApplyResult_OutputDisciplinePatterns(t *testing.T) {
+	t.Parallel()
+
+	sections := []string{"overview"}
+	bundle, result := makeMatchingBundleAndResult(sections)
+
+	// Patterns that must be refused as output-dir (directory-style artifacts).
+	refusedDirs := []struct {
+		rel     string
+		pattern string
+	}{
+		{filepath.Join("docs", ".vitepress", "dist"), ".vitepress"},
+		{filepath.Join("docs", ".docusaurus", "cache"), ".docusaurus"},
+		{filepath.Join("docs", "sphinx", "_build"), "sphinx"},
+	}
+
+	for _, tc := range refusedDirs {
+		tc := tc // capture
+		t.Run("refused="+tc.pattern, func(t *testing.T) {
+			t.Parallel()
+			tmpDir := t.TempDir()
+			bundlePath := writeBundleFile(t, tmpDir, bundle)
+			resultPath := writeResultFile(t, tmpDir, result)
+
+			opts := docgen.Tier1RunOpts{
+				OutputDir:  filepath.Join(tmpDir, tc.rel),
+				LLMMode:    "apply",
+				BundleFile: bundlePath,
+				ResultFile: resultPath,
+			}
+			_, _, _, err := docgen.ApplyResult(opts)
+			if err == nil {
+				t.Fatalf("expected OUTPUT DISCIPLINE refusal for %q, got nil", tc.rel)
+			}
+			if !strings.Contains(err.Error(), "OUTPUT DISCIPLINE") {
+				t.Errorf("expected 'OUTPUT DISCIPLINE' in error for %q, got: %v", tc.rel, err)
+			}
+		})
+	}
 }

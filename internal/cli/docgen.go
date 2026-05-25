@@ -249,9 +249,10 @@ Available sections (--section, used by --tier=0 only):
 	cmd.Flags().BoolVar(&noCache, "no-cache", false,
 		"disable section-level LLM cache reads and writes for this run; applies to all tiers")
 
-	// Sub-commands: storage discipline helpers (#2190).
+	// Sub-commands: storage discipline helpers (#2190) and output discipline (#2194).
 	cmd.AddCommand(newDocgenMigrateInRepoCmd())
 	cmd.AddCommand(newDocgenAuditCmd())
+	cmd.AddCommand(newDocgenCleanupScaffoldingCmd())
 
 	return cmd
 }
@@ -886,6 +887,186 @@ Exit codes:
 
 	cmd.Flags().StringVar(&group, "group", "", "group name (defaults to sole registered group)")
 	return cmd
+}
+
+// newDocgenCleanupScaffoldingCmd returns the `archigraph docgen cleanup-scaffolding`
+// subcommand (#2194 — OUTPUT DISCIPLINE).
+//
+// It walks:
+//   - Every registered repo's docs/ (and doc/) directory
+//   - ~/.archigraph/docs/<group>/
+//
+// …looking for SSG-scaffolding artifacts (VitePress, Docusaurus, Sphinx,
+// mkdocs, package.json, config.ts/config.js) that a misbehaving agent may
+// have written. Prompts the user to confirm before removing each artifact.
+// Use --yes for non-interactive / CI mode.
+func newDocgenCleanupScaffoldingCmd() *cobra.Command {
+	var group string
+	var yes bool
+
+	cmd := &cobra.Command{
+		Use:   "cleanup-scaffolding [--group <name>] [--yes]",
+		Short: "Remove SSG-scaffolding artifacts written by a misbehaving agent",
+		Long: `Walks every repo registered in the group (docs/ and doc/) AND the
+archigraph-managed store (~/.archigraph/docs/<group>/) looking for
+SSG-scaffolding artifacts that the generate-docs skill must never produce:
+
+  .vitepress/    VitePress config directory
+  .docusaurus/   Docusaurus config directory
+  sphinx/        Sphinx build directory
+  mkdocs.yml     MkDocs config file
+  config.ts      VitePress / generic SSG entry-point
+  config.js      generic SSG entry-point
+  package.json   SSG build manifest (at docs root)
+
+Each match is reported before removal. The operation is idempotent: running
+cleanup-scaffolding a second time on a clean tree is a no-op.
+
+Use --yes to skip confirmation prompts (non-interactive / CI).
+
+Closes #2194. Parallel to migrate-in-repo (#2190) for storage discipline.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			resolvedGroup, err := resolveGroup(group)
+			if err != nil {
+				return err
+			}
+
+			cfg, err := loadGroupConfigFromRegistry(resolvedGroup)
+			if err != nil {
+				return err
+			}
+
+			homeDir, err := registry.HomeDir()
+			if err != nil {
+				return fmt.Errorf("resolve archigraph home: %w", err)
+			}
+
+			// Collect all directories to scan.
+			var scanRoots []string
+
+			// 1. Repo working trees (docs/ and doc/).
+			for _, r := range cfg.Repos {
+				if r.Path == "" {
+					continue
+				}
+				for _, sub := range []string{"docs", "doc"} {
+					dir := filepath.Join(r.Path, sub)
+					if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
+						scanRoots = append(scanRoots, dir)
+					}
+				}
+			}
+
+			// 2. Archigraph-managed store for this group.
+			storeDir := filepath.Join(homeDir, "docs", resolvedGroup)
+			if info, statErr := os.Stat(storeDir); statErr == nil && info.IsDir() {
+				scanRoots = append(scanRoots, storeDir)
+			}
+
+			if len(scanRoots) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No directories to scan.")
+				return nil
+			}
+
+			// Find scaffolding artifacts in every root.
+			artifacts := findSSGScaffoldingArtifacts(scanRoots)
+			w := cmd.OutOrStdout()
+
+			if len(artifacts) == 0 {
+				fmt.Fprintln(w, "[ ok ] No SSG-scaffolding artifacts detected.")
+				return nil
+			}
+
+			fmt.Fprintf(w, "[OUTPUT DISCIPLINE] SSG-scaffolding artifacts detected (%d):\n", len(artifacts))
+			for _, a := range artifacts {
+				fmt.Fprintf(w, "  %s  (%s)\n", a.path, a.reason)
+			}
+
+			scanner := bufio.NewScanner(cmd.InOrStdin())
+			removed, skipped := 0, 0
+
+			for _, a := range artifacts {
+				if !yes {
+					fmt.Fprintf(w, "\nRemove %s? [y/N]: ", a.path)
+					if !scanner.Scan() {
+						fmt.Fprintln(w, "  skipped (no input)")
+						skipped++
+						continue
+					}
+					if strings.ToLower(strings.TrimSpace(scanner.Text())) != "y" {
+						fmt.Fprintln(w, "  skipped.")
+						skipped++
+						continue
+					}
+				}
+
+				if removeErr := os.RemoveAll(a.path); removeErr != nil {
+					fmt.Fprintf(w, "  [error] remove %s: %v\n", a.path, removeErr)
+					skipped++
+					continue
+				}
+				fmt.Fprintf(w, "  [ ok ] removed %s\n", a.path)
+				removed++
+			}
+
+			fmt.Fprintf(w, "\ncleanup-scaffolding complete: %d removed, %d skipped.\n", removed, skipped)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&group, "group", "", "group name (defaults to sole registered group)")
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation prompts and remove all matches automatically")
+	return cmd
+}
+
+// ssgArtifact pairs a path with a human-readable reason string.
+type ssgArtifact struct {
+	path   string
+	reason string
+}
+
+// findSSGScaffoldingArtifacts walks each root directory (non-recursively for
+// the top level, then descends one level into subgroups in the store) and
+// returns all entries that match the SSG-scaffolding patterns.
+func findSSGScaffoldingArtifacts(roots []string) []ssgArtifact {
+	var found []ssgArtifact
+
+	for _, root := range roots {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			fullPath := filepath.Join(root, e.Name())
+			if reason := ssgArtifactReason(e.Name(), e.IsDir()); reason != "" {
+				found = append(found, ssgArtifact{path: fullPath, reason: reason})
+			}
+		}
+	}
+	return found
+}
+
+// ssgArtifactReason returns a human-readable reason string if name matches an
+// SSG-scaffolding pattern, or "" if it is clean.
+// isDir is true when the entry is a directory.
+func ssgArtifactReason(name string, isDir bool) string {
+	switch {
+	case name == ".vitepress" && isDir:
+		return "VitePress config directory"
+	case name == ".docusaurus" && isDir:
+		return "Docusaurus cache/config directory"
+	case name == "sphinx" && isDir:
+		return "Sphinx build directory"
+	case name == "mkdocs.yml":
+		return "MkDocs config file"
+	case name == "config.ts":
+		return "SSG config entry-point (config.ts)"
+	case name == "config.js":
+		return "SSG config entry-point (config.js)"
+	case name == "package.json":
+		return "SSG build manifest (package.json at docs root)"
+	}
+	return ""
 }
 
 // loadGroupConfigFromRegistry looks up the group's config path from the

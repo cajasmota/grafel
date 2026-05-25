@@ -55,6 +55,21 @@ echo "OUTPUT_ROOT=$OUTPUT_ROOT"
 
 All file writes in this pass MUST use `${OUTPUT_ROOT}<relative-path>`. Never write to any
 other location. If `mkdir -p` fails, ABORT: "Cannot create output directory at $OUTPUT_ROOT."
+## CRITICAL OUTPUT DISCIPLINE
+==========================
+The generate-docs skill produces markdown files in the canonical store
+at `~/.archigraph/docs/<group>/`. It does NOT produce:
+- VitePress / Docusaurus / Sphinx / mkdocs scaffolding
+- `package.json` or any build manifests for static site generators
+- Any non-markdown asset that wraps the docs for publishing
+- `.gitignore` entries
+
+Publishing is downstream — handled by the archigraph dashboard or
+external tooling. If you find yourself about to write a `config.ts`,
+`package.json`, `mkdocs.yml`, `.vitepress/config.ts`, or any build
+manifest, STOP. The skill's job is content, not infrastructure.
+
+
 
 
 ---

@@ -128,6 +128,27 @@ in-repo docgen output without moving anything.
 The daemon dashboard reads exclusively from `~/.archigraph/docs/<group>/`.
 Closes #1624. Parallel to TOOL DISCIPLINE (#2177). Enforced by #2190.
 
+## CRITICAL OUTPUT DISCIPLINE (enforced on every pass — parallel to TOOL DISCIPLINE + STORAGE DISCIPLINE)
+==========================
+
+The generate-docs skill produces markdown files in the canonical store
+at `~/.archigraph/docs/<group>/`. It does NOT produce:
+- VitePress / Docusaurus / Sphinx / mkdocs scaffolding
+- `package.json` or any build manifests for static site generators
+- Any non-markdown asset that wraps the docs for publishing
+- `.gitignore` entries
+
+Publishing is downstream — handled by the archigraph dashboard or
+external tooling. If you find yourself about to write a `config.ts`,
+`package.json`, `mkdocs.yml`, `.vitepress/config.ts`, or any build
+manifest, STOP. The skill's job is content, not infrastructure.
+
+The apply step (`archigraph docgen --llm-mode=apply`) actively refuses
+writes to SSG-scaffolding paths. Any result file that names such a path
+will be rejected with a logged violation. Closes #2194.
+Parallel to TOOL DISCIPLINE (#2177) and STORAGE DISCIPLINE (#2193).
+Third instance of the agent-treats-skill-as-suggestion pattern.
+
 ## LLM-mode orchestrate (Pass 20)
 
 When a `*-page-bundle.json` exists in the docgen output directory and you want
@@ -221,7 +242,6 @@ Time estimates assume typical small-to-medium codebases (1k–10k source entitie
 | 6 | `prompts/06-cross-cutting.md` | Cross-cutting concerns: auth, logging, error handling, observability. | 2–5 min |
 | 7 | `prompts/07-group-synthesis.md` | Group-level synthesis page that ties the repos together. (Cross-repo chains pending #769; until then writers should reach cross-repo via `archigraph_cross_links`). | 3–5 min |
 | 8 | `prompts/08-cross-link.md` | Validate links and resolve cross-repo link candidates via `archigraph_cross_links`. | 2–4 min |
-| — | *(Pass 9 reserved — planned for milestone-2 doc-site work)* | | |
 | 10 | `prompts/10-pattern-convergence.md` | Aggregate subagent pattern candidates + promote convergent ones (ADR-0018 Phase 4). | 2–3 min |
 | 11 | `prompts/11-pattern-cross-link.md` | Populate each approved pattern's `documentation_url` (ADR-0018 Phase 5). | 1–2 min |
 | 12 | `prompts/12-pattern-prose.md` | Emit `docs/patterns/<category>/<id>.md` per approved pattern (ADR-0018 Phase 6). | 2–4 min |
@@ -745,7 +765,6 @@ appear in a business page) so an engineer can audit it without polluting the PM
 reading. All other content is plain business language with zero internal symbol
 names per `snippets/business-voice.md`.
 
-> **Note:** A doc-site (formerly Pass 9 VitePress config) is out of scope for this skill. It is planned for a separate milestone-2 effort. Pass 9 is intentionally reserved in the pass table.
 
 ## Conventions
 
