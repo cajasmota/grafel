@@ -25,6 +25,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/dashboard"
+	"github.com/cajasmota/archigraph/internal/docgen"
 	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/jobs"
@@ -203,6 +204,11 @@ func runDaemon(argv []string) error {
 	fs.IntVar(&maxConcurrentGroups, "max-concurrent-groups", envConcGroups,
 		"max repos indexed in parallel during rebuild (auto-tuned from memory; floor=2 cap=8)")
 
+	// --no-auto-cleanup disables the background docgen cleanup sweeper (#2216).
+	var noAutoCleanup bool
+	fs.BoolVar(&noAutoCleanup, "no-auto-cleanup", false,
+		"disable the background docgen cleanup sweeper (default: enabled)")
+
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -331,6 +337,32 @@ func runDaemon(argv []string) error {
 		// nil until OnWatcherReady fires, but Status is only called after
 		// the daemon is serving).
 		WatcherMgrStats: &lazyWatcherMgrStats{},
+
+		// Docgen background sweeper (#2216): runs at startup + every 24 h to
+		// remove stale staging runs and .previous-* backups.
+		// Disabled via --no-auto-cleanup on `archigraph start`.
+		DocgenSweep: func() *daemon.DocgenSweeperConfig {
+			if noAutoCleanup {
+				return nil
+			}
+			// Snapshot the project roots once at startup so the closure does
+			// not re-scan the registry on every sweep tick.
+			roots := daemonReposToWatch()
+			return &daemon.DocgenSweeperConfig{
+				CleanupFn: func() (int, int64, error) {
+					result, err := docgen.RunDocgenCleanup(docgen.CleanupOptions{
+						ProjectRoots: roots,
+					})
+					if err != nil {
+						return 0, 0, err
+					}
+					for _, e := range result.Errors {
+						_ = e // non-fatal; logged by the sweeper
+					}
+					return len(result.RemovedPaths), result.TotalBytes, nil
+				},
+			}
+		}(),
 	}
 
 	// Apply the concurrency cap before the RPC server opens so

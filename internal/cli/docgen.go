@@ -78,6 +78,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -249,10 +250,12 @@ Available sections (--section, used by --tier=0 only):
 	cmd.Flags().BoolVar(&noCache, "no-cache", false,
 		"disable section-level LLM cache reads and writes for this run; applies to all tiers")
 
-	// Sub-commands: storage discipline helpers (#2190) and output discipline (#2194).
+	// Sub-commands: storage discipline helpers (#2190), output discipline (#2194),
+	// and lifecycle management (#2216).
 	cmd.AddCommand(newDocgenMigrateInRepoCmd())
 	cmd.AddCommand(newDocgenAuditCmd())
 	cmd.AddCommand(newDocgenCleanupScaffoldingCmd())
+	cmd.AddCommand(newDocgenCleanupCmd())
 
 	return cmd
 }
@@ -717,20 +720,26 @@ func findInRepoDocgenDirs(cfg *registry.GroupConfig) []string {
 }
 
 // newDocgenMigrateInRepoCmd returns the `archigraph docgen migrate-in-repo`
-// subcommand (#2190).
+// subcommand (#2190, extended in #2216 to cover staging-dir layout).
 func newDocgenMigrateInRepoCmd() *cobra.Command {
 	var group string
 	var yes bool
 
 	cmd := &cobra.Command{
 		Use:   "migrate-in-repo [--group <name>] [--yes]",
-		Short: "Move in-repo docgen output into the archigraph-managed store",
-		Long: `Walks every repo registered in the group and looks for docs/ (or doc/)
-directories that appear to be archigraph docgen output (heuristic: presence of
-.plan.md, .inventory.json, or .metadata.json inside the directory).
+		Short: "Move in-repo docgen output and orphaned staging runs to the archigraph store",
+		Long: `Walks every repo registered in the group and looks for:
 
-For each match the user is asked to confirm before the directory is moved to:
-  ~/.archigraph/docs/<group>/<repo-slug>/
+  1. docs/ (or doc/) directories that appear to be archigraph docgen output
+     (heuristic: presence of .plan.md, .inventory.json, or .metadata.json).
+
+  2. <project>/.archigraph/staging/<run_id>/ directories that were never
+     promoted (e.g. aborted runs). These are moved to the canonical store
+     under ~/.archigraph/docs/<group>/.staging-recovered/<run_id>/.
+
+For each match the user is asked to confirm before the directory is moved.
+Existing canonical docs are backed up to <canonical>.previous-<timestamp>/
+before being overwritten.
 
 The operation is idempotent: if the target already exists the command skips
 that repo with a warning rather than overwriting existing store content.
@@ -751,12 +760,6 @@ making any changes.`,
 				return err
 			}
 
-			dirs := findInRepoDocgenDirs(cfg)
-			if len(dirs) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No in-repo docgen output found. Nothing to migrate.")
-				return nil
-			}
-
 			homeDir, err := registry.HomeDir()
 			if err != nil {
 				return fmt.Errorf("resolve archigraph home: %w", err)
@@ -766,9 +769,10 @@ making any changes.`,
 			scanner := bufio.NewScanner(cmd.InOrStdin())
 			migrated, skipped := 0, 0
 
+			// ── Phase 1: in-repo docs/ directories ───────────────────────
+			dirs := findInRepoDocgenDirs(cfg)
 			for _, srcDir := range dirs {
 				// Determine target path: ~/.archigraph/docs/<group>/<repo-slug>/
-				// We derive the repo slug by matching srcDir prefix against cfg.Repos.
 				repoSlug := ""
 				for _, r := range cfg.Repos {
 					if r.Path != "" && strings.HasPrefix(srcDir, r.Path) {
@@ -805,18 +809,60 @@ making any changes.`,
 					continue
 				}
 
-				// Ensure parent directory.
 				if err := os.MkdirAll(filepath.Dir(targetDir), 0o755); err != nil {
 					return fmt.Errorf("create parent for %s: %w", targetDir, err)
 				}
-
-				// Move srcDir → targetDir.
 				if err := os.Rename(srcDir, targetDir); err != nil {
 					return fmt.Errorf("move %s → %s: %w", srcDir, targetDir, err)
 				}
-
 				fmt.Fprintf(w, "  [ ok ] moved to %s\n", targetDir)
 				migrated++
+			}
+
+			// ── Phase 2: orphaned staging runs (#2216) ────────────────────
+			// Build a repo list for the docgen.RunMigrateInRepo call.
+			var migrateRepos []docgen.MigrateRepo
+			for _, r := range cfg.Repos {
+				migrateRepos = append(migrateRepos, docgen.MigrateRepo{
+					Slug: r.Slug,
+					Path: r.Path,
+				})
+			}
+
+			migrateOpts := docgen.MigrateOptions{
+				Group: resolvedGroup,
+				GroupConfigLoader: func(_ string) ([]docgen.MigrateRepo, error) {
+					return migrateRepos, nil
+				},
+				GroupsLoader: func() ([]string, error) { return []string{resolvedGroup}, nil },
+				Yes:          yes,
+				ConfirmFn: func(msg string) bool {
+					if yes {
+						return true
+					}
+					fmt.Fprintf(w, "\n%s\nMove? [y/N]: ", msg)
+					if !scanner.Scan() {
+						return false
+					}
+					return strings.ToLower(strings.TrimSpace(scanner.Text())) == "y"
+				},
+			}
+
+			migrateResult, migrateErr := docgen.RunMigrateInRepo(migrateOpts)
+			if migrateErr != nil {
+				fmt.Fprintf(w, "[warn] staging migration error: %v\n", migrateErr)
+			} else {
+				for _, p := range migrateResult.Migrated {
+					fmt.Fprintf(w, "  [ ok ] staged run moved: %s → %s\n", p.Src, p.Dst)
+					migrated++
+				}
+				for _, s := range migrateResult.Skipped {
+					fmt.Fprintf(w, "  skipped staged run: %s\n", s)
+					skipped++
+				}
+				for _, e := range migrateResult.Errors {
+					fmt.Fprintf(w, "[warn] %s\n", e)
+				}
 			}
 
 			fmt.Fprintf(w, "\nmigrate-in-repo complete: %d moved, %d skipped.\n", migrated, skipped)
@@ -1067,6 +1113,157 @@ func ssgArtifactReason(name string, isDir bool) string {
 		return "SSG build manifest (package.json at docs root)"
 	}
 	return ""
+}
+
+// newDocgenCleanupCmd returns the `archigraph docgen cleanup` subcommand (#2216).
+//
+// Removes stale staging runs and .previous-* backups from the docgen store.
+// Safe by design: canonical docs are never touched.
+func newDocgenCleanupCmd() *cobra.Command {
+	var group string
+	var maxAge string
+	var dryRun bool
+
+	cmd := &cobra.Command{
+		Use:   "cleanup [--group <name>] [--max-age 7d] [--dry-run]",
+		Short: "Remove stale staging runs and .previous-* backups from the docgen store",
+		Long: `Walks the staging directory (<project>/.archigraph/staging/) and the
+backup directories (~/.archigraph/docs/<group>.previous-*/) and removes any
+entry whose creation time is older than --max-age (default: 7 days).
+
+Canonical docs (~/.archigraph/docs/<group>/) are NEVER touched.
+The operation is idempotent: running it on an already-clean tree is a no-op.
+
+Use --dry-run to report what would be removed without making any changes.
+Use --group to scope cleanup to a single group (default: all groups).
+
+Examples:
+  archigraph docgen cleanup
+  archigraph docgen cleanup --group mygroup --max-age 3d --dry-run`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			age, err := parseMaxAge(maxAge)
+			if err != nil {
+				return fmt.Errorf("--max-age: %w", err)
+			}
+
+			// Collect project roots from the registry so staging dirs can be found.
+			var projectRoots []string
+			if group != "" {
+				cfg, cfgErr := loadGroupConfigFromRegistry(group)
+				if cfgErr == nil {
+					for _, r := range cfg.Repos {
+						if r.Path != "" {
+							projectRoots = append(projectRoots, r.Path)
+						}
+					}
+				}
+			} else {
+				groups, gErr := registry.Groups()
+				if gErr == nil {
+					for _, g := range groups {
+						cfg, cfgErr := registry.LoadGroupConfig(g.ConfigPath)
+						if cfgErr != nil {
+							continue
+						}
+						for _, r := range cfg.Repos {
+							if r.Path != "" {
+								projectRoots = append(projectRoots, r.Path)
+							}
+						}
+					}
+				}
+			}
+
+			opts := docgen.CleanupOptions{
+				Group:        group,
+				MaxAge:       age,
+				DryRun:       dryRun,
+				ProjectRoots: projectRoots,
+			}
+
+			result, err := docgen.RunDocgenCleanup(opts)
+			if err != nil {
+				return fmt.Errorf("docgen cleanup: %w", err)
+			}
+
+			w := cmd.OutOrStdout()
+			prefix := ""
+			if dryRun {
+				prefix = "(dry-run) "
+			}
+			if len(result.RemovedPaths) == 0 {
+				fmt.Fprintf(w, "%s[ ok ] Nothing to remove.\n", prefix)
+			} else {
+				fmt.Fprintf(w, "%sRemoved %d item(s), freed %s:\n",
+					prefix, len(result.RemovedPaths), formatBytes(result.TotalBytes))
+				for _, p := range result.RemovedPaths {
+					fmt.Fprintf(w, "  %s\n", p)
+				}
+			}
+			for _, e := range result.Errors {
+				fmt.Fprintf(w, "[warn] %s\n", e)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&group, "group", "",
+		"scope cleanup to a single group (default: all groups)")
+	cmd.Flags().StringVar(&maxAge, "max-age", "7d",
+		"remove entries older than this duration (e.g. 7d, 24h, 168h)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
+		"report what would be removed without making any changes")
+	return cmd
+}
+
+// parseMaxAge parses a human-readable duration string like "7d", "24h",
+// "168h" into a time.Duration.
+func parseMaxAge(s string) (time.Duration, error) {
+	if s == "" {
+		return 7 * 24 * time.Hour, nil
+	}
+	// Support "Nd" shorthand for N days.
+	if len(s) > 1 && s[len(s)-1] == 'd' {
+		days, err := parseInt64(s[:len(s)-1])
+		if err != nil {
+			return 0, fmt.Errorf("invalid days value %q: %w", s, err)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid duration %q (try e.g. 7d, 168h): %w", s, err)
+	}
+	return d, nil
+}
+
+// parseInt64 parses a decimal integer string.
+func parseInt64(s string) (int64, error) {
+	var n int64
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("non-digit character %q", c)
+		}
+		n = n*10 + int64(c-'0')
+	}
+	if s == "" {
+		return 0, fmt.Errorf("empty string")
+	}
+	return n, nil
+}
+
+// formatBytes formats a byte count as a human-readable string.
+func formatBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 // loadGroupConfigFromRegistry looks up the group's config path from the

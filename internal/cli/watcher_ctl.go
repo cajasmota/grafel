@@ -23,6 +23,7 @@ import (
 
 func newStartCmd() *cobra.Command {
 	var maxRSSBudget int64
+	var noAutoCleanup bool
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the daemon (manages MCP, indexer, dashboard, and watchers)",
@@ -36,11 +37,13 @@ The daemon is a single long-running process that owns:
 Use 'archigraph stop' to stop all of the above at once.
 Use 'archigraph dashboard' to open the dashboard in your browser.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDaemonStartWithBudget(cmd.OutOrStdout(), maxRSSBudget)
+			return runDaemonStartOpts(cmd.OutOrStdout(), maxRSSBudget, noAutoCleanup)
 		},
 	}
 	cmd.Flags().Int64Var(&maxRSSBudget, "max-rss-budget", 0,
 		"max predicted RSS (MB) for concurrent index jobs (0 = use daemon default of 500)")
+	cmd.Flags().BoolVar(&noAutoCleanup, "no-auto-cleanup", false,
+		"disable the background docgen cleanup sweeper (default: enabled)")
 	return cmd
 }
 
@@ -97,17 +100,22 @@ func newLogsCmd() *cobra.Command {
 }
 
 // runDaemonStart is the legacy zero-arg form retained for restart's
-// internal use. It forwards to runDaemonStartWithBudget with 0,
-// letting the daemon pick its own default.
+// internal use. It forwards to runDaemonStartOpts with default settings.
 func runDaemonStart(out io.Writer) error {
-	return runDaemonStartWithBudget(out, 0)
+	return runDaemonStartOpts(out, 0, false)
 }
 
-// runDaemonStartWithBudget forks the current binary in daemon mode and
+// runDaemonStartWithBudget retains backward-compat for callers that only
+// pass the RSS budget (no cleanup flag).
+func runDaemonStartWithBudget(out io.Writer, maxRSSBudgetMB int64) error {
+	return runDaemonStartOpts(out, maxRSSBudgetMB, false)
+}
+
+// runDaemonStartOpts forks the current binary in daemon mode and
 // detaches. It does not wait for the daemon to become ready beyond a
 // short ping poll. If the daemon is already running, start is a no-op
 // (the call is idempotent — important for service-managed restarts).
-func runDaemonStartWithBudget(out io.Writer, maxRSSBudgetMB int64) error {
+func runDaemonStartOpts(out io.Writer, maxRSSBudgetMB int64, noAutoCleanup bool) error {
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		return err
@@ -143,6 +151,9 @@ func runDaemonStartWithBudget(out io.Writer, maxRSSBudgetMB int64) error {
 	args := []string{"daemon"}
 	if maxRSSBudgetMB > 0 {
 		args = append(args, "--max-rss-budget", strconv.FormatInt(maxRSSBudgetMB, 10))
+	}
+	if noAutoCleanup {
+		args = append(args, "--no-auto-cleanup")
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Stdout = logFile

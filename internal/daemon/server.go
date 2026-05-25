@@ -129,6 +129,13 @@ type Config struct {
 	// the caller did not specify a mode (treated as background).
 	// Surfaced in Status RPC so `archigraph status` can display it.
 	DaemonMode string
+
+	// DocgenSweep, when non-nil, starts the background docgen cleanup
+	// goroutine (issue #2216). The goroutine runs at startup and every 24 h,
+	// removing stale staging runs and .previous-* backups older than MaxAge.
+	// Set to nil (default) to disable. Disabled via --no-auto-cleanup on
+	// `archigraph start`.
+	DocgenSweep *DocgenSweeperConfig
 }
 
 // Run starts the daemon. It blocks until either:
@@ -336,6 +343,21 @@ func Run(ctx context.Context, cfg Config) error {
 		go decaySched.Run(decayCtx)
 		defer decayCancel()
 		logger.Printf("pattern decay scheduler started interval=%s", decayInterval)
+	}
+
+	// Docgen background sweeper (issue #2216): removes stale staging runs and
+	// .previous-* backups every 24 h. Opt-in: nil = disabled (--no-auto-cleanup).
+	if cfg.DocgenSweep != nil {
+		sweepCfg := *cfg.DocgenSweep
+		sweepCfg.Logger = logger
+		sweepStop := make(chan struct{})
+		StartDocgenSweeper(sweepCfg, sweepStop)
+		defer close(sweepStop)
+		interval := sweepCfg.Interval
+		if interval <= 0 {
+			interval = 24 * time.Hour
+		}
+		logger.Printf("docgen sweeper started interval=%s", interval)
 	}
 
 	// Dashboard HTTP server — started in a goroutine so it does not
