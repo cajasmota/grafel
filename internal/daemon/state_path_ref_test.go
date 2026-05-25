@@ -81,7 +81,9 @@ func TestStateDirForRepoRef_ContainsRefsSegment(t *testing.T) {
 	t.Setenv(EnvRoot, root)
 
 	got := StateDirForRepoRef("/some/repo", "main")
-	if !strings.Contains(got, "/refs/main") {
+	// Use ToSlash so the assertion holds on Windows (backslash separators).
+	slashGot := filepath.ToSlash(got)
+	if !strings.Contains(slashGot, "/refs/main") {
 		t.Errorf("StateDirForRepoRef path %q does not contain '/refs/main'", got)
 	}
 }
@@ -91,12 +93,14 @@ func TestStateDirForRepoRef_SlashEncoded(t *testing.T) {
 	t.Setenv(EnvRoot, root)
 
 	got := StateDirForRepoRef("/some/repo", "feat/foo-bar")
-	if !strings.Contains(got, "/refs/feat%2Ffoo-bar") {
+	slashGot := filepath.ToSlash(got)
+	if !strings.Contains(slashGot, "/refs/feat%2Ffoo-bar") {
 		t.Errorf("StateDirForRepoRef path %q does not contain encoded ref segment", got)
 	}
-	// Must not have a bare slash after "refs/"
-	refsIdx := strings.Index(got, "/refs/")
-	suffix := got[refsIdx+len("/refs/"):]
+	// Must not have a bare slash after "refs/" (the ref component itself
+	// must be a single path segment with no directory separator).
+	refsIdx := strings.Index(slashGot, "/refs/")
+	suffix := slashGot[refsIdx+len("/refs/"):]
 	if strings.Contains(suffix, "/") {
 		t.Errorf("ref segment in path %q still contains '/' after refs/", got)
 	}
@@ -107,7 +111,8 @@ func TestStateDirForRepoRef_EmptyRefUsesUnknown(t *testing.T) {
 	t.Setenv(EnvRoot, root)
 
 	got := StateDirForRepoRef("/some/repo", "")
-	if !strings.Contains(got, "/refs/_unknown") {
+	slashGot := filepath.ToSlash(got)
+	if !strings.Contains(slashGot, "/refs/_unknown") {
 		t.Errorf("empty ref did not produce _unknown segment, got %q", got)
 	}
 }
@@ -165,7 +170,8 @@ func TestStateDirForRepoRef_DefaultStore(t *testing.T) {
 	if !strings.HasPrefix(got, storePrefix) {
 		t.Fatalf("path %q is not under store %q", got, storePrefix)
 	}
-	if !strings.Contains(got, "/refs/main") {
+	// Use ToSlash so the assertion holds on Windows (backslash separators).
+	if !strings.Contains(filepath.ToSlash(got), "/refs/main") {
 		t.Fatalf("path %q does not contain '/refs/main'", got)
 	}
 }
@@ -324,7 +330,8 @@ func TestStateDirForRepo_AlwaysUnderBaseAndHasRefs(t *testing.T) {
 	repoPath := t.TempDir()
 	got := StateDirForRepo(repoPath)
 
-	if !strings.Contains(got, "/refs/") {
+	// Use ToSlash so the assertion holds on Windows (backslash separators).
+	if !strings.Contains(filepath.ToSlash(got), "/refs/") {
 		t.Errorf("StateDirForRepo path %q does not contain '/refs/'", got)
 	}
 }

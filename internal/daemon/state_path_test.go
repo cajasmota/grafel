@@ -33,8 +33,8 @@ func TestStateDirForRepo_DefaultStore(t *testing.T) {
 	if strings.HasPrefix(got, "/some/repo") {
 		t.Fatalf("state dir leaked into repo tree: %q", got)
 	}
-	// PH1a: path must contain a refs/ segment.
-	if !strings.Contains(got, "/refs/") {
+	// PH1a: path must contain a refs/ segment (use ToSlash for Windows compat).
+	if !strings.Contains(filepath.ToSlash(got), "/refs/") {
 		t.Fatalf("PH1a: state dir %q does not contain /refs/ segment", got)
 	}
 	// Base slug segment (before /refs/) must be "<slug>-<16hex>".
@@ -60,8 +60,8 @@ func TestStateDirForRepo_WithDaemonRoot(t *testing.T) {
 	if !strings.HasPrefix(got, filepath.Join(root, "state")+string(filepath.Separator)) {
 		t.Fatalf("expected DAEMON_ROOT-rooted path, got %q", got)
 	}
-	// PH1a: path must contain a refs/ segment.
-	if !strings.Contains(got, "/refs/") {
+	// PH1a: path must contain a refs/ segment (use ToSlash for Windows compat).
+	if !strings.Contains(filepath.ToSlash(got), "/refs/") {
 		t.Fatalf("PH1a: path %q does not contain /refs/ segment", got)
 	}
 	// Base segment after .../state/ must be a 16-hex-char hash.
