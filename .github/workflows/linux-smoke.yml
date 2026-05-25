@@ -63,14 +63,20 @@ jobs:
       - name: Check daemon indexed the repo
         run: |
           export ARCHIGRAPH_DAEMON_ROOT=${{ env.ARCHIGRAPH_DAEMON_ROOT }}
-          output=$(timeout 10 ./archigraph status)
-          echo "$output"
 
-          # Verify status shows indexed = true
-          if ! echo "$output" | grep -q '"indexed":true'; then
-            echo "Repository not indexed"
-            exit 1
-          fi
+          # Poll for indexed status (async subprocess indexer may need up to 60s)
+          for i in $(seq 1 60); do
+            output=$(./archigraph status 2>&1 || true)
+            if echo "$output" | grep -q '"indexed":true'; then
+              echo "✓ Indexed after ${i}s"
+              echo "$output"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "✗ Repository not indexed after 60s"
+          echo "$output"
+          exit 1
 
       - name: Kill daemon
         if: always()
