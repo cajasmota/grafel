@@ -235,7 +235,9 @@ func TestRegistrySurfaceChangedSignal(t *testing.T) {
 
 	// Mutate the registry on disk: add a group.
 	repoDir := t.TempDir()
-	mutated := `{"groups":{"g":{"repos":{"r1":{"path":"` + repoDir + `"}}}}}`
+	// json.Marshal escapes backslashes so the path is valid JSON on Windows.
+	repoDirJSON, _ := json.Marshal(repoDir)
+	mutated := `{"groups":{"g":{"repos":{"r1":{"path":` + string(repoDirJSON) + `}}}}}`
 	// Force a newer mtime by sleeping a beat OR by re-stat'ing after write.
 	if err := os.WriteFile(regPath, []byte(mutated), 0o644); err != nil {
 		t.Fatal(err)
