@@ -34,6 +34,15 @@ func Open(path string) (*Reader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fbreader: mmap %s: %w", path, err)
 	}
+	// Guard against truncated or malformed files: a valid FlatBuffer needs
+	// at least a 4-byte root-table offset followed by a 4-byte vtable offset.
+	// Without this check, GetRootAsGraph panics on short buffers and the
+	// mmap is leaked — on Windows this prevents the test's t.TempDir cleanup
+	// from removing the file (issue surfaced by TestStatusGraphFileDetection).
+	if ra.Len() < 8 {
+		ra.Close()
+		return nil, fmt.Errorf("fbreader: %s too short to be a flatbuffer (%d bytes)", path, ra.Len())
+	}
 	// FlatBuffers needs a contiguous []byte. mmap.ReaderAt does not expose
 	// the slice directly, so we read into a single allocation. This is
 	// O(N) but a single bulk memcpy from the page cache; the win comes
@@ -43,6 +52,18 @@ func Open(path string) (*Reader, error) {
 		ra.Close()
 		return nil, fmt.Errorf("fbreader: read mmap: %w", err)
 	}
+	// Belt-and-suspenders: catch any residual panic from FlatBuffer parsing
+	// of a malformed but length-passing buffer, and free the mmap before
+	// re-panicking. Without this defer, a panic from GetRootAsGraph would
+	// leak the mmap even with the length check above (the check is necessary
+	// but not always sufficient — vtable offsets inside the buffer can still
+	// be invalid).
+	defer func() {
+		if r := recover(); r != nil {
+			ra.Close()
+			panic(r)
+		}
+	}()
 	root := fb.GetRootAsGraph(buf, 0)
 	return &Reader{
 		ra:    ra,
