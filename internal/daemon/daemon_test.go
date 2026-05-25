@@ -16,13 +16,22 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 )
 
-// shortTempRoot returns a /tmp-rooted directory short enough for
-// macOS's AF_UNIX sun_path limit (~103 bytes). t.TempDir() routes
-// through TMPDIR which on macOS is well over the limit when combined
-// with the daemon's "sockets/daemon.sock" suffix.
+// shortTempRoot returns a directory short enough for macOS's AF_UNIX
+// sun_path limit (~103 bytes). On macOS, t.TempDir() routes through
+// TMPDIR (/var/folders/...) which can exceed the limit when combined
+// with the daemon's "sockets/daemon.sock" suffix. On Windows the
+// socket is a named pipe so the path length constraint does not apply;
+// os.TempDir() (typically C:\Users\...\AppData\Local\Temp) is used
+// directly. On Linux, /tmp is always short enough.
 func shortTempRoot(t *testing.T) string {
 	t.Helper()
-	d, err := os.MkdirTemp("/tmp", "archi-dt-")
+	tmpBase := "/tmp"
+	if runtime.GOOS == "windows" {
+		// Windows: named pipes don't have path-length limits; use the
+		// system temp dir which is always writable.
+		tmpBase = os.TempDir()
+	}
+	d, err := os.MkdirTemp(tmpBase, "archi-dt-")
 	if err != nil {
 		t.Fatalf("mktemp: %v", err)
 	}
