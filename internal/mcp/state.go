@@ -533,6 +533,23 @@ func (s *State) SnapshotGroups() []*LoadedGroup {
 	return out
 }
 
+// Close releases all open mmap readers held by this State.
+// Must be called when the State is no longer needed to avoid leaking file
+// descriptors and to allow temp-dir cleanup on Windows (which cannot delete
+// open mmap'd files).
+func (s *State) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, g := range s.groups {
+		for _, lr := range g.Repos {
+			if lr != nil && lr.Reader != nil {
+				_ = lr.Reader.Close()
+				lr.Reader = nil
+			}
+		}
+	}
+}
+
 // readDocumentFromDir loads a graph document from a state directory.
 // Delegates to graph.LoadGraphFromDir which prefers graph.fb over graph.json
 // (ADR-0016, issue #808).
