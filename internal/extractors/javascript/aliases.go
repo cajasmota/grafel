@@ -551,7 +551,10 @@ func followTsconfigExtends(extendsVal, configDir string, depth int) []aliasEntry
 	}
 	// Skip npm-package references (no "." or "/" prefix, contains "/")
 	// unless the path actually exists — e.g. "expo/tsconfig.base" won't.
-	isLocal := strings.HasPrefix(extendsVal, ".") || strings.HasPrefix(extendsVal, "/")
+	// On Windows, absolute paths begin with a drive letter (C:/...) which
+	// is neither "." nor "/" — treat filepath.IsAbs as the canonical check.
+	isLocal := strings.HasPrefix(extendsVal, ".") || strings.HasPrefix(extendsVal, "/") ||
+		filepath.IsAbs(filepath.FromSlash(extendsVal))
 	if !isLocal {
 		// Attempt to treat as relative bare name (e.g. "tsconfig.base").
 		candidate := filepath.Join(configDir, extendsVal)
