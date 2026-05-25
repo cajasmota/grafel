@@ -55,9 +55,12 @@ jobs:
 
       - run: go build ./...
 
-      # -timeout 5m: one stuck test (e.g. TestBoot_WatcherSubscriptionDoesNotBlockBind
-      # under race on a slow CI runner) previously ate the full default 10-minute
-      # suite timeout before Go reported the failure. 5m is ample for the suite
-      # (~30s on macos-latest with -race) while failing fast on any deadlock.
-      # See #1797 / #937 for the root-cause investigation.
-      - run: go test -race -count=1 -timeout 5m ./...
+      # -timeout 15m: the suite with -race on a loaded CI runner (ubuntu-latest,
+      # macos-latest) can take 8-10 minutes end-to-end. The previous 5m budget
+      # was per-package but the cumulative wall-clock regularly exceeded it once
+      # the extractor and daemon integration tests were added (see #2196). 15m
+      # gives ~50% headroom over the observed worst-case while still catching
+      # real deadlocks well before GitHub's 6-hour job limit.
+      # Original rationale (#1797 / #937) still applies: a hard timeout is
+      # better than the default 10-minute Go-level panic.
+      - run: go test -race -count=1 -timeout 15m ./...
