@@ -2943,6 +2943,9 @@ func TestReloadFBOnlyRepo(t *testing.T) {
 		},
 	}
 	state := NewState(reg)
+	// Close releases mmap readers so the temp dir can be removed on Windows
+	// (Windows cannot unlink files that are mmap'd open).
+	t.Cleanup(state.Close)
 	n, err := state.Reload()
 	if err != nil {
 		t.Fatalf("Reload error: %v", err)
