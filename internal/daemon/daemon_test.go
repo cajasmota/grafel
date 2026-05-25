@@ -16,6 +16,23 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 )
 
+// waitDaemonReady polls until the daemon at socketPath accepts a dial.
+// On Unix this is equivalent to os.Stat + Dial; on Windows named pipes are
+// not filesystem objects so only the dial attempt is meaningful.
+func waitDaemonReady(t *testing.T, socketPath string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c, err := client.DialPath(socketPath)
+		if err == nil {
+			c.Close()
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("daemon never became ready at %s within %s", socketPath, timeout)
+}
+
 // shortTempRoot returns a directory short enough for macOS's AF_UNIX
 // sun_path limit (~103 bytes). On macOS, t.TempDir() routes through
 // TMPDIR (/var/folders/...) which can exceed the limit when combined
@@ -71,15 +88,11 @@ func runDaemonForTest(t *testing.T, idx daemon.IndexFunc, rb daemon.RebuildFunc)
 			t.Logf("daemon did not exit within 3s")
 		}
 	})
-	// Wait for the socket to appear.
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(layout.SocketPath); err == nil {
-			return layout
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("daemon never bound socket at %s", layout.SocketPath)
+	// Wait for the daemon to become ready.
+	// On Unix we could stat the socket file, but named pipes on Windows are
+	// not filesystem objects — use a dial-based readiness probe that works on
+	// all platforms.
+	waitDaemonReady(t, layout.SocketPath, 3*time.Second)
 	return layout
 }
 
@@ -87,9 +100,6 @@ func runDaemonForTest(t *testing.T, idx daemon.IndexFunc, rb daemon.RebuildFunc)
 // Status reports a sensible RSS/pid/uptime. Anything reporting "RSS=0"
 // would be a clear sign the daemon never warmed up memstats.
 func TestDaemon_PingStatus(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	layout := runDaemonForTest(t, nil, nil)
 	c, err := client.DialPath(layout.SocketPath)
 	if err != nil {
@@ -111,9 +121,6 @@ func TestDaemon_PingStatus(t *testing.T) {
 // TestDaemon_IndexRPC stubs an IndexFunc and asserts the wire surface
 // (arg shape, stats handoff) before any real extractor runs.
 func TestDaemon_IndexRPC(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	idx := func(args proto.IndexArgs) (string, string, error) {
 		if args.RepoPath == "" {
 			return "", "", errors.New("empty repo")
@@ -143,9 +150,6 @@ func TestDaemon_IndexRPC(t *testing.T) {
 // subsequent dial reports ErrDaemonNotRunning, exactly as the CLI's
 // thin clients depend on.
 func TestDaemon_StopRPC(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	layout := runDaemonForTest(t, nil, nil)
 	c, err := client.DialPath(layout.SocketPath)
 	if err != nil {
@@ -155,25 +159,41 @@ func TestDaemon_StopRPC(t *testing.T) {
 		t.Fatalf("stop: %v", err)
 	}
 	_ = c.Close()
-	// Give the listener a moment to close.
+	// Wait for the daemon to stop accepting connections.
+	// On Unix we could check os.Stat(socketPath) for absence, but named pipes
+	// on Windows are not filesystem objects. Instead we poll until DialPath
+	// returns ErrDaemonNotRunning, which works on all platforms.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(layout.SocketPath); os.IsNotExist(err) {
-			return // happy path: socket gone, daemon exited cleanly
+		if runtime.GOOS != "windows" {
+			// Fast path on Unix: socket file disappears on clean shutdown.
+			if _, err := os.Stat(layout.SocketPath); os.IsNotExist(err) {
+				return
+			}
+		} else {
+			// Windows: poll until the pipe rejects new connections.
+			if _, err := client.DialPath(layout.SocketPath); errors.Is(err, client.ErrDaemonNotRunning) {
+				return
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("socket %s still present after stop", layout.SocketPath)
+	t.Fatalf("daemon at %s did not shut down after stop", layout.SocketPath)
 }
 
 // TestDaemon_ClientReportsNotRunning probes the canonical "no daemon"
 // case: dialing a socket path that doesn't exist returns
 // ErrDaemonNotRunning, not some opaque syscall error.
 func TestDaemon_ClientReportsNotRunning(t *testing.T) {
+	var addr string
 	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
+		// Named pipes that are not listening return ErrDaemonNotRunning.
+		// Use a test-specific pipe name that will never be listening.
+		addr = `\\.\pipe\archigraph-test-notrunning-` + t.Name()
+	} else {
+		addr = filepath.Join(shortTempRoot(t), "nope.sock")
 	}
-	_, err := client.DialPath(filepath.Join(shortTempRoot(t), "nope.sock"))
+	_, err := client.DialPath(addr)
 	if !errors.Is(err, client.ErrDaemonNotRunning) {
 		t.Fatalf("want ErrDaemonNotRunning, got %v", err)
 	}
@@ -185,9 +205,6 @@ func TestDaemon_ClientReportsNotRunning(t *testing.T) {
 // counting peak concurrency inside the stub RebuildFunc and asserting it
 // never exceeds 1.
 func TestDaemon_RebuildGroupSerialisedUnderLoad(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	if testing.Short() {
 		t.Skip("group-serialisation test skipped in short mode")
 	}
@@ -246,9 +263,6 @@ func TestDaemon_RebuildGroupSerialisedUnderLoad(t *testing.T) {
 // StatusReply: RebuildInFlight and RebuildGroupsActive are non-negative and
 // consistent while a rebuild is in flight.
 func TestDaemon_RebuildStatusObservability(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	if testing.Short() {
 		t.Skip("rebuild observability test skipped in short mode")
 	}

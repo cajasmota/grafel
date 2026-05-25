@@ -15,15 +15,13 @@ package daemon_test
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-	"os"
-	"runtime"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/daemon/transport"
 )
 
 // ── stub MCP functions ────────────────────────────────────────────────────────
@@ -93,15 +91,9 @@ func runDaemonWithConfig(t *testing.T, cfg daemon.Config) daemon.Layout {
 			t.Logf("daemon did not exit within 3s")
 		}
 	})
-	// Wait for socket.
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(cfg.Layout.SocketPath); err == nil {
-			return cfg.Layout
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("daemon never bound socket at %s", cfg.Layout.SocketPath)
+	// Wait for the daemon to become ready using a dial-based probe.
+	// os.Stat is not usable for Windows named pipes.
+	waitDaemonReady(t, cfg.Layout.SocketPath, 3*time.Second)
 	return cfg.Layout
 }
 
@@ -135,32 +127,29 @@ func runDaemonWithMCP(t *testing.T) string {
 	return layout.SocketPath
 }
 
-// dialRPC opens a net/rpc JSON-RPC 1.0 client on the given Unix socket.
+// dialRPC opens a net/rpc JSON-RPC 1.0 client on the given socket/pipe path.
+// Uses the platform-appropriate transport (Unix socket on Linux/macOS, named
+// pipe on Windows) so the test runs unchanged on all platforms.
 func dialRPC(t *testing.T, socketPath string) *rpc.Client {
 	t.Helper()
-	// Wait up to 3 s for the socket.
+	// Wait up to 3 s for the endpoint to become available.
 	deadline := time.Now().Add(3 * time.Second)
-	var conn net.Conn
 	var lastErr error
 	for time.Now().Before(deadline) {
-		conn, lastErr = net.Dial("unix", socketPath)
-		if lastErr == nil {
-			break
+		conn, err := transport.Dial(socketPath)
+		if err == nil {
+			return rpc.NewClientWithCodec(jsonrpc.NewClientCodec(conn))
 		}
+		lastErr = err
 		time.Sleep(20 * time.Millisecond)
 	}
-	if lastErr != nil {
-		t.Fatalf("dial %s: %v", socketPath, lastErr)
-	}
-	return rpc.NewClientWithCodec(jsonrpc.NewClientCodec(conn))
+	t.Fatalf("dial %s: %v", socketPath, lastErr)
+	return nil
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestMCPToolList_Integration_Returns14Tools(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	socketPath := runDaemonWithMCP(t)
 	c := dialRPC(t, socketPath)
 	defer c.Close()
@@ -196,9 +185,6 @@ func TestMCPToolList_Integration_Returns14Tools(t *testing.T) {
 }
 
 func TestMCPToolCall_Integration_StatsReturnsContent(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	socketPath := runDaemonWithMCP(t)
 	c := dialRPC(t, socketPath)
 	defer c.Close()
@@ -230,9 +216,6 @@ func TestMCPToolCall_Integration_StatsReturnsContent(t *testing.T) {
 }
 
 func TestMCPToolCall_Integration_NilCallTool_ReturnsErrorBlock(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	// Start a daemon where MCPCallTool is nil — the service should return
 	// a structured error block (IsError=true) rather than a protocol error.
 	root := shortTempRoot(t)

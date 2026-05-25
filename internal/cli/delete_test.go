@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -14,9 +13,7 @@ import (
 // TestDelete_JSONOutputShape verifies the --json flag produces the expected
 // shape and forwards the correct args to the daemon.
 func TestDelete_JSONOutputShape(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -71,9 +68,7 @@ func TestDelete_JSONOutputShape(t *testing.T) {
 // TestDelete_UnknownGroupReturnsClearError verifies that an unknown group is
 // caught before the daemon is contacted.
 func TestDelete_UnknownGroupReturnsClearError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -92,9 +87,7 @@ func TestDelete_UnknownGroupReturnsClearError(t *testing.T) {
 
 // TestDelete_KeepCachesPropagatedToDaemon verifies --keep-caches is forwarded.
 func TestDelete_KeepCachesPropagatedToDaemon(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -119,9 +112,7 @@ func TestDelete_KeepCachesPropagatedToDaemon(t *testing.T) {
 // TestDelete_JSONRemovedReposNotNull verifies the removed_repos field is never
 // null in JSON output (even when the daemon returns an empty slice).
 func TestDelete_JSONRemovedReposNotNull(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -155,9 +146,7 @@ func TestDelete_JSONRemovedReposNotNull(t *testing.T) {
 
 // TestDelete_HumanOutputFormat verifies non-JSON output is readable.
 func TestDelete_HumanOutputFormat(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))

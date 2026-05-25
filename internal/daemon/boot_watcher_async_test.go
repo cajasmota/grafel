@@ -2,7 +2,6 @@ package daemon_test
 
 import (
 	"context"
-	"runtime"
 	"testing"
 	"time"
 
@@ -27,9 +26,6 @@ import (
 // deadline; with the old synchronous code Dial would never succeed until the
 // stall cleared.
 func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
 	root := shortTempRoot(t)
 	t.Setenv(daemon.EnvRoot, root)
 	layout, err := daemon.DefaultLayout()

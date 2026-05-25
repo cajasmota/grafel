@@ -3,18 +3,20 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"net"
+	"fmt"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/daemon/transport"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
@@ -41,26 +43,35 @@ func (m *mockLifecycleService) DeleteGroup(args *proto.DeleteGroupArgs, reply *p
 	return m.deleteErr
 }
 
-// stubLifecycleDaemon starts a minimal JSON-RPC server over a Unix-domain
-// socket and returns the socket path. The server responds only to
+// stubLifecycleDaemon starts a minimal JSON-RPC server over the
+// platform-appropriate IPC transport (Unix socket on Linux/macOS, named pipe
+// on Windows) and returns the address. The server responds only to
 // RemoveRepo and DeleteGroup.
 //
-// macOS limits Unix socket paths to 104 characters, so we use os.MkdirTemp
-// with a short base-dir rather than t.TempDir (which produces long paths
-// under /var/folders/…).
+// On Unix, macOS limits socket paths to 104 characters, so we use
+// os.MkdirTemp with a short base-dir rather than t.TempDir (which produces
+// long paths under /var/folders/…). On Windows the address is a named-pipe
+// path of the form \\.\pipe\<name>, which has no path-length restriction.
 func stubLifecycleDaemon(t *testing.T, svc *mockLifecycleService) string {
 	t.Helper()
-	// Use /tmp directly to keep the path short (≤104 chars on macOS).
-	dir, err := os.MkdirTemp("", "ag-stub-")
-	if err != nil {
-		t.Fatalf("mkdirtemp: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	sock := filepath.Join(dir, "d.sock")
 
-	ln, err := net.Listen("unix", sock)
+	var addr string
+	if runtime.GOOS == "windows" {
+		// Named-pipe path — unique per test using the test name hash.
+		addr = fmt.Sprintf(`\\.\pipe\ag-stub-%d`, stubPipeSeq(t))
+	} else {
+		// Use /tmp directly to keep the path short (≤104 chars on macOS).
+		dir, err := os.MkdirTemp("", "ag-stub-")
+		if err != nil {
+			t.Fatalf("mkdirtemp: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		addr = filepath.Join(dir, "d.sock")
+	}
+
+	ln, err := transport.Listen(addr)
 	if err != nil {
-		t.Fatalf("listen: %v", err)
+		t.Fatalf("listen %s: %v", addr, err)
 	}
 	t.Cleanup(func() { _ = ln.Close() })
 
@@ -77,7 +88,17 @@ func stubLifecycleDaemon(t *testing.T, svc *mockLifecycleService) string {
 			go srv.ServeCodec(jsonrpc.NewServerCodec(conn))
 		}
 	}()
-	return sock
+	return addr
+}
+
+// stubPipeSeqCounter is a monotonically increasing counter used to generate
+// unique named-pipe names for Windows test stubs. Accessed via sync/atomic
+// so parallel tests each get a distinct pipe name.
+var stubPipeSeqCounter int64
+
+// stubPipeSeq returns a unique integer for pipe name generation.
+func stubPipeSeq(_ *testing.T) int64 {
+	return atomic.AddInt64(&stubPipeSeqCounter, 1)
 }
 
 // makeTestRegistryGroup writes a minimal group config and registry entry under
@@ -113,9 +134,7 @@ func newTestCmd(buf *bytes.Buffer) *cobra.Command {
 // TestRemove_JSONOutputShape verifies the --json flag produces the expected
 // JSON shape and forwards the correct args to the daemon.
 func TestRemove_JSONOutputShape(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -168,9 +187,7 @@ func TestRemove_JSONOutputShape(t *testing.T) {
 // TestRemove_LastRepoBlockedWhenForced verifies that removing the last repo
 // with --force is rejected with a clear error (to avoid orphaned empty groups).
 func TestRemove_LastRepoBlockedWhenForced(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -195,9 +212,7 @@ func TestRemove_LastRepoBlockedWhenForced(t *testing.T) {
 // TestRemove_UnknownGroupReturnsClearError verifies that an unknown group is
 // caught before the daemon is contacted.
 func TestRemove_UnknownGroupReturnsClearError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -216,9 +231,7 @@ func TestRemove_UnknownGroupReturnsClearError(t *testing.T) {
 
 // TestRemove_KeepCachePropagatedToDaemon verifies --keep-cache is forwarded.
 func TestRemove_KeepCachePropagatedToDaemon(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
@@ -244,9 +257,7 @@ func TestRemove_KeepCachePropagatedToDaemon(t *testing.T) {
 // TestRemove_HumanOutputContainsFreedBytes verifies the non-JSON output
 // includes the freed-bytes value.
 func TestRemove_HumanOutputContainsFreedBytes(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: TODO #2121-B (Unix socket not supported)")
-	}
+
 	home := t.TempDir()
 	t.Setenv("ARCHIGRAPH_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
