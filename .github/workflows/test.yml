@@ -46,7 +46,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          diff=$(gofmt -l . 2>&1)
+          diff=$(gofmt -l $(git ls-files '*.go' | grep -v '^vendor/') 2>&1)
           if [ -n "$diff" ]; then
             echo "Files need gofmt:"
             echo "$diff"
