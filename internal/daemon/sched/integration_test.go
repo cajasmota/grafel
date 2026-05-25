@@ -36,6 +36,11 @@ func TestIntegrationThreeRepoBudgetSerialisesLargest(t *testing.T) {
 		"/repo-small-b": make(chan struct{}),
 		"/repo-big-c":   make(chan struct{}),
 	}
+	// allStarted receives one notification per Index callback entry. With
+	// 3 enqueued repos and budget=500 that fits all three (60+60+280=400),
+	// we expect all 3 to dispatch concurrently and signal here.
+	// Buffered so workers never block on send.
+	allStarted := make(chan struct{}, 3)
 
 	var calls atomic.Int32
 	var sched *Scheduler
@@ -61,6 +66,7 @@ func TestIntegrationThreeRepoBudgetSerialisesLargest(t *testing.T) {
 				}
 			}
 			mu.Unlock()
+			allStarted <- struct{}{}
 			<-gates[p]
 			mu.Lock()
 			delete(concurrent, p)
@@ -76,8 +82,19 @@ func TestIntegrationThreeRepoBudgetSerialisesLargest(t *testing.T) {
 	s.Enqueue("/repo-small-b")
 	s.Enqueue("/repo-big-c")
 
-	// Give the admit loop time to dispatch.
-	time.Sleep(300 * time.Millisecond)
+	// Wait until all 3 Index callbacks have actually been entered before
+	// we take the mid-run snapshot. Deterministic under -race on any
+	// hardware — replaces the racy time.Sleep(300ms) that caused
+	// intermittent failures on ubuntu-latest CI (see sibling
+	// TestIntegrationThreeRepoTightBudgetDefersBig comment above for
+	// the same fix pattern).
+	for i := 0; i < 3; i++ {
+		select {
+		case <-allStarted:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("only %d of 3 Index callbacks entered after 10s", i)
+		}
+	}
 
 	// Verify the budget telemetry: usedMB should be <= 500.
 	snap := s.Snapshot()
@@ -94,7 +111,18 @@ func TestIntegrationThreeRepoBudgetSerialisesLargest(t *testing.T) {
 	for _, p := range []string{"/repo-small-a", "/repo-small-b", "/repo-big-c"} {
 		close(gates[p])
 	}
-	time.Sleep(300 * time.Millisecond)
+	// Wait for all 3 to actually complete (delete from concurrent map)
+	// instead of an arbitrary sleep. Poll briefly.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		done := len(concurrent) == 0 && calls.Load() == 3
+		mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if got := calls.Load(); got != 3 {
 		t.Errorf("expected 3 indexes total, got %d", got)
 	}

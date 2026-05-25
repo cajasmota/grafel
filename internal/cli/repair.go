@@ -94,9 +94,16 @@ func newResetCmd() *cobra.Command {
 }
 
 // progressToken generates a short unique token for a rebuild session.
+//
+// Uses the full 64 bits of rand.Uint64 (was previously only 16 bits, which
+// caused collisions on Windows where time.Now().UnixNano() has lower
+// resolution — 100 tokens in a tight loop within the same clock tick
+// exhausted the 65k suffix space and triggered TestProgressToken_Unique
+// failures on windows-latest CI). 64-bit suffix is collision-resistant
+// for realistic session counts.
 func progressToken() string {
 	return strconv.FormatInt(time.Now().UnixNano(), 36) +
-		strconv.FormatUint(rand.Uint64()&0xffff, 36) //nolint:gosec
+		strconv.FormatUint(rand.Uint64(), 36) //nolint:gosec
 }
 
 // isTTY reports whether w is connected to a terminal.
