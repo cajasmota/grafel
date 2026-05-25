@@ -528,7 +528,7 @@ func (w *Watcher) poll() {
 				child := &WorktreeChild{
 					ParentSlug:   p.Slug,
 					GroupName:    p.GroupName,
-					Path:         raw.Path,
+					Path:         normPath(raw.Path),
 					Branch:       raw.Branch,
 					Locked:       raw.Locked,
 					DiscoveredAt: now,
