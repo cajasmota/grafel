@@ -44,6 +44,7 @@ package testmap
 import (
 	"context"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -98,10 +99,16 @@ func inferTestType(path string) string {
 // that a given test file corresponds to, together with a best-guess
 // production symbol name derived from the file stem. Both may be empty
 // when the convention does not apply.
-func productionFileFromTestPath(path string) (prodFile, prodSymbol string) {
-	base := filepath.Base(path)
-	dir := filepath.Dir(path)
-	ext := filepath.Ext(base)
+//
+// The input path is a repo-relative slash path (a scope URI, not an OS
+// filesystem path). path.Dir / path.Join are used intentionally so the
+// output always uses forward slashes regardless of host OS.
+func productionFileFromTestPath(filePath string) (prodFile, prodSymbol string) {
+	// Ensure forward slashes regardless of OS (paths are repo-relative URIs).
+	filePath = filepath.ToSlash(filePath)
+	base := path.Base(filePath)
+	dir := path.Dir(filePath)
+	ext := path.Ext(base)
 	stem := strings.TrimSuffix(base, ext)
 
 	lowerStem := strings.ToLower(stem)
@@ -111,45 +118,45 @@ func productionFileFromTestPath(path string) (prodFile, prodSymbol string) {
 		// foo_test.go → foo.go
 		if strings.HasSuffix(lowerStem, "_test") {
 			prodStem := stem[:len(stem)-len("_test")]
-			return filepath.Join(dir, prodStem+".go"), titleCase(prodStem)
+			return path.Join(dir, prodStem+".go"), titleCase(prodStem)
 		}
 	case ".py":
 		// test_foo.py or foo_test.py → foo.py
 		switch {
 		case strings.HasPrefix(lowerStem, "test_"):
 			prodStem := stem[len("test_"):]
-			return filepath.Join(dir, prodStem+".py"), prodStem
+			return path.Join(dir, prodStem+".py"), prodStem
 		case strings.HasSuffix(lowerStem, "_test"):
 			prodStem := stem[:len(stem)-len("_test")]
-			return filepath.Join(dir, prodStem+".py"), prodStem
+			return path.Join(dir, prodStem+".py"), prodStem
 		}
 	case ".ts", ".tsx", ".js", ".jsx":
 		// foo.test.ts / foo.spec.ts → foo.ts (or similar)
 		for _, suf := range []string{".test", ".spec"} {
 			if strings.HasSuffix(lowerStem, suf) {
 				prodStem := stem[:len(stem)-len(suf)]
-				return filepath.Join(dir, prodStem+ext), prodStem
+				return path.Join(dir, prodStem+ext), prodStem
 			}
 		}
 	case ".rb":
 		// foo_spec.rb → foo.rb
 		if strings.HasSuffix(lowerStem, "_spec") {
 			prodStem := stem[:len(stem)-len("_spec")]
-			return filepath.Join(dir, prodStem+".rb"), prodStem
+			return path.Join(dir, prodStem+".rb"), prodStem
 		}
 	case ".java":
 		// XxxTest.java / XxxTests.java / XxxIT.java → Xxx.java
 		for _, suf := range []string{"Tests", "Test", "IT"} {
 			if strings.HasSuffix(stem, suf) && len(stem) > len(suf) {
 				prodStem := stem[:len(stem)-len(suf)]
-				return filepath.Join(dir, prodStem+".java"), prodStem
+				return path.Join(dir, prodStem+".java"), prodStem
 			}
 		}
 	case ".kt":
 		for _, suf := range []string{"Tests", "Test"} {
 			if strings.HasSuffix(stem, suf) && len(stem) > len(suf) {
 				prodStem := stem[:len(stem)-len(suf)]
-				return filepath.Join(dir, prodStem+".kt"), prodStem
+				return path.Join(dir, prodStem+".kt"), prodStem
 			}
 		}
 	case ".scala":
@@ -157,14 +164,14 @@ func productionFileFromTestPath(path string) (prodFile, prodSymbol string) {
 		for _, suf := range []string{"Spec", "Test"} {
 			if strings.HasSuffix(stem, suf) && len(stem) > len(suf) {
 				prodStem := stem[:len(stem)-len(suf)]
-				return filepath.Join(dir, prodStem+".scala"), prodStem
+				return path.Join(dir, prodStem+".scala"), prodStem
 			}
 		}
 	case ".cs":
 		for _, suf := range []string{"Tests", "Test"} {
 			if strings.HasSuffix(stem, suf) && len(stem) > len(suf) {
 				prodStem := stem[:len(stem)-len(suf)]
-				return filepath.Join(dir, prodStem+".cs"), prodStem
+				return path.Join(dir, prodStem+".cs"), prodStem
 			}
 		}
 	case ".rs":
@@ -173,13 +180,13 @@ func productionFileFromTestPath(path string) (prodFile, prodSymbol string) {
 		// FooTest.php → Foo.php
 		if strings.HasSuffix(stem, "Test") && len(stem) > len("Test") {
 			prodStem := stem[:len(stem)-len("Test")]
-			return filepath.Join(dir, prodStem+".php"), prodStem
+			return path.Join(dir, prodStem+".php"), prodStem
 		}
 	case ".swift":
 		for _, suf := range []string{"Tests", "Test"} {
 			if strings.HasSuffix(stem, suf) && len(stem) > len(suf) {
 				prodStem := stem[:len(stem)-len(suf)]
-				return filepath.Join(dir, prodStem+".swift"), prodStem
+				return path.Join(dir, prodStem+".swift"), prodStem
 			}
 		}
 	}
