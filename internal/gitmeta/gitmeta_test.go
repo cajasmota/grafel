@@ -10,6 +10,14 @@ import (
 	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
 
+// normalizeTopLevel converts a path to a canonical form for comparison.
+// git rev-parse --show-toplevel returns forward-slash paths even on Windows,
+// and may return long-form paths where t.TempDir() returns short 8.3 form.
+// We normalize to forward slashes and lowercase to make the comparison robust.
+func normalizeTopLevel(p string) string {
+	return strings.ToLower(filepath.ToSlash(p))
+}
+
 // initBareRepo creates a temp dir with a git repo, an initial commit on
 // the given branch name, and returns the repo path.
 func initBareRepo(t *testing.T, branch string) string {
@@ -49,7 +57,13 @@ func TestCapture_mainBranch(t *testing.T) {
 	if info.IsWorktree {
 		t.Error("IsWorktree should be false for a regular checkout")
 	}
-	if !strings.HasSuffix(info.TopLevel, dir) && info.TopLevel != dir {
+	// Normalize both to forward-slash lowercase for cross-platform comparison.
+	// On Windows, t.TempDir() may return short 8.3 paths (RUNNER~1) while git
+	// returns long-form paths (runneradmin), so exact match is unreliable.
+	// Checking that the end suffix matches after normalization is sufficient.
+	normTop := normalizeTopLevel(info.TopLevel)
+	normDir := normalizeTopLevel(dir)
+	if !strings.HasSuffix(normTop, normDir) && normTop != normDir {
 		t.Errorf("TopLevel = %q, want suffix %q", info.TopLevel, dir)
 	}
 }
