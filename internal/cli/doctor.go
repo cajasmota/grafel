@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/install"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 	"github.com/cajasmota/archigraph/internal/process"
 	"github.com/cajasmota/archigraph/internal/registry"
@@ -26,19 +28,56 @@ func newDoctorCmd() *cobra.Command {
 	var killStale bool
 	var auditDocs bool
 	var refFlag string
+	var jsonOut bool
+	var quick bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run health checks across all groups",
 		Long: `Run health checks across all registered groups.
 
-When --ref is supplied the graph-state checks are filtered to that ref.
-Use --ref @all to check health across every known ref.`,
+With no flags: runs the full install-drift doctor (CLI SHA, daemon, skills,
+MCP, conventions, .gitignore, stale staging dirs) followed by the runtime
+health report. Exits non-zero when any Critical check fails.
+
+--json       Machine-readable JSON output (stable schema_version=1); suitable
+             for CI pipelines. Exits non-zero on Critical drift.
+
+--quick      Cheap two-check mode: CLI SHA + daemon /healthz (500ms cap).
+             Prints a one-line warning on drift but never blocks the caller.
+             Used internally by every CLI command's entry point.
+
+--ref        Filter runtime graph-state checks to a specific ref.
+--ref @all   Check health across every known ref.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			w := cmd.OutOrStdout()
+
+			// ── Quick mode ────────────────────────────────────────────────
+			// Only runs the two cheap checks and exits.
+			if quick {
+				return runQuickDoctorCmd(w)
+			}
+
+			// ── Install drift doctor (full or JSON) ───────────────────────
+			// Always run the install-drift checks first so critical binary /
+			// skill drift is reported before the runtime health section.
+			installReport, err := install.RunDoctor(install.DoctorOptions{})
+			if err != nil {
+				fmt.Fprintf(w, "[warn] install doctor error: %v\n", err)
+			} else if jsonOut {
+				// JSON-only mode: emit the report and exit.
+				return emitDoctorJSON(w, installReport)
+			} else {
+				// Human-readable prefix section.
+				fmt.Fprintf(w, "--- Install Drift Checks ---\n")
+				install.RenderReport(w, installReport)
+				fmt.Fprintln(w)
+			}
+
+			// ── Runtime health (existing doctor logic) ────────────────────
 			resolvedRef, isAll, err := resolveRef(refFlag, true /* @all ok — doctor is read-only */)
 			if err != nil {
 				return err
 			}
-			w := cmd.OutOrStdout()
 			if resolvedRef != "" {
 				fmt.Fprintf(w, "Note: running doctor for ref %q.\n\n", resolvedRef)
 			} else if isAll {
@@ -52,7 +91,15 @@ Use --ref @all to check health across every known ref.`,
 					return err
 				}
 			}
-			return runDoctorStaleDaemons(w, killStale)
+			if err := runDoctorStaleDaemons(w, killStale); err != nil {
+				return err
+			}
+
+			// Exit non-zero when any Critical install check failed.
+			if installReport != nil && !installReport.OK {
+				return fmt.Errorf("critical drift detected — run 'archigraph install' to fix")
+			}
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&killStale, "kill-stale", false,
@@ -60,7 +107,32 @@ Use --ref @all to check health across every known ref.`,
 	cmd.Flags().BoolVar(&auditDocs, "audit-docs", false,
 		"detect in-repo docgen output (storage discipline #2190); reports without moving anything")
 	cmd.Flags().StringVar(&refFlag, "ref", "", refFlagUsage)
+	cmd.Flags().BoolVar(&jsonOut, "json", false,
+		"emit machine-readable JSON report (schema_version=1); exits non-zero on Critical drift")
+	cmd.Flags().BoolVar(&quick, "quick", false,
+		"run only the two cheap checks: CLI SHA + daemon /healthz (500ms); never blocks caller")
 	return cmd
+}
+
+// runQuickDoctorCmd runs quick-doctor and writes the one-line warning to w.
+// It always returns nil — quick mode never blocks commands.
+func runQuickDoctorCmd(w io.Writer) error {
+	_ = install.RunQuickDoctor(install.QuickOptions{Out: w})
+	return nil
+}
+
+// emitDoctorJSON marshals report as indented JSON to w and returns a non-nil
+// error (to trigger non-zero exit) when report.OK is false.
+func emitDoctorJSON(w io.Writer, report *install.DoctorReport) error {
+	b, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal doctor report: %w", err)
+	}
+	fmt.Fprintf(w, "%s\n", b)
+	if !report.OK {
+		return fmt.Errorf("critical drift detected — run 'archigraph install' to fix")
+	}
+	return nil
 }
 
 // runDoctorAuditDocs checks every registered group for in-repo docgen output

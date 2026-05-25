@@ -26,6 +26,13 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "index-internal" {
 		os.Exit(runIndexInternal(os.Args[2:]))
 	}
+	// Quick-doctor hook: cheap binary SHA + daemon /healthz check (#2211).
+	// Silent on success; prints one-line warning to stderr on drift.
+	// Skipped when the user is explicitly running `archigraph doctor` (which
+	// runs its own full check) and when ARCHIGRAPH_SKIP_QUICK_DOCTOR=1.
+	if len(os.Args) < 2 || os.Args[1] != "doctor" {
+		runQuickDoctorHook()
+	}
 	cli.Execute(cli.Hooks{
 		RunDaemon:    runDaemon,
 		RunLinks:     runLinksHook,
