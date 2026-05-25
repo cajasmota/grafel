@@ -30,10 +30,17 @@ import (
 	"time"
 )
 
-// WSEvent is the shape pushed to all connected clients.
+// WSEvent is the shape pushed to connected clients.
+//
+// Every event carries a (Group, Ref) tuple so the server-side filter can
+// decide which per-connection subscriptions match the event. Ref is the git
+// branch / tag name (e.g. "main", "feature/foo"). An empty Ref means "current
+// HEAD / no-ref context" and is treated like a wildcard by the filter — it
+// matches every subscription.
 type WSEvent struct {
 	Type      string `json:"type"` // "reindex_started" | "reindex_completed" | "watcher_event" | "daemon_log"
 	Group     string `json:"group"`
+	Ref       string `json:"ref,omitempty"`
 	Repo      string `json:"repo,omitempty"`
 	Path      string `json:"path,omitempty"`
 	Timestamp string `json:"timestamp"`
@@ -48,10 +55,19 @@ type wsHub struct {
 }
 
 // wsClient wraps a single WebSocket connection.
+//
+// sub holds the optional per-connection subscription filter set by a
+// "subscribe" client→server message. A nil sub means the client receives all
+// events (firehose mode, backward-compatible default). A non-nil sub means
+// only events matching the filter are delivered. See wsFilter in ws_filter.go
+// for the matching semantics.
 type wsClient struct {
 	conn net.Conn
 	send chan []byte
 	done chan struct{}
+
+	subMu sync.Mutex
+	sub   *wsFilter // nil = firehose (default)
 }
 
 func newWSHub() *wsHub {
@@ -79,8 +95,13 @@ func (h *wsHub) remove(c *wsClient) {
 	h.mu.Unlock()
 }
 
-// Broadcast sends an event to all connected clients after a 2-second debounce
-// per group.  Repeated calls for the same group reset the timer.
+// Broadcast sends an event to connected clients after a 2-second debounce per
+// group. Repeated calls for the same group reset the timer.
+//
+// Filtering: each client's subscription (set via a "subscribe" message) is
+// consulted before delivery. Clients that never sent a "subscribe" message
+// receive all events (firehose, backward-compatible). See wsFilter.Matches for
+// the exact matching semantics.
 func (h *wsHub) Broadcast(evt WSEvent) {
 	h.mu.Lock()
 	key := evt.Group + "/" + evt.Type
@@ -100,6 +121,13 @@ func (h *wsHub) Broadcast(evt WSEvent) {
 		data, _ := json.Marshal(evt)
 		frame := wsTextFrame(data)
 		for _, c := range clients {
+			// Apply per-connection subscription filter.
+			c.subMu.Lock()
+			f := c.sub
+			c.subMu.Unlock()
+			if f != nil && !f.Matches(evt) {
+				continue // filtered out for this client
+			}
 			select {
 			case c.send <- frame:
 			default:
@@ -183,9 +211,14 @@ func (s *Server) handleWSEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Read pump: drain incoming frames (pings / close frames) so the OS
-	// buffer doesn't fill up.  We don't need to act on them for a push-only
-	// server, but we must read to detect disconnects.
+	// Read pump: read incoming frames from the client.
+	//
+	// We handle two client→server message types (see wsClientMsg):
+	//   - {"type":"subscribe","groups":[...],"refs":[...]} — install a filter.
+	//   - {"type":"unsubscribe"}                           — remove the filter (firehose).
+	//
+	// All other frames (pings, browser keep-alives) are drained and discarded so
+	// the OS read buffer never fills and disconnects are detected promptly.
 	br := bufio.NewReader(conn)
 	for {
 		select {
@@ -194,11 +227,50 @@ func (s *Server) handleWSEvents(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		_, err := readWSFrame(br)
+		payload, err := readWSFrame(br)
 		if err != nil {
 			return
 		}
+		if len(payload) == 0 {
+			continue
+		}
+		var msg wsClientMsg
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			continue // not JSON or wrong shape — ignore
+		}
+		switch msg.Type {
+		case "subscribe":
+			f := newWSFilter(msg.Groups, msg.Refs)
+			client.subMu.Lock()
+			client.sub = f
+			client.subMu.Unlock()
+		case "unsubscribe":
+			client.subMu.Lock()
+			client.sub = nil
+			client.subMu.Unlock()
+		}
 	}
+}
+
+// wsClientMsg is a client→server WebSocket control message.
+//
+// Schema:
+//
+//	Subscribe (install or replace filter):
+//	  {"type":"subscribe","groups":["g1","g2"],"refs":["main","feat/x"]}
+//
+//	  Semantics: the connection will only receive events where
+//	    (event.Group ∈ groups OR groups is empty)
+//	    AND
+//	    (event.Ref ∈ refs OR refs is empty OR event.Ref == "")
+//	  Calling subscribe again REPLACES the prior filter (not appends).
+//
+//	Unsubscribe (clear filter → firehose):
+//	  {"type":"unsubscribe"}
+type wsClientMsg struct {
+	Type   string   `json:"type"`             // "subscribe" | "unsubscribe"
+	Groups []string `json:"groups,omitempty"` // group names to subscribe to
+	Refs   []string `json:"refs,omitempty"`   // ref names to subscribe to
 }
 
 // isWSUpgrade returns true if the request is a WebSocket upgrade.
