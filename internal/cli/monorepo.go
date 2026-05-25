@@ -410,7 +410,9 @@ func MigratePerSubRepoFleet(group string) (MigrateResult, error) {
 			if err != nil || rel == "." {
 				continue
 			}
-			newModules = append(newModules, rel)
+			// Module paths are stored as forward-slash repo-relative URIs
+			// (e.g. "services/orders") regardless of OS separator.
+			newModules = append(newModules, filepath.ToSlash(rel))
 		}
 		sort.Strings(newModules)
 
