@@ -2,49 +2,42 @@
 
 ## CI overview
 
-CI is **minutes-aware**: workflows run only when they add signal. Full 3-platform tests are opt-in, not the default.
+CI is **fast by default**: PRs run zero CI except board-hygiene. Full 3-platform tests are manual or opt-in. Post-merge always validates.
 
 ### What runs on every PR
 
 | Workflow | Cost | Always? |
 |---|---|---|
 | `board-hygiene` (closure-keyword check) | ~5 s | Yes — all PRs |
-| `test` (3-platform: ubuntu / macos / windows) | ~30 min | Only when warranted (see below) |
+| `test` (3-platform: ubuntu / macos / windows) | ~30 min | No — manual or `ci:full` label only |
+| `windows-cgo-experiment` | ~5 min | No — manual or `ci:full` label only |
 | `linux-smoke` | ~3 min | Post-merge + tag only |
 
 ---
 
 ### When does `test` run on a PR?
 
-`test` fires automatically when your diff touches any of:
+`test` does **not** run automatically on any PR by default. To trigger it:
 
-```
-cmd/**
-internal/**
-vendor/**
-go.mod
-go.sum
-Makefile
-.github/workflows/test.yml
-```
-
-Pure-docs / pure-asset PRs (`.md`, `docs/**`, `*.png`, `skills/**`, `testdata/**`) run **zero** test jobs.
+1. Apply the **`ci:full`** label (see below), OR
+2. Use `workflow_dispatch` from the Actions tab
 
 ---
 
 ### Opt-in: `ci:full` label
 
-Apply the **`ci:full`** label to force full 3-platform CI on any PR, regardless of which files changed.
+Apply the **`ci:full`** label to trigger full 3-platform CI (`test` + `windows-cgo-experiment`) on any PR.
 
 **When to use it:**
 
-- You changed something outside the auto-trigger paths but still want cross-platform validation (e.g. a Makefile outside the root, a shell script that affects all platforms, a `webui-v2` change you want to confirm doesn't break the Go build).
-- You want to verify a docs-only PR's surrounding infrastructure hasn't regressed.
+- You want to validate code changes across all platforms before merge.
+- You're testing a fix for Windows-specific CGO issues (see #937).
 - You're about to merge and want extra confidence.
+- You changed something in `cmd/`, `internal/`, or `go.mod`/`go.sum` and want to test it before marking ready.
 
 **How to apply:**
 
-In the GitHub PR sidebar → Labels → select `ci:full`. The `pull_request_target: labeled` trigger will re-run `test` immediately after you apply the label.
+In the GitHub PR sidebar → Labels → select `ci:full`. The `pull_request_target: labeled` trigger will start CI jobs immediately.
 
 ---
 
@@ -94,10 +87,9 @@ Tags should only be pushed from `main` after all CI is green.
 
 | Scenario | Workflows triggered |
 |---|---|
-| PR with only `.md` / `docs/**` changes | `board-hygiene` only |
-| PR touching `internal/` or `cmd/` | `board-hygiene` + `test` (3 platforms) |
-| PR with `board:exempt` label (docs-only) | `board-hygiene` (passes via label), no `test` |
-| PR with `ci:full` label (any diff) | `board-hygiene` + `test` (3 platforms) |
-| Push to `main` | `linux-smoke` + `test` |
-| Tag push (`v1.2.3`) | `linux-smoke` + `release` pipeline |
-| `workflow_dispatch` from Actions UI | Whichever workflow you trigger |
+| Any PR (default) | `board-hygiene` only |
+| PR with `board:exempt` label | `board-hygiene` (passes via label) |
+| PR with `ci:full` label | `board-hygiene` + `test` (3 platforms) + `windows-cgo-experiment` |
+| Push to `main` | `board-hygiene` (passes) + `test` + `linux-smoke` |
+| Tag push (`v1.2.3`) | `board-hygiene` (passes) + `test` + `linux-smoke` + `release` pipeline |
+| `workflow_dispatch` from Actions UI | Whichever workflow(s) you trigger |

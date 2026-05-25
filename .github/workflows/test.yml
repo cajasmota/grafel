@@ -1,10 +1,7 @@
 name: test
 
-# Default: runs automatically on PRs that touch Go source or config files.
-# Skip: PRs that only change docs/assets/skills/testdata — those run zero test
-#       jobs (board-hygiene still fires).
-# Opt-in: add label `ci:full` to force this workflow on any PR regardless of
-#         the path filter (e.g. a pure-docs PR that you still want validated).
+# Default: CI is OFF for PRs. No auto-trigger on code changes.
+# Opt-in: add label `ci:full` to force full 3-platform testing on any PR.
 # Manual: `workflow_dispatch` from the Actions tab runs unconditionally.
 # Post-merge: push to main always runs as a sanity check.
 
@@ -13,17 +10,6 @@ on:
 
   push:
     branches: [main]
-
-  pull_request:
-    branches: [main]
-    paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'vendor/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - '.github/workflows/test.yml'
 
   pull_request_target:
     types: [labeled]
@@ -35,12 +21,10 @@ jobs:
   test:
     # Gate: run when —
     #   (a) workflow_dispatch / push to main, OR
-    #   (b) pull_request triggered by a path-matching diff, OR
-    #   (c) pull_request_target with the `ci:full` label just added.
+    #   (b) pull_request_target with the `ci:full` label.
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
       (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
 
     # Windows is allowed to fail until tree-sitter CGO bindings are confirmed

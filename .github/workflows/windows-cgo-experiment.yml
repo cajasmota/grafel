@@ -2,17 +2,14 @@ name: Windows CGO Experiment
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "go.mod"
-      - "go.sum"
-      - ".github/workflows/windows-cgo-experiment.yml"
-      - "internal/extractors/**"
-      - "internal/daemon/**"
-      - "cmd/archigraph/**"
+  pull_request_target:
+    types: [labeled]
 
 jobs:
   build:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
     runs-on: windows-latest
     continue-on-error: true   # experimental until #937 closed
     timeout-minutes: 15
