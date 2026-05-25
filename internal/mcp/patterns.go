@@ -103,9 +103,15 @@ func patternsDir(groupName string, lg *LoadedGroup) string {
 
 // defaultPatternsDir returns ~/.archigraph/groups/<group>-patterns/.
 func defaultPatternsDir(group string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	// Prefer $HOME so tests using t.Setenv("HOME", tmpDir) work on Windows
+	// where os.UserHomeDir() reads USERPROFILE and ignores HOME.
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
 	}
 	return filepath.Join(home, ".archigraph", "groups", group+"-patterns")
 }

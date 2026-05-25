@@ -50,9 +50,15 @@ func NewActivityLog(path string) *ActivityLog {
 // Returns an empty string when the home directory cannot be determined
 // (the caller should treat that as "disk logging disabled").
 func DefaultActivityLogPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	// Prefer $HOME so tests using t.Setenv("HOME", tmpDir) work on Windows
+	// where os.UserHomeDir() reads USERPROFILE and ignores HOME.
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
 	}
 	return filepath.Join(home, ".archigraph", activityLogFile)
 }

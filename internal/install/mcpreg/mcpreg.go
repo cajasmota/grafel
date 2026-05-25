@@ -27,6 +27,18 @@ import (
 // ServerName is the canonical key used in mcpServers maps.
 const ServerName = "archigraph"
 
+// homeDir returns the current user's home directory.
+// On all platforms it checks the HOME environment variable first so
+// that tests can redirect it with t.Setenv("HOME", tmpDir).
+// os.UserHomeDir() on Windows ignores HOME and uses USERPROFILE instead,
+// which breaks tests that rely on t.Setenv("HOME", ...) for isolation.
+func homeDir() (string, error) {
+	if h := os.Getenv("HOME"); h != "" {
+		return h, nil
+	}
+	return os.UserHomeDir()
+}
+
 // Entry is the per-tool MCP server entry.
 type Entry struct {
 	Command string   `json:"command"`
@@ -45,7 +57,7 @@ const (
 // SettingsPath returns the absolute path to the settings file for a tool.
 // For ClaudeCode this is ~/.claude.json (the modern Claude Code format).
 func SettingsPath(tool Tool) (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := homeDir()
 	if err != nil {
 		return "", err
 	}
@@ -72,7 +84,7 @@ func DetectClaudeConfigDirs(dirs []string) []string {
 	if len(dirs) > 0 {
 		return dirs
 	}
-	home, err := os.UserHomeDir()
+	home, err := homeDir()
 	if err != nil {
 		return nil
 	}

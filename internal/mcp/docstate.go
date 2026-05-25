@@ -58,17 +58,20 @@ type DocStateResult struct {
 //
 // Priority order:
 //  1. $ARCHIGRAPH_HOME — explicit override used in tests and custom installs.
-//     On Windows, os.UserHomeDir() reads USERPROFILE (not HOME), so tests that
-//     only set HOME would silently write to the wrong location. ARCHIGRAPH_HOME
-//     sidesteps this platform difference entirely.
-//  2. $HOME/.archigraph (Unix) / %USERPROFILE%/.archigraph (Windows) via
-//     os.UserHomeDir().
+//  2. $HOME — honored explicitly so tests using t.Setenv("HOME", tmpDir)
+//     work on all platforms including Windows where os.UserHomeDir() reads
+//     USERPROFILE and ignores HOME.
+//  3. os.UserHomeDir() fallback (production path, uses platform conventions).
 func defaultDocstateDir(group string) string {
 	base := os.Getenv("ARCHIGRAPH_HOME")
 	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
+		home := os.Getenv("HOME")
+		if home == "" {
+			var err error
+			home, err = os.UserHomeDir()
+			if err != nil {
+				return ""
+			}
 		}
 		base = filepath.Join(home, ".archigraph")
 	}
