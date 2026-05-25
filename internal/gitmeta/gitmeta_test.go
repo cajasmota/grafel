@@ -12,10 +12,34 @@ import (
 
 // normalizeTopLevel converts a path to a canonical form for comparison.
 // git rev-parse --show-toplevel returns forward-slash paths even on Windows,
-// and may return long-form paths where t.TempDir() returns short 8.3 form.
-// We normalize to forward slashes and lowercase to make the comparison robust.
+// and may return long-form paths where t.TempDir() returns short 8.3 form
+// (e.g. "RUNNER~1" vs "runneradmin").  We normalize to forward slashes and
+// lowercase; callers should compare only the test-unique suffix (the part
+// after the OS temp root) to avoid mismatches on the user-home segment.
 func normalizeTopLevel(p string) string {
 	return strings.ToLower(filepath.ToSlash(p))
+}
+
+// tempUniqueSuffix extracts the test-unique portion of a temp path, which
+// is everything from the first path component that contains the test function
+// name onward.  This avoids false mismatches caused by Windows 8.3 short
+// names (RUNNER~1) vs long names (runneradmin) in the user-home segment.
+func tempUniqueSuffix(normPath string) string {
+	// os.TempDir() normed to forward slash is the common prefix to strip.
+	tempBase := strings.ToLower(filepath.ToSlash(os.TempDir()))
+	// Ensure consistent trailing slash for TrimPrefix.
+	if !strings.HasSuffix(tempBase, "/") {
+		tempBase += "/"
+	}
+	if strings.HasPrefix(normPath, tempBase) {
+		return strings.TrimPrefix(normPath, tempBase)
+	}
+	// Fallback: return last two path components (testname/subdir).
+	parts := strings.Split(normPath, "/")
+	if len(parts) >= 2 {
+		return strings.Join(parts[len(parts)-2:], "/")
+	}
+	return normPath
 }
 
 // initBareRepo creates a temp dir with a git repo, an initial commit on
@@ -60,10 +84,13 @@ func TestCapture_mainBranch(t *testing.T) {
 	// Normalize both to forward-slash lowercase for cross-platform comparison.
 	// On Windows, t.TempDir() may return short 8.3 paths (RUNNER~1) while git
 	// returns long-form paths (runneradmin), so exact match is unreliable.
-	// Checking that the end suffix matches after normalization is sufficient.
+	// We strip the OS temp-root prefix and compare only the test-unique suffix
+	// (the test-name+random sub-directory), which is identical in both forms.
 	normTop := normalizeTopLevel(info.TopLevel)
 	normDir := normalizeTopLevel(dir)
-	if !strings.HasSuffix(normTop, normDir) && normTop != normDir {
+	suffixTop := tempUniqueSuffix(normTop)
+	suffixDir := tempUniqueSuffix(normDir)
+	if suffixTop != suffixDir {
 		t.Errorf("TopLevel = %q, want suffix %q", info.TopLevel, dir)
 	}
 }
