@@ -525,7 +525,7 @@ func TestToolNameSurface(t *testing.T) {
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
 		"archigraph_clusters", "archigraph_stats",
-		// bundled (2 retained; cross_links dropped)
+		// bundled (2 retained; cross_links re-wired)
 		"archigraph_enrichments", "archigraph_repairs",
 		// unchanged — trace included here as it was not renamed
 		"archigraph_trace",
@@ -553,6 +553,10 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_auth_coverage",
 		// #1659 docgen→graph repair feedback loop
 		"archigraph_apply_docgen_repairs",
+		// #2442 re-wired agent-facing tools (restored from ≤3k budget cut)
+		"archigraph_save_finding",
+		"archigraph_list_findings",
+		"archigraph_cross_links",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -594,13 +598,12 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_get_next_enrichment_task",
 		"archigraph_get_telemetry",
 		// agent-facing tools dropped in refactor/mcp-real-3k (≤3k budget)
+		// NOTE: archigraph_save_finding, archigraph_list_findings, archigraph_cross_links
+		// were re-wired in #2442; see wantPresent list.
 		"archigraph_recent_activity",
-		"archigraph_save_finding",
 		// deprecated shims dropped in feat/drop-subgraph-shims (no real callers per #1742)
 		"archigraph_get_subgraph",
 		"archigraph_summarize_subgraph",
-		"archigraph_list_findings",
-		"archigraph_cross_links",
 	}
 	for _, n := range wantAbsent {
 		if registered[n] {
