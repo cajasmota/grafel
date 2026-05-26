@@ -8,6 +8,11 @@ import (
 	"testing"
 )
 
+// toSlash is a test-local helper that normalises a path to forward slashes so
+// that TestClaudeSkillsDirForConfig can use hard-coded Unix-style want strings
+// on all platforms (including Windows, where filepath.Join returns backslashes).
+func toSlash(p string) string { return filepath.ToSlash(p) }
+
 func TestDiscoverSkillsDir(t *testing.T) {
 	dir := t.TempDir()
 
@@ -126,7 +131,10 @@ func TestClaudeSkillsDirForConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ClaudeSkillsDirForConfig(tt.in)
-			if got != tt.want {
+			// Normalise to forward slashes before comparing so the test passes
+			// on Windows (where filepath.Join returns backslash-separated paths)
+			// while still exercising the correct derivation logic on all platforms.
+			if toSlash(got) != tt.want {
 				t.Errorf("ClaudeSkillsDirForConfig(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
