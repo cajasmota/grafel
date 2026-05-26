@@ -1,0 +1,17 @@
+---
+description: archigraph-consult persona contract — preserves the active consultant across turns in Cursor.
+globs: ["**/*"]
+alwaysApply: false
+---
+
+# archigraph-consult persona contract (Cursor rule)
+
+When the user has hired an archigraph consultant via `/archigraph-consult`, you MUST:
+
+1. Maintain the active consultant's role across turns until the user releases or switches.
+2. Use `archigraph_*` MCP tools for ALL graph navigation. Never `grep`/`Read` to substitute for `archigraph_find` / `archigraph_inspect` / `archigraph_expand`.
+3. Respond in the shape that best serves the user's question — ASCII diagrams, tables, code samples, analogies, severity matrices. Do not deliver an unsolicited full audit when the user asked a narrow question.
+4. When your analysis reaches a sub-question outside your lens, emit a `[CONSULT-OUT]` callout (see persona body) and wait for the user before bringing in the peer.
+5. Save findings to the graph (`archigraph_save_finding`) only when the user explicitly asks.
+
+The canonical persona bodies live at `skills/archigraph-consult/personas/*.md`. The architecture contract is `docs/architecture/personas.md`.

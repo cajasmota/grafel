@@ -1,13 +1,39 @@
 # Persona Architecture for archigraph
 
-**Status:** Canonical architectural contract
-**Scope:** Persona definition, shape, delivery, orchestration, catalog, and phasing.
+**Status:** Canonical architectural contract — v3 (interactive hire-on-demand)
+**Scope:** Persona definition, shape, delivery, orchestration, catalog, communication styles, escalation, anti-patterns, phasing.
+**Supersedes:** v1/v2 ("auto-fan-out + editor synthesis") shipped in PR #2449.
 
 ---
 
 ## 1. What is a persona?
 
-A persona is an **agent definition file** — a markdown document that instructs a user's coding agent (Claude Code, Windsurf, Cursor) to adopt a specialist role and analyse a codebase's archigraph knowledge graph and generated documentation from a single, focused perspective. Personas are **not CLI commands**, **not daemon processes**, and **not web-UI features**. They are static files that the user's agent host interprets at invocation time. The persona's output is a structured markdown report and a machine-readable findings list. The `archigraph-consult` skill is the orchestrator that fans out to one or more personas on the user's behalf; the personas themselves are leaf workers — each runs once, produces output, and exits.
+A persona is an **agent definition file** — a markdown document that instructs a user's coding agent (Claude Code, Windsurf, Cursor) to adopt a specialist role, navigate a codebase's archigraph knowledge graph + generated documentation, and **converse with the user from that lens**. Personas are **not CLI commands**, **not daemons**, **not web-UI features**, and **not auto-firing report generators**.
+
+### 1.1 Paradigm: hire-on-demand interactive consultant
+
+A persona is a **consultant the user hires**. Hiring works like this:
+
+1. The user invokes the `archigraph-consult` skill (or types `/archigraph-consult`).
+2. The skill presents the catalog of available consultants.
+3. The user picks one (or asks the skill to recommend, given a problem).
+4. The chosen persona becomes the **active consultant** for the conversation.
+5. The active consultant answers the user's questions, explores the codebase via archigraph MCP, and delivers analysis in whatever shape the question demands — prose, ASCII diagram, table, code sample, analogy, severity matrix.
+6. The user may release the consultant, switch consultants, or ask the active consultant to **Consult-Out** to a peer.
+
+There is **no auto-fan-out**, no automatic multi-persona run, no editor synthesis pass, and no implicit findings-graph materialisation. Those were the v1/v2 model and have been retired.
+
+### 1.2 What changed from PR #2449
+
+| Aspect | v1/v2 (PR #2449) | v3 (this doc) |
+|---|---|---|
+| Trigger | Auto after `/generate-docs` | Explicit user invocation |
+| Mode | Batch fan-out across all personas | One active consultant at a time |
+| Output | Mandatory markdown reports + JSON findings file | Whatever shape best answers the user's question |
+| Findings → graph | Auto-saved at confidence ≥ 0.7 | Saved only when user asks |
+| Cross-persona | Editor synthesis pass post-run | Consult-Out: active persona pulls in a peer mid-conversation |
+| Persona body | Fixed 5-section template ending in OUTPUT shape | Role + READ + ANALYSIS lens + communication styles + Consult-Out triggers |
+| Stop criteria | Hard caps (15 findings, all questions answered) | User releases or switches |
 
 ---
 
@@ -19,231 +45,240 @@ A persona is an **agent definition file** — a markdown document that instructs
 ---
 name: archigraph-<persona-name>           # lowercase, hyphens, prefixed archigraph-
 description: >
-  One tight sentence: what this persona reviews + when to invoke it.
-  Used as the auto-delegation routing key in Claude Code.
-tools: Read, Glob, mcp__archigraph__*     # whitelist; no Write unless the persona saves findings
-model: sonnet                             # sonnet for Tier A/B; haiku for cheap Tier C passes
+  One tight sentence: what this consultant is good at, and what kind of
+  user question signals "hire this one".
+tools: Read, Glob, mcp__archigraph__*
+model: sonnet
 ---
 ```
 
-All fields except `model` are required. `tools` must always include `mcp__archigraph__*` (the persona's primary navigation surface) and `Read` (for loading doc files).
+### 2.2 Body structure (v3)
 
-### 2.2 Body structure
-
-Every persona body follows this five-section template:
+Every persona body follows this template:
 
 ```markdown
 ## Role
-
-One paragraph: who you are, what you ignore, what you refuse to speculate about without graph evidence.
+One paragraph: who you are, what lens you bring, what you refuse to speculate on without graph evidence. You are *interactive* — you respond to the user's questions, you do not auto-emit a report.
 
 ## READ instructions
+Ordered list of graph queries the persona runs at the start of a conversation
+to ground itself. Light-weight on hire; deeper queries are issued on demand
+as the user's questions require.
 
-Ordered list of data-gathering steps the persona MUST complete before analysis:
+## ANALYSIS lens
+The questions this persona habitually asks of a codebase. Not a checklist
+to mechanically complete — a lens through which user questions are
+interpreted.
 
-1. Call `archigraph_whoami` — confirm group and available repos.
-2. Call `archigraph_stats` — get corpus-level metrics (entity count, module count, edge count).
-3. Read tech docs at `~/.archigraph/docs/<group>/modules/` — scan `.plan.md` for the module list; read the modules relevant to your focus area.
-4. <persona-specific graph queries listed here — archigraph_find, archigraph_inspect, archigraph_expand, archigraph_traces, archigraph_clusters>
+## Communication styles for this domain
+The persona's toolkit for explaining things: which of ASCII diagrams,
+tables, analogies, code samples, severity matrices, sequence diagrams the
+persona reaches for, and when. Each persona's list is domain-tuned.
 
-## ANALYSIS
+## When to ask for an expert (Consult-Out)
+Named peer personas this consultant typically hands off to, plus the
+trigger conditions. See Section 5.
 
-The questions this persona MUST answer. Each question maps to a finding section in the output.
-No speculation beyond what the graph + docs support. If a question can't be answered from available data, note it as "evidence insufficient" rather than fabricating.
-
-## OUTPUT format
-
-Required sections in the markdown report:
-
-### Summary
-3–5 bullets. Plain language. No internal symbol names in the top-level bullets (put symbols in the evidence sub-bullets).
-
-### Findings
-One sub-section per finding. Template:
-- **Title:** short imperative phrase
-- **Severity:** critical | high | medium | low | info
-- **Entity refs:** `<entity_id>` (link to graph node)
-- **Evidence:** quoted snippet or graph path that proves the finding
-- **Recommendation:** concrete action (what, not how)
-- **Confidence:** 0.0–1.0; must be < 0.7 if evidence is indirect
-
-JSON finding record (one per finding, emitted alongside the report):
-```json
-{
-  "title": "...",
-  "severity": "high",
-  "entity_id": "...",
-  "persona": "<name>",
-  "confidence": 0.85,
-  "recommendation": "...",
-  "blast_radius": "..."
-}
+## Response shape
+The persona responds in whatever shape best serves the user's question.
+No fixed report template. If the user asks "is this module too coupled?",
+answer that — don't deliver a 7-section structural audit.
 ```
 
-### Deferred / insufficient evidence
-Findings the persona wanted to raise but could not substantiate from the graph + docs. Lists the question, what evidence was sought, and what was missing.
+There is **no STOP-criteria section** in v3. The session ends when the user releases the persona.
 
-## STOP criteria
-
-The persona MUST stop and return its report when ANY of the following are true:
-- All ANALYSIS questions have been answered or deferred.
-- More than 15 findings have been emitted (cap per persona to avoid noise floods).
-- Tech docs are missing for a module required by a question (escalate to "deferred").
-- The user's agent requests early termination.
-```
-
-### 2.3 Compose-skills pattern
-
-A persona does not need to duplicate logic shared across multiple personas. Common capabilities live in separate archigraph skills that the persona's frontmatter preloads:
-
-```yaml
-skills:
-  - archigraph-graph-read          # MCP query patterns and tool discipline
-  - archigraph-finding-formatter   # standard finding shape + JSON serialiser
-```
-
-This keeps persona files focused on the "what to look for" rather than "how to query the graph". In this PR, the shared skills are inline (the persona body contains both role and query instructions); extracting them into discrete skill files is deferred to a followup (see Section 7).
+There is **no OUTPUT format section** in v3. Personas respond to questions in domain-appropriate shapes.
 
 ---
 
 ## 3. Cross-platform delivery
 
-### 3.1 Canonical target: Claude Code subagent
+Personas must work across coding-agent hosts, but only Claude Code provides true context isolation. The "hire" semantics are emulated differently on each platform.
 
-The canonical persona definition is a **Claude Code subagent** file at:
+### 3.1 Delivery matrix
 
-```
-~/.claude/agents/archigraph-<name>.md          # personal install
-.claude/agents/archigraph-<name>.md            # project-scoped install
-```
+| Platform | Hire mechanism | Active-state tracking | Isolation | Status |
+|---|---|---|---|---|
+| **Claude Code** | Subagent at `.claude/agents/archigraph-<name>.md` — invoked via Task tool with subagent_type | Per-subagent context (native) | Yes | **Working** |
+| **Windsurf (Cascade)** | Workflow at `.windsurf/workflows/archigraph-consult.md` prompt-injects the persona body into the shared Cascade context | Conversation-level marker ("ACTIVE PERSONA: <name>") that the workflow sets; main Cascade reads it on every turn | No (shared context) | **Working with caveats** — see 3.4 |
+| **Cursor** | Slash command at `.cursor/commands/archigraph-consult.md` + rules under `.cursor/rules/archigraph-personas.mdc`; Agents Window can run a hire in a side tab for isolation | Active persona named in command frontmatter; Agents Window provides per-tab isolation | Partial (per-tab) | **Working** |
+| **Codex / others** | Markdown shim referencing the persona body | None — manual | None | **Deferred** |
 
-This is the canonical target because:
-- Claude Code provides isolated context windows per subagent (no persona cross-contamination).
-- The `skills:` frontmatter field allows clean skill composition.
-- The `description:` field drives automatic delegation — the `archigraph-consult` skill matches the user's intent to the right persona without the user naming it explicitly.
-- The user base (confirmed from environment) primarily uses Claude Code.
+### 3.2 Canonical source-of-truth
 
-The persona files shipped in `skills/archigraph-consult/personas/` are the Claude Code canonical definitions. The `archigraph-consult` skill installs them by loading them as subagent instructions when fanning out.
+The persona bodies live at `skills/archigraph-consult/personas/<name>.md` (this repo). All platform wrappers **reference** these bodies — they do not duplicate the persona content. The wrappers are thin: catalog enumeration, hire mechanic, Consult-Out plumbing.
 
-### 3.2 Windsurf (secondary target, deferred)
+### 3.3 Claude Code path (canonical)
 
-Windsurf workflows live at `.windsurf/workflows/<name>.md`. They run in Cascade's single shared context (no isolation per persona). Personas on Windsurf must run sequentially and be capped at 12,000 characters each. The Windsurf wrapper can be generated from the canonical Claude Code definition by stripping the YAML frontmatter and converting the five-section body into a numbered Cascade step chain. Generation tooling is deferred (see Section 7).
+The `archigraph-consult` skill:
 
-### 3.3 Cursor (secondary target, deferred)
+1. Lists the catalog (reads `personas/*.md` frontmatter `description:` fields).
+2. Asks the user which to hire (or interprets a natural-language request).
+3. Spawns a subagent with the persona body as the system prompt, **scoped to the user's conversation** — i.e. the subagent stays "alive" and the parent agent forwards subsequent user turns to it until the user releases.
 
-Cursor commands live at `.cursor/commands/<name>.md`. Cursor 3.0's Agents Window supports up to 8 parallel agents. Persona slash commands can be generated from the canonical definition. Generation tooling is deferred (see Section 7).
+In practice, the simplest implementation is: the parent (main Claude Code agent) loads the persona body **inline** into the current conversation and itself adopts the role. A true subagent is used only for Consult-Out (Section 5) when isolation is genuinely needed.
 
-### 3.4 Choosing one over another
+### 3.4 Windsurf path
 
-| Concern | Claude Code | Windsurf | Cursor |
-|---|---|---|---|
-| Context isolation per persona | Yes | No (shared) | Yes (Agent tab) |
-| Skill composition | Yes (`skills:`) | No | Partial (rules) |
-| Auto-delegation | Yes (`description:`) | No (manual `/`) | No (manual) |
-| Parallel persona fan-out | Native | Sequential only | Up to 8 |
-| **Recommended for archigraph** | **Primary** | Secondary | Secondary |
+Cascade has one shared context. "Hiring" works by:
+
+1. The `archigraph-consult` workflow runs in the current Cascade context.
+2. The workflow injects a system-level reminder: `ACTIVE PERSONA: archigraph-<name>. Body follows: <inlined persona body>.`
+3. Cascade adopts the role for subsequent turns.
+4. Releasing = the user says "release the consultant" or invokes the workflow again with a different persona.
+
+**Caveat:** there is no enforcement. If the user changes topic mid-conversation Cascade may drift out of the persona. The workflow includes a self-check step the user can re-trigger ("reconfirm active persona"). True isolation requires a sidecar (deferred).
+
+### 3.5 Cursor path
+
+Cursor's Agents Window provides per-tab isolation: hiring a consultant opens a new agent tab with the persona body as system prompt. The slash command + rule provide the in-line fallback for users who prefer the chat panel.
 
 ---
 
 ## 4. Orchestration via `archigraph-consult`
 
-The user never invokes a persona directly. They invoke the `archigraph-consult` **skill** (via `/archigraph-consult` slash command or by natural-language request). The skill orchestrates:
-
-1. **Pre-flight**: calls `archigraph_whoami`, verifies tech docs exist, loads the persona catalog from `skills/archigraph-consult/personas/*.md`.
-2. **Persona selection**: matches the user's intent (or `--persona <name>` flag) against the `description:` field of each persona file.
-3. **Fan-out**: for each selected persona, the skill spawns a subagent using the persona's `.md` body as the system prompt. In Claude Code this is a true isolated subagent. On Windsurf it's a sequential workflow step.
-4. **Collection**: each subagent returns a markdown report + JSON findings list. The skill writes them to `~/.archigraph/consultations/<session-id>/`.
-5. **Editor synthesis**: after all personas complete, an editor pass deduplicates findings raised by multiple personas and ranks by cross-persona agreement.
-6. **Graph materialisation**: findings with `confidence >= 0.7` are written to the graph via `archigraph_save_finding`.
-7. **Session summary**: prints a one-screen summary and the session path.
-
-### 4.1 Multi-persona fan-out flow
+The skill is the single entry point. Flow:
 
 ```
 User: /archigraph-consult
   └─ archigraph-consult skill
-       ├─ spawn: archigraph-architect      → architect-report.md + findings.json
-       ├─ spawn: archigraph-security-auditor → security-report.md + findings.json
-       ├─ spawn: archigraph-performance-reviewer → perf-report.md + findings.json
-       ├─ spawn: archigraph-refactor-critic   → refactor-report.md + findings.json
-       └─ spawn: archigraph-business-analyst  → ba-report.md + findings.json
-            │
-            ▼
-       editor pass: synthesis.md (deduplicated, ranked)
-            │
-            ▼
-       archigraph_save_finding (confidence >= 0.7)
+       ├─ pre-flight: archigraph_whoami, tech-docs presence check
+       ├─ enumerate catalog (read personas/*.md frontmatter)
+       ├─ ask user: "which consultant would you like to hire?"
+       │   (or interpret natural-language "I need an architecture review" → architect)
+       ├─ activate selected persona (inline body load or subagent spawn)
+       └─ conversation continues with active persona answering questions
+              │
+              └─ user may: ask questions / request Consult-Out / switch persona / release
 ```
 
-The skill (not the persona) decides which personas run. Personas do not communicate with each other during a run.
+The skill does not run all personas. It does not produce a synthesis. It does not auto-save findings. Those behaviours belonged to v1/v2.
 
 ---
 
-## 5. Persona catalog
+## 5. Consult-Out — the escalation pattern
 
-Archigraph ships the following personas. This PR delivers all marked **Phase 1**; the rest are deferred.
+A consultant working on a problem may realise they need a peer's lens. Example: the security-auditor is tracing an auth flow and spots that one handler does a 200 ms sync DB scan per request — that's a performance concern. The security-auditor isn't qualified to opine on caching strategy. They Consult-Out to performance-reviewer.
 
-| # | Name | Role | Primary graph queries | Phase |
+### 5.1 Mechanic
+
+The active consultant signals the need with a structured callout in their response:
+
+```
+> [CONSULT-OUT] I want to bring in archigraph-performance-reviewer because:
+> - The handler at entity_id `auth.LoginHandler` does a synchronous DB scan
+>   (see archigraph_expand result above)
+> - Latency optimisation is outside my (security) lens
+>
+> Context to carry over:
+> - Entity under discussion: auth.LoginHandler (entity_id: 4abf…)
+> - The user's original question: "is this login flow safe?"
+> - What I've found so far: <3-bullet summary>
+>
+> Shall I bring them in?
+```
+
+The user replies yes/no. If yes, the orchestrator:
+
+1. **Claude Code:** spawns the requested persona as a true subagent (Task tool with subagent_type), passing the carry-over context as the opening message. The original consultant remains active in the parent conversation. The peer's response is summarised back to the user with `[CONSULT-IN: performance-reviewer]` tagging.
+2. **Windsurf:** appends a second `ACTIVE PERSONA` marker scoped to this turn only ("for this answer, also adopt archigraph-performance-reviewer's lens"). The shared context means both lenses inform the same response. After the answer, the marker expires.
+3. **Cursor:** opens a new Agents-Window tab with the peer, passing carry-over context.
+
+### 5.2 Carry-over context (required)
+
+Every Consult-Out call MUST include:
+
+- The entity_ids under discussion.
+- The user's original question.
+- A 2–4 bullet summary of what the original consultant has found so far.
+- The specific sub-question the peer is being asked to answer.
+
+This avoids the peer re-doing the original consultant's READ phase.
+
+### 5.3 When NOT to Consult-Out
+
+- The peer's lens overlaps trivially with the active consultant's — handle it inline.
+- The user has not yet engaged deeply with the active consultant's answer.
+- More than 2 Consult-Outs have already happened in this conversation (panel sprawl).
+
+---
+
+## 6. Communication styles catalog
+
+Personas use rich communication. The catalog of styles:
+
+| Style | Best for | Example trigger |
+|---|---|---|
+| **ASCII call graph** | Showing fan-in/fan-out, dependency chains, blast radius | "What depends on this function?" |
+| **ASCII sequence diagram** | Multi-actor flows (HTTP request → service → DB → response) | "Walk me through a login" |
+| **ASCII flow chart** | Branching logic, decision points, state transitions | "How does the order state machine work?" |
+| **Comparison table** | Trade-offs between options, before/after, multiple modules side-by-side | "Should we use approach A or B?" |
+| **Severity matrix** | Risk ranking across a set of findings | "What are the worst issues?" |
+| **Decision matrix** | Choosing among options on multiple criteria | "Which DB should we pick?" |
+| **Domain analogy** | Explaining technical concepts to non-technical stakeholders | "Why is this slow?" |
+| **Concrete code sample** | Showing the fix, not just describing it | "How do I fix this N+1?" |
+| **Severity / confidence callout** | Single high-impact finding with action | "Is this vulnerable?" |
+| **Module-ownership table** | Mapping entities to modules to teams | "Who owns this code?" |
+
+Each persona's body lists the subset of styles relevant to its domain (e.g. architect leans on ASCII call graphs + cluster tables; business-analyst leans on domain analogies + user-journey flow charts).
+
+---
+
+## 7. Persona catalog
+
+Eight personas ship. The catalog count must match across this doc, `SKILL.md`, and the filesystem at `skills/archigraph-consult/personas/`.
+
+| # | Name | Lens | Primary graph queries | Status |
 |---|---|---|---|---|
-| 1 | `architect` | Internal structure — layering, coupling, cyclic deps, god modules, boundary violations | `archigraph_clusters`, `archigraph_expand` (IMPORTS/CALLS), `archigraph_stats` | Phase 1 (enhanced) |
-| 2 | `security-auditor` | Auth gaps, PII exposure, injection risks, secrets, attack surface | `archigraph_traces` (auth entry points), `archigraph_expand` (CALLS from user-input handlers), `archigraph_find` (credential patterns) | Phase 1 (enhanced) |
-| 3 | `business-analyst` | Capability coverage, feature gaps, business rule completeness, user-journey gaps | `archigraph_traces` (route → handler → service), `archigraph_find` (route entities), `archigraph_clusters` | Phase 1 (enhanced) |
-| 4 | `performance-reviewer` | Hot paths, N+1 queries, synchronous blocking, unbounded queries, over-fetching | `archigraph_expand` (CALLS depth), `archigraph_traces` (high-traffic entry points), `archigraph_find` (DB call patterns) | Phase 1 (enhanced) |
-| 5 | `refactor-critic` | Complexity hotspots, duplication, dead code, long call chains, tech-debt | `archigraph_stats`, `archigraph_expand` (zero-caller nodes), `archigraph_clusters` (high-degree nodes) | Phase 1 (enhanced) |
-| 6 | `api-designer` | Endpoint naming, REST/RPC convention consistency, versioning, OpenAPI gaps, error-shape uniformity | `archigraph_find` (http_endpoint entities), `archigraph_inspect` (route handler chains), `archigraph_cross_links` | Phase 1 (new) |
-| 7 | `data-engineer` | Schema quality, migration hygiene, ORM query patterns, missing indexes, FK integrity | `archigraph_find` (schema/model entities), `archigraph_expand` (CALLS from ORM layers), `archigraph_traces` | Phase 1 (new) |
-| 8 | `qa-reviewer` | Test coverage by module, missing test types, untested critical paths, fixture hygiene | `archigraph_expand` (TESTS edges), `archigraph_find` (test entities), `archigraph_traces` (critical paths) | Phase 1 (new) |
-| 9 | `solutions-architect` | System-level fit — external integration points, third-party SDKs, data flow across services, deployment topology | `archigraph_cross_links`, `archigraph_find` (external API clients), `archigraph_clusters` | Deferred |
-| 10 | `devops-reviewer` | Deployability, IaC quality, env var contracts, observability, 12-factor compliance | `archigraph_find` (config/env entities), `archigraph_expand` (startup chains) | Deferred — archigraph is a code-graph indexer; IaC analysis requires separate tooling |
-| 11 | `compliance-officer` | GDPR PII handling, audit trails, dependency licenses, SOC2 access controls | `archigraph_find` (PII-adjacent entities), `archigraph_expand` (data flow), `archigraph_traces` | Deferred — high false-positive risk without semantic data-classification |
-| 12 | `dx-engineer` | Onboarding friction, error messages, dev-loop timing | `archigraph_find` (entry points), `archigraph_stats` | Deferred — limited graph signal; better as a human review |
-| 13 | `editor` (synthesis) | Deduplicates + ranks findings from all other personas | Reads persona outputs; no direct graph queries | Phase 1 (in skill; not a standalone persona file) |
+| 1 | `architect` | Module layering, coupling, cyclic deps, god modules, boundary violations | `archigraph_clusters`, `archigraph_expand` (IMPORTS/CALLS), `archigraph_stats` | Shipped |
+| 2 | `security-auditor` | Auth gaps, PII exposure, injection risks, secrets, attack surface | `archigraph_traces` (auth entry points), `archigraph_expand`, `archigraph_find` | Shipped |
+| 3 | `business-analyst` | Capability coverage, feature gaps, business rule completeness, user-journey gaps | `archigraph_traces`, `archigraph_find` (route entities), `archigraph_clusters` | Shipped |
+| 4 | `performance-reviewer` | Hot paths, N+1 queries, sync blocking, unbounded queries, over-fetching | `archigraph_expand`, `archigraph_traces`, `archigraph_find` (DB call patterns) | Shipped |
+| 5 | `refactor-critic` | Complexity hotspots, duplication, dead code, long call chains, tech-debt | `archigraph_stats`, `archigraph_expand` (zero-caller nodes), `archigraph_clusters` | Shipped |
+| 6 | `api-designer` | Endpoint naming, REST/RPC convention consistency, versioning, OpenAPI gaps | `archigraph_find` (http_endpoint), `archigraph_inspect`, `archigraph_cross_links` | Shipped |
+| 7 | `data-engineer` | Schema quality, migration hygiene, ORM patterns, missing indexes, FK integrity | `archigraph_find` (schema/model), `archigraph_expand`, `archigraph_traces` | Shipped |
+| 8 | `qa-reviewer` | Test coverage by module, missing test types, untested critical paths | `archigraph_expand` (TESTS edges), `archigraph_find`, `archigraph_traces` | Shipped |
 
-**Dropped from catalog:**
-
-- **Accessibility Auditor** — WCAG/ARIA analysis requires DOM/rendering context that archigraph does not index. Static call-graph analysis produces near-zero signal. Drop entirely; not deferred.
-- **Tech Writer** — reviewing archigraph's own generated docs is circular (the persona reads the docs to judge the docs). Better addressed by a separate quality-check pass (`/archigraph-graph-quality`). Drop entirely.
-- **Devil's Advocate** — useful concept but not a standalone persona; better implemented as an optional argument to the editor synthesis pass. Deferred to the editor persona followup.
+**Deferred** (documented but not shipped): `solutions-architect`, `devops-reviewer`, `compliance-officer`, `dx-engineer`. Rationale unchanged from PR #2449.
 
 ---
 
-## 6. What personas do NOT do
+## 8. What personas do NOT do (v3 anti-section)
 
 This section is non-negotiable. Any implementation that violates these invariants is wrong.
 
-- **No CLI invocation.** There is no `archigraph architect` or `archigraph consult start` command that spawns a persona. The CLI has no persona subcommand. Personas are markdown files, not CLI subcommands.
-- **No daemon spawn.** Personas do not run as background processes. They execute once within the user's agent host's context and terminate.
-- **No web-UI surface.** Personas do not appear in the archigraph web dashboard as runnable items. The dashboard may show *findings* that personas emitted (via `archigraph_save_finding`), but it has no concept of "run persona".
-- **No MCP-tool-registry membership.** Personas are not MCP tools. They consume MCP tools (`mcp__archigraph__*`); they are not exposed as MCP endpoints themselves.
-- **No budget-management infrastructure in personas.** Token/cost budgeting is a concern of the `archigraph-consult` skill and the user's agent host, not of individual persona files. Persona files do not contain budget caps, model-selection logic for cost reasons, or spending meters.
-- **No cross-persona communication during a run.** Personas are stateless workers. They do not read each other's in-progress output. The editor synthesis pass (run by the skill after all personas complete) is where cross-persona reasoning happens.
-- **No install CLI.** There is no `archigraph personas install --target=claude-code` command in this PR. Installation is handled by the skill loading persona files directly. A cross-platform renderer CLI is deferred.
+- **No auto-report.** Personas do not emit a report after `/generate-docs` or any other skill. They speak only when hired.
+- **No daemon spawn.** Personas do not run as background processes.
+- **No MCP-tool-registry membership.** Personas consume MCP tools; they are not exposed as MCP endpoints.
+- **No implicit fan-out.** The skill does not silently run all 8 personas. The user picks one (or asks the skill to recommend one).
+- **No budget management in persona files.** Token/cost concerns live in the host, not the persona body.
+- **No fixed OUTPUT shape.** Personas respond in whatever shape best answers the user's question. The five-section template from v1/v2 is retired.
+- **No editor synthesis pass.** There is nothing to synthesise — there's one active consultant at a time. Cross-persona reasoning happens through Consult-Out, not post-hoc.
+- **No web-UI surface.** Findings the user explicitly saves may render in the dashboard, but personas themselves are not dashboard items.
+- **No install CLI.** Personas are markdown; install is a file copy.
+- **No CLI invocation.** There is no `archigraph architect` command.
 
 ---
 
-## 7. Phasing
+## 9. Phasing
 
-### This PR (Phase 1)
+### This PR (v3)
 
-- Architecture doc (this file) — the contract.
-- 5 existing personas enhanced to canonical shape: `architect`, `security-auditor`, `business-analyst`, `performance-reviewer`, `refactor-critic`.
-- 3 new personas added: `api-designer`, `data-engineer`, `qa-reviewer`.
-- `skills/archigraph-consult/SKILL.md` updated to reflect the full 8-persona set and reference this doc.
+- Architecture doc rewrite (this file).
+- `archigraph-consult` SKILL.md rewritten for interactive flow.
+- All 8 persona bodies updated: drop fixed OUTPUT, add Communication styles + Consult-Out triggers.
+- Cross-platform wrappers: Windsurf workflow + Cursor command (best-effort).
 
-### Deferred (Phase 2 and beyond)
+### Deferred
 
-| Item | Reason for deferral |
+| Item | Reason |
 |---|---|
-| `solutions-architect` persona | Needs cross-repo topology tooling; `archigraph_cross_links` coverage must be validated first |
-| `devops-reviewer` persona | IaC analysis outside archigraph's graph scope; requires separate static-analysis integration |
-| `compliance-officer` persona | High false-positive rate without semantic data classification; needs `archigraph-pii-scanner` skill first |
-| `dx-engineer` persona | Low graph signal; design work needed to define measurable graph-derived metrics |
-| Editor persona as standalone subagent | Currently implemented inline in the skill's "editor synthesis" step; extracting to a full persona file deferred until the finding deduplication schema is stable |
-| Cross-platform renderer CLI (`archigraph personas install`) | Depends on stable canonical format; defer until 3+ platforms are validated manually |
-| Windsurf workflow wrappers | Secondary target; defer until Claude Code path is stable and adoption warrants it |
-| Cursor command wrappers | Secondary target; same rationale as Windsurf |
-| Multi-agent fan-out runtime infrastructure | True parallel subagent orchestration with TUI progress grid deferred; sequential fan-out in the skill is sufficient for Phase 1 |
-| Findings → graph entity schema (Finding + CrossReference typed nodes) | Schema design in progress; `archigraph_save_finding` covers the interim need |
-| Persona skill extraction (`archigraph-graph-read`, `archigraph-finding-formatter` as discrete skills) | Inline in persona bodies for now; extract when 3+ personas duplicate the same boilerplate |
-| Interactive resume sessions (`archigraph consult resume`) | State management and locking design needed; not in scope for this PR |
-| Per-persona model selection strategy | Haiku vs Sonnet vs Opus decision belongs in the skill, not persona files; deferred to skill iteration |
+| True multi-persona panel mode | v1/v2 attempted this; postponed until interactive model is validated |
+| Persistent active-persona sidecar for Windsurf | Needs design work; conversation-marker workaround ships in this PR |
+| Codex / generic-markdown wrappers | Low user demand; defer until requested |
+| Persona-emitted findings → graph (opt-in) | User-driven `archigraph_save_finding` call works today; first-class "save this finding" affordance in persona body is followup |
+| Consult-Out depth > 1 (peer of peer) | Single hop only in v3 |
+| Telemetry on persona usage / Consult-Out frequency | Needs privacy review |
+| Per-persona model selection strategy | Host-level concern |
+| Cross-platform renderer CLI | Defer until 3+ platforms stable |
+| Solutions-architect / devops / compliance / dx personas | As per PR #2449 deferral reasons |
