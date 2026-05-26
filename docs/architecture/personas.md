@@ -294,9 +294,44 @@ This section is non-negotiable. Any implementation that violates these invariant
 
 ---
 
-## 9. Phasing
+## 9. Composable skills
 
-### This PR (v3)
+### 9.1 Pattern: shared skill as a building block
+
+Personas share boilerplate steps (confirm the graph is loaded, orient via inspect, traverse via expand). Rather than duplicating these steps in every persona body, we extract them into a **composable shared skill** — a standalone `SKILL.md` that personas reference with a one-liner.
+
+**Canonical example:** `skills/archigraph-graph-read/SKILL.md`
+
+This skill documents the `status → inspect → expand` READ protocol that every persona uses as its grounding pass. Personas reference it as:
+
+```markdown
+## READ Protocol
+Follow `archigraph-graph-read` (status → inspect → expand). Stop reading when the entities answer the question.
+```
+
+The persona's ANALYSIS questions (which are unique per lens) remain in the persona body. Only the boilerplate navigation steps live in the shared skill.
+
+### 9.2 Why this matters
+
+- **Single source of truth** for the READ protocol: changes to `archigraph-graph-read/SKILL.md` propagate to all 8 personas without hunting through persona files.
+- **Smaller persona files**: each persona body focuses on its unique analytical lens rather than repeating orientation steps.
+- **Composability signal**: future shared skills (`archigraph-graph-write`?, `archigraph-graph-search`?) follow the same `skills/<name>/SKILL.md` pattern. A skill is composable if it can be referenced from multiple persona bodies as a one-liner.
+
+### 9.3 Convention for future composable skills
+
+| Candidate shared skill | Would extract | Composable? |
+|---|---|---|
+| `archigraph-graph-read` | Status → inspect → expand (shipped, #2455) | Yes |
+| `archigraph-graph-write` | `archigraph_save_finding` affordance contract | Yes — same "When the user asks to save" section appears in all 8 |
+| `archigraph-graph-search` | `archigraph_find` + `archigraph_traces` pattern | Possible — most personas use both |
+
+A skill is worth extracting when: (a) the same prose appears in 3+ persona files, (b) the prose has clear boundaries (a named section), and (c) changing it in one place should change it everywhere.
+
+---
+
+## 10. Phasing
+
+### v3 (PR #2449 / this doc)
 
 - Architecture doc rewrite (this file).
 - `archigraph-consult` SKILL.md rewritten for interactive flow.
