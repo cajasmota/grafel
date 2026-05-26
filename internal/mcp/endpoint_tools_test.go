@@ -635,27 +635,6 @@ func TestSearchEntities_LegacyKindFilterExpands(t *testing.T) {
 	_ = extractResultText(t, res)
 }
 
-// TestQualityOrphans_LegacyKindFilterExpands verifies that the orphans handler
-// accepts "http_endpoint" as kind_filter without panicking or erroring.
-func TestQualityOrphans_LegacyKindFilterExpands(t *testing.T) {
-	// Build a doc with an isolated (no-edge) http_endpoint_definition.
-	doc := &graph.Document{
-		Entities: []graph.Entity{
-			{ID: "isolated_def", Kind: "http_endpoint_definition", Name: "GET /isolated"},
-			{ID: "isolated_call", Kind: "http_endpoint_call", Name: "fetchIsolated"},
-		},
-	}
-	srv := newTestServer(t, doc)
-	res := callDashboardTool(t, srv.handleQualityOrphans, map[string]any{
-		"group":       "test",
-		"kind_filter": "http_endpoint",
-	})
-	orphans := getSlice(t, res, "orphans")
-	if len(orphans) != 2 {
-		t.Errorf("expected 2 orphans (both http_endpoint_* kinds), got %d: %v", len(orphans), orphans)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // archigraph_endpoints dispatch (#1281)
 // ---------------------------------------------------------------------------

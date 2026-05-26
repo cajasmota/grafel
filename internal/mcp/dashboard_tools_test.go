@@ -468,31 +468,6 @@ func TestHandleDiagnostics(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// archigraph_quality_orphans
-// ---------------------------------------------------------------------------
-
-func TestHandleQualityOrphans(t *testing.T) {
-	entities := []graph.Entity{
-		{ID: "e1", Name: "connected", Kind: "Function"},
-		{ID: "e2", Name: "isolated", Kind: "Function"},
-	}
-	rels := []graph.Relationship{
-		{ID: "r1", FromID: "e1", ToID: "e1", Kind: "CALLS"}, // self loop — e1 is connected
-	}
-	srv := newTestServer(t, minDoc(entities, rels))
-	out := callDashboardTool(t, srv.handleQualityOrphans, map[string]any{"group": "test"})
-	count := int(out["count"].(float64))
-	if count != 1 {
-		t.Fatalf("expected 1 orphan, got %d", count)
-	}
-	orphans := out["orphans"].([]any)
-	first := orphans[0].(map[string]any)
-	if first["entity_name"] != "isolated" {
-		t.Errorf("expected isolated, got %v", first["entity_name"])
-	}
-}
-
-// ---------------------------------------------------------------------------
 // archigraph_search_entities
 // ---------------------------------------------------------------------------
 

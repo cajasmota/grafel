@@ -1485,63 +1485,6 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 // back to plain os.Open (no fsevents equivalent).
 
 // ---------------------------------------------------------------------------
-// recent_activity
-// ---------------------------------------------------------------------------
-
-func (s *Server) handleRecentActivity(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	_, lg, errRes := s.resolveAndGroup(req)
-	if errRes != nil {
-		return errRes, nil
-	}
-	since := time.Time{}
-	if v := argString(req, "since", ""); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			since = t
-		}
-	}
-	limit := argInt(req, "limit", 50)
-	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-
-	type row struct {
-		Repo  string    `json:"repo"`
-		ID    string    `json:"id"`
-		Label string    `json:"label"`
-		File  string    `json:"file"`
-		Mtime time.Time `json:"mtime"`
-	}
-	rows := []row{}
-	for _, r := range repos {
-		fileMtimes := map[string]time.Time{}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			abs := e.SourceFile
-			if !filepath.IsAbs(abs) && r.Path != "" {
-				abs = filepath.Join(r.Path, e.SourceFile)
-			}
-			mt, ok := fileMtimes[abs]
-			if !ok {
-				if info, err := os.Stat(abs); err == nil {
-					mt = info.ModTime()
-				}
-				fileMtimes[abs] = mt
-			}
-			if mt.IsZero() || (!since.IsZero() && mt.Before(since)) {
-				continue
-			}
-			rows = append(rows, row{
-				Repo: r.Repo, ID: prefixedID(r.Repo, e.ID), Label: e.Name,
-				File: e.SourceFile, Mtime: mt,
-			})
-		}
-	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Mtime.After(rows[j].Mtime) })
-	if len(rows) > limit {
-		rows = rows[:limit]
-	}
-	return jsonResult(rows), nil
-}
-
-// ---------------------------------------------------------------------------
 // candidate tools
 // ---------------------------------------------------------------------------
 
@@ -1580,55 +1523,6 @@ func (s *Server) handleListLinkCandidates(ctx context.Context, req mcpapi.CallTo
 		}
 	}
 	return jsonResult(out), nil
-}
-
-func (s *Server) handleResolveLinkCandidate(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	cid, err := req.RequireString("candidate_id")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	decision, err := req.RequireString("decision")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	g, _, errRes := s.resolveAndGroup(req)
-	if errRes != nil {
-		return errRes, nil
-	}
-	cands := readLinkCandidates(g)
-	var found *LinkCandidate
-	remaining := []LinkCandidate{}
-	for i := range cands {
-		if cands[i].ID == cid && found == nil {
-			c := cands[i]
-			found = &c
-			continue
-		}
-		remaining = append(remaining, cands[i])
-	}
-	if found == nil {
-		return mcpapi.NewToolResultError("candidate not found: " + cid), nil
-	}
-	if override := argString(req, "override_target", ""); override != "" {
-		found.Target = override
-	}
-	switch decision {
-	case "accept":
-		if err := appendLink(g, CrossRepoLink{
-			Source: found.Source, Target: found.Target, Kind: found.Kind,
-			Confidence: found.Confidence, Channel: found.Channel, Method: found.Method,
-		}); err != nil {
-			return mcpapi.NewToolResultError(err.Error()), nil
-		}
-	case "reject":
-		// noop on links file; remaining list drops it.
-	default:
-		return mcpapi.NewToolResultError("decision must be accept|reject"), nil
-	}
-	if err := writeLinkCandidates(g, remaining); err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	return jsonResult(map[string]any{"candidate_id": cid, "decision": decision}), nil
 }
 
 func (s *Server) handleListEnrichmentCandidates(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -1961,106 +1855,6 @@ func (s *Server) handleListStaleRepairs(repos []*LoadedRepo, limit, offset int) 
 	}), nil
 }
 
-// handleSubmitRepair accepts an agent-proposed repair, validates the
-// resolution kind against the ADR-0015 allowlist, and appends it to
-// <repo>/.archigraph/repair.json (creating the file if absent). The write
-// is atomic via tempfile + rename.
-func (s *Server) handleSubmitRepair(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	edgeID, err := req.RequireString("edge_id")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	resolution, err := req.RequireString("resolution")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	if !allowedRepairResolutions[resolution] {
-		return mcpapi.NewToolResultError(fmt.Sprintf(
-			"unknown resolution %q (allowed: bind_to_entity, reclassify_as_external, reclassify_as_dynamic, reclassify_as_resolved, abandon)",
-			resolution)), nil
-	}
-	confidence := argFloat(req, "confidence", 0.0)
-	if confidence < 0 || confidence > 1 {
-		return mcpapi.NewToolResultError("confidence must be in [0,1]"), nil
-	}
-	reasoning := argString(req, "reasoning", "")
-	targetEntity := argString(req, "target_entity_id", "")
-	module := argString(req, "module", "")
-	newTarget := argString(req, "new_target", "")
-	dynamicReason := argString(req, "dynamic_reason", "")
-	abandonReason := argString(req, "abandon_reason", "")
-	source := argString(req, "source", "mcp_submit_repair")
-	repoOverride := argString(req, "repo", "")
-
-	_, lg, errRes := s.resolveAndGroup(req)
-	if errRes != nil {
-		return errRes, nil
-	}
-
-	// Pick the target repo. If the caller passed an explicit `repo`, use
-	// it. Otherwise scan candidates to find the repo that owns this
-	// edge_id. The latter is what an agent will normally do: one
-	// list_residuals → one submit_repair per residual.
-	repos := reposToConsider(lg, nil)
-	var target *LoadedRepo
-	if repoOverride != "" {
-		for _, r := range repos {
-			if r.Repo == repoOverride {
-				target = r
-				break
-			}
-		}
-		if target == nil {
-			return mcpapi.NewToolResultError(fmt.Sprintf("repo %q not loaded in group", repoOverride)), nil
-		}
-	} else {
-		for _, r := range repos {
-			for _, c := range readRepairEdgeCandidates(r.Path) {
-				if v, ok := c.Context["edge_id"].(string); ok && v == edgeID {
-					target = r
-					break
-				}
-			}
-			if target != nil {
-				break
-			}
-		}
-		if target == nil {
-			return mcpapi.NewToolResultError(fmt.Sprintf("edge_id %q not found in any loaded repo (pass repo= to disambiguate)", edgeID)), nil
-		}
-	}
-
-	rf, err := readRepairFile(target.Path)
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	repair := enrichment.Repair{
-		EdgeID:         edgeID,
-		Resolution:     resolution,
-		TargetEntityID: targetEntity,
-		Module:         module,
-		NewTarget:      newTarget,
-		DynamicReason:  dynamicReason,
-		AbandonReason:  abandonReason,
-		Confidence:     confidence,
-		Reasoning:      reasoning,
-		Source:         source,
-		ResolvedAt:     now,
-	}
-	rf.Repairs = append(rf.Repairs, repair)
-	if err := writeRepairFile(target.Path, rf); err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	return jsonResult(map[string]any{
-		"edge_id":      edgeID,
-		"repo":         target.Repo,
-		"resolution":   resolution,
-		"repair_count": len(rf.Repairs),
-		"resolved_at":  now,
-	}), nil
-}
-
 // ---------------------------------------------------------------------------
 // Bundle dispatchers (#668)
 // ---------------------------------------------------------------------------
@@ -2083,133 +1877,6 @@ func (s *Server) handleEnrichments(ctx context.Context, req mcpapi.CallToolReque
 	}
 }
 
-// handleGetNextEnrichmentTask implements archigraph_get_next_enrichment_task.
-//
-// It returns the highest-priority EnrichmentTask across all repos in the group
-// — one entity with all its pending enrichment actions. The agent can then
-// submit each action via archigraph_enrichments action=submit, one per action
-// kind, without needing another list round-trip.
-//
-// The "adapter" contract: existing archigraph_enrichments action=list queries
-// keep working as before. This tool adds the task-view on top without
-// changing the underlying candidate data.
-func (s *Server) handleGetNextEnrichmentTask(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	_, lg, errRes := s.resolveAndGroup(req)
-	if errRes != nil {
-		return errRes, nil
-	}
-	kindFilter := argString(req, "kind", "")
-	overdueOnly := argBool(req, "overdue_only", false)
-	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-
-	type taskCandidate struct {
-		subjectID string
-		repo      string
-		actions   []map[string]any
-		score     float64
-		maxScore  float64
-		overdue   bool
-	}
-
-	var best *taskCandidate
-
-	for _, r := range repos {
-		// Group candidates by SubjectID.
-		type actionItem struct {
-			candidateID string
-			kind        string
-			hint        string
-		}
-		type subEntry struct {
-			actions []actionItem
-		}
-		subjects := make(map[string]*subEntry)
-		var subjectOrder []string
-
-		for _, c := range readEnrichmentCandidates(r.Path) {
-			// readEnrichmentCandidates returns the simplified MCP shape;
-			// score/discoveredAt are not in that struct so we use defaults.
-			se, ok := subjects[c.NodeID]
-			if !ok {
-				se = &subEntry{}
-				subjects[c.NodeID] = se
-				subjectOrder = append(subjectOrder, c.NodeID)
-			}
-			se.actions = append(se.actions, actionItem{
-				candidateID: c.ID,
-				kind:        c.Kind,
-				hint:        c.Hint,
-			})
-		}
-
-		for _, sid := range subjectOrder {
-			se := subjects[sid]
-
-			// Apply kind filter: skip if no action of the requested kind present.
-			if kindFilter != "" {
-				found := false
-				for _, a := range se.actions {
-					if a.kind == kindFilter {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-
-			// MCP candidate shape lacks discoveredAt so overdue is always false here.
-			overdue := false
-			if overdueOnly && !overdue {
-				continue
-			}
-
-			// Score: use 0.6 as default (the describe_entity confidence floor)
-			// since the simplified MCP struct drops ConfidenceFloor.
-			score := 0.6
-
-			if best == nil || score > best.score {
-				actions := make([]map[string]any, 0, len(se.actions))
-				for _, a := range se.actions {
-					actions = append(actions, map[string]any{
-						"kind":         a.kind,
-						"candidate_id": a.candidateID,
-						"hint":         a.hint,
-					})
-				}
-				best = &taskCandidate{
-					subjectID: prefixedID(r.Repo, sid),
-					repo:      r.Repo,
-					actions:   actions,
-					score:     score,
-					maxScore:  score,
-					overdue:   overdue,
-				}
-			}
-		}
-	}
-
-	if best == nil {
-		return jsonResult(map[string]any{
-			"task":    nil,
-			"message": "no pending enrichment tasks found",
-		}), nil
-	}
-
-	return jsonResult(map[string]any{
-		"task": map[string]any{
-			"subject_id":      best.subjectID,
-			"repo":            best.repo,
-			"pending_actions": best.actions,
-			"pending_count":   len(best.actions),
-			"overall_score":   best.score,
-			"overdue":         best.overdue,
-		},
-		"tip": "Resolve each action via archigraph_enrichments action=submit with the action's candidate_id.",
-	}), nil
-}
-
 // handleCrossLinks dispatches archigraph_cross_links based on action=list|accept|reject.
 func (s *Server) handleCrossLinks(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	action, err := req.RequireString("action")
@@ -2220,10 +1887,6 @@ func (s *Server) handleCrossLinks(ctx context.Context, req mcpapi.CallToolReques
 	case "list":
 		return s.handleListLinkCandidates(ctx, req)
 	case "accept":
-		// Reuse handleResolveLinkCandidate but inject decision=accept via a
-		// synthetic argument overlay. We do this by reading candidate_id from
-		// the bundled request and calling the inner handler directly after
-		// confirming decision semantics.
 		return s.handleResolveLinkCandidateAction(ctx, req, "accept")
 	case "reject":
 		return s.handleResolveLinkCandidateAction(ctx, req, "reject")
@@ -2232,8 +1895,8 @@ func (s *Server) handleCrossLinks(ctx context.Context, req mcpapi.CallToolReques
 	}
 }
 
-// handleResolveLinkCandidateAction is a thin shim that sets the `decision`
-// field expected by handleResolveLinkCandidate from the bundled action.
+// handleResolveLinkCandidateAction applies the bundled action decision
+// (accept or reject) to the specified link candidate.
 func (s *Server) handleResolveLinkCandidateAction(ctx context.Context, req mcpapi.CallToolRequest, decision string) (*mcpapi.CallToolResult, error) {
 	cid := argString(req, "candidate_id", "")
 	if cid == "" {

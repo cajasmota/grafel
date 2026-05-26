@@ -172,34 +172,11 @@ var intentionalGaps = []intentionalGap{
 // yet deleted. They read argXxx but have no registered tool, so the scanner would
 // otherwise fail loudly — which is the correct behavior for NEW orphans.
 //
-// Tech-debt note (surfaced by #2404): each entry here is dead code that should be
-// deleted in a follow-up cleanup PR. The function still reads args but those args
-// are never reachable from any MCP tool call.
-//
-// Adding a new entry requires a comment explaining which tool was dropped and why.
-// Removing an entry means the dead code has been deleted — also correct.
-var orphanedHandlers = map[string]string{
-	// archigraph_recent_activity — superseded by MCPActivityBroker SSE/HTTP (#2428).
-	// Function body still exists pending deletion in this PR.
-	"handleRecentActivity": "archigraph_recent_activity dropped (superseded by MCPActivityBroker SSE/HTTP; #2428)",
-
-	// archigraph_get_next_enrichment_task — subsumed by archigraph_enrichments(action=list,limit=1) (#2428).
-	// Function body still exists pending deletion in this PR.
-	"handleGetNextEnrichmentTask": "archigraph_get_next_enrichment_task dropped (use enrichments action=list; #2428)",
-
-	// handleQualityOrphans — HTTP served at /api/quality/orphans/{group}; archigraph_find_dead_code
-	// is the agent-facing substitute (#2428). Function body still exists pending deletion in this PR.
-	"handleQualityOrphans": "handleQualityOrphans orphaned from archigraph_quality_cycles (HTTP-served; #2428)",
-
-	// handleSubmitRepair — duplicate of handleSubmitRepairFromBundle (#2428).
-	// Function body still exists pending deletion in this PR.
-	"handleSubmitRepair": "standalone repair-submit superseded by handleSubmitRepairFromBundle (#2428)",
-
-	// handleResolveLinkCandidate — legacy standalone pre-bundle version.
-	// archigraph_cross_links now dispatches via handleResolveLinkCandidateAction
-	// (the bundle-aware shim); this standalone is never called. Delete in #2428.
-	"handleResolveLinkCandidate": "pre-bundle standalone; superseded by handleResolveLinkCandidateAction (#2428)",
-}
+// orphanedHandlers is the allowlist of handler functions that are known to
+// exist without a wrap() registration. Each entry must have a comment explaining
+// why it is exempt. An empty map means all handlers are properly registered.
+// (Cleared in #2428: all 5 previously-deferred orphans have now been deleted.)
+var orphanedHandlers = map[string]string{}
 
 // sharedHelpers are functions that call argXxx but are not handlers — their
 // arg reads are covered by the tool schemas of the handlers that call them.
