@@ -85,6 +85,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -330,16 +331,41 @@ func withDefaults(cfg CommitCouplingConfig) CommitCouplingConfig {
 	return cfg
 }
 
-// isGitWorkTree reports whether repoPath is inside a git working tree.
+// isGitWorkTree reports whether repoPath is the root of a git working tree.
+//
+// Two conditions must both hold:
+//  1. repoPath is inside a git working tree (rev-parse --is-inside-work-tree).
+//  2. repoPath IS the git toplevel (rev-parse --show-toplevel equals repoPath).
+//
+// Condition 2 prevents the commit-coupling pass from mining the surrounding
+// repo's git history when repoPath is a subdirectory of a larger git repo
+// (e.g. a test fixture nested inside the archigraph repo itself). In that
+// case git -C <subdir> walks up to the parent repo root, and the resulting
+// 1000+ commit history from the wrong repo would flood the document with
+// synthetic File entities for every file that has EVER appeared in the parent
+// repo — none of which belong to the indexed fixture. See issue #2334.
 func isGitWorkTree(repoPath string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "rev-parse", "--is-inside-work-tree")
-	out, err := cmd.Output()
+
+	// Step 1: quick guard — must be inside a working tree at all.
+	insideCmd := exec.CommandContext(ctx, "git", "-C", repoPath, "rev-parse", "--is-inside-work-tree")
+	insideOut, err := insideCmd.Output()
+	if err != nil || strings.TrimSpace(string(insideOut)) != "true" {
+		return false
+	}
+
+	// Step 2: confirm repoPath is the toplevel, not a subdirectory.
+	// Use a fresh context so the 5-second budget isn't already exhausted.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+	topCmd := exec.CommandContext(ctx2, "git", "-C", repoPath, "rev-parse", "--show-toplevel")
+	topOut, err := topCmd.Output()
 	if err != nil {
 		return false
 	}
-	return strings.TrimSpace(string(out)) == "true"
+	toplevel := filepath.Clean(strings.TrimSpace(string(topOut)))
+	return filepath.Clean(repoPath) == toplevel
 }
 
 // commitRecord is one scanned commit's set of files.
