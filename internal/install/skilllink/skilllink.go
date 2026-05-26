@@ -21,9 +21,10 @@ import (
 // SkillNames lists the archigraph skills in canonical order.
 var SkillNames = []string{
 	"archigraph-aware-review",
+	"archigraph-graph-enrich",
+	"archigraph-graph-quality",
 	"archigraph-patterns-discover",
 	"archigraph-patterns-sync",
-	"archigraph-graph-quality",
 	"archigraph-resolve",
 	"archigraph-test-page",
 	"extend-convention",
