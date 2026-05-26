@@ -16,6 +16,33 @@ func write(t *testing.T, path, body string) {
 	}
 }
 
+// findPolyglotPlatformFixture searches for the polyglot-platform test fixture
+// in common locations. Returns "" if not found.
+func findPolyglotPlatformFixture() string {
+	// Check environment variable first.
+	if env := os.Getenv("POLYGLOT_PLATFORM"); env != "" {
+		if _, err := os.Stat(env); err == nil {
+			return env
+		}
+	}
+
+	// Check common developer paths.
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, "Documents/Projects/polyglot-platform"),
+		filepath.Join(home, "Projects/polyglot-platform"),
+		"/tmp/polyglot-platform",
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	return ""
+}
+
 func TestStack(t *testing.T) {
 	t.Run("go", func(t *testing.T) {
 		dir := t.TempDir()
@@ -199,8 +226,8 @@ func TestDetectMonorepoPolyglotNoManifest(t *testing.T) {
 // TestDetectMonorepoRealPolyglotPlatform asserts against the REAL fixture on
 // disk when present. Skipped in CI where the fixture is absent.
 func TestDetectMonorepoRealPolyglotPlatform(t *testing.T) {
-	const fixture = "/Users/jorgecajas/Documents/Projects/polyglot-platform"
-	if _, err := os.Stat(fixture); err != nil {
+	fixture := findPolyglotPlatformFixture()
+	if fixture == "" {
 		t.Skip("polyglot-platform fixture not present")
 	}
 	m, err := DetectMonorepo(fixture)

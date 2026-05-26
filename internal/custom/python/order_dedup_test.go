@@ -22,6 +22,8 @@ package python_test
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	_ "github.com/cajasmota/archigraph/internal/custom/python"
@@ -30,16 +32,19 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/python"
 )
 
-const polyglotPlatformBase = "/Users/jorgecajas/Documents/Projects/polyglot-platform"
+var testdataDir = func() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(file), "testdata")
+}()
 
 // TestOrderDedup_PythonNoFastAPIOrSQLAlchemyDuplicate asserts that the
 // python_fastapi and python_sqlalchemy extractors do NOT emit standalone
 // "Order" entities for the shared Pydantic models.py file.
 // Issue #1501 — within-extractor dedup, fixes 1 and 2.
 func TestOrderDedup_PythonNoFastAPIOrSQLAlchemyDuplicate(t *testing.T) {
-	pyContent, err := os.ReadFile(polyglotPlatformBase + "/libs/py-shared/py_shared/models.py")
+	pyContent, err := os.ReadFile(filepath.Join(testdataDir, "models.py"))
 	if err != nil {
-		t.Skip("polyglot-platform not found:", err)
+		t.Fatalf("read testdata: %v", err)
 	}
 
 	fileInput := extractor.FileInput{
@@ -75,9 +80,9 @@ func TestOrderDedup_PythonNoFastAPIOrSQLAlchemyDuplicate(t *testing.T) {
 // extractor emits exactly one SCOPE.Component/class entity named "Order" from
 // models.py, with no SCOPE.Schema duplicate alongside it.
 func TestOrderDedup_PythonBaseEmitsOneCanonicalOrder(t *testing.T) {
-	pyContent, err := os.ReadFile(polyglotPlatformBase + "/libs/py-shared/py_shared/models.py")
+	pyContent, err := os.ReadFile(filepath.Join(testdataDir, "models.py"))
 	if err != nil {
-		t.Skip("polyglot-platform not found:", err)
+		t.Fatalf("read testdata: %v", err)
 	}
 
 	ext, ok := extractor.Get("python")
@@ -116,9 +121,9 @@ func TestOrderDedup_PythonBaseEmitsOneCanonicalOrder(t *testing.T) {
 // still emits the canonical SCOPE.Schema/type "Order" entity from schema.graphql.
 // This is a DIFFERENT source language from the Python model and must be preserved.
 func TestOrderDedup_GraphQLStillEmitsOrderType(t *testing.T) {
-	gqlContent, err := os.ReadFile(polyglotPlatformBase + "/services/search-graphql/src/schema.graphql")
+	gqlContent, err := os.ReadFile(filepath.Join(testdataDir, "schema.graphql"))
 	if err != nil {
-		t.Skip("polyglot-platform not found:", err)
+		t.Fatalf("read testdata: %v", err)
 	}
 
 	ext, ok := extractor.Get("graphql")
@@ -152,13 +157,13 @@ func TestOrderDedup_GraphQLStillEmitsOrderType(t *testing.T) {
 // GraphQL field sub-entities (Order.id, Order.status, Order.totalCents) are
 // NOT counted here as they have names like "Order.id", not "Order".
 func TestOrderDedup_TotalCanonicalOrderCount(t *testing.T) {
-	pyContent, err := os.ReadFile(polyglotPlatformBase + "/libs/py-shared/py_shared/models.py")
+	pyContent, err := os.ReadFile(filepath.Join(testdataDir, "models.py"))
 	if err != nil {
-		t.Skip("polyglot-platform not found:", err)
+		t.Fatalf("read testdata: %v", err)
 	}
-	gqlContent, err := os.ReadFile(polyglotPlatformBase + "/services/search-graphql/src/schema.graphql")
+	gqlContent, err := os.ReadFile(filepath.Join(testdataDir, "schema.graphql"))
 	if err != nil {
-		t.Skip("polyglot-platform not found:", err)
+		t.Fatalf("read testdata: %v", err)
 	}
 
 	type extractorCase struct {

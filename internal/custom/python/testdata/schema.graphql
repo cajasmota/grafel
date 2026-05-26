@@ -1,0 +1,17 @@
+type Product {
+  sku: String!
+  name: String!
+  priceCents: Int!
+}
+
+type Order {
+  id: String!
+  status: String!
+  totalCents: Int!
+}
+
+type Query {
+  searchProducts(q: String!): [Product!]!
+  semanticSearch(q: String!, k: Int): [Product!]!
+  order(id: String!): Order
+}

@@ -300,7 +300,7 @@ func TestBridge_ToolsCall_CWDFromStartup(t *testing.T) {
 	socketPath, mock, stop := startMockDaemon(t)
 	defer stop()
 
-	const wantCWD = "/Users/user/projects/myrepo"
+	const wantCWD = "/home/user/projects/myrepo"
 	resp := roundTrip(t, socketPath, "tools/call", map[string]any{
 		"name":      "archigraph_whoami",
 		"arguments": map[string]any{},

@@ -12,12 +12,16 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-const etlFixtureDir = "/Users/jorgecajas/Documents/Projects/polyglot-platform/data-pipeline/etl"
+var etlFixtureDir = func() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(file), "testdata/etl_pipeline_1638")
+}()
 
 // brokerPass is the shared signature of every per-file broker synthesis pass.
 type brokerPass func(args DetectorPassArgs) DetectorPassResult
