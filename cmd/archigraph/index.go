@@ -1363,8 +1363,10 @@ var knownLanguageExtensions = map[string]string{
 }
 
 // warnEmptyLanguageEntities logs a warning to stderr when entities with a
-// recognized source-file extension have an empty Language tag. Issue #2341 —
-// prevents the bug from silently recurring after a future regression.
+// recognized source-file extension have an empty Language tag. The language
+// slot is canonical in Entity (FlatBuffers, post-PR #2432); extractors must
+// tag via extractor.TagEntitiesLanguage. Issue #2341 — prevents regressions
+// where extractors forget to tag.
 func warnEmptyLanguageEntities(doc *graph.Document) {
 	type bad struct{ kind, name, src string }
 	var bads []bad
