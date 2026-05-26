@@ -516,11 +516,11 @@ func TestToolNameSurface(t *testing.T) {
 	for _, st := range srv.MCP.ListTools() {
 		registered[st.Tool.Name] = true
 	}
-	// 28 tools post refactor/mcp-real-3k: 4 dashboard-only + 4 agent-facing tools dropped.
-	// Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
+	// 42 tools as of PR #2442 re-wires. 1 remaining intentional drop:
+	// archigraph_recent_activity (≤3k budget). 3 tools re-wired in #2442:
+	// archigraph_save_finding, archigraph_list_findings, archigraph_cross_links.
+	// 4 dashboard-only tools dropped: archigraph_diagnostics, archigraph_quality_orphans,
 	//   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
-	// Dropped (≤3k budget): archigraph_recent_activity, archigraph_save_finding,
-	//   archigraph_list_findings, archigraph_cross_links.
 	wantPresent := []string{
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
@@ -557,6 +557,18 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_save_finding",
 		"archigraph_list_findings",
 		"archigraph_cross_links",
+		// #2214 docgen surface
+		"archigraph_docgen_start_run", "archigraph_docgen_status",
+		"archigraph_docgen_list", "archigraph_docgen_validate",
+		"archigraph_docgen_promote", "archigraph_docgen_abort",
+		// #1753 traversal fold & #1769 status sentinel
+		"archigraph_neighbors", "archigraph_status",
+		// Additional audit/analysis tools
+		"archigraph_secrets", "archigraph_quality_cycles",
+		"archigraph_test_coverage", "archigraph_license_audit",
+		"archigraph_module_analysis", "archigraph_diff_refs",
+		// #1742 subgraph retained (despite deprecation)
+		"archigraph_subgraph",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -610,11 +622,34 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
+
+	// Meta-assertion: verify the tool set is partitioned into wantPresent and wantAbsent.
+	// Every registered tool should be in exactly one list.
+	allRegisteredTools := srv.MCP.ListTools()
+	presentSet := make(map[string]bool)
+	for _, n := range wantPresent {
+		presentSet[n] = true
+	}
+	absentSet := make(map[string]bool)
+	for _, n := range wantAbsent {
+		absentSet[n] = true
+	}
+	for _, st := range allRegisteredTools {
+		name := st.Tool.Name
+		inPresent := presentSet[name]
+		inAbsent := absentSet[name]
+		if inPresent && inAbsent {
+			t.Errorf("tool %q appears in both wantPresent and wantAbsent", name)
+		} else if !inPresent && !inAbsent {
+			t.Errorf("tool %q is registered but not in wantPresent or wantAbsent", name)
+		}
+	}
+
 	// Total count: 31 = 29 baseline + archigraph_neighbors (#1753 fold of
 	// find_callers + find_callees behind direction=) + archigraph_status
 	// sentinel registered as a real callable tool (#1769). find_callers /
 	// find_callees stay registered as deprecated aliases for one release.
-	if got := len(srv.MCP.ListTools()); got != 42 {
+	if got := len(allRegisteredTools); got != 42 {
 		t.Errorf("expected 42 registered tools, got %d — update this count if tools are added/removed (added archigraph_docgen_* #2214)", got)
 	}
 }
