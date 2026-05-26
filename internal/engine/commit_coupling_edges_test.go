@@ -386,3 +386,100 @@ func TestApplyCommitCoupling_RespectsMinSupport(t *testing.T) {
 		t.Errorf("MinSupport=2 with 3 co-changes must emit 3 edges, got %d", stats2.CoupledEdges)
 	}
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// #2355 / #2356 — isGitRoot + subdirectory failure mode
+// ──────────────────────────────────────────────────────────────────────────
+
+// TestIsGitRoot_SubdirReturnsFalse is the regression test for issue #2351.
+// It creates a real git repo, then verifies:
+//   - isGitRoot(root) == true (the root is the git root)
+//   - isGitRoot(subdir) == false (a subdirectory is NOT the git root)
+//   - ApplyCommitCoupling called with the subdirectory is skipped and emits
+//     no synthetic entities (no cross-contamination from the parent repo).
+func TestIsGitRoot_SubdirReturnsFalse(t *testing.T) {
+	if !gitAvailable(t) {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	makeFixtureRepo(t, root, [][]string{
+		{"a.go", "b.go"},
+		{"a.go", "b.go"},
+		{"a.go", "b.go"},
+		{"a.go", "b.go"},
+		{"a.go", "b.go"},
+	})
+
+	// Root must be recognised as the git root.
+	if !isGitRoot(root) {
+		t.Fatalf("isGitRoot(%q) = false, want true", root)
+	}
+
+	// Create a subdirectory inside the repo.
+	subdir := filepath.Join(root, "subpkg")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+
+	// The subdirectory must NOT be the git root.
+	if isGitRoot(subdir) {
+		t.Fatalf("isGitRoot(%q) = true, want false (subdir is not git root)", subdir)
+	}
+
+	// ApplyCommitCoupling with the subdirectory path must skip entirely and
+	// emit no synthetic entities — the bug that PR #2351 fixed.
+	doc := &graph.Document{Repo: "test"}
+	stats := ApplyCommitCoupling(doc, subdir, DefaultCommitCouplingConfig())
+	if !stats.Skipped {
+		t.Errorf("ApplyCommitCoupling(subdir) should be skipped, got Skipped=false")
+	}
+	if len(doc.Entities) != 0 {
+		t.Errorf("ApplyCommitCoupling(subdir) must not emit entities, got %d", len(doc.Entities))
+	}
+	if len(doc.Relationships) != 0 {
+		t.Errorf("ApplyCommitCoupling(subdir) must not emit relationships, got %d", len(doc.Relationships))
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// #2354 — synthetic File entities must have module property stamped
+// ──────────────────────────────────────────────────────────────────────────
+
+// TestApplyCommitCoupling_FileEntitiesHaveModuleProperty verifies that every
+// synthetic File entity emitted by ApplyCommitCoupling carries a non-empty
+// Properties["module"] value. This is the defense-in-depth fix for issue #2354:
+// File entities are appended after the main module-tagging pass in the indexer,
+// so they must stamp themselves.
+func TestApplyCommitCoupling_FileEntitiesHaveModuleProperty(t *testing.T) {
+	if !gitAvailable(t) {
+		t.Skip("git not available")
+	}
+	// Use nested paths so the module rollup produces a non-trivial label.
+	files := []string{"pkg/server/handler.go", "pkg/server/middleware.go", "pkg/client/client.go"}
+	commits := [][]string{
+		files, files, files, files, files, // 5 commits → support=5, above default threshold
+	}
+
+	dir := t.TempDir()
+	makeFixtureRepo(t, dir, commits)
+
+	doc := &graph.Document{Repo: "fixture"}
+	stats := ApplyCommitCoupling(doc, dir, DefaultCommitCouplingConfig())
+	if stats.Skipped {
+		t.Fatalf("expected pass to run, got skipped: %s", stats.SkipReason)
+	}
+	if stats.FileEntities == 0 {
+		t.Fatal("expected synthetic File entities to be emitted")
+	}
+
+	for _, e := range doc.Entities {
+		if e.Kind != KindFile {
+			continue
+		}
+		m := e.Properties["module"]
+		if m == "" {
+			t.Errorf("synthetic File entity %q (path=%q) has empty Properties[\"module\"]",
+				e.ID, e.Properties["path"])
+		}
+	}
+}

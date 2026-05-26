@@ -92,6 +92,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/module"
 )
 
 // KindCommitCoupled is the relationship kind emitted by this pass.
@@ -197,9 +198,9 @@ func ApplyCommitCoupling(doc *graph.Document, repoPath string, cfg CommitCouplin
 	// Detect git working tree. The check uses `git rev-parse` rather than
 	// stat-ing .git because submodules and git-worktrees use a .git file
 	// (pointing at the real gitdir) instead of a directory.
-	if !isGitWorkTree(repoPath) {
+	if !isGitRoot(repoPath) {
 		stats.Skipped = true
-		stats.SkipReason = "not a git working tree"
+		stats.SkipReason = "not a git root"
 		return stats
 	}
 
@@ -260,17 +261,23 @@ func ApplyCommitCoupling(doc *graph.Document, repoPath string, cfg CommitCouplin
 			continue
 		}
 		existingEntities[fid] = true
+		props := map[string]string{
+			"path":      f,
+			"repo":      doc.Repo,
+			"synthetic": "true",
+			"source":    "commit-coupling",
+		}
+		// Issue #2354 — stamp "module" on every synthetic File entity so these
+		// late-appended nodes satisfy the module-coverage invariant checked by
+		// TestModuleCoverage_AllEntitiesTagged. We pass nil for the MarkerSet;
+		// module.Derive's depth-N fallback is sufficient for file-path rollup.
+		props = module.EnsureModule(props, f, nil)
 		doc.Entities = append(doc.Entities, graph.Entity{
 			ID:         fid,
 			Name:       f,
 			Kind:       KindFile,
 			SourceFile: f,
-			Properties: map[string]string{
-				"path":      f,
-				"repo":      doc.Repo,
-				"synthetic": "true",
-				"source":    "commit-coupling",
-			},
+			Properties: props,
 		})
 		stats.FileEntities++
 	}
@@ -331,7 +338,8 @@ func withDefaults(cfg CommitCouplingConfig) CommitCouplingConfig {
 	return cfg
 }
 
-// isGitWorkTree reports whether repoPath is the root of a git working tree.
+// isGitRoot reports whether repoPath is the root of a git working tree (i.e.
+// the path returned by `git rev-parse --show-toplevel`).
 //
 // Two conditions must both hold:
 //  1. repoPath is inside a git working tree (rev-parse --is-inside-work-tree).
@@ -344,7 +352,7 @@ func withDefaults(cfg CommitCouplingConfig) CommitCouplingConfig {
 // 1000+ commit history from the wrong repo would flood the document with
 // synthetic File entities for every file that has EVER appeared in the parent
 // repo — none of which belong to the indexed fixture. See issue #2334.
-func isGitWorkTree(repoPath string) bool {
+func isGitRoot(repoPath string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -365,7 +373,17 @@ func isGitWorkTree(repoPath string) bool {
 		return false
 	}
 	toplevel := filepath.Clean(strings.TrimSpace(string(topOut)))
-	return filepath.Clean(repoPath) == toplevel
+	// Resolve symlinks on both sides before comparing: on macOS /var is a
+	// symlink to /private/var, so filepath.Clean alone can produce a mismatch
+	// when repoPath was obtained from os.MkdirTemp / t.TempDir. EvalSymlinks
+	// is best-effort; fall back to the cleaned path if it fails.
+	if resolved, err2 := filepath.EvalSymlinks(repoPath); err2 == nil {
+		repoPath = resolved
+	}
+	if resolved, err2 := filepath.EvalSymlinks(toplevel); err2 == nil {
+		toplevel = resolved
+	}
+	return filepath.Clean(repoPath) == filepath.Clean(toplevel)
 }
 
 // commitRecord is one scanned commit's set of files.
