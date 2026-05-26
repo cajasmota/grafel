@@ -189,6 +189,34 @@ func TestFieldElision_Inspect_NarrowShape(t *testing.T) {
 	}
 }
 
+// TestFieldElision_Inspect_DropsEnvelopeMeta_2290 asserts the inspect response
+// no longer embeds graph_meta, cwd_ref_meta, or an empty findings:[] key.
+// These session-stable fields are surfaced by archigraph_whoami instead. See #2290.
+func TestFieldElision_Inspect_DropsEnvelopeMeta_2290(t *testing.T) {
+	srv := newElisionServer(t)
+	// Default narrow.
+	res := callToolArgs(t, srv.handleGetNode, map[string]any{
+		"group":       "test",
+		"label_or_id": "fn_a",
+	})
+	for _, banned := range []string{"graph_meta", "cwd_ref_meta", "findings"} {
+		if _, has := res[banned]; has {
+			t.Errorf("#2290: inspect should NOT include %q (no findings exist for fn_a; envelope meta moved to archigraph_whoami): got %v", banned, res)
+		}
+	}
+	// Verbose path: still no envelope meta or empty findings.
+	res2 := callToolArgs(t, srv.handleGetNode, map[string]any{
+		"group":       "test",
+		"label_or_id": "fn_a",
+		"verbose":     true,
+	})
+	for _, banned := range []string{"graph_meta", "cwd_ref_meta", "findings"} {
+		if _, has := res2[banned]; has {
+			t.Errorf("#2290: verbose inspect should NOT include %q: got %v", banned, res2)
+		}
+	}
+}
+
 func TestFieldElision_Inspect_VerboseRestoresAllFields(t *testing.T) {
 	srv := newElisionServer(t)
 	res := callToolArgs(t, srv.handleGetNode, map[string]any{

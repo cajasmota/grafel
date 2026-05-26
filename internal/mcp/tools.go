@@ -759,8 +759,12 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	if key == "" {
 		return mcpapi.NewToolResultError("missing required argument: entity_id"), nil
 	}
-	// PH1c: use ref-aware resolution to capture CWD resolution context.
-	g, lg, cwdRes, errRes := s.resolveAndGroupWithRef(req)
+	// #2290: inspect envelope no longer embeds graph_meta or cwd_ref_meta.
+	// Those session-stable fields are surfaced by archigraph_whoami
+	// (indexed_ref, indexed_sha, is_worktree, parent_repo, cwd_resolved_to).
+	// Inspect dominates cross-stack chains; trimming this per-call saves
+	// ~5-7% tokens and compounds in inspect-heavy sessions.
+	g, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -773,16 +777,12 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 			if e, ok := r.LabelIndex.ByID[local]; ok {
 				scopeIsOne := len(repos) == 1
 				out := serializeEntity(r.Repo, e, scopeIsOne, verbose)
-				out["findings"] = findingsToJSON(findingsForEntity(allFindings, e.ID, prefixedID(r.Repo, e.ID)), 0)
+				// #2290: omit findings key entirely when no findings exist.
+				if fs := findingsForEntity(allFindings, e.ID, prefixedID(r.Repo, e.ID)); len(fs) > 0 {
+					out["findings"] = findingsToJSON(fs, 0)
+				}
 				if agentEdges := agentResolvedEdgesForEntity(r, e.ID, scopeIsOne); len(agentEdges) > 0 {
 					out["agent_resolved_edges"] = agentEdges
-				}
-				// Phase 0 git metadata (#2088) + PH1c ref context.
-				if gm := graphMetaForInspect(r); gm != nil {
-					out["graph_meta"] = gm
-				}
-				if rm := cwdRefMetaForInspect(cwdRes); rm != nil {
-					out["cwd_ref_meta"] = rm
 				}
 				return jsonResult(out), nil
 			}
@@ -827,58 +827,21 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	m := matches[0]
 	scopeIsOne := len(repos) == 1
 	out := serializeEntity(m.repo.Repo, m.ent, scopeIsOne, verbose)
-	out["findings"] = findingsToJSON(findingsForEntity(allFindings, m.ent.ID, prefixedID(m.repo.Repo, m.ent.ID)), 0)
+	// #2290: omit findings key entirely when no findings exist.
+	if fs := findingsForEntity(allFindings, m.ent.ID, prefixedID(m.repo.Repo, m.ent.ID)); len(fs) > 0 {
+		out["findings"] = findingsToJSON(fs, 0)
+	}
 	if agentEdges := agentResolvedEdgesForEntity(m.repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
 		out["agent_resolved_edges"] = agentEdges
-	}
-	// Phase 0 git metadata (#2088) + PH1c ref context.
-	if gm := graphMetaForInspect(m.repo); gm != nil {
-		out["graph_meta"] = gm
-	}
-	if rm := cwdRefMetaForInspect(cwdRes); rm != nil {
-		out["cwd_ref_meta"] = rm
 	}
 	return jsonResult(out), nil
 }
 
-// graphMetaForInspect returns the Phase-0/PH1c git metadata (#2088, #2087) for
-// a loaded repo as a map suitable for embedding in the archigraph_inspect reply.
-// Returns nil when the document carries no git metadata (pre-#2088 graph or
-// non-git repo), so callers can omit the key entirely.
-func graphMetaForInspect(lr *LoadedRepo) map[string]any {
-	if lr == nil || lr.Doc == nil || lr.Doc.IndexedSHA == "" {
-		return nil
-	}
-	m := map[string]any{
-		"indexed_sha": lr.Doc.IndexedSHA,
-		"is_worktree": lr.Doc.IsWorktree,
-	}
-	if lr.Doc.IndexedRef != "" {
-		m["indexed_ref"] = lr.Doc.IndexedRef
-	} else {
-		m["indexed_ref"] = "detached"
-	}
-	return m
-}
-
-// cwdRefMetaForInspect returns PH1c CWD-resolution ref metadata to append
-// to an archigraph_inspect reply when the caller's cwd has been resolved.
-// Returns nil when the resolution was not possible (Source "none").
-func cwdRefMetaForInspect(res CWDResolution) map[string]any {
-	if res.Source == "none" || res.Group == "" {
-		return nil
-	}
-	m := map[string]any{
-		"cwd_ref":     res.Ref,
-		"cwd_sha":     res.SHA,
-		"cwd_source":  res.Source,
-		"is_worktree": res.IsWorktree,
-	}
-	if res.IsWorktree && res.ParentRepoPath != "" {
-		m["parent_repo"] = res.ParentRepoPath
-	}
-	return m
-}
+// graphMetaForInspect / cwdRefMetaForInspect helpers removed in #2290.
+// These embedded session-stable git metadata in every archigraph_inspect
+// response. They are now sourced from archigraph_whoami (indexed_ref,
+// indexed_sha, is_worktree, parent_repo, cwd_resolved_to) which is the
+// canonical session-meta tool.
 
 // agentResolvedEdgesForEntity returns the outgoing relationships from entity e
 // that were resolved by the repair layer (resolved_by == "agent-repair").
