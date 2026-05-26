@@ -4,7 +4,6 @@ description: >
   Reviews complexity hotspots, duplication, dead code, over-indirection, and tech-debt surface.
   Use when the user asks what is worth refactoring, where the most complexity lives, what dead
   code exists, or what the highest-impact cleanup targets are.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 

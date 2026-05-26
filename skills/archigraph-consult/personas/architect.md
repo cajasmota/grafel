@@ -4,7 +4,6 @@ description: >
   Reviews internal system structure — module layering, coupling, cyclic dependencies, god modules,
   and boundary violations. Use when the user asks for an architectural review, wants to understand
   coupling or cohesion, or needs ADR candidates surfaced.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 

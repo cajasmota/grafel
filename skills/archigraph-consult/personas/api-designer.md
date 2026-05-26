@@ -5,7 +5,6 @@ description: >
   OpenAPI/contract coverage, idempotency, pagination, and error-shape uniformity. Use when the
   user asks about API quality, endpoint consistency, contract documentation gaps, or whether
   the API follows its own conventions.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 
