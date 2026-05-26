@@ -294,6 +294,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// Django ORM field-access edges (#2279). Lifts the filter_keys
+	// property bag recorded on every QUERIES edge by the pass above
+	// into first-class READS_FIELD / WRITES_FIELD edges between the
+	// call site and the SCOPE.Schema(subtype=field) entity emitted by
+	// the Python extractor. Runs AFTER applyORMQueries because it
+	// pivots off the QUERIES edges that pass emits. Append-only —
+	// cannot regress the surrounding pipeline's bug-rate.
+	entities, relationships = applyORMFieldEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// Kafka producer/consumer cross-repo edges (wave 1 of #726). Emits
 	// synthetic MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges
 	// using the same cross-repo matching strategy as #534: identical

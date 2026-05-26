@@ -422,6 +422,20 @@ const (
 	// and prevents the field from becoming an orphan node.
 	RelationshipKindUsesSchema RelationshipKind = "USES_SCHEMA"
 
+	// #2279: Django ORM field-access edges. Emitted by the engine-layer
+	// applyORMFieldEdges pass for every ORM call site (filter/get/exclude/
+	// values/values_list/order_by/annotate/select_related/prefetch_related
+	// → READS_FIELD; update/create/save/update_or_create/bulk_create/
+	// bulk_update → WRITES_FIELD). Django lookup suffixes (__icontains,
+	// __in, __gte, etc.) are stripped before field lookup. Only emitted
+	// when the field node (SCOPE.Schema subtype=field, Name=<Model>.<field>)
+	// resolves to an entity in the same file; cross-file resolution is
+	// left to the linker. Append-only — cannot regress surrounding passes.
+	// Closes the orphan class on ORM-only field references (bench Q08
+	// User.cognito_id was 60+ grep hits, 0 graph edges before this pass).
+	RelationshipKindReadsField  RelationshipKind = "READS_FIELD"
+	RelationshipKindWritesField RelationshipKind = "WRITES_FIELD"
+
 	// #2183 — Monorepo M6: Bazel BUILD-graph fusion.
 	//   BAZEL_DEPENDS_ON : bazel_target → bazel_target
 	//     Emitted for every entry in a BUILD rule's deps= list that can be
@@ -518,6 +532,9 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindResolvedBy,
 		// #2142 DRF plain serializer field → custom field class:
 		RelationshipKindUsesSchema,
+		// #2279 Django ORM field-access edges:
+		RelationshipKindReadsField,
+		RelationshipKindWritesField,
 		// #2183 Bazel BUILD-graph fusion:
 		RelationshipKindBazelDependsOn,
 		RelationshipKindBazelDepStatus,
