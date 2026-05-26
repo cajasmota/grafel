@@ -302,6 +302,65 @@ func TestAlgoCapLimitsConcurrency(t *testing.T) {
 	}
 }
 
+// TestStopCancelsInFlightIndex verifies the fix for issue #2176: when
+// Stop() is called while an IndexFn is running, the context passed to
+// IndexFn is cancelled so any exec.CommandContext child process receives
+// SIGTERM instead of surviving as a zombie.
+func TestStopCancelsInFlightIndex(t *testing.T) {
+	// indexStarted is closed when the index function is entered.
+	indexStarted := make(chan struct{})
+	// ctxCancelledDuring is closed when the index function observes ctx.Done().
+	ctxCancelledDuring := make(chan struct{})
+
+	s := New(Config{
+		Workers: 1,
+		Index: func(ctx context.Context, _ string, _ string) error {
+			close(indexStarted)
+			// Block until the context is cancelled (simulates a long-running
+			// subprocess indexer that respects ctx cancellation).
+			select {
+			case <-ctx.Done():
+				close(ctxCancelledDuring)
+				return ctx.Err()
+			case <-time.After(10 * time.Second):
+				return nil // should never reach here in this test
+			}
+		},
+	})
+	s.Start()
+	s.Enqueue("/repo")
+
+	// Wait until the indexer is actually running.
+	select {
+	case <-indexStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("index function never started")
+	}
+
+	// Call Stop — this should cancel shutdownCtx, which propagates to
+	// the IndexFn's jobCtx, which unblocks the select above.
+	stopDone := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(stopDone)
+	}()
+
+	// The IndexFn must observe the cancellation within a short window.
+	select {
+	case <-ctxCancelledDuring:
+		// correct: Stop() cancelled the in-flight job context
+	case <-time.After(2 * time.Second):
+		t.Error("Stop() did not cancel the in-flight IndexFn context (zombie leak still present)")
+	}
+
+	// Stop must also return (wg.Wait completes once IndexFn returns).
+	select {
+	case <-stopDone:
+	case <-time.After(2 * time.Second):
+		t.Error("Stop() did not return after IndexFn exited")
+	}
+}
+
 // TestResolveAlgoCap verifies the auto-tune formula.
 func TestResolveAlgoCap(t *testing.T) {
 	// Explicit cap: use as-is.

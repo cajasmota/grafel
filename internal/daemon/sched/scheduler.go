@@ -231,6 +231,15 @@ type Scheduler struct {
 	stop   chan struct{}
 	wg     sync.WaitGroup
 
+	// shutdownCtx is cancelled by Stop() so in-flight IndexFn / Incremental /
+	// Clone calls — which may have spawned child processes — receive a
+	// cancellation signal and can clean up before the daemon exits. Using a
+	// dedicated context (rather than reusing the caller-supplied one) keeps
+	// the lifecycle strictly under Scheduler control and avoids the zombie
+	// accumulation described in issue #2176.
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+
 	// algoSem limits the number of concurrent algorithm passes (#2141
 	// root-cause C / #2140 hyp-2). Capacity = max(2, NumCPU/2) unless
 	// Config.AlgoCap is set. Nil means unbounded (legacy; not used in
@@ -321,23 +330,26 @@ func New(cfg Config) *Scheduler {
 		cfg.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "sched")
 	}
 	algoCap := resolveAlgoCap(cfg.AlgoCap)
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		cfg:          cfg,
-		logger:       cfg.Logger,
-		enq:          make(chan enqueueRequest, 64),
-		jobs:         make(chan jobToken, cfg.Workers),
-		wake:         make(chan struct{}, 1),
-		stop:         make(chan struct{}),
-		algoSem:      make(chan struct{}, algoCap),
-		inflight:     map[string]int64{},
-		pendingIndex: map[string]bool{},
-		pendingRefs:  map[string]string{},
-		linkTimers:   map[string]*time.Timer{},
-		linkPending:  map[string]bool{},
-		algoTimers:   map[string]*time.Timer{},
-		algoPending:  map[string]bool{},
-		algoCancel:   map[string]context.CancelFunc{},
-		indexedRepos: map[string]repoStats{},
+		cfg:            cfg,
+		logger:         cfg.Logger,
+		enq:            make(chan enqueueRequest, 64),
+		jobs:           make(chan jobToken, cfg.Workers),
+		wake:           make(chan struct{}, 1),
+		stop:           make(chan struct{}),
+		algoSem:        make(chan struct{}, algoCap),
+		inflight:       map[string]int64{},
+		pendingIndex:   map[string]bool{},
+		pendingRefs:    map[string]string{},
+		linkTimers:     map[string]*time.Timer{},
+		linkPending:    map[string]bool{},
+		algoTimers:     map[string]*time.Timer{},
+		algoPending:    map[string]bool{},
+		algoCancel:     map[string]context.CancelFunc{},
+		indexedRepos:   map[string]repoStats{},
+		shutdownCtx:    shutdownCtx,
+		shutdownCancel: shutdownCancel,
 	}
 }
 
@@ -356,8 +368,20 @@ func (s *Scheduler) Start() {
 	}
 }
 
-// Stop closes the channels and waits for in-flight work to drain.
+// Stop signals shutdown, cancels any in-flight index jobs (so subprocess
+// children receive SIGTERM via exec.CommandContext), and waits for the worker
+// pool to drain. It is safe to call Stop more than once; subsequent calls are
+// no-ops because close(s.stop) panics on a closed channel — the once-flag is
+// implicit in the channel close semantics (closing an already-closed channel
+// panics, so callers must not call Stop concurrently; this matches the
+// existing contract).
 func (s *Scheduler) Stop() {
+	// Cancel the shutdown context first so any in-flight IndexFn /
+	// Incremental / Clone call that spawned a child process via
+	// exec.CommandContext receives SIGTERM immediately. This is the fix for
+	// the zombie accumulation described in issue #2176.
+	s.shutdownCancel()
+
 	close(s.stop)
 	s.wg.Wait()
 
@@ -696,10 +720,16 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	//
 	// On success (res.Done=true) we skip both clone and full reindex.
 	// On fallback (res.Done=false) we log the reason and fall through normally.
+	// Use shutdownCtx for all child-process-spawning calls so that when
+	// Stop() is called (daemon SIGTERM/SIGINT/Stop-RPC), any in-flight
+	// subprocess indexer receives SIGTERM via exec.CommandContext and the
+	// daemon can exit cleanly without leaving zombie processes (issue #2176).
+	jobCtx := s.shutdownCtx
+
 	var err error
 	incrementalDone := false
 	if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
-		res := s.cfg.Incremental(context.Background(), repoPath, tok.ref)
+		res := s.cfg.Incremental(jobCtx, repoPath, tok.ref)
 		if res.Done {
 			incrementalDone = true
 			s.logEvent("incremental_ok", repoPath,
@@ -716,7 +746,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// a non-empty ref (so we know which per-ref store to check).
 	cloneSkipped := false
 	if !incrementalDone && s.cfg.Clone != nil && tok.ref != "" {
-		res := s.cfg.Clone(context.Background(), repoPath, tok.ref)
+		res := s.cfg.Clone(jobCtx, repoPath, tok.ref)
 		if res.Done {
 			cloneSkipped = true
 			s.logEvent("clone_ok", repoPath,
@@ -724,7 +754,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		}
 	}
 	if !incrementalDone && !cloneSkipped && s.cfg.Index != nil {
-		err = s.cfg.Index(context.Background(), repoPath, tok.ref)
+		err = s.cfg.Index(jobCtx, repoPath, tok.ref)
 	}
 
 	close(sampleStop)
