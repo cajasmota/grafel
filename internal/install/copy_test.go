@@ -256,7 +256,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	// Create a fake skills source dir with two skills from the canonical list.
 	skillsSourceDir := filepath.Join(tmp, "skills")
-	for _, name := range []string{"generate-docs", "archigraph-quality-check"} {
+	for _, name := range []string{"generate-docs", "archigraph-graph-quality"} {
 		skillDir := filepath.Join(skillsSourceDir, name)
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {
 			t.Fatalf("create skill dir %s: %v", name, err)

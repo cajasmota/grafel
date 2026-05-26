@@ -123,10 +123,10 @@ var marketplaceCatalog = []CatalogSkill{
 		},
 	},
 	{
-		Slug:   "archigraph-quality-check",
+		Slug:   "archigraph-graph-quality",
 		Source: "archigraph-bundled",
 		SkillMeta: SkillMeta{
-			Name:        "archigraph-quality-check",
+			Name:        "archigraph-graph-quality",
 			Description: "Runs a quality audit against a group: orphan detection, N+1 patterns, dead-ends.",
 			Type:        "action",
 			WhenToUse:   "Periodically or before a release.",

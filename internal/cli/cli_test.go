@@ -495,7 +495,7 @@ func TestUnregisterMCPFromClaudeConfigsIdempotent(t *testing.T) {
 // TestInstallSkillsInClaudeConfigs verifies that installSkillsInClaudeConfigs
 // correctly symlinks the 6 archigraph skills into detected Claude config
 // directories' skills/ subdirectories. This tests the fix for issue #824:
-// after `archigraph install`, users should be able to invoke /archigraph-quality-check
+// after `archigraph install`, users should be able to invoke /archigraph-graph-quality
 // and other skills directly in Claude Code.
 func TestInstallSkillsInClaudeConfigs(t *testing.T) {
 	home := withSandboxHome(t)
@@ -508,7 +508,7 @@ func TestInstallSkillsInClaudeConfigs(t *testing.T) {
 		t.Fatal(err)
 	}
 	skillNames := []string{
-		"archigraph-quality-check",
+		"archigraph-graph-quality",
 		"archigraph-patterns-discover",
 		"archigraph-patterns-sync",
 		"archigraph-resolve",
@@ -597,7 +597,7 @@ func TestInstallSkillsIdempotent(t *testing.T) {
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	skillNames := []string{"archigraph-quality-check", "generate-docs"}
+	skillNames := []string{"archigraph-graph-quality", "generate-docs"}
 	for _, skillName := range skillNames {
 		if err := os.MkdirAll(filepath.Join(skillsDir, skillName), 0o755); err != nil {
 			t.Fatal(err)
@@ -655,7 +655,7 @@ func TestRemoveSkillsFromClaudeConfigs(t *testing.T) {
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	skillNames := []string{"archigraph-quality-check", "generate-docs"}
+	skillNames := []string{"archigraph-graph-quality", "generate-docs"}
 	for _, skillName := range skillNames {
 		if err := os.MkdirAll(filepath.Join(skillsDir, skillName), 0o755); err != nil {
 			t.Fatal(err)

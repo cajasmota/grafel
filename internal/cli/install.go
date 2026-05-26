@@ -222,7 +222,7 @@ Claude Code config directory's skills/ subdirectory.`,
 
 			// Symlink the 6 archigraph skills into every detected Claude Code
 			// config directory's skills/ subdirectory. This allows Claude Code
-			// to discover and run the skills directly (e.g. /archigraph-quality-check).
+			// to discover and run the skills directly (e.g. /archigraph-graph-quality).
 			// Failures are soft — we report them but do not abort the install.
 			if !skipSkillLink {
 				installSkillsInClaudeConfigs(out, bin, skillsSourceDir, claudeConfigDirs)

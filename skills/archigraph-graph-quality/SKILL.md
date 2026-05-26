@@ -1,10 +1,10 @@
 ---
-name: archigraph-quality-check
-description: Pre-`/generate-docs` MCP quality benchmark. Runs a head-to-head between archigraph MCP and grep+read across ~10-15 representative questions on the registered group, judges quality against ground truth read from source, and emits a shareable markdown report with token / speed / quality tables, findings, and tuning recommendations. Use BEFORE generating documentation to confirm the MCP foundation is healthy.
-when-to-use: User asks to "benchmark archigraph", "check MCP quality", "is archigraph helping", "validate MCP before docgen", or invokes `/archigraph-quality-check` explicitly. Run this BEFORE `/generate-docs` on a new group, after major archigraph changes, or to produce a comparison snapshot for tuning.
+name: archigraph-graph-quality
+description: Continuous health check of the archigraph knowledge graph. Runs a head-to-head benchmark between archigraph MCP and grep+read across ~10-15 representative questions, judges quality against ground truth, and emits a shareable markdown report. Supports --since <sha> delta mode for CI gates and incremental re-runs.
+when-to-use: User asks to "benchmark archigraph", "check MCP quality", "is archigraph helping", "validate MCP before docgen", or invokes /archigraph-graph-quality explicitly. Also run as a CI gate with --since <sha> to confirm no regression since the last commit.
 ---
 
-# archigraph-quality-check
+# archigraph-graph-quality
 
 Pre-docgen MCP quality benchmark. The skill answers a single question with data: **does archigraph MCP deliver value over grep+read on this group?** It produces a shareable markdown report the user passes back to the archigraph coordinator for tuning.
 
@@ -17,6 +17,7 @@ Invoke when the user asks for any of:
 - "Quality-check before we run /generate-docs."
 - "Run a regression against the last benchmark."
 - "/archigraph-quality-check" (slash command).
+- "Run as a CI gate after indexing — /archigraph-graph-quality --since <sha> -- benchmarks only entities changed since that commit."
 
 Do **not** invoke for one-off lookups, ad-hoc grep substitution, or to "test the daemon" - the daemon health-check is a separate concern.
 
@@ -49,6 +50,7 @@ It runs **before** `/generate-docs` because docgen amplifies whatever bias the M
   - `--question-set <path>` - JSON file with a user-curated question set instead of auto-generated. Schema documented in Phase 1.
   - `--baseline <path>` - prior report markdown to diff against. Surfaces deltas in token/quality/speed.
   - `--no-calibration` - skip Phase 6 (the extraction over/under audit). By default calibration always runs.
+  - `--since <sha>` — delta mode: restrict Phase 1 question generation and Phase 6 calibration to entities whose source files changed since `<sha>`. Reads `archigraph_recent_activity(since=<sha>)` to get the entity set. Full benchmark phases 2/3/4/5 still run on the restricted question set. See `prompts/07-delta-mode.md` for the complete delta procedure.
 
 ## Daemon discipline
 
@@ -72,6 +74,7 @@ The skill is a strict pipeline. Each phase has a dedicated prompt under `prompts
 | 4 | `prompts/04-quality-judgment.md` | Determine ground truth by reading source code directly (independent grep+read pass, no MCP). Judge both runs against ground truth: full / partial / wrong / unknown plus per-question misses. Persist as `judgment.json`. |
 | 5 | `prompts/05-report.md` | Render the markdown report at `--output`. Tables, findings, issues, recommendations, raw-data appendix. |
 | 6 | `prompts/06-extraction-calibration.md` | Evaluate whether archigraph is OVER- or UNDER-extracting on this group. Quantify phantom/duplicate nodes, noise, and missing relationships against grep+read ground truth. Persist as `calibration.json` and append an "Extraction calibration" section to the report. |
+| 7 | `prompts/07-delta-mode.md` | Delta mode (--since): restrict question generation and calibration to entities changed since a given commit SHA. Skip this phase when --since is not provided. |
 
 Phase 6 runs after Phase 5 (it consumes the same group + ground-truth passes and appends to the report). It is **not** gated on the benchmark questions — it is a structural audit of the graph itself, independent of the head-to-head. Run it whenever the benchmark runs; skip only if the user passes `--no-calibration`.
 
@@ -234,3 +237,12 @@ Source snippets are referenced by path+line, not embedded. The raw-data appendix
 - `/generate-docs` - the docgen skill this benchmark gates.
 - ADR-0018 - pattern-discovery design; pattern questions in the test set verify it.
 - ADR-0015 - repair passes; repair questions verify Pass 1a/1b/3a.
+
+## Read next
+
+After confirming graph quality, enrich dashboard panels (Paths / Flows / Topology) with structured metadata:
+→ `/archigraph-graph-enrich` — emit YAML frontmatter for endpoints, flows, and topics so the dashboard lights up.
+
+Or proceed directly to documentation:
+→ `/archigraph-tech-docs` — generate per-module technical documentation for engineers.
+→ `/archigraph-business-docs` — generate PM-facing capabilities, journeys, and business rules.
