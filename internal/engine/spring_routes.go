@@ -75,24 +75,23 @@ type composedSpringRoutes struct {
 // dropping the now-redundant flat Routes and orphan class-level Route.
 //
 // `lang` lets the engine no-op cleanly for non-Java files.
-func applySpringRouteComposition(
-	ctx context.Context,
-	lang string,
-	path string,
-	content []byte,
-	rawEntities []types.EntityRecord,
-	rawRels []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applySpringRouteComposition(args DetectorPassArgs) DetectorPassResult {
+	ctx := args.Ctx
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	rawEntities := args.Entities
+	rawRels := args.Relationships
 	if lang != "java" || len(content) == 0 {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 	if !bytesContainsAny(content, "@RestController", "@Controller") {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 
 	composed, ok := extractSpringComposedRoutes(ctx, path, content)
 	if !ok || len(composed.entities) == 0 {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 
 	// Drop YAML Route entities whose Name matches a claimed bare method path
@@ -124,7 +123,7 @@ func applySpringRouteComposition(
 	}
 	filteredRels = append(filteredRels, composed.relationships...)
 
-	return filteredEntities, filteredRels
+	return DetectorPassResult{Entities: filteredEntities, Relationships: filteredRels}
 }
 
 // bytesContainsAny is a cheap pre-filter to avoid parsing files that

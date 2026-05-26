@@ -50,15 +50,14 @@ const triggersEdgeKind = "TRIGGERS"
 // applyScheduledJobEdges is the per-file entry point. Appends
 // SCOPE.ScheduledJob entities + TRIGGERS edges; never modifies or removes
 // existing entities or edges. Language dispatches to per-framework helpers.
-func applyScheduledJobEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	src := string(content)
 
@@ -136,7 +135,7 @@ func applyScheduledJobEdges(
 		synthesizeGitHubActionsSchedule(src, path, emitJob)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

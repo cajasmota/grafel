@@ -28,8 +28,8 @@ func runKafkaDetect(t *testing.T, lang, path, src string) ([]types.EntityRecord,
 	// repoRoot empty: tests that need Quarkus channel resolution pass an
 	// absolute path so the upward walk finds application.properties on its
 	// own; in-memory tests use repo-relative paths and skip resolution.
-	ents, rels := applyKafkaEdges(lang, path, "", []byte(src), nil, nil)
-	return ents, rels
+	res := applyKafkaEdges(DetectorPassArgs{Lang: lang, Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 // topicByName returns the first MessageTopic with the given topic_name

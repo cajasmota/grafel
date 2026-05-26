@@ -62,18 +62,16 @@ func kafkaWrapperSynthesisSupportsLanguage(lang string) bool {
 // applyKafkaWrapperEdges runs after applyKafkaEdges and APPENDS MessageTopic
 // entities + PUBLISHES_TO / SUBSCRIBES_TO edges for the idioms listed above.
 // It never modifies or removes existing entities or edges.
-func applyKafkaWrapperEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyKafkaWrapperEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !kafkaWrapperSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -152,7 +150,7 @@ func applyKafkaWrapperEdges(
 		synthesizeGoSNSPublish(src, emitTopic, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

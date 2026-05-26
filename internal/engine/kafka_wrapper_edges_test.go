@@ -15,7 +15,8 @@ import (
 // runWrapperDetect is the parallel to runKafkaDetect for the wrapper pass.
 func runWrapperDetect(t *testing.T, lang, path, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
-	return applyKafkaWrapperEdges(lang, path, []byte(src), nil, nil)
+	res := applyKafkaWrapperEdges(DetectorPassArgs{Lang: lang, Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 // ---------------------------------------------------------------------------
@@ -551,7 +552,8 @@ public class NotificationService {
     }
 }
 `
-	ents, rels := applyRedisPubSubEdges("java", "notifications/NotificationService.java", []byte(src), nil, nil)
+	_res := applyRedisPubSubEdges(DetectorPassArgs{Lang: "java", Path: "notifications/NotificationService.java", Content: []byte(src)})
+	ents, rels := _res.Entities, _res.Relationships
 
 	wantID := "channel:redis-pubsub:notifications.channel"
 	var found *types.EntityRecord

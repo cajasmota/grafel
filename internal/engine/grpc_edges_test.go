@@ -27,7 +27,8 @@ import (
 // used by runKafkaDetect in kafka_edges_test.go.
 func runGRPCDetect(t *testing.T, lang, path, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
-	return applyGRPCEdges(lang, path, []byte(src), nil, nil)
+	res := applyGRPCEdges(DetectorPassArgs{Lang: lang, Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 // grpcEntitiesOfKind returns all entities with the given Kind.

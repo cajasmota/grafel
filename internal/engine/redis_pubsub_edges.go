@@ -93,18 +93,16 @@ func redisPubSubSynthesisSupportsLanguage(lang string) bool {
 // entities + PUBLISHES_TO / SUBSCRIBES_TO edges for Redis pub/sub and Streams.
 // Append-only — never modifies or removes existing entities or edges, so this
 // pass cannot regress the surrounding pipeline's bug-rate.
-func applyRedisPubSubEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyRedisPubSubEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !redisPubSubSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -137,7 +135,7 @@ func applyRedisPubSubEdges(
 	hasChannelTopic := (strings.Contains(src, "ChannelTopic") || strings.Contains(src, "PatternTopic") ||
 		strings.Contains(src, "MessageListenerAdapter")) && hasRedis
 	if !hasPubSub && !hasXadd && !hasXread && !hasConvertAndSend && !hasChannelTopic {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	// Dedup-by-ID: one entity per channel/stream per file; one edge per
@@ -217,7 +215,7 @@ func applyRedisPubSubEdges(
 		synthesizeElixirRedisPubSub(src, emitChannel, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // redisPubSubChannelID returns the canonical synthetic ID for a Redis pub/sub

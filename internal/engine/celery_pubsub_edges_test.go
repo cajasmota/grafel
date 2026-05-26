@@ -22,7 +22,8 @@ import (
 
 func runCeleryPass(t *testing.T, path, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
-	return applyScheduledJobEdges("python", path, []byte(src), nil, nil)
+	res := applyScheduledJobEdges(DetectorPassArgs{Lang: "python", Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 func celeryRelsByKind(rels []types.RelationshipRecord, kind string) []types.RelationshipRecord {

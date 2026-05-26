@@ -30,7 +30,8 @@ const orderEvents = new sns.Topic(this, "OrderEvents", { topicName: "order-event
 const analyticsQueue = new sqs.Queue(this, "AQ", { queueName: "order-events-analytics" });
 orderEvents.addSubscription(new SqsSubscription(analyticsQueue));
 `
-	_, rels := applyIaCSNSEdges("typescript", "infra/cdk/lib/stack.ts", []byte(src), nil, nil)
+	_res := applyIaCSNSEdges(DetectorPassArgs{Lang: "typescript", Path: "infra/cdk/lib/stack.ts", Content: []byte(src)})
+	_, rels := _res.Entities, _res.Relationships
 	n, tools := countSNSSubscribers(rels, snsTopicID("order-events"))
 	if n != 1 {
 		t.Fatalf("CDK: want 1 subscriber, got %d (%+v)", n, rels)
@@ -51,7 +52,8 @@ resource "aws_sns_topic_subscription" "order_events_audit" {
   endpoint  = aws_sqs_queue.order_events_audit.arn
 }
 `
-	_, rels := applyIaCSNSEdges("terraform", "infra/terraform/order-events.tf", []byte(src), nil, nil)
+	_res := applyIaCSNSEdges(DetectorPassArgs{Lang: "terraform", Path: "infra/terraform/order-events.tf", Content: []byte(src)})
+	_, rels := _res.Entities, _res.Relationships
 	n, tools := countSNSSubscribers(rels, snsTopicID("order-events"))
 	if n != 1 {
 		t.Fatalf("TF: want 1 subscriber, got %d (%+v)", n, rels)
@@ -79,7 +81,8 @@ Resources:
       Protocol: sqs
       Endpoint: !GetAtt OrderEventsFraudQueue.Arn
 `
-	_, rels := applyIaCSNSEdges("yaml", "infra/cloudformation/order-events-fanout.yaml", []byte(src), nil, nil)
+	_res := applyIaCSNSEdges(DetectorPassArgs{Lang: "yaml", Path: "infra/cloudformation/order-events-fanout.yaml", Content: []byte(src)})
+	_, rels := _res.Entities, _res.Relationships
 	n, tools := countSNSSubscribers(rels, snsTopicID("order-events"))
 	if n != 1 {
 		t.Fatalf("CFN: want 1 subscriber, got %d (%+v)", n, rels)
@@ -116,9 +119,13 @@ resource "aws_sns_topic_subscription" "a" {
 
 	var ents []types.EntityRecord
 	var rels []types.RelationshipRecord
-	ents, rels = applyIaCSNSEdges("typescript", "stack.ts", []byte(cdk), ents, rels)
-	ents, rels = applyIaCSNSEdges("terraform", "x.tf", []byte(tf), ents, rels)
-	ents, rels = applyIaCSNSEdges("yaml", "x.yaml", []byte(cfn), ents, rels)
+	var _res DetectorPassResult
+	_res = applyIaCSNSEdges(DetectorPassArgs{Lang: "typescript", Path: "stack.ts", Content: []byte(cdk), Entities: ents, Relationships: rels})
+	ents, rels = _res.Entities, _res.Relationships
+	_res = applyIaCSNSEdges(DetectorPassArgs{Lang: "terraform", Path: "x.tf", Content: []byte(tf), Entities: ents, Relationships: rels})
+	ents, rels = _res.Entities, _res.Relationships
+	_res = applyIaCSNSEdges(DetectorPassArgs{Lang: "yaml", Path: "x.yaml", Content: []byte(cfn), Entities: ents, Relationships: rels})
+	ents, rels = _res.Entities, _res.Relationships
 
 	n, tools := countSNSSubscribers(rels, snsTopicID("order-events"))
 	if n != 3 {

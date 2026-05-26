@@ -383,23 +383,45 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		}
 	}
 
+	// Build the base args struct shared across all engine passes.
+	// Each pass reads the fields it needs; unused fields are ignored.
+	// Pass-specific fields (Pass1Entities, RepoRoot) are populated once here
+	// and forwarded opaquely — passes that don't need them pay no call-site
+	// cost. Entities and Relationships are updated after each pass via the
+	// returned DetectorPassResult. Refs #2446.
+	passArgs := DetectorPassArgs{
+		Ctx:           ctx,
+		Lang:          file.Language,
+		Path:          file.Path,
+		RepoRoot:      file.RepoRoot,
+		Content:       file.Content,
+		Pass1Entities: file.Pass1Entities,
+		Entities:      entities,
+		Relationships: relationships,
+	}
+
+	// applyPass is a tiny closure that applies a DetectorPassArgs→DetectorPassResult
+	// pass and threads the updated (entities, relationships) back into passArgs so
+	// the next pass sees the accumulated results.
+	applyPass := func(fn func(DetectorPassArgs) DetectorPassResult) {
+		res := fn(passArgs)
+		passArgs.Entities = res.Entities
+		passArgs.Relationships = res.Relationships
+	}
+
 	// Spring MVC AST pass: compose class-level @RequestMapping prefix with
 	// method-level verb annotations into a single Route. The YAML rules
 	// above can't see lexical scope, so they emit orphan Route:/api +
 	// Route:/orders pairs; this pass replaces them with Route:/api/orders.
 	// No-op for non-Java files. Refs #67.
-	entities, relationships = applySpringRouteComposition(
-		ctx, file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applySpringRouteComposition)
 
 	// Spring MVC AST pass for Kotlin: same prefix-composition logic as the
 	// Java pass above, but adapted for the Kotlin tree-sitter CST shape.
 	// Emits http_endpoint_definition entities directly (no intermediate Route
 	// layer) because there is no YAML rule layer for Kotlin Spring controllers.
 	// No-op for non-Kotlin files. Refs #1421.
-	entities, relationships = applySpringRouteCompositionKotlin(
-		ctx, file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applySpringRouteCompositionKotlin)
 
 	// Django REST Framework AST pass: compose the parent `path("api/",
 	// include(<router>.urls))` prefix with each `<router>.register("name",
@@ -407,9 +429,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// can't see the router-variable binding, so they emit orphan
 	// Route:api/ + Route:users pairs; this pass replaces them with
 	// Route:/api/users. No-op for non-Python files. Refs #64.
-	entities, relationships = applyDjangoRouteComposition(
-		ctx, file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyDjangoRouteComposition)
 
 	// Go HTTP route binding pass: rewrites YAML-emitted
 	// `Route:<path> -ROUTES_TO-> Controller:<receiverVar>` edges to point at
@@ -417,18 +437,14 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// chi, gin, echo, fiber, gorilla_mux — every framework whose YAML rule
 	// captures only the bare receiver identifier with `(\w+)`. Edits ToID
 	// only; never adds/removes entities. No-op for non-Go files. Refs #613.
-	entities, relationships = applyGoRouteComposition(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyGoRouteComposition)
 
 	// Synthetic http_endpoint emission for typed-HTTP cross-repo matching.
 	// Runs AFTER the Spring + Django composition passes so it can re-use
 	// the composed Route entities they emit. Appends new entities/edges
 	// only — never modifies or removes existing ones, so this pass cannot
 	// regress the surrounding pipeline's bug-rate. Refs #534.
-	entities, relationships = applyHTTPEndpointSynthesis(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyHTTPEndpointSynthesis)
 
 	// ORM QUERIES edge synthesis (#723): for every detectable ORM call
 	// site, emit a directed QUERIES edge from the enclosing function to
@@ -437,9 +453,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// entities emitted earlier. Append-only — never modifies existing
 	// entities or edges, so this pass cannot regress bug-rate on files
 	// without ORM calls.
-	entities, relationships = applyORMQueries(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyORMQueries)
 
 	// Django ORM field-access edges (#2279). Lifts the filter_keys
 	// property bag recorded on every QUERIES edge by the pass above
@@ -448,9 +462,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// the Python extractor. Runs AFTER applyORMQueries because it
 	// pivots off the QUERIES edges that pass emits. Append-only —
 	// cannot regress the surrounding pipeline's bug-rate.
-	relationships = applyORMFieldEdges(
-		file.Language, file.Path, file.Content, file.Pass1Entities, relationships,
-	)
+	applyPass(applyORMFieldEdges)
 
 	// Kafka producer/consumer cross-repo edges (wave 1 of #726). Emits
 	// synthetic MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges
@@ -458,9 +470,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// topic IDs on both sides naturally link via the existing import-
 	// channel linker. Append-only — cannot regress the surrounding
 	// pipeline's bug-rate.
-	entities, relationships = applyKafkaEdges(
-		file.Language, file.Path, file.RepoRoot, file.Content, entities, relationships,
-	)
+	applyPass(applyKafkaEdges)
 
 	// Kafka wrapper + transport idiom detection (#1467). Extends topic
 	// extraction with four new families: Python KafkaBus wrapper
@@ -469,27 +479,21 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// publish (boto3, aws-sdk-java, aws-sdk-js, aws-sdk-go-v2). Emits
 	// MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges.
 	// Append-only — cannot regress the surrounding pipeline's bug-rate.
-	entities, relationships = applyKafkaWrapperEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyKafkaWrapperEdges)
 
 	// RabbitMQ producer/consumer cross-repo edges (wave 2 of #726). Emits
 	// SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for pika
 	// (Python), amqplib (Node), Spring AMQP / direct RabbitMQ client (Java),
 	// amqp091-go (Go), Quarkus RabbitMQ connector, and Celery with AMQP
 	// broker. Append-only — cannot regress the surrounding pipeline's bug-rate.
-	entities, relationships = applyRabbitMQEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyRabbitMQEdges)
 
 	// AWS SQS producer/consumer cross-repo edges (wave 2 of #726). Emits
 	// SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for boto3
 	// (Python), aws-sdk v2/v3 (Node), aws-sdk-go-v2 (Go), AWS SDK v2
 	// (Java), and Lambda SQS triggers. Also detects SNS→SQS fanout.
 	// Append-only — cannot regress the surrounding pipeline's bug-rate.
-	entities, relationships = applySQSEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applySQSEdges)
 
 	// IaC-declared SNS → SQS fan-out edges (#1596). Reads SNS→SQS
 	// subscriptions declared in AWS CDK (TS), Terraform (HCL), and
@@ -498,9 +502,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// for the same topic name declared across different IaC tools collapse
 	// onto a single SNS topic node, surfacing the fan-out in /topology.
 	// Append-only — cannot regress the surrounding pipeline's bug-rate.
-	entities, relationships = applyIaCSNSEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyIaCSNSEdges)
 
 	// Debezium / Kafka-Connect CDC connector edges (#1708). Parses the
 	// JSON config of a CDC connector and emits a SCOPE.Component
@@ -513,27 +515,21 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// whose path the classifier narrowed to language="json" (cdc/,
 	// debezium/, kafka-connect/, *-connector.json, …), then content-
 	// sniffed for `connector.class` / `io.debezium`.
-	entities, relationships = applyDebeziumCDCEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyDebeziumCDCEdges)
 
 	// Google Cloud Pub/Sub producer/consumer cross-repo edges (wave 3 of #726).
 	// Emits SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for
 	// google-cloud-pubsub (Python/Node/Go/Java), Pub/Sub Lite, and
 	// Eventarc / Cloud Run trigger consumers.
 	// Append-only — cannot regress the surrounding pipeline's bug-rate.
-	entities, relationships = applyPubSubEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyPubSubEdges)
 
 	// NATS producer/consumer cross-repo edges (wave 3 of #726). Emits
 	// SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for
 	// nats.go / nats.js / nats.py / nats.java, JetStream, and NATS
 	// Streaming (STAN). Wildcard subjects and request/reply pattern tracked.
 	// Append-only — cannot regress the surrounding pipeline's bug-rate.
-	entities, relationships = applyNATSEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyNATSEdges)
 
 	// Apache Pulsar producer/consumer cross-repo edges (#936). Emits
 	// SCOPE.MessageTopic entities (broker=pulsar) + PUBLISHES_TO /
@@ -542,9 +538,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// canonicalised to the full persistent://tenant/namespace/topic URI so
 	// the cross-repo linker matches producer and consumer sides on the same
 	// entity ID. Append-only — cannot regress the surrounding pipeline.
-	entities, relationships = applyPulsarEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyPulsarEdges)
 
 	// #727: Real-time event channel synthesis. Three append-only passes
 	// for WebSocket, Server-Sent Events, and GraphQL subscriptions. Each
@@ -554,31 +548,21 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// edges. Same architectural shape as applyHTTPEndpointSynthesis: no
 	// existing entity or edge is touched, so these passes cannot regress
 	// the surrounding pipeline.
-	entities, relationships = applyWebSocketSynthesis(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
-	entities, relationships = applySSESynthesis(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
-	entities, relationships = applyGraphQLSubscriptionSynthesis(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyWebSocketSynthesis)
+	applyPass(applySSESynthesis)
+	applyPass(applyGraphQLSubscriptionSynthesis)
 	// #728: Scheduled-job entry-point detection. Emits SCOPE.ScheduledJob
 	// entities + TRIGGERS edges for every major scheduler framework across
 	// Python, Node, Java/Kotlin, Go; plus Kubernetes CronJob YAML and
 	// GitHub Actions schedule triggers (path-driven, not language-gated).
 	// Append-only — cannot regress surrounding passes.
-	entities, relationships = applyScheduledJobEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyScheduledJobEdges)
 	// #728: Webhook endpoint detection. Tags HTTP endpoints that verify
 	// inbound callbacks from external providers (Stripe, GitHub, Twilio,
 	// Slack, Mailgun, Svix, generic) with is_webhook=true +
 	// webhook_provider and emits SUBSCRIBES_TO edges to SCOPE.External
 	// entities. Append-only — cannot regress surrounding passes.
-	entities, relationships = applyWebhookEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyWebhookEdges)
 	// gRPC service definitions + client/server cross-repo edges (#725).
 	// Emits SCOPE.GrpcService + SCOPE.GrpcMethod entities and
 	// GRPC_IMPLEMENTS / GRPC_HANDLES edges for Java/Kotlin, Go, Python,
@@ -586,9 +570,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// entities keyed by `grpc:ServiceName/MethodName`; the import-channel
 	// linker joins them without any new linker code. Append-only — cannot
 	// regress surrounding passes.
-	entities, relationships = applyGRPCEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyGRPCEdges)
 	// Serverless function invocation edges (#925). Emits
 	// SCOPE.ServerlessFunction entities + CALLS / HANDLES edges for AWS Lambda
 	// (boto3, AWS SDK v2/v3, Go SDK v2, Java RequestHandler), Google Cloud
@@ -597,9 +579,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// the same provider-prefixed entity ID so the import-channel linker joins
 	// them without new linker code. Append-only — cannot regress surrounding passes.
 	// Lays groundwork for #927 EventBridge (Lambda synthetics as anchor targets).
-	entities, relationships = applyServerlessEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyServerlessEdges)
 	// Workflow orchestration edges (#934). Emits SCOPE.Workflow, SCOPE.Activity,
 	// and SCOPE.StateMachine entities plus STARTS_WORKFLOW, EXECUTES_ACTIVITY,
 	// and STEPFUNCTION_STEP_INVOKES edges for Temporal (Python, Go, Java, Node),
@@ -607,12 +587,8 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// CDK). Step Functions Task states referencing Lambda ARNs are linked to the
 	// SCOPE.ServerlessFunction entities emitted by #940 (serverless_edges.go)
 	// without new linker code. Append-only — cannot regress surrounding passes.
-	entities, relationships = applyWorkflowEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
-	entities, relationships = applySFNStartExecutionEdges(
-		file.Language, string(file.Content), file.Path, entities, relationships,
-	)
+	applyPass(applyWorkflowEdges)
+	applyPass(applySFNStartExecutionEdges)
 	// Redis pub/sub + Streams channel discovery (#930). Emits SCOPE.Queue
 	// entities keyed by channel:redis-pubsub:<name> or stream:redis:<name>,
 	// plus PUBLISHES_TO / SUBSCRIBES_TO edges. Covers Python (redis-py /
@@ -620,9 +596,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// (redis-rb). Non-pub/sub cache calls (GET/SET/etc.) are filtered out
 	// by the fast-path pre-filter gate. Append-only — cannot regress
 	// surrounding passes.
-	entities, relationships = applyRedisPubSubEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyRedisPubSubEdges)
 	// Managed event-bus edges (#927): AWS EventBridge, Azure EventGrid, and
 	// CNCF CloudEvents. Emits SCOPE.EventBusEvent synthetic entities plus
 	// PUBLISHES_TO / SUBSCRIBES_TO edges for producers/consumers, and
@@ -630,9 +604,11 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// rule-to-target linkage. EventBridge rule targets reference Lambda
 	// entity IDs from #925 (`aws-lambda:<name>`) without reinventing them.
 	// Append-only — cannot regress surrounding passes.
-	entities, relationships = applyEventBusEdges(
-		file.Language, file.Path, file.Content, entities, relationships,
-	)
+	applyPass(applyEventBusEdges)
+
+	// Extract final accumulated entities and relationships from passArgs.
+	entities = passArgs.Entities
+	relationships = passArgs.Relationships
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):
 	// The YAML rule `from \S+\.models import (\w+)` emits Model:<name>
 	// for every captured identifier. In Django/DRF projects, a sibling

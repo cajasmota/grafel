@@ -57,18 +57,16 @@ func natsSynthesisSupportsLanguage(lang string) bool {
 // entities + PUBLISHES_TO / SUBSCRIBES_TO edges for NATS.
 // Append-only — never modifies or removes existing entities or edges, so
 // this pass cannot regress the surrounding pipeline's bug-rate.
-func applyNATSEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyNATSEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !natsSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -143,7 +141,7 @@ func applyNATSEdges(
 		synthesizeGoNATS(src, emitSubject, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // natsSubjectID returns the canonical synthetic ID for a NATS subject.

@@ -128,18 +128,17 @@ type debeziumConnectorDoc struct {
 // connector and APPENDS connector / table / topic entities and CAPTURES /
 // PUBLISHES_TO edges. Returns inputs untouched if the file is not a
 // connector or fails to parse.
-func applyDebeziumCDCEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyDebeziumCDCEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if !debeziumCDCSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !debeziumCDCSniff(content) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	// Use a raw map so we can pick up both the typed `name`/`config`
@@ -147,7 +146,7 @@ func applyDebeziumCDCEdges(
 	// pass.
 	var raw map[string]interface{}
 	if err := json.Unmarshal(content, &raw); err != nil {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	connectorName, _ := raw["name"].(string)
@@ -170,7 +169,7 @@ func applyDebeziumCDCEdges(
 		connectorName = derefConnectorNameFromPath(path)
 	}
 	if connectorName == "" {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	// Calibration escape hatches.
@@ -267,7 +266,7 @@ func applyDebeziumCDCEdges(
 	}
 
 	entities = append(entities, connectorEntity)
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // flattenConfig returns the "config" sub-object if present, otherwise the

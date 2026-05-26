@@ -30,12 +30,14 @@ import (
 
 func runWorkflowEdges(t *testing.T, lang, path, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
-	return applyWorkflowEdges(lang, path, []byte(src), nil, nil)
+	res := applyWorkflowEdges(DetectorPassArgs{Lang: lang, Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 func runSFNStartEdges(t *testing.T, lang, path, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
-	return applySFNStartExecutionEdges(lang, src, path, nil, nil)
+	res := applySFNStartExecutionEdges(DetectorPassArgs{Lang: lang, Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 func workflowEntityByID(ents []types.EntityRecord, kind, id string) *types.EntityRecord {
@@ -414,7 +416,8 @@ func TestASLLambdaTaskEdges(t *testing.T) {
 
 // applyASLWorkflowEdges is also reachable via the main applyWorkflowEdges path for .asl.json files.
 func TestASLRoutedThroughApplyWorkflowEdges(t *testing.T) {
-	ents, rels := applyWorkflowEdges("json", "infra/order-flow.asl.json", []byte(aslJSON), nil, nil)
+	_res := applyWorkflowEdges(DetectorPassArgs{Lang: "json", Path: "infra/order-flow.asl.json", Content: []byte(aslJSON)})
+	ents, rels := _res.Entities, _res.Relationships
 
 	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("order-flow"), "routed ASL → StateMachine")
 	if len(wfEdgesOfKind(rels, stepFunctionStepInvokesEdgeKind)) == 0 {

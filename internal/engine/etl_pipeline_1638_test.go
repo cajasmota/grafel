@@ -20,9 +20,7 @@ import (
 const etlFixtureDir = "/Users/jorgecajas/Documents/Projects/polyglot-platform/data-pipeline/etl"
 
 // brokerPass is the shared signature of every per-file broker synthesis pass.
-type brokerPass func(lang, path string, content []byte,
-	ents []types.EntityRecord, rels []types.RelationshipRecord) (
-	[]types.EntityRecord, []types.RelationshipRecord)
+type brokerPass func(args DetectorPassArgs) DetectorPassResult
 
 // allBrokerPasses runs every broker pass over a file and returns the union of
 // emitted entities + relationships, mirroring detector.go's pass ordering.
@@ -41,7 +39,8 @@ func allBrokerPasses(t *testing.T, path string) ([]types.EntityRecord, []types.R
 		applyPubSubEdges,
 		applyRedisPubSubEdges,
 	} {
-		ents, rels = pass("python", path, content, ents, rels)
+		res := pass(DetectorPassArgs{Lang: "python", Path: path, Content: content, Entities: ents, Relationships: rels})
+		ents, rels = res.Entities, res.Relationships
 	}
 	return ents, rels
 }
