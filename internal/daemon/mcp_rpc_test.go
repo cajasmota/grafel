@@ -1,9 +1,13 @@
 package daemon
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"testing"
+	"time"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -269,5 +273,142 @@ func TestMCPToolList_SentinelReturned(t *testing.T) {
 	}
 	if reply.Tools[0].Name != "archigraph_status" {
 		t.Errorf("unexpected sentinel name: %q", reply.Tools[0].Name)
+	}
+}
+
+// ── JSON-lines log mode tests (issue #2299) ───────────────────────────────────
+
+// testServiceWithLogger returns a Service wired with a buf-backed logger.
+func testServiceWithLogger(callTool MCPCallToolFunc) (*Service, *bytes.Buffer) {
+	var buf bytes.Buffer
+	logger := log.New(&buf, "", 0) // no prefix/flags so output is deterministic
+	svc := &Service{
+		mcpCallTool: callTool,
+		progress:    make(map[string]*rebuildSession),
+		logger:      logger,
+	}
+	return svc, &buf
+}
+
+// TestMCPToolCall_DefaultLog_TextFormat verifies that with ARCHIGRAPH_DAEMON_LOG_JSON
+// unset the log output is the human-readable "[mcp-rpc] tool=… elapsed=…ms repo=…" text.
+func TestMCPToolCall_DefaultLog_TextFormat(t *testing.T) {
+	t.Setenv(EnvDaemonLogJSON, "") // ensure JSON mode is off
+
+	svc, buf := testServiceWithLogger(func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
+		return MCPCallResult{Content: []map[string]any{{"type": "text", "text": "ok"}}}, nil
+	})
+
+	var reply MCPToolCallReply
+	if err := svc.MCPToolCall(&MCPToolCallArgs{Name: "archigraph_find", CWD: "/repo/myproject"}, &reply); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "[mcp-rpc]") {
+		t.Errorf("expected [mcp-rpc] prefix in text log, got: %q", out)
+	}
+	if !strings.Contains(out, "tool=archigraph_find") {
+		t.Errorf("expected tool= field in text log, got: %q", out)
+	}
+	if !strings.Contains(out, "elapsed=") {
+		t.Errorf("expected elapsed= field in text log, got: %q", out)
+	}
+	// Must NOT be valid JSON on the elapsed line (the received line has no elapsed).
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "elapsed=") {
+			var m map[string]any
+			if json.Unmarshal([]byte(line), &m) == nil {
+				t.Errorf("text mode line looks like JSON: %q", line)
+			}
+		}
+	}
+}
+
+// TestMCPToolCall_JSONLog_ParseableJSON verifies that with ARCHIGRAPH_DAEMON_LOG_JSON=1
+// every log line is valid JSON containing the expected fields.
+func TestMCPToolCall_JSONLog_ParseableJSON(t *testing.T) {
+	t.Setenv(EnvDaemonLogJSON, "1")
+
+	svc, buf := testServiceWithLogger(func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
+		return MCPCallResult{Content: []map[string]any{{"type": "text", "text": "ok"}}}, nil
+	})
+
+	const wantTool = "archigraph_find"
+	const wantRepo = "/repo/myproject"
+	var reply MCPToolCallReply
+	if err := svc.MCPToolCall(&MCPToolCallArgs{Name: wantTool, CWD: wantRepo}, &reply); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := strings.TrimSpace(buf.String())
+	lines := strings.Split(out, "\n")
+	// Expect at least two lines: "received" and the elapsed completion line.
+	if len(lines) < 2 {
+		t.Fatalf("expected at least 2 log lines, got %d: %q", len(lines), out)
+	}
+
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Errorf("line %d is not valid JSON: %v — raw: %q", i, err, line)
+			continue
+		}
+		if entry[LogFieldTool] != wantTool {
+			t.Errorf("line %d: tool=%q, want %q", i, entry[LogFieldTool], wantTool)
+		}
+		if entry[LogFieldRepo] != wantRepo {
+			t.Errorf("line %d: repo=%q, want %q", i, entry[LogFieldRepo], wantRepo)
+		}
+		if entry["event"] != LogEventMCPRPC {
+			t.Errorf("line %d: event=%q, want %q", i, entry["event"], LogEventMCPRPC)
+		}
+		if _, ok := entry[LogFieldTS]; !ok {
+			t.Errorf("line %d: missing %q field", i, LogFieldTS)
+		}
+		// Validate ts is parseable RFC3339.
+		if ts, _ := entry[LogFieldTS].(string); ts != "" {
+			if _, err := time.Parse(time.RFC3339, ts); err != nil {
+				t.Errorf("line %d: ts %q is not RFC3339: %v", i, ts, err)
+			}
+		}
+	}
+
+	// The second (completion) line must have elapsed_ms >= 0.
+	var lastEntry map[string]any
+	_ = json.Unmarshal([]byte(strings.TrimSpace(lines[len(lines)-1])), &lastEntry)
+	if _, ok := lastEntry[LogFieldElapsedMS]; !ok {
+		t.Errorf("completion line missing %q field", LogFieldElapsedMS)
+	}
+}
+
+// TestMCPToolCall_JSONLog_TrueVariant verifies ARCHIGRAPH_DAEMON_LOG_JSON=true
+// also activates JSON-lines mode.
+func TestMCPToolCall_JSONLog_TrueVariant(t *testing.T) {
+	t.Setenv(EnvDaemonLogJSON, "true")
+
+	svc, buf := testServiceWithLogger(func(_ string, _ map[string]any, _ string) (MCPCallResult, error) {
+		return MCPCallResult{Content: []map[string]any{{"type": "text", "text": "ok"}}}, nil
+	})
+
+	var reply MCPToolCallReply
+	if err := svc.MCPToolCall(&MCPToolCallArgs{Name: "archigraph_stats"}, &reply); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Errorf("expected JSON line, got: %q (%v)", line, err)
+		}
 	}
 }

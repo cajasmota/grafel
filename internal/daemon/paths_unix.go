@@ -72,6 +72,7 @@ func DefaultLayout() (Layout, error) {
 		return Layout{}, err
 	}
 	root = filepath.Join(home, ".archigraph")
+	// See no-rotation contract in layoutFromRoot (paths.go).
 	return Layout{
 		Root:       root,
 		SocketDir:  filepath.Dir(socketPath),
