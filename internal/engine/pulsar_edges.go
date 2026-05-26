@@ -123,18 +123,16 @@ func pulsarSynthesisSupportsLanguage(lang string) bool {
 // applyPulsarEdges runs after applyNATSEdges and APPENDS synthetic
 // SCOPE.MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges for
 // Apache Pulsar. Append-only — never touches existing entities or edges.
-func applyPulsarEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyPulsarEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !pulsarSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -196,7 +194,7 @@ func applyPulsarEdges(
 		synthesizeNodePulsar(src, emitTopic, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

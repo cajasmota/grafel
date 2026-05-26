@@ -67,25 +67,23 @@ func iacSNSSupportsLanguage(lang string) bool {
 
 // applyIaCSNSEdges is the entry point. Runs after applySQSEdges and is
 // append-only.
-func applyIaCSNSEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyIaCSNSEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !iacSNSSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
 	// Cheap guard: file must mention SNS and a subscription idiom.
 	if !strings.Contains(src, "sns") && !strings.Contains(src, "SNS") &&
 		!strings.Contains(src, "Sns") {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	seenEnt := map[string]bool{}
@@ -173,7 +171,7 @@ func applyIaCSNSEdges(
 		applyCloudFormationSNSSubscriptions(src, emitSubscription)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

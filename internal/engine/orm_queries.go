@@ -80,18 +80,17 @@ const ormQueriesPatternType = "orm_queries"
 // patterns aren't recognised yet (phase-1 deferred languages: Kotlin
 // Exposed/Ktorm, PHP Eloquent/Doctrine, Rust Diesel/SeaORM, C# Entity
 // Framework — file a phase-2 follow-up).
-func applyORMQueries(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !ormQueriesSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -149,7 +148,7 @@ func applyORMQueries(
 		scanRubyORM(src, funcs, emit)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ormQueriesSupportsLanguage reports whether applyORMQueries has at least

@@ -47,15 +47,14 @@ const webhookExternalKind = "SCOPE.External"
 
 // applyWebhookEdges is the per-file entry point. Appends is_webhook-tagged
 // entities + SUBSCRIBES_TO edges; never modifies existing ones.
-func applyWebhookEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyWebhookEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	src := string(content)
 
@@ -129,7 +128,7 @@ func applyWebhookEdges(
 		synthesizeRubyWebhooks(src, path, emitWebhook)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

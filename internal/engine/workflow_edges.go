@@ -134,15 +134,14 @@ func workflowSynthesisSupportsLanguage(lang string) bool {
 // Step Functions patterns and emits SCOPE.Workflow, SCOPE.Activity,
 // SCOPE.StateMachine entities plus STARTS_WORKFLOW, EXECUTES_ACTIVITY, and
 // STEPFUNCTION_STEP_INVOKES edges.
-func applyWorkflowEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyWorkflowEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	// Path-based routing: *.asl.json and terraform files go through the ASL
@@ -158,17 +157,20 @@ func applyWorkflowEdges(
 		strings.HasSuffix(lowerPath, "template.json")
 
 	if isASLFile {
-		return applyASLWorkflowEdges(path, content, entities, relationships)
+		e, r := applyASLWorkflowEdges(path, content, entities, relationships)
+		return DetectorPassResult{Entities: e, Relationships: r}
 	}
 	if isTerraformFile {
-		return applyTerraformSFNEdges(path, content, entities, relationships)
+		e, r := applyTerraformSFNEdges(path, content, entities, relationships)
+		return DetectorPassResult{Entities: e, Relationships: r}
 	}
 	if isCloudFormation {
-		return applyCloudFormationSFNEdges(path, content, entities, relationships)
+		e, r := applyCloudFormationSFNEdges(path, content, entities, relationships)
+		return DetectorPassResult{Entities: e, Relationships: r}
 	}
 
 	if !workflowSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -286,7 +288,7 @@ func applyWorkflowEdges(
 		entities, relationships = applyCDKStateMachineJSON(path, content, entities, relationships)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------
@@ -1406,14 +1408,13 @@ var sfnInvocationGuardRe = regexp.MustCompile(`(?:StartExecution|start_execution
 // applySFNStartExecutionEdges scans source code (any language) for
 // sfn.start_execution / StartExecution / StartExecutionCommand calls and emits
 // STARTS_WORKFLOW edges from the calling function to the state machine entity.
-func applySFNStartExecutionEdges(
-	lang string,
-	src, path string,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applySFNStartExecutionEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	src := string(args.Content)
+	entities := args.Entities
+	relationships := args.Relationships
 	if !sfnInvocationGuardRe.MatchString(src) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	seenEdge := map[string]bool{}
@@ -1488,5 +1489,5 @@ func applySFNStartExecutionEdges(
 		}
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }

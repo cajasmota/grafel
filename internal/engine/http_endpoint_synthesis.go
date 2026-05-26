@@ -129,15 +129,14 @@ func synthesisSupportsLanguage(lang string) bool {
 //
 // `lang` lets the pass no-op cleanly for files that don't contain any of
 // the supported frameworks.
-func applyHTTPEndpointSynthesis(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	// Dedup-by-ID across all per-language emitters: a single endpoint can
@@ -368,7 +367,7 @@ func applyHTTPEndpointSynthesis(
 	// entities, so it cannot regress the bug-rate of upstream passes.
 	applyResponseShapes(lang, content, entities)
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

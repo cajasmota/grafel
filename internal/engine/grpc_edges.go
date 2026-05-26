@@ -109,18 +109,17 @@ func grpcSynthesisSupportsLanguage(lang string) bool {
 // applyGRPCEdges runs as an append-only pass after the HTTP synthesis pass.
 // It emits GrpcService + GrpcMethod entities and GRPC_IMPLEMENTS /
 // GRPC_HANDLES edges. It never modifies or removes existing entities or edges.
-func applyGRPCEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyGRPCEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !grpcSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -243,7 +242,7 @@ func applyGRPCEdges(
 		synthesizeNodeGRPC(src, path, emitService, emitMethod, emitImplementsEdge, emitHandlesEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

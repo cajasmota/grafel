@@ -41,25 +41,24 @@ import (
 // rule layer for Kotlin Spring controllers.
 //
 // Returns new entities and relationships appended to the inputs.
-func applySpringRouteCompositionKotlin(
-	ctx context.Context,
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applySpringRouteCompositionKotlin(args DetectorPassArgs) DetectorPassResult {
+	ctx := args.Ctx
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if lang != "kotlin" || len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !bytesContainsAny(content, "@RestController", "@Controller") {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	newEntities, newRels := extractKotlinSpringEndpoints(ctx, path, content)
 	entities = append(entities, newEntities...)
 	relationships = append(relationships, newRels...)
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // extractKotlinSpringEndpoints parses the Kotlin source with tree-sitter and

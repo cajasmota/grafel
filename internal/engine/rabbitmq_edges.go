@@ -54,18 +54,16 @@ func rabbitmqSynthesisSupportsLanguage(lang string) bool {
 // entities + PUBLISHES_TO / SUBSCRIBES_TO edges. Append-only — never
 // modifies or removes existing entities or edges, so this pass cannot
 // regress the surrounding pipeline's bug-rate.
-func applyRabbitMQEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyRabbitMQEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !rabbitmqSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -148,7 +146,7 @@ func applyRabbitMQEdges(
 		synthesizeGoRabbitMQ(src, emitQueue, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // rabbitmqQueueID returns the canonical synthetic ID for a RabbitMQ queue.

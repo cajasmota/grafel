@@ -182,16 +182,15 @@ type composedDjangoRoutes struct {
 //  2. Per-file composed suppression: applied only when the file contains both
 //     include() and .register() calls (same-file composition). Replaces the
 //     bare Route entities with the AST-composed prefixed routes.
-func applyDjangoRouteComposition(
-	ctx context.Context,
-	lang string,
-	path string,
-	content []byte,
-	rawEntities []types.EntityRecord,
-	rawRels []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyDjangoRouteComposition(args DetectorPassArgs) DetectorPassResult {
+	ctx := args.Ctx
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	rawEntities := args.Entities
+	rawRels := args.Relationships
 	if lang != "python" || len(content) == 0 {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 
 	// Phase 1 — global cross-file suppression (#1278): drop bare YAML Route
@@ -212,12 +211,12 @@ func applyDjangoRouteComposition(
 	// Cheap pre-filter: a DRF-composing urls.py has at minimum a `path(`
 	// and an `include(` somewhere, plus a `.register(` for the router.
 	if !bytesContainsAll(content, "path(", "include(", ".register(") {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 
 	composed, ok := extractDjangoComposedRoutes(ctx, path, content)
 	if !ok || len(composed.entities) == 0 {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 
 	// Drop YAML Route entities whose Name matches a claimed register name
@@ -283,7 +282,7 @@ func applyDjangoRouteComposition(
 	}
 	filteredRels = append(filteredRels, composed.relationships...)
 
-	return filteredEntities, filteredRels
+	return DetectorPassResult{Entities: filteredEntities, Relationships: filteredRels}
 }
 
 // suppressedEntities bundles filtered entity + relationship slices.

@@ -41,8 +41,6 @@ import (
 	"go/parser"
 	"go/token"
 	"strings"
-
-	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // goHTTPVerbs is the union of method names used by the supported Go HTTP
@@ -68,15 +66,14 @@ var goHTTPVerbs = map[string]bool{
 // Non-Go files are returned unchanged. The pass never adds or removes
 // entities and never adds new relationships — it only edits the `ToID` of
 // existing ROUTES_TO records, so it cannot regress the surrounding pipeline.
-func applyGoRouteComposition(
-	lang string,
-	path string,
-	content []byte,
-	rawEntities []types.EntityRecord,
-	rawRels []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyGoRouteComposition(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	rawEntities := args.Entities
+	rawRels := args.Relationships
 	if lang != "go" || len(content) == 0 {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 	// Cheap pre-filter: skip files that obviously don't register HTTP routes.
 	if !bytesContainsAny(content,
@@ -84,12 +81,12 @@ func applyGoRouteComposition(
 		".GET(", ".POST(", ".PUT(", ".PATCH(", ".DELETE(",
 		".Handle(", ".HandleFunc(", ".Any(", ".All(",
 	) {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 
 	bindings := extractGoHandlerBindings(path, content)
 	if len(bindings) == 0 {
-		return rawEntities, rawRels
+		return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 	}
 
 	// Build a lookup keyed by `(path, receiverVar)` -> qualified method name.
@@ -145,7 +142,7 @@ func applyGoRouteComposition(
 		rawRels[i] = newRel
 	}
 
-	return rawEntities, rawRels
+	return DetectorPassResult{Entities: rawEntities, Relationships: rawRels}
 }
 
 // goHandlerBinding pairs a router call site with the qualified method name

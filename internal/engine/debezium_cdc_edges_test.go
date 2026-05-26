@@ -36,10 +36,7 @@ const debeziumPolyglotConnector = `{
 }`
 
 func TestDebeziumCDC_PolyglotFixture(t *testing.T) {
-	ents, _ := applyDebeziumCDCEdges("json",
-		"services/cdc/orders-connector.json",
-		[]byte(debeziumPolyglotConnector), nil, nil,
-	)
+	ents := applyDebeziumCDCEdges(DetectorPassArgs{Lang: "json", Path: "services/cdc/orders-connector.json", Content: []byte(debeziumPolyglotConnector)}).Entities
 
 	var connector *struct {
 		captures      map[string]bool
@@ -117,7 +114,8 @@ func TestDebeziumCDC_DerivedTopics(t *testing.T) {
 			"topic.prefix": "cdc"
 		}
 	}`
-	ents, _ := applyDebeziumCDCEdges("json", "cdc/users.json", []byte(doc), nil, nil)
+	_res := applyDebeziumCDCEdges(DetectorPassArgs{Lang: "json", Path: "cdc/users.json", Content: []byte(doc)})
+	ents, _ := _res.Entities, _res.Relationships
 	topics := map[string]bool{}
 	for _, e := range ents {
 		if e.Kind == messageTopicKind {
@@ -142,7 +140,8 @@ func TestDebeziumCDC_LegacyServerNameAsPrefix(t *testing.T) {
 			"table.include.list": "public.orders"
 		}
 	}`
-	ents, _ := applyDebeziumCDCEdges("json", "debezium/legacy.json", []byte(doc), nil, nil)
+	_res := applyDebeziumCDCEdges(DetectorPassArgs{Lang: "json", Path: "debezium/legacy.json", Content: []byte(doc)})
+	ents, _ := _res.Entities, _res.Relationships
 	got := false
 	for _, e := range ents {
 		if e.Kind == messageTopicKind && e.Name == "kafka:legacy.public.orders" {
@@ -155,7 +154,8 @@ func TestDebeziumCDC_LegacyServerNameAsPrefix(t *testing.T) {
 }
 
 func TestDebeziumCDC_NonJSONLanguageNoop(t *testing.T) {
-	ents, rels := applyDebeziumCDCEdges("python", "x.py", []byte(debeziumPolyglotConnector), nil, nil)
+	_res := applyDebeziumCDCEdges(DetectorPassArgs{Lang: "python", Path: "x.py", Content: []byte(debeziumPolyglotConnector)})
+	ents, rels := _res.Entities, _res.Relationships
 	if len(ents) != 0 || len(rels) != 0 {
 		t.Errorf("expected no-op for non-json language, got %d entities, %d rels", len(ents), len(rels))
 	}
@@ -163,7 +163,8 @@ func TestDebeziumCDC_NonJSONLanguageNoop(t *testing.T) {
 
 func TestDebeziumCDC_NonConnectorJSONNoop(t *testing.T) {
 	pkg := `{"name":"some-package","version":"1.0.0","dependencies":{"react":"^18"}}`
-	ents, rels := applyDebeziumCDCEdges("json", "package.json", []byte(pkg), nil, nil)
+	_res := applyDebeziumCDCEdges(DetectorPassArgs{Lang: "json", Path: "package.json", Content: []byte(pkg)})
+	ents, rels := _res.Entities, _res.Relationships
 	if len(ents) != 0 || len(rels) != 0 {
 		t.Errorf("expected no-op for non-connector JSON, got %d entities, %d rels", len(ents), len(rels))
 	}
@@ -175,7 +176,8 @@ func TestDebeziumCDC_SniffGuardsOutNonDebezium(t *testing.T) {
 	// Has connector.class but it's not Debezium; we still accept any
 	// Kafka-Connect connector that declares connector.class.
 	doc := `{"name":"foo","config":{"connector.class":"com.example.Foo"}}`
-	ents, _ := applyDebeziumCDCEdges("json", "cdc/foo.json", []byte(doc), nil, nil)
+	_res := applyDebeziumCDCEdges(DetectorPassArgs{Lang: "json", Path: "cdc/foo.json", Content: []byte(doc)})
+	ents, _ := _res.Entities, _res.Relationships
 	got := false
 	for _, e := range ents {
 		if e.Kind == "SCOPE.Component" && e.Subtype == "cdc_connector" && e.Name == "foo" {
@@ -190,10 +192,7 @@ func TestDebeziumCDC_SniffGuardsOutNonDebezium(t *testing.T) {
 func TestDebeziumCDC_BareTableNameStripsSchema(t *testing.T) {
 	// Edges should target the bare table name so they align with the SQL
 	// extractor's canonical SCOPE.Datastore/table entity names.
-	ents, _ := applyDebeziumCDCEdges("json",
-		"services/cdc/orders-connector.json",
-		[]byte(debeziumPolyglotConnector), nil, nil,
-	)
+	ents := applyDebeziumCDCEdges(DetectorPassArgs{Lang: "json", Path: "services/cdc/orders-connector.json", Content: []byte(debeziumPolyglotConnector)}).Entities
 	for _, e := range ents {
 		if e.Kind != "SCOPE.Component" {
 			continue

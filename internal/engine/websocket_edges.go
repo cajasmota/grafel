@@ -91,15 +91,14 @@ const channelIDPrefix = "ws:"
 // applyWebSocketSynthesis is the per-file entry point. Appends entities
 // + edges; never modifies or removes existing ones. No-op for content
 // that contains none of the per-framework anchors.
-func applyWebSocketSynthesis(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyWebSocketSynthesis(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	src := string(content)
 
@@ -165,7 +164,7 @@ func applyWebSocketSynthesis(
 		synthAspNetWebSocket(src, path, emitChannel, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

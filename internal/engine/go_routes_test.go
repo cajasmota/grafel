@@ -35,7 +35,8 @@ func main() {
 		makeRoutesToRel("/users", "h"),
 		makeRoutesToRel("/users/{id}", "h"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 
 	if got[0].ToID != "Controller:UsersHandler.List" {
 		t.Errorf("ToID[0] = %q, want Controller:UsersHandler.List", got[0].ToID)
@@ -66,7 +67,8 @@ func main() {
 	rels := []types.RelationshipRecord{
 		makeRoutesToRel("/users", "h"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:UsersHandler.List" {
 		t.Errorf("ToID = %q, want Controller:UsersHandler.List", got[0].ToID)
 	}
@@ -86,7 +88,8 @@ func main() {
 		makeRoutesToRel("/users", "h"),
 		makeRoutesToRel("/teams", "h"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:UserAPI.List" {
 		t.Errorf("ToID[0] = %q, want Controller:UserAPI.List", got[0].ToID)
 	}
@@ -107,7 +110,8 @@ func main() {
 	rels := []types.RelationshipRecord{
 		makeRoutesToRel("/users", "h"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:UsersHandler.List" {
 		t.Errorf("ToID = %q, want Controller:UsersHandler.List", got[0].ToID)
 	}
@@ -125,7 +129,8 @@ func register() {
 	rels := []types.RelationshipRecord{
 		makeRoutesToRel("/users", "h"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:h" {
 		t.Errorf("ToID = %q, want unchanged Controller:h", got[0].ToID)
 	}
@@ -151,7 +156,8 @@ func main() {
 	rels := []types.RelationshipRecord{
 		makeRoutesToRel("/users", "listUsers"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:listUsers" {
 		t.Errorf("ToID = %q, want unchanged Controller:listUsers", got[0].ToID)
 	}
@@ -162,7 +168,8 @@ func TestApplyGoRouteComposition_NonGoNoop(t *testing.T) {
 	rels := []types.RelationshipRecord{
 		makeRoutesToRel("/users", "h"),
 	}
-	_, got := applyGoRouteComposition("python", "main.py", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "python", Path: "main.py", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:h" {
 		t.Errorf("python file mutated: %q", got[0].ToID)
 	}
@@ -185,7 +192,8 @@ func main() {
 		},
 		makeRoutesToRel("/users", "h"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:h" {
 		t.Errorf("non-ROUTES_TO edge mutated: %q", got[0].ToID)
 	}
@@ -211,7 +219,8 @@ func main() {
 			Properties: map[string]string{"pattern_type": "yaml_driven"},
 		},
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:Existing.Qualified" {
 		t.Errorf("already-qualified ToID mutated: %q", got[0].ToID)
 	}
@@ -228,7 +237,8 @@ func main() {
 	rels := []types.RelationshipRecord{
 		makeRoutesToRel("/users", "h"),
 	}
-	_, got := applyGoRouteComposition("go", "main.go", src, nil, rels)
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
 	if got[0].ToID != "Controller:h" {
 		t.Errorf("ToID = %q, want unchanged Controller:h", got[0].ToID)
 	}

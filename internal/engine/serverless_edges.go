@@ -96,18 +96,17 @@ func serverlessSynthesisSupportsLanguage(lang string) bool {
 // applyServerlessEdges runs as an append-only pass after the gRPC edges pass.
 // It scans source files for Lambda/GCF/Azure invocation and handler patterns,
 // emitting SCOPE.ServerlessFunction entities plus CALLS and HANDLES edges.
-func applyServerlessEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyServerlessEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !serverlessSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -212,7 +211,7 @@ func applyServerlessEdges(
 		synthesizeCSharpServerless(src, path, emitFn, emitCalls, emitHandles)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // lambdaFunctionID returns the canonical synthetic ID for an AWS Lambda function.

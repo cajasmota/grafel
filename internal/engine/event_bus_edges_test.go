@@ -45,7 +45,8 @@ import (
 
 func runEventBusDetect(t *testing.T, lang, path, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
-	return applyEventBusEdges(lang, path, []byte(src), nil, nil)
+	res := applyEventBusEdges(DetectorPassArgs{Lang: lang, Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 func eventBusEntityByID(ents []types.EntityRecord, id string) *types.EntityRecord {
@@ -503,7 +504,8 @@ def handle(req):
 }
 
 func TestEventBusEdgesEmptyContent(t *testing.T) {
-	ents, rels := applyEventBusEdges("python", "file.py", nil, nil, nil)
+	_res := applyEventBusEdges(DetectorPassArgs{Lang: "python", Path: "file.py", Content: nil})
+	ents, rels := _res.Entities, _res.Relationships
 	if len(ents) != 0 || len(rels) != 0 {
 		t.Errorf("empty content should be a no-op; ents=%v rels=%v", entNames(ents), relSummary(rels))
 	}

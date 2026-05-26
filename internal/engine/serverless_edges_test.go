@@ -30,7 +30,8 @@ import (
 
 func runServerlessDetect(t *testing.T, lang, path, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
-	return applyServerlessEdges(lang, path, []byte(src), nil, nil)
+	res := applyServerlessEdges(DetectorPassArgs{Lang: lang, Path: path, Content: []byte(src)})
+	return res.Entities, res.Relationships
 }
 
 func serverlessFnByID(ents []types.EntityRecord, id string) *types.EntityRecord {

@@ -69,19 +69,18 @@ func kafkaSynthesisSupportsLanguage(lang string) bool {
 // MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO / TRANSFORMS edges.
 // It never modifies or removes existing entities or edges, so it cannot
 // regress the bug-rate of the surrounding pipeline.
-func applyKafkaEdges(
-	lang string,
-	path string,
-	repoRoot string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyKafkaEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	repoRoot := args.RepoRoot
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !kafkaSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -183,7 +182,7 @@ func applyKafkaEdges(
 		synthesizePHPRdKafka(src, emitTopic, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

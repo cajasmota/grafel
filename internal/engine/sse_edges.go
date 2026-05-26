@@ -47,15 +47,14 @@ const streamKind = "Stream"
 const streamIDPrefix = "sse:"
 
 // applySSESynthesis runs per-file. Append-only.
-func applySSESynthesis(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applySSESynthesis(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	src := string(content)
 
@@ -116,7 +115,7 @@ func applySSESynthesis(
 		synthSSEQuarkusProduces(src, path, emitStream, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

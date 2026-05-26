@@ -297,15 +297,15 @@ class GenerateInvoicePdf
 
 	// --- Step 1: Run synthesis on both files ---
 	// Synthesize entities and relationships for InvoiceController.
-	icEntities, _ := applyHTTPEndpointSynthesis(
-		"php", "app/Http/Controllers/InvoiceController.php",
-		[]byte(invoiceControllerSrc), nil, nil,
-	)
+	icEntities := applyHTTPEndpointSynthesis(DetectorPassArgs{
+		Lang: "php", Path: "app/Http/Controllers/InvoiceController.php",
+		Content: []byte(invoiceControllerSrc),
+	}).Entities
 	// Synthesize entities and relationships for GenerateInvoicePdf.
-	pdfEntities, _ := applyHTTPEndpointSynthesis(
-		"php", "app/Jobs/GenerateInvoicePdf.php",
-		[]byte(generateInvoicePdfSrc), nil, nil,
-	)
+	pdfEntities := applyHTTPEndpointSynthesis(DetectorPassArgs{
+		Lang: "php", Path: "app/Jobs/GenerateInvoicePdf.php",
+		Content: []byte(generateInvoicePdfSrc),
+	}).Entities
 
 	// --- Step 2: Build a merged entity table that includes the PHP
 	// tree-sitter extractor entities (class-qualified SCOPE.Operation names).

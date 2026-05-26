@@ -60,18 +60,16 @@ func pubsubSynthesisSupportsLanguage(lang string) bool {
 // entities + PUBLISHES_TO / SUBSCRIBES_TO edges for Google Cloud Pub/Sub.
 // Append-only — never modifies or removes existing entities or edges, so
 // this pass cannot regress the surrounding pipeline's bug-rate.
-func applyPubSubEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyPubSubEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !pubsubSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -150,7 +148,7 @@ func applyPubSubEdges(
 		synthesizeGoPubSub(src, emitTopic, emitEdge)
 	}
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // pubsubTopicID returns the canonical synthetic ID for a Pub/Sub topic.

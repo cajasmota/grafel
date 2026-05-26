@@ -48,15 +48,14 @@ const graphqlSubscriptionKind = "Subscription"
 const graphqlSubscriptionIDPrefix = "graphql_sub:"
 
 // applyGraphQLSubscriptionSynthesis runs per-file. Append-only.
-func applyGraphQLSubscriptionSynthesis(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyGraphQLSubscriptionSynthesis(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	src := string(content)
 
@@ -119,7 +118,7 @@ func applyGraphQLSubscriptionSynthesis(
 	synthGraphQLResolvers(src, path, lang, emitSub, emitEdge)
 	synthGraphQLClientSubscriptions(src, path, lang, emitSub, emitEdge)
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // ---------------------------------------------------------------------------

@@ -69,18 +69,18 @@ const ormFieldEdgesPatternType = "orm_field_edges"
 // `lang` is currently honoured only for "python" — Django ORM is the
 // Phase A scope. Other languages no-op cleanly; Phase B will extend
 // the pass to JS/TS Prisma, Java JPA, etc.
-func applyORMFieldEdges(
-	lang string,
-	path string,
-	content []byte,
-	pass1Entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) []types.RelationshipRecord {
+func applyORMFieldEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	pass1Entities := args.Pass1Entities
+	entities := args.Entities
+	relationships := args.Relationships
 	if lang != "python" {
-		return relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if len(content) == 0 {
-		return relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	// Build a per-(model,field) index for THIS file.
@@ -101,7 +101,7 @@ func applyORMFieldEdges(
 		fieldIdx = BuildFieldIndex(string(content))
 	}
 	if len(fieldIdx) == 0 {
-		return relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	_ = plumbed // reserved for future telemetry / debug hooks
 
@@ -153,7 +153,7 @@ func applyORMFieldEdges(
 		}
 	}
 
-	return relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // djangoChainAnchorRe matches the start of every Django ORM queryset

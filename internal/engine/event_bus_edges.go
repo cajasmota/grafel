@@ -87,18 +87,17 @@ func eventBusSynthesisSupportsLanguage(lang string) bool {
 // applyEventBusEdges is the single entry-point pass that runs after
 // applyRedisPubSubEdges. It dispatches to three sub-detectors and is
 // append-only.
-func applyEventBusEdges(
-	lang string,
-	path string,
-	content []byte,
-	entities []types.EntityRecord,
-	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+func applyEventBusEdges(args DetectorPassArgs) DetectorPassResult {
+	lang := args.Lang
+	path := args.Path
+	content := args.Content
+	entities := args.Entities
+	relationships := args.Relationships
 	if len(content) == 0 {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 	if !eventBusSynthesisSupportsLanguage(lang) {
-		return entities, relationships
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	src := string(content)
@@ -155,7 +154,7 @@ func applyEventBusEdges(
 	applyEventGridEdges(lang, src, path, emitEvent, emitEdge)
 	applyCloudEventEdges(lang, src, path, emitEvent, emitEdge)
 
-	return entities, relationships
+	return DetectorPassResult{Entities: entities, Relationships: relationships}
 }
 
 // eventBridgeEventID returns the canonical synthetic ID for an EventBridge
