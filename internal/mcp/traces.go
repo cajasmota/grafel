@@ -265,7 +265,7 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 		if entryEnt == nil {
 			continue
 		}
-		chains := followCallsBFS(r.Doc, target, maxDepth, branch, r.CallsAdj)
+		chains := followCallsBFS(target, maxDepth, branch, r.CallsAdj)
 		// Materialise the chains into step lists with labels.
 		// Default (verbose=false): step_index, node_id, name, file, line.
 		// Verbose (verbose=true): also includes kind.
@@ -386,11 +386,6 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 	doc := r.Doc
 	repo := r.Repo
 	byID := r.ByID
-	if byID == nil {
-		// Defensive fallback: callers should always pass a cached map (#1656),
-		// but synthesize on the fly if absent so tests that pass nil still work.
-		byID = indexByID(doc)
-	}
 	type indexed struct {
 		idx int
 		id  string
@@ -462,33 +457,14 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 // walks forward CALLS edges from entry, bounded by maxDepth and
 // branching, and returns each terminal chain.
 //
-// When callsAdj is non-nil it is used directly (cached at reload, #1656);
-// otherwise the function falls back to an on-the-fly O(R) scan to remain
-// backward-compatible with paths/tests that don't hold a LoadedRepo.
-func followCallsBFS(doc *graph.Document, entry string, maxDepth, branch int, callsAdj map[string][]string) [][]string {
+// callsAdj must be non-nil; it is cached on LoadedRepo at reload time (#1656).
+func followCallsBFS(entry string, maxDepth, branch int, callsAdj map[string][]string) [][]string {
 	out := make(map[string][]string)
 	type fr struct {
 		chain []string
 		seen  map[string]bool
 	}
-	var adj map[string][]string
-	if callsAdj != nil {
-		adj = callsAdj
-	} else {
-		// Fallback: build single-repo CALLS adjacency on the fly. The MCP
-		// path doesn't import internal/engine so it ships standalone.
-		adj = make(map[string][]string)
-		for i := range doc.Relationships {
-			r := &doc.Relationships[i]
-			if r.Kind != "CALLS" {
-				continue
-			}
-			adj[r.FromID] = append(adj[r.FromID], r.ToID)
-		}
-		for k := range adj {
-			sort.Strings(adj[k])
-		}
-	}
+	adj := callsAdj
 	work := []fr{{chain: []string{entry}, seen: map[string]bool{entry: true}}}
 	for len(work) > 0 {
 		f := work[len(work)-1]
@@ -537,14 +513,6 @@ func followCallsBFS(doc *graph.Document, entry string, maxDepth, branch int, cal
 		return strings.Join(chains[i], ",") < strings.Join(chains[j], ",")
 	})
 	return chains
-}
-
-func indexByID(doc *graph.Document) map[string]*graph.Entity {
-	out := make(map[string]*graph.Entity, len(doc.Entities))
-	for i := range doc.Entities {
-		out[doc.Entities[i].ID] = &doc.Entities[i]
-	}
-	return out
 }
 
 func splitChainLabels(s string) []string {
