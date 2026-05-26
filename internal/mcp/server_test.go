@@ -575,6 +575,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_subgraph",
 		// #2474 persona lifecycle telemetry
 		"archigraph_persona_event",
+		// #2192 MCP session metrics
+		"archigraph_mcp_metrics",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -656,8 +658,8 @@ func TestToolNameSurface(t *testing.T) {
 	// sentinel registered as a real callable tool (#1769). find_callers /
 	// find_callees stay registered as deprecated aliases for one release.
 	// +1 archigraph_persona_event (#2474 persona lifecycle telemetry).
-	if got := len(allRegisteredTools); got != 43 {
-		t.Errorf("expected 43 registered tools, got %d — update this count if tools are added/removed (added archigraph_persona_event #2474)", got)
+	if got := len(allRegisteredTools); got != 44 {
+		t.Errorf("expected 44 registered tools, got %d — update this count if tools are added/removed (added archigraph_mcp_metrics #2192)", got)
 	}
 }
 
@@ -3150,6 +3152,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_license_audit": {"group": "g"},
 		// #2474 persona lifecycle telemetry
 		"archigraph_persona_event": {"persona": "architect", "event_type": "invoke"},
+		// #2192 MCP session metrics
+		"archigraph_mcp_metrics": {"days": float64(1)},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3194,8 +3198,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 43 {
-		t.Errorf("expected 43 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_persona_event #2474)", len(tools))
+	if len(tools) != 44 {
+		t.Errorf("expected 44 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_mcp_metrics #2192)", len(tools))
 	}
 
 	for _, st := range tools {

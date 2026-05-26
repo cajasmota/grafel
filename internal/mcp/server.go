@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/version"
@@ -36,10 +37,11 @@ type Config struct {
 // Server is the archigraph MCP server: state + telemetry + the underlying
 // mcp-go *MCPServer*. Tests can construct one and skip ServeStdio.
 type Server struct {
-	State *State
-	Tel   *Telemetry
-	MCP   *mcpsrv.MCPServer
-	cfg   Config
+	State   *State
+	Tel     *Telemetry
+	SessMet *SessionMetrics // per-tool session metrics + daily rollup (#2192)
+	MCP     *mcpsrv.MCPServer
+	cfg     Config
 
 	// activityBroker fans MCP tool call events to SSE subscribers (epic #1157).
 	// Optional: when nil, events are silently dropped.
@@ -74,13 +76,28 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 	tel := NewTelemetry(cfg.DebugLevel)
 
+	// Build metrics dir (~/.archigraph/metrics/). Best-effort: if home dir
+	// resolution fails, metricsDir is left empty and rollups are skipped.
+	metricsDir := ""
+	if home, herr := os.UserHomeDir(); herr == nil {
+		metricsDir = filepath.Join(home, ".archigraph", "metrics")
+	}
+	sessMet := NewSessionMetrics(newSessionID(), metricsDir)
+
 	srv := mcpsrv.NewMCPServer("archigraph", version.String(),
 		mcpsrv.WithToolCapabilities(true),
 		mcpsrv.WithInstructions(mcpInstructions))
 
-	s := &Server{State: st, Tel: tel, MCP: srv, cfg: cfg}
+	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg}
 	s.registerTools()
 	return s, nil
+}
+
+// newSessionID returns a compact session identifier derived from current time
+// and process ID. A UUID library is not pulled in — collision probability is
+// negligible for local daemon use.
+func newSessionID() string {
+	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid())
 }
 
 // ServeStdio runs the MCP server on stdio until the connection closes.
@@ -762,6 +779,15 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("metadata"),
 	), s.wrap("archigraph_persona_event", s.handlePersonaEvent))
 
+	// archigraph_mcp_metrics — per-tool session metrics + daily rollup (#2192).
+	// Returns in-memory per-tool counters (calls, errors, p50/p95 ms) for the
+	// current daemon session, plus up to N days of persisted daily rollups from
+	// ~/.archigraph/metrics/. Group-agnostic; no cwd routing needed.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_mcp_metrics",
+		mcpapi.WithDescription("Current session tool-call metrics (counts, p50/p95 ms) + last N days rollups."),
+		mcpapi.WithNumber("days", mcpapi.DefaultNumber(3)),
+	), s.wrap("archigraph_mcp_metrics", s.handleMCPMetrics))
+
 	// archigraph_status — cwd-gate sentinel (#1769).
 	// Registered as a real callable tool so agents can invoke it and receive
 	// guidance. Excluded from the full handshake returned to indexed sessions
@@ -769,6 +795,35 @@ func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool(sentinelToolName,
 		mcpapi.WithDescription(sentinelToolDescription),
 	), s.wrap(sentinelToolName, s.handleStatus))
+}
+
+// handleMCPMetrics is the handler for archigraph_mcp_metrics (#2192).
+//
+// Returns current in-memory session metrics (per-tool call count, error rate,
+// p50/p95 latency) plus the last `days` days of persisted daily rollup records
+// from ~/.archigraph/metrics/mcp-YYYY-MM-DD.jsonl.
+//
+// The tool is safe to call at any time; it never modifies state.
+func (s *Server) handleMCPMetrics(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	days := argInt(req, "days", 3)
+	if days < 1 {
+		days = 1
+	}
+	if days > 30 {
+		days = 30
+	}
+
+	snap := s.SessMet.Snapshot()
+
+	// Read rollup history. Best-effort: on error return what we have.
+	rollups, _ := ReadRollups(s.SessMet.metricsDir, days)
+
+	return jsonResult(map[string]any{
+		"session":        snap,
+		"rollup_days":    days,
+		"rollup_records": rollups,
+		"rollup_dir":     s.SessMet.metricsDir,
+	}), nil
 }
 
 // handleStatus is the handler for archigraph_status (#1769). It returns a
@@ -826,6 +881,11 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 		defer func() {
 			isErr := err != nil || (res != nil && res.IsError)
 			end(isErr)
+			// Record into session metrics (#2192). Done in defer so elapsed
+			// is measured over the full call including the deferred cleanup.
+			if s.SessMet != nil {
+				s.SessMet.Record(name, time.Since(start), isErr)
+			}
 		}()
 		s.reloadBeforeCall()
 		// Install a per-call id collector so render helpers can record the
