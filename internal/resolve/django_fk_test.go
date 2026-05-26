@@ -394,3 +394,213 @@ func TestResolveDjangoStringFKRefs_NonScopeStubSkipped(t *testing.T) {
 		t.Errorf("ToID changed unexpectedly: %q", records[0].Relationships[0].ToID)
 	}
 }
+
+// TestResolveDjangoStringFKRefs_BareNameGlobalModelUnique covers issue #2280:
+// a bare ForeignKey('User', ...) where the consumer's app does NOT define
+// User locally (strategy 1 misses) and the FK string carries no app_label
+// (strategy 2 misses). When exactly one entity with kind=SCOPE.Model named
+// "User" exists in the group, the strategy-3 global Model fallback must
+// resolve the stub to that Model's entity ID so no shadow FK-Constraint
+// node is materialized downstream.
+func TestResolveDjangoStringFKRefs_BareNameGlobalModelUnique(t *testing.T) {
+	// User defined once, as SCOPE.Model, in a different app directory.
+	userModel := types.EntityRecord{
+		ID:         "auth-user-model-id",
+		Name:       "User",
+		Kind:       "SCOPE.Model",
+		Subtype:    "class",
+		SourceFile: "auth/models.py",
+		Language:   "python",
+	}
+
+	// Permit field with a bare 'User' FK string. The consumer file lives
+	// in permits/models.py so strategy 1 probes byPackageComponent["permits"]
+	// and misses; the FK string has no dot so strategy 2's dotted branch
+	// also misses.
+	stub := buildDjangoFKStub("permits/models.py", "User")
+	permitField := types.EntityRecord{
+		ID:         "permit-field-id",
+		Name:       "Permit.owner",
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: "permits/models.py",
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{
+			{
+				ToID: stub,
+				Kind: "REFERENCES",
+				Properties: map[string]string{
+					"django_rel":       "ForeignKey",
+					"self_ref":         "false",
+					"django_fk_string": "User",
+				},
+			},
+		},
+	}
+
+	records := []types.EntityRecord{userModel, permitField}
+	idx := BuildIndex(records)
+	rewrites := idx.ResolveDjangoStringFKRefs(records)
+
+	if rewrites != 1 {
+		t.Errorf("rewrites = %d, want 1 (bare 'User' should bind to unique SCOPE.Model)", rewrites)
+	}
+	got := records[1].Relationships[0].ToID
+	if got != "auth-user-model-id" {
+		t.Errorf("ToID = %q, want auth-user-model-id (stub was %q)", got, stub)
+	}
+}
+
+// TestResolveDjangoStringFKRefs_BareNameGlobalModelAmbiguous covers #2280 ambiguity:
+// two entities with kind=SCOPE.Model both named "User" in the group. The
+// strategy-3 fallback must NOT resolve; the shadow stub stays in place so
+// the safe External-synthesis fallback runs.
+func TestResolveDjangoStringFKRefs_BareNameGlobalModelAmbiguous(t *testing.T) {
+	user1 := types.EntityRecord{
+		ID:         "auth-user-model-id",
+		Name:       "User",
+		Kind:       "SCOPE.Model",
+		Subtype:    "class",
+		SourceFile: "auth/models.py",
+		Language:   "python",
+	}
+	user2 := types.EntityRecord{
+		ID:         "accounts-user-model-id",
+		Name:       "User",
+		Kind:       "SCOPE.Model",
+		Subtype:    "class",
+		SourceFile: "accounts/models.py",
+		Language:   "python",
+	}
+
+	stub := buildDjangoFKStub("permits/models.py", "User")
+	permitField := types.EntityRecord{
+		ID:         "permit-field-id",
+		Name:       "Permit.owner",
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: "permits/models.py",
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{
+			{
+				ToID: stub,
+				Kind: "REFERENCES",
+				Properties: map[string]string{
+					"django_rel":       "ForeignKey",
+					"self_ref":         "false",
+					"django_fk_string": "User",
+				},
+			},
+		},
+	}
+
+	records := []types.EntityRecord{user1, user2, permitField}
+	idx := BuildIndex(records)
+	rewrites := idx.ResolveDjangoStringFKRefs(records)
+
+	if rewrites != 0 {
+		t.Errorf("rewrites = %d, want 0 (two SCOPE.Model 'User' entities are ambiguous)", rewrites)
+	}
+	if got := records[2].Relationships[0].ToID; got != stub {
+		t.Errorf("ToID = %q, want unchanged stub %q", got, stub)
+	}
+}
+
+// TestResolveDjangoStringFKRefs_BareNameNoModelMatch covers #2280: bare
+// FK string with no matching SCOPE.Model in the group (e.g. typo or
+// model defined as SCOPE.Component only). Strategy 3 must NOT resolve;
+// the stub stays untouched so the existing External-synthesis safe
+// fallback handles it.
+func TestResolveDjangoStringFKRefs_BareNameNoModelMatch(t *testing.T) {
+	// A SCOPE.Component (not Model) named "User" should NOT satisfy
+	// strategy 3 — the gate is strictly kind=SCOPE.Model per #2281.
+	userComp := types.EntityRecord{
+		ID:         "user-component-id",
+		Name:       "User",
+		Kind:       "SCOPE.Component",
+		Subtype:    "class",
+		SourceFile: "auth/models.py",
+		Language:   "python",
+	}
+
+	stub := buildDjangoFKStub("permits/models.py", "User")
+	permitField := types.EntityRecord{
+		ID:         "permit-field-id",
+		Name:       "Permit.owner",
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: "permits/models.py",
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{
+			{
+				ToID: stub,
+				Kind: "REFERENCES",
+				Properties: map[string]string{
+					"django_rel":       "ForeignKey",
+					"self_ref":         "false",
+					"django_fk_string": "User",
+				},
+			},
+		},
+	}
+
+	records := []types.EntityRecord{userComp, permitField}
+	idx := BuildIndex(records)
+	rewrites := idx.ResolveDjangoStringFKRefs(records)
+
+	if rewrites != 0 {
+		t.Errorf("rewrites = %d, want 0 (no SCOPE.Model named User; Component should not satisfy strategy 3)", rewrites)
+	}
+	if got := records[1].Relationships[0].ToID; got != stub {
+		t.Errorf("ToID = %q, want unchanged stub %q", got, stub)
+	}
+}
+
+// TestResolveDjangoStringFKRefs_AppLabelRegression is a regression guard
+// for the strategy-2 path: dotted ForeignKey('auth.User', ...) must still
+// resolve via byPackageComponent["auth"]["User"] after the strategy-3
+// addition. This mirrors TestResolveDjangoStringFKRefs_CrossApp but is
+// kept colocated with the #2280 tests for clarity.
+func TestResolveDjangoStringFKRefs_AppLabelRegression(t *testing.T) {
+	userEntity := types.EntityRecord{
+		ID:         "auth-user-entity-id",
+		Name:       "User",
+		Kind:       "SCOPE.Component",
+		Subtype:    "class",
+		SourceFile: "auth/models.py",
+		Language:   "python",
+	}
+
+	stub := buildDjangoFKStub("permits/models.py", "User")
+	permitField := types.EntityRecord{
+		ID:         "permit-field-id",
+		Name:       "Permit.owner",
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: "permits/models.py",
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{
+			{
+				ToID: stub,
+				Kind: "REFERENCES",
+				Properties: map[string]string{
+					"django_rel":       "ForeignKey",
+					"self_ref":         "false",
+					"django_fk_string": "auth.User",
+				},
+			},
+		},
+	}
+
+	records := []types.EntityRecord{userEntity, permitField}
+	idx := BuildIndex(records)
+	rewrites := idx.ResolveDjangoStringFKRefs(records)
+
+	if rewrites != 1 {
+		t.Errorf("rewrites = %d, want 1 (app-label-qualified path)", rewrites)
+	}
+	got := records[1].Relationships[0].ToID
+	if got != "auth-user-entity-id" {
+		t.Errorf("ToID = %q, want auth-user-entity-id (stub was %q)", got, stub)
+	}
+}

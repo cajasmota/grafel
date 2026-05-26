@@ -41,6 +41,36 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+// lookupUniqueModelByName returns the entity ID of the unique entity with
+// kind=SCOPE.Model and the given Name. Used by the strategy-3 bare-class
+// FK fallback (issue #2280): when a Django string-FK has no app_label
+// qualifier ('User' instead of 'auth.User') the resolver probes the
+// global Model index. If exactly one Model matches we resolve; if zero
+// or two-plus match we leave the shadow stub in place — the caller falls
+// through to the existing External-synthesis safe fallback.
+//
+// The gate is strict against SCOPE.Model (NOT SCOPE.Component): #2281
+// tracks the double-emit where the same Django Model class can appear as
+// both a Model and a Component. Until that lands, restricting to Model
+// here avoids collapsing two distinct logical entities into one.
+func (idx Index) lookupUniqueModelByName(name string) (string, bool) {
+	if name == "" {
+		return "", false
+	}
+	realBucket := idx.nameKindsReal[name]
+	if len(realBucket) == 0 {
+		return "", false
+	}
+	// nameKindsReal[name][kind] = "" sentinel means ambiguous (>=2
+	// entities share that name+kind pair); a non-empty value is the
+	// unique entity ID for that pair.
+	id, ok := realBucket[string(types.EntityKindModel)]
+	if !ok || id == "" {
+		return "", false
+	}
+	return id, true
+}
+
 // djangoFKRefPrefix is the structural-ref prefix emitted by
 // buildDjangoModelClassRef in internal/extractors/python/django_relational.go.
 // We gate the late-binding pass to only these stubs to avoid touching
@@ -142,7 +172,28 @@ func (idx Index) ResolveDjangoStringFKRefs(records []types.EntityRecord) int {
 				// lookupUniqueRealComponentByName succeeds (globally unique
 				// model name); we don't duplicate that here since
 				// ReferencesEmbeddedWithAllowlist will handle it via
-				// lookupStructural → lookupUniqueRealComponentByName.
+				// lookupStructural -> lookupUniqueRealComponentByName.
+
+				// Strategy 3: global kind=Model fallback (issue #2280).
+				// When the dotted-form lookups missed, or the FK string is
+				// a bare class name ("User"), look up entities with
+				// kind=Model whose Name matches className. Resolve only
+				// when EXACTLY one such Model entity exists; ambiguous
+				// (0 or 2+) leaves the shadow stub in place. Intentionally
+				// gated on kind=Model (NOT SCOPE.Component) to avoid
+				// collapsing over the double-emit issue tracked separately
+				// as #2281.
+				//
+				// Suppression is at-creation in spirit: rewriting the stub
+				// to a hex entity ID before ReferencesEmbeddedWithAllowlist
+				// runs means the External-synthesis pass downstream never
+				// sees an unresolved stub for this edge, so no shadow
+				// FK-Constraint node is materialized.
+				if id, ok := idx.lookupUniqueModelByName(className); ok && id != "" {
+					r.ToID = id
+					rewrites++
+					continue
+				}
 			}
 		}
 	}
