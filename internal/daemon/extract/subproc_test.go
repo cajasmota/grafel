@@ -206,3 +206,105 @@ def get_pending():
 
 	t.Logf("subprocess Run(): field_entities=%d reads_field_rels=%d", fieldEntities, readsFieldRels)
 }
+
+// TestRun_Pass1PlumbedCounters verifies that BatchStats.Pass1PlumbedTrueCount
+// and Pass1PlumbedFalseCount are correctly incremented by Run() (issue #2447).
+//
+// A Python fixture with a Django model produces SCOPE.Schema(subtype=field)
+// entities in Pass 1, which the subprocess collects and stamps onto
+// FileInput.Pass1Entities before Pass 2.5 runs. The True counter must be 1
+// and False must be 0 for that file. A plain Go file (no field entities)
+// must increment False instead.
+func TestRun_Pass1PlumbedCounters(t *testing.T) {
+	// Fixture 1: Python file with a Django model — Pass1Entities will be plumbed.
+	pyRepo := t.TempDir()
+	pySrc := `from django.db import models
+
+class Widget(models.Model):
+    name = models.CharField(max_length=100)
+
+def find(n):
+    return Widget.objects.filter(name=n)
+`
+	if err := os.WriteFile(filepath.Join(pyRepo, "widget.py"), []byte(pySrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pyBatch := filepath.Join(t.TempDir(), "batch.txt")
+	if err := os.WriteFile(pyBatch, []byte("widget.py\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var pyBuf bytes.Buffer
+	if err := Run(context.Background(), SubprocessOptions{
+		RepoRoot:  pyRepo,
+		BatchPath: pyBatch,
+		BatchID:   "py-plumb",
+		Output:    &pyBuf,
+	}); err != nil {
+		t.Fatalf("Run (python): %v", err)
+	}
+
+	var pyStats *BatchStats
+	dec := json.NewDecoder(strings.NewReader(pyBuf.String()))
+	for dec.More() {
+		var env Envelope
+		if err := dec.Decode(&env); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if env.Type == KindStats {
+			pyStats = env.Stats
+		}
+	}
+	if pyStats == nil {
+		t.Fatal("no stats envelope from python Run()")
+	}
+	// For the Python/Django fixture, at least one file should have
+	// Pass1Entities plumbed (True > 0, False == 0).
+	t.Logf("python fixture: pass1_plumbed_true=%d pass1_plumbed_false=%d",
+		pyStats.Pass1PlumbedTrueCount, pyStats.Pass1PlumbedFalseCount)
+	if pyStats.Pass1PlumbedTrueCount == 0 {
+		t.Errorf("expected Pass1PlumbedTrueCount > 0 for Django model fixture; got 0 (side-channel not plumbed?)")
+	}
+	if pyStats.Pass1PlumbedFalseCount != 0 {
+		t.Errorf("expected Pass1PlumbedFalseCount == 0 for Django model fixture; got %d", pyStats.Pass1PlumbedFalseCount)
+	}
+
+	// Fixture 2: Go file — no SCOPE.Schema(subtype=field) entities from Pass 1,
+	// so Pass1Entities will be empty → FalseCount must be 1, TrueCount must be 0.
+	goRepo := writeTree(t) // produces demo.go with two Go functions
+	goBatch := filepath.Join(t.TempDir(), "batch.txt")
+	if err := os.WriteFile(goBatch, []byte("demo.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var goBuf bytes.Buffer
+	if err := Run(context.Background(), SubprocessOptions{
+		RepoRoot:  goRepo,
+		BatchPath: goBatch,
+		BatchID:   "go-plumb",
+		Output:    &goBuf,
+	}); err != nil {
+		t.Fatalf("Run (go): %v", err)
+	}
+
+	var goStats *BatchStats
+	dec2 := json.NewDecoder(strings.NewReader(goBuf.String()))
+	for dec2.More() {
+		var env Envelope
+		if err := dec2.Decode(&env); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if env.Type == KindStats {
+			goStats = env.Stats
+		}
+	}
+	if goStats == nil {
+		t.Fatal("no stats envelope from go Run()")
+	}
+	t.Logf("go fixture: pass1_plumbed_true=%d pass1_plumbed_false=%d",
+		goStats.Pass1PlumbedTrueCount, goStats.Pass1PlumbedFalseCount)
+	if goStats.Pass1PlumbedTrueCount != 0 {
+		t.Errorf("expected Pass1PlumbedTrueCount == 0 for Go fixture; got %d", goStats.Pass1PlumbedTrueCount)
+	}
+	if goStats.Pass1PlumbedFalseCount == 0 {
+		t.Errorf("expected Pass1PlumbedFalseCount > 0 for Go fixture; got 0")
+	}
+}

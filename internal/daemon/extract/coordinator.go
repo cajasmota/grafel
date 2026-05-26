@@ -100,6 +100,11 @@ type Result struct {
 	SubprocessRSS  []uint64
 	Subprocesses   int
 	NonFatalErrors []string
+
+	// Pass1Plumbed counters (issue #2447): aggregated from every subprocess.
+	// See BatchStats for semantics.
+	Pass1PlumbedTrueCount  int
+	Pass1PlumbedFalseCount int
 }
 
 // Coordinate is the daemon-side entrypoint that replaces the in-process
@@ -265,6 +270,8 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 					res.PeakRSSBytes = stats.RSSBytes
 				}
 				res.SubprocessRSS = append(res.SubprocessRSS, stats.RSSBytes)
+				res.Pass1PlumbedTrueCount += stats.Pass1PlumbedTrueCount
+				res.Pass1PlumbedFalseCount += stats.Pass1PlumbedFalseCount
 			}
 			mu.Unlock()
 		}(b)
