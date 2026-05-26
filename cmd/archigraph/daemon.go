@@ -137,18 +137,7 @@ func resolveEnvRebuildConcurrency() int {
 	return defaultRebuildConcurrency()
 }
 
-// rebuildConcurrency is the package-level concurrency cap used by
-// daemonRebuildFunc. It is set once by runDaemon before the RPC server
-// starts accepting connections. Concurrent calls to daemonRebuildFunc
-// each get their own semaphore, so different group rebuilds do not share
-// the cap — the cap applies to repos within a single group rebuild.
-var rebuildConcurrency = defaultRebuildConcurrency()
-
-// activeDaemonMode is set by runDaemon after loading the mode config.
-// It is read-only after that point (written once before the RPC server starts).
-var activeDaemonMode string
-
-// rebuildIndexFunc is the per-repo index entrypoint used by daemonRebuildFunc.
+// rebuildIndexFunc is the per-repo index entrypoint used by makeDaemonRebuildFunc.
 // It defaults to the package-level Index function but can be replaced in tests
 // to validate parallelism semantics without running a real extractor pass.
 // Must be set before the daemon accepts connections (write-once, then read-only).
@@ -223,6 +212,10 @@ func runDaemon(argv []string) error {
 	// S7 (#2157): load mode from daemon.config.json then apply env defaults.
 	// Precedence: --mode flag > daemon.config.json > Background default.
 	// Env vars always win over mode defaults (ApplyDefaults only sets unset vars).
+	// activeDaemonMode is captured at construction time and threaded into
+	// daemon.Config.DaemonMode so the Status RPC can surface it — no package-level
+	// singleton needed (issue #2411).
+	var activeDaemonMode string
 	{
 		cfgPath := mode.DefaultConfigPath(layout.Root)
 		modeCfg, _ := mode.LoadConfig(cfgPath) // missing file → zero value; not fatal
@@ -237,7 +230,6 @@ func runDaemon(argv []string) error {
 		}
 		mode.ApplyDefaults(activeMode)
 		gcLog.Printf("daemon mode: %s", activeMode)
-		// Store the active mode in a package-level var so the Status RPC can surface it.
 		activeDaemonMode = string(activeMode)
 	}
 
@@ -290,7 +282,7 @@ func runDaemon(argv []string) error {
 		Layout:       layout,
 		Logger:       logger,
 		Index:        daemonIndexFunc,
-		Rebuild:      daemonRebuildFunc,
+		Rebuild:      makeDaemonRebuildFunc(maxConcurrentGroups),
 		QualityAudit: daemonQualityAuditFunc,
 
 		// Phase B — wire the watcher + scheduler. The fast reactive
@@ -399,12 +391,6 @@ func runDaemon(argv []string) error {
 				},
 			}
 		}(),
-	}
-
-	// Apply the concurrency cap before the RPC server opens so
-	// daemonRebuildFunc picks it up immediately. Written once; no race.
-	if maxConcurrentGroups >= 1 {
-		rebuildConcurrency = maxConcurrentGroups
 	}
 
 	ctx := context.Background()
@@ -605,16 +591,29 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 	return graphPath, statsBuf.String(), nil
 }
 
-// daemonRebuildFunc force-indexes every repo in a group. We deliberately
+// makeDaemonRebuildFunc returns the RebuildFunc injected into daemon.Config.
+// concurrency is captured at construction time from runDaemon's maxConcurrentGroups
+// so no package-level singleton is needed (issue #2411).
+//
+// The returned func force-indexes every repo in a group. We deliberately
 // re-implement the iteration here rather than calling into internal/cli
 // to avoid pulling cobra back into the daemon's call graph.
 //
-// Parallelism (#1276): repos are indexed concurrently up to rebuildConcurrency
+// Parallelism (#1276): repos are indexed concurrently up to concurrency
 // workers. One failing repo does not stop the others — all are attempted and
 // any errors are collected and returned together. Per-repo wall time is logged
 // to stderr for diagnostics. The cross-repo link pass runs only once all
 // per-repo indexes complete.
-func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
+func makeDaemonRebuildFunc(concurrency int) daemon.RebuildFunc {
+	return func(args proto.RebuildArgs) ([]string, string, error) {
+		return daemonRebuildFuncCore(concurrency, args)
+	}
+}
+
+// daemonRebuildFuncCore is the testable inner implementation of the rebuild
+// logic. concurrency is supplied by the caller (captured in the closure
+// returned by makeDaemonRebuildFunc, or set directly in tests).
+func daemonRebuildFuncCore(concurrency int, args proto.RebuildArgs) ([]string, string, error) {
 	rebuildStart := time.Now()
 	fmt.Fprintf(os.Stderr, "archigraph: rebuild start group=%s slug=%q wipe=%v incremental=%v\n",
 		args.Group, args.Slug, args.Wipe, args.Incremental)
@@ -660,7 +659,7 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 	}
 
 	// Serial fast path: single worker or single repo skips goroutine overhead.
-	conc := rebuildConcurrency
+	conc := concurrency
 	if conc < 1 {
 		conc = 1
 	}
