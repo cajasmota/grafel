@@ -223,13 +223,14 @@ type enqueueRequest struct {
 //   - per-repo algorithm debounce timers,
 //   - an RSS-budget ledger that gates dispatch.
 type Scheduler struct {
-	cfg    Config
-	logger *slog.Logger
-	enq    chan enqueueRequest // public enqueue input → dedup → pending queue
-	jobs   chan jobToken       // admitted jobs handed to workers
-	wake   chan struct{}       // poked when a worker frees budget
-	stop   chan struct{}
-	wg     sync.WaitGroup
+	cfg      Config
+	logger   *slog.Logger
+	enq      chan enqueueRequest // public enqueue input → dedup → pending queue
+	jobs     chan jobToken       // admitted jobs handed to workers
+	wake     chan struct{}       // poked when a worker frees budget
+	stop     chan struct{}
+	stopOnce sync.Once
+	wg       sync.WaitGroup
 
 	// shutdownCtx is cancelled by Stop() so in-flight IndexFn / Incremental /
 	// Clone calls — which may have spawned child processes — receive a
@@ -371,18 +372,18 @@ func (s *Scheduler) Start() {
 // Stop signals shutdown, cancels any in-flight index jobs (so subprocess
 // children receive SIGTERM via exec.CommandContext), and waits for the worker
 // pool to drain. It is safe to call Stop more than once; subsequent calls are
-// no-ops because close(s.stop) panics on a closed channel — the once-flag is
-// implicit in the channel close semantics (closing an already-closed channel
-// panics, so callers must not call Stop concurrently; this matches the
-// existing contract).
+// no-ops — the close(s.stop) and shutdownCancel() are wrapped in a sync.Once
+// so a second call returns immediately after the first call's wg.Wait()
+// completes. This is the fix for the double-Stop panic described in issue #2494.
 func (s *Scheduler) Stop() {
-	// Cancel the shutdown context first so any in-flight IndexFn /
-	// Incremental / Clone call that spawned a child process via
-	// exec.CommandContext receives SIGTERM immediately. This is the fix for
-	// the zombie accumulation described in issue #2176.
-	s.shutdownCancel()
-
-	close(s.stop)
+	s.stopOnce.Do(func() {
+		// Cancel the shutdown context first so any in-flight IndexFn /
+		// Incremental / Clone call that spawned a child process via
+		// exec.CommandContext receives SIGTERM immediately. This is the fix for
+		// the zombie accumulation described in issue #2176.
+		s.shutdownCancel()
+		close(s.stop)
+	})
 	s.wg.Wait()
 
 	s.mu.Lock()
@@ -828,15 +829,19 @@ func (s *Scheduler) scheduleLinks(group string) {
 		s.linkPending[group] = false
 		delete(s.linkTimers, group)
 		s.mu.Unlock()
-		s.runLinks(group)
+		// Pass shutdownCtx so that if Stop() is called while the link pass is
+		// running (or if it ever spawns subprocesses in the future), the
+		// cancellation signal propagates correctly — matching the fix applied to
+		// runIndex in issue #2176/#2491. Fixes issue #2493.
+		s.runLinks(s.shutdownCtx, group)
 	})
 	s.mu.Unlock()
 }
 
-func (s *Scheduler) runLinks(group string) {
+func (s *Scheduler) runLinks(ctx context.Context, group string) {
 	s.logEvent("links_start", "", group)
 	t0 := time.Now()
-	err := s.cfg.Links(context.Background(), group)
+	err := s.cfg.Links(ctx, group)
 	if err != nil {
 		s.logEvent("links_err", "", group+": "+err.Error())
 		s.logger.Error("sched: links failed", "group", group, "err", err)
@@ -879,7 +884,11 @@ func (s *Scheduler) scheduleAlgo(repoPath string) {
 		s.mu.Lock()
 		s.algoPending[repoPath] = false
 		delete(s.algoTimers, repoPath)
-		ctx, cancel := context.WithCancel(context.Background())
+		// Derive the per-run cancel context from shutdownCtx (not
+		// context.Background()) so that when Stop() is called, all in-flight
+		// algo passes receive cancellation — matching the treatment of runIndex
+		// and runLinks. Fixes issue #2493.
+		ctx, cancel := context.WithCancel(s.shutdownCtx)
 		s.algoCancel[repoPath] = cancel
 		s.mu.Unlock()
 

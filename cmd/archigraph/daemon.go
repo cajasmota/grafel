@@ -287,7 +287,11 @@ func runDaemon(argv []string) error {
 			if stateDir == "" {
 				stateDir = daemon.StateDirForRepo(repoPath)
 			}
-			res := extractors.TryIncremental(context.Background(), repoPath, stateDir, nil, &extractorCfg)
+			// Use the caller-supplied ctx (the scheduler's shutdownCtx) so that
+			// daemon SIGTERM cancels any in-flight incremental subprocess —
+			// matching the fix applied to runIndex in issue #2176/#2491.
+			// Fixes issue #2495.
+			res := extractors.TryIncremental(ctx, repoPath, stateDir, nil, &extractorCfg)
 			if res.Done {
 				invalidateAfterIndex(repoPath)
 				tierAfterIndex(repoPath, ref)

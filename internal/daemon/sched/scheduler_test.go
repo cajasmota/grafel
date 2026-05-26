@@ -381,3 +381,86 @@ func TestResolveAlgoCap(t *testing.T) {
 		t.Errorf("resolveAlgoCap(0) = %d, want %d (NumCPU=%d)", auto, expected, runtime.NumCPU())
 	}
 }
+
+// TestSchedulerStop_Idempotent verifies that calling Stop() twice does not
+// panic. Prior to the sync.Once fix (issue #2494), the second call would
+// panic with "close of closed channel".
+func TestSchedulerStop_Idempotent(t *testing.T) {
+	s := New(Config{
+		Workers: 1,
+		Index: func(_ context.Context, _ string, _ string) error {
+			return nil
+		},
+	})
+	s.Start()
+
+	// First Stop — normal path.
+	s.Stop()
+
+	// Second Stop — must be a no-op and MUST NOT panic.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Stop() panicked on second call: %v", r)
+		}
+	}()
+	s.Stop()
+}
+
+// TestRunLinksUsesShutdownCtx verifies that the Links callback receives a
+// cancellable context derived from the scheduler's shutdownCtx, not a
+// context.Background() orphan. When Stop() is called, any in-flight Links
+// call should observe ctx.Done() — this is the fix for issue #2493.
+func TestRunLinksUsesShutdownCtx(t *testing.T) {
+	t.Helper()
+
+	linkStarted := make(chan struct{})
+	linkCtxCancelled := make(chan struct{})
+
+	s := New(Config{
+		Workers:      1,
+		LinkDebounce: 10 * time.Millisecond,
+		Index: func(_ context.Context, _ string, _ string) error {
+			return nil
+		},
+		Links: func(ctx context.Context, _ string) error {
+			close(linkStarted)
+			select {
+			case <-ctx.Done():
+				close(linkCtxCancelled)
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+				return nil // should not reach here in this test
+			}
+		},
+		GroupsForRepo: func(_ string) []string { return []string{"g"} },
+	})
+	s.Start()
+	s.Enqueue("/repo")
+
+	// Wait until the Links callback is running.
+	select {
+	case <-linkStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Links callback never started")
+	}
+
+	// Stop should cancel shutdownCtx, which must propagate to the Links ctx.
+	done := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-linkCtxCancelled:
+		// correct: shutdownCtx cancellation reached the Links callback
+	case <-time.After(2 * time.Second):
+		t.Error("Stop() did not cancel the Links callback context (issue #2493 regression)")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Error("Stop() did not return after Links callback exited")
+	}
+}
