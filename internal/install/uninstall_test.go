@@ -32,7 +32,7 @@ func TestRunUninstall_HappyPath(t *testing.T) {
 
 	// Confirm skills are present.
 	destSkillsDir := filepath.Join(filepath.Dir(env.claudeJSON), "skills")
-	for _, name := range []string{"generate-docs", "archigraph-graph-quality"} {
+	for _, name := range []string{"archigraph-repair", "archigraph-quality-check"} {
 		dst := filepath.Join(destSkillsDir, name)
 		if _, err := os.Stat(dst); err != nil {
 			t.Fatalf("skill %s should exist before uninstall: %v", name, err)

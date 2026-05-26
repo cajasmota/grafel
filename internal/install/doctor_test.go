@@ -60,20 +60,13 @@ func newDoctorTestEnv(t *testing.T) *doctorTestEnv {
 
 	// Skills dir.
 	skillsDir := filepath.Join(claudeDir, "skills")
-	skillName := "generate-docs"
+	skillName := "archigraph-quality-check"
 	skillDir := filepath.Join(skillsDir, skillName)
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# generate-docs"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# archigraph-quality-check"), 0o644); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
-	}
-	conventionsDir := filepath.Join(skillDir, "conventions")
-	if err := os.MkdirAll(conventionsDir, 0o755); err != nil {
-		t.Fatalf("mkdir conventions: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(conventionsDir, "base.md"), []byte("# conventions"), 0o644); err != nil {
-		t.Fatalf("write conventions/base.md: %v", err)
 	}
 
 	// Compute SHA for the binary.
@@ -623,30 +616,6 @@ func TestDoctorRenderReport_NoColor(t *testing.T) {
 	// Should not contain ANSI escape codes.
 	if containsStr(output, "\033[") {
 		t.Error("output should not contain ANSI codes when NO_COLOR=1")
-	}
-}
-
-// TestDoctorConventionsTamper: tamper a conventions file → conventions check warns.
-func TestDoctorConventionsTamper(t *testing.T) {
-	env := newDoctorTestEnv(t)
-
-	// Tamper conventions/base.md.
-	convFile := filepath.Join(env.skillsDir, env.skillName, "conventions", "base.md")
-	if err := os.WriteFile(convFile, []byte("# tampered conventions"), 0o644); err != nil {
-		t.Fatalf("tamper conventions: %v", err)
-	}
-
-	report := runDoctor(t, env, 1)
-
-	conv := findCheck(report, "conventions/generate-docs")
-	if conv == nil {
-		t.Fatal("conventions check missing")
-	}
-	if conv.OK {
-		t.Error("conventions check should fail after tamper")
-	}
-	if conv.Severity != install.SeverityWarning {
-		t.Errorf("conventions severity = %q, want warning", conv.Severity)
 	}
 }
 

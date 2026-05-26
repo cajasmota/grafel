@@ -18,7 +18,7 @@ import (
 	"strings"
 )
 
-// SkillNames lists the archigraph skills in canonical order.
+// SkillNames lists the 8 archigraph skills in canonical order.
 var SkillNames = []string{
 	"archigraph-aware-review",
 	"archigraph-business-docs",
@@ -31,7 +31,6 @@ var SkillNames = []string{
 	"archigraph-tech-docs",
 	"archigraph-test-page",
 	"extend-convention",
-	"generate-docs",
 	"using-archigraph",
 }
 

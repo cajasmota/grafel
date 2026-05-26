@@ -190,12 +190,7 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	claudeDirs := mcpreg.DetectClaudeConfigDirs(opts.ClaudeConfigDirs)
 	report.Checks = append(report.Checks, checkMCP(state, claudeDirs))
 
-	// ── Check 5: Conventions per-file SHA ──────────────────────────────────
-	if len(state.Skills) > 0 {
-		report.Checks = append(report.Checks, checkConventions(state, skillsDir)...)
-	}
-
-	// ── Check 6: .gitignore in tracked repos ────────────────────────────────
+	// ── Check 5: .gitignore in tracked repos ────────────────────────────────
 	for _, repo := range state.Gitignore.Repos {
 		report.Checks = append(report.Checks, checkGitignore(repo))
 	}
@@ -510,66 +505,6 @@ func mcpEntryDrift(cfgPath string) (missing bool, drift string) {
 		return true, ""
 	}
 	return false, ""
-}
-
-// checkConventions checks per-file SHA for convention files inside the
-// generate-docs skill (conventions/ subdirectory).
-func checkConventions(state *State, skillsDir string) []CheckResult {
-	genDocsRecord, ok := state.Skills["generate-docs"]
-	if !ok {
-		return nil // generate-docs not installed — skip
-	}
-
-	var results []CheckResult
-
-	if skillsDir == "" {
-		results = append(results, CheckResult{
-			Surface:  "conventions/generate-docs",
-			OK:       false,
-			Severity: SeverityWarning,
-			Drift:    []string{"skills directory not determined"},
-		})
-		return results
-	}
-
-	conventionsDir := filepath.Join(skillsDir, "generate-docs", "conventions")
-	if _, err := os.Stat(conventionsDir); err != nil {
-		// conventions dir doesn't exist — warn
-		results = append(results, CheckResult{
-			Surface:  "conventions/generate-docs",
-			OK:       false,
-			Severity: SeverityWarning,
-			Drift:    []string{"conventions directory missing"},
-		})
-		return results
-	}
-
-	// Build live manifest of only conventions/ files from the skill record.
-	var conventionDrift []string
-	for relPath, installedSHA := range genDocsRecord.Files {
-		if !strings.HasPrefix(relPath, "conventions/") {
-			continue
-		}
-		absPath := filepath.Join(skillsDir, "generate-docs", filepath.FromSlash(relPath))
-		data, err := os.ReadFile(absPath)
-		if err != nil {
-			conventionDrift = append(conventionDrift, fmt.Sprintf("%s missing", relPath))
-			continue
-		}
-		live := sha256Bytes(data)
-		if live != installedSHA {
-			conventionDrift = append(conventionDrift, fmt.Sprintf("%s sha mismatch", relPath))
-		}
-	}
-
-	cr := CheckResult{
-		Surface:  "conventions/generate-docs",
-		OK:       len(conventionDrift) == 0,
-		Severity: SeverityWarning,
-		Drift:    conventionDrift,
-	}
-	results = append(results, cr)
-	return results
 }
 
 // checkGitignore verifies that the .gitignore in repoRoot contains /.archigraph/.

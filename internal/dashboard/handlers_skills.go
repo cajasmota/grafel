@@ -90,17 +90,6 @@ type SkillUninstallRequest struct {
 // In a future version this would be fetched from a remote registry.
 var marketplaceCatalog = []CatalogSkill{
 	{
-		Slug:   "generate-docs",
-		Source: "archigraph-bundled",
-		SkillMeta: SkillMeta{
-			Name:        "generate-docs",
-			Description: "Generate comprehensive, navigable documentation for a codebase. Produces module-organised markdown docs with cross-repo links.",
-			Type:        "action",
-			WhenToUse:   "When you want to create or refresh /docs for a repository or group.",
-			Version:     "bundled",
-		},
-	},
-	{
 		Slug:   "using-archigraph",
 		Source: "archigraph-bundled",
 		SkillMeta: SkillMeta{
