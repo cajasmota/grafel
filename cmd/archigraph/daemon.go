@@ -27,6 +27,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/docgen"
+	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/jobs"
@@ -46,6 +47,13 @@ import (
 // per-module rows with file counters instead of a generic bar (#1531). It is
 // created once in runDaemon before the RPC + dashboard servers start.
 var daemonProgressBroker = progress.NewBroker()
+
+// daemonExtractorCfg is the ExtractorConfig built once at daemon startup from
+// the process environment (issue #2397). It is the single source of truth for
+// feature toggles such as ARCHIGRAPH_INCREMENTAL_REINDEX so that the scheduler
+// and TryIncremental consult IsIncrementalEnabled() instead of re-reading env
+// vars directly. Populated by runDaemon before the scheduler is wired.
+var daemonExtractorCfg extractor.ExtractorConfig
 
 // defaultDashboardPort is the default TCP port for the embedded dashboard.
 const defaultDashboardPort = 47274
@@ -279,6 +287,11 @@ func runDaemon(argv []string) error {
 		}
 	}
 
+	// Issue #2397: build the ExtractorConfig once at daemon startup from the
+	// process environment so downstream paths (scheduler, TryIncremental) can
+	// consult IsIncrementalEnabled() rather than re-reading env vars directly.
+	daemonExtractorCfg = extractor.ConfigFromEnv()
+
 	cfg := daemon.Config{
 		Layout:       layout,
 		Logger:       logger,
@@ -296,6 +309,8 @@ func runDaemon(argv []string) error {
 		SchedulerLinks:       daemonSchedulerLinks,
 		SchedulerAlgo:        daemonSchedulerAlgo,
 		SchedulerIncremental: daemonSchedulerIncremental,
+		// Single source of truth for the incremental toggle (issue #2397).
+		ExtractorConfig: &daemonExtractorCfg,
 
 		MaxRSSBudgetMB:      maxRSSBudget,
 		RSSHistoryPath:      filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
@@ -508,7 +523,7 @@ func daemonSchedulerIncremental(_ context.Context, repoPath string, ref string) 
 	if stateDir == "" {
 		stateDir = daemon.StateDirForRepo(repoPath)
 	}
-	res := extractors.TryIncremental(context.Background(), repoPath, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repoPath, stateDir, nil, &daemonExtractorCfg)
 	if res.Done {
 		invalidateAfterIndex(repoPath)
 		tierAfterIndex(repoPath, ref)

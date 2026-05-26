@@ -21,6 +21,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/transport"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
+	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
 
@@ -47,9 +48,16 @@ type Config struct {
 
 	// SchedulerIncremental, when non-nil, is wired as the S3 incremental
 	// file-level reindex hook (issue #2153). It is attempted before
-	// SchedulerIndex when ARCHIGRAPH_INCREMENTAL_REINDEX=1 is set. When nil
+	// SchedulerIndex when the incremental toggle is active. When nil
 	// the incremental path is never tried (default: full reindex always).
 	SchedulerIncremental func(ctx context.Context, repo string, ref string) sched.IncrementalResult
+
+	// ExtractorConfig, when non-nil, is passed to the scheduler so it can
+	// consult IsIncrementalEnabled() instead of reading
+	// ARCHIGRAPH_INCREMENTAL_REINDEX from the process env directly (issue
+	// #2397). When nil the scheduler falls back to the env-var path, which
+	// preserves backward compatibility.
+	ExtractorConfig *extractor.ExtractorConfig
 
 	// MaxRSSBudgetMB caps the total predicted RSS of concurrently
 	// running index jobs. 0 disables admission control (legacy
@@ -267,6 +275,10 @@ func Run(ctx context.Context, cfg Config) error {
 			// S3 incremental file-level reindex (issue #2153). When nil
 			// the scheduler falls through to full reindex on every tick.
 			Incremental: cfg.SchedulerIncremental,
+			// Issue #2397: single source of truth for the incremental toggle.
+			// The scheduler calls ExtractorConfig.IsIncrementalEnabled()
+			// rather than reading the env var directly.
+			ExtractorConfig: cfg.ExtractorConfig,
 		})
 		if cfg.MaxRSSBudgetMB > 0 {
 			logger.Info("scheduler: RSS-budget admission control enabled", "budget_mb", cfg.MaxRSSBudgetMB, "history", cfg.RSSHistoryPath)

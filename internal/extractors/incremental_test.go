@@ -194,7 +194,7 @@ func TestIncremental_WhitespaceOnlyEdit_Skipped(t *testing.T) {
 	// The AST hash should differ (content changed) but function body unchanged.
 	// For this test we verify that TryIncremental completes successfully and
 	// the graph still contains "Hello".
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Errorf("TryIncremental: unexpected fallback: %s", res.FallbackReason)
 	}
@@ -235,7 +235,7 @@ func TestIncremental_SingleFileEdit_FunctionBodyChange(t *testing.T) {
 	writeFile(t, repo, "svc/service.go", "package svc\n\nfunc NewFunc() {}\n")
 
 	t0 := time.Now()
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	dur := time.Since(t0)
 
 	if !res.Done {
@@ -290,7 +290,7 @@ func TestIncremental_AddNewFile_EntitiesAppear(t *testing.T) {
 	// Add a new file with a new entity.
 	writeFile(t, repo, "new_handler.go", "package main\n\nfunc NewHandler() {}\n")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("TryIncremental: unexpected fallback: %s", res.FallbackReason)
 	}
@@ -347,7 +347,7 @@ func TestIncremental_DeleteFile_EntitiesDisappear(t *testing.T) {
 	// Delete b.go.
 	deleteFile(t, repo, "b.go")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("TryIncremental: unexpected fallback: %s", res.FallbackReason)
 	}
@@ -401,7 +401,7 @@ func TestIncremental_TooManyChangedFiles_Fallback(t *testing.T) {
 	m := diff.LoadManifest(t.TempDir()) // empty manifest from an unrelated temp dir
 	_ = diff.SaveManifest(stateDir, repo, m)
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if res.Done {
 		t.Error("TryIncremental should fall back when > 20 files changed (default feature-branch limit)")
 	}
@@ -433,7 +433,7 @@ func TestIncremental_EnvOverrideLimit(t *testing.T) {
 	// so it should succeed — but with env override set to 5 it should fallback.
 	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "5")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if res.Done {
 		t.Error("TryIncremental should fall back when files exceed ARCHIGRAPH_INCREMENTAL_MAX_FILES=5")
 	}
@@ -464,7 +464,7 @@ func TestIncremental_MainBranchHotPath_30Files(t *testing.T) {
 	// (same as mainBranchIncrementalFiles).
 	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "50")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Errorf("TryIncremental should succeed on 30-file batch when limit is 50 (main-branch hot-path), fallback=%s", res.FallbackReason)
 	}
@@ -492,7 +492,7 @@ func TestIncremental_FeatureBranch_50Files_Fallback(t *testing.T) {
 
 	// Default limit (no env override). repo is a bare temp dir, not a git repo,
 	// so IsDefaultBranch returns false → limit = defaultIncrementalFiles (20).
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if res.Done {
 		t.Error("TryIncremental should fall back on 50-file feature-branch batch (limit=20)")
 	}
@@ -538,7 +538,7 @@ func TestIncremental_SignatureChange_InboundCallersRewired(t *testing.T) {
 	// Mutate Foo's signature: rename parameter (arity unchanged but signature text differs).
 	writeFile(t, repo, "pkg/foo.go", "package pkg\n\nfunc Foo(count int) error { return nil }\n")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("TryIncremental: signature change should not trigger fallback, got: %s", res.FallbackReason)
 	}
@@ -602,7 +602,7 @@ func TestIncremental_ManifestCorruption_FallsBackToFull(t *testing.T) {
 	// fresh empty manifest on corruption, so all files appear "changed". Since
 	// the graph exists, the incremental pass should succeed (treating main.go as
 	// new/changed and re-extracting it) — not panic or error out.
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	// The result may be Done=true (treated as new file) or Done=false (fallback
 	// for other reasons). What matters is that it does NOT panic.
 	t.Logf("manifest corruption recovery: done=%v fallback=%s took=%s",
@@ -633,14 +633,14 @@ func TestIncremental_ManifestGC_DeletedEntryRemoved(t *testing.T) {
 	deleteFile(t, repo, "todelete.go")
 
 	// First incremental pass: should detect deletion, prune entity, update manifest.
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("first incremental (deletion): unexpected fallback: %s", res.FallbackReason)
 	}
 
 	// Second incremental pass: todelete.go should NOT appear as a "changed" file
 	// (the manifest GC should have removed its entry on the first pass).
-	res2 := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res2 := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res2.Done {
 		t.Fatalf("second incremental (after GC): unexpected fallback: %s", res2.FallbackReason)
 	}
@@ -660,7 +660,7 @@ func TestIncremental_NoExistingGraph_Fallback(t *testing.T) {
 
 	writeFile(t, repo, "main.go", "package main\n\nfunc Main() {}\n")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if res.Done {
 		t.Error("TryIncremental should fall back when no existing graph is present")
 	}
@@ -684,7 +684,7 @@ func TestIncremental_NoChanges_DoneWithoutWork(t *testing.T) {
 	seedManifest(t, repo, stateDir)
 
 	// No mutation — manifest is up to date.
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("TryIncremental: unexpected fallback when no files changed: %s", res.FallbackReason)
 	}
@@ -724,7 +724,7 @@ func TestIncremental_GoldenSemanticEquivalence(t *testing.T) {
 	seedManifest(t, repo, stateDir)
 
 	// Sanity: incremental on unchanged repo should preserve both entities.
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("phase-1 baseline: unexpected fallback: %s", res.FallbackReason)
 	}
@@ -736,7 +736,7 @@ func TestIncremental_GoldenSemanticEquivalence(t *testing.T) {
 	// Phase 2: remove Beta, add Gamma.
 	writeFile(t, repo, "core.go", "package core\n\nfunc Alpha() {}\n\nfunc Gamma() {}\n")
 
-	res = extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res = extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("phase-2 mutation: unexpected fallback: %s", res.FallbackReason)
 	}
@@ -826,7 +826,7 @@ func TestIncrementalResult_FallbackPreservesReason(t *testing.T) {
 
 	writeFile(t, repo, "x.go", "package p\n")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if res.Done {
 		t.Error("should fail back when no graph.fb exists")
 	}
@@ -902,7 +902,7 @@ func TestIncremental_Performance_SingleFileEdit(t *testing.T) {
 	writeFile(t, repo, "svc/svc0.go", "package svc\n\nfunc Func0Updated() {}\nfunc Helper0Updated() {}\n")
 
 	t0 := time.Now()
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	dur := time.Since(t0)
 
 	if !res.Done {
@@ -934,7 +934,7 @@ func TestIncremental_GraphFBReadableAfterWrite(t *testing.T) {
 	// Edit the file.
 	writeFile(t, repo, "pkg.go", "package p\n\nfunc Foo() {}\n\nfunc Bar() {}\n")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("TryIncremental failed: %s", res.FallbackReason)
 	}
@@ -969,13 +969,13 @@ func TestIncremental_ManifestUpdatedAfterSuccess(t *testing.T) {
 	// Change the file.
 	writeFile(t, repo, "app.go", "package app\n\nfunc Start() {}\n\nfunc Stop() {}\n")
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("TryIncremental failed: %s", res.FallbackReason)
 	}
 
 	// Run incremental again immediately — no changes since last stamp.
-	res2 := extractors.TryIncremental(context.Background(), repo, stateDir, nil)
+	res2 := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res2.Done {
 		t.Fatalf("second TryIncremental failed: %s", res2.FallbackReason)
 	}
@@ -1122,5 +1122,109 @@ func TestIncrementalConfig_EffectiveMaxFiles_NilConfig_EnvUnset(t *testing.T) {
 	var cfg *extractor.ExtractorConfig
 	if got := cfg.EffectiveIncrementalMaxFiles(); got != 0 {
 		t.Errorf("nil Config + unset env: expected 0 (auto); got %d", got)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #2396 — TryIncremental respects injected ExtractorConfig
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestTryIncremental_InjectedConfig_MaxFilesOverride verifies that TryIncremental
+// honours the trigger-limit set in an injected ExtractorConfig rather than
+// always falling through to the env-var / gitmeta path.
+//
+// Concretely: set IncrementalMaxFiles=1 in Config (env var unset) and change
+// two files in the repo. The incremental path should fall back with
+// "too-many-changed" because 2 > 1, even though the env-var-based default
+// would allow up to 20 files.
+func TestTryIncremental_InjectedConfig_MaxFilesOverride(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "") // ensure env var is unset
+
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Two source files — both will be "changed" relative to the manifest.
+	writeFile(t, repo, "a.go", "package p\n\nfunc Alpha() {}\n")
+	writeFile(t, repo, "b.go", "package p\n\nfunc Beta() {}\n")
+
+	entities := []graph.Entity{
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "Alpha", "a.go"),
+			Name: "Alpha", Kind: "SCOPE.Operation", SourceFile: "a.go", Language: "go"},
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "Beta", "b.go"),
+			Name: "Beta", Kind: "SCOPE.Operation", SourceFile: "b.go", Language: "go"},
+	}
+	buildMinimalGraph(t, stateDir, entities, nil)
+	seedManifest(t, repo, stateDir)
+
+	// Mutate both files so the diff detects 2 changed files.
+	writeFile(t, repo, "a.go", "package p\n\nfunc Alpha() { /* changed */ }\n")
+	writeFile(t, repo, "b.go", "package p\n\nfunc Beta() { /* changed */ }\n")
+
+	// Inject a config with a very low limit (1). With 2 changed files the
+	// incremental path must fall back.
+	cfg := &extractor.ExtractorConfig{
+		IncrementalReindex:    true,
+		IncrementalReindexSet: true,
+		IncrementalMaxFiles:   1, // Config channel: limit = 1
+	}
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, cfg)
+	if res.Done {
+		t.Errorf("TryIncremental should have fallen back (2 files > limit 1), but Done=true")
+	}
+	if res.FallbackReason == "" {
+		t.Error("FallbackReason should be set when falling back on too-many-changed")
+	}
+}
+
+// TestTryIncremental_InjectedConfig_MaxFilesPermitsChange verifies the positive
+// case: injected config with a generous limit allows the incremental path to
+// succeed even though the env-var path would use the default lower limit.
+func TestTryIncremental_InjectedConfig_MaxFilesPermitsChange(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "") // ensure env var is unset
+
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	writeFile(t, repo, "svc.go", "package p\n\nfunc Svc() {}\n")
+
+	entities := []graph.Entity{
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "Svc", "svc.go"),
+			Name: "Svc", Kind: "SCOPE.Operation", SourceFile: "svc.go", Language: "go"},
+	}
+	buildMinimalGraph(t, stateDir, entities, nil)
+	seedManifest(t, repo, stateDir)
+
+	// Rename the function — one file changed.
+	writeFile(t, repo, "svc.go", "package p\n\nfunc SvcV2() {}\n")
+
+	// Inject a config with IncrementalReindex explicitly enabled and a generous
+	// limit so the path definitely runs (env var is unset).
+	cfg := &extractor.ExtractorConfig{
+		IncrementalReindex:    true,
+		IncrementalReindexSet: true,
+		IncrementalMaxFiles:   100,
+	}
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, cfg)
+	if !res.Done {
+		t.Fatalf("TryIncremental should have succeeded with injected config (limit=100, 1 file changed), got fallback: %s", res.FallbackReason)
+	}
+
+	// Correctness: Svc removed, SvcV2 present.
+	names := loadGraphEntityNames(t, stateDir)
+	for _, n := range names {
+		if n == "Svc" {
+			t.Errorf("Old entity 'Svc' should have been removed after incremental, names=%v", names)
+		}
+	}
+	found := false
+	for _, n := range names {
+		if n == "SvcV2" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("New entity 'SvcV2' should appear after incremental reindex, names=%v", names)
 	}
 }

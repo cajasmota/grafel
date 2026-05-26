@@ -151,6 +151,8 @@ func StampFile(absPath string) (FileStamp, error) {
 // TryIncremental attempts a file-level incremental reindex for repoPath.
 // stateDir is the on-disk directory where graph.fb and file-index.json live.
 // logger may be nil (falls back to stderr).
+// cfg is optional (nil-safe): when non-nil its IncrementalMaxFiles value
+// overrides the env-var / gitmeta heuristic for the trigger limit (issue #2396).
 //
 // The call flow:
 //  1. Load the diff manifest; detect changed files.
@@ -163,7 +165,7 @@ func StampFile(absPath string) (FileStamp, error) {
 //     targeting newly extracted entities.
 //  8. Merge new entities/rels into the document, sort, write graph.fb atomically.
 //  9. Update the diff manifest.
-func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.Logger) Result {
+func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.Logger, cfg *extractor.ExtractorConfig) Result {
 	t0 := time.Now()
 	if logger == nil {
 		logger = log.New(os.Stderr, "incremental: ", log.LstdFlags)
@@ -221,9 +223,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	totalChanged := len(changedFiles) + len(deletedFiles)
 
 	// --- Step 2: trigger limit (#2170 raised limits + main-branch hot-path) ---
-	// Issue #2320: TryIncremental does not (yet) receive an ExtractorConfig;
-	// pass nil so effectiveLimit falls through to the env-var / gitmeta path.
-	limit := effectiveLimit(absRepo, nil)
+	// Issue #2396: cfg is now threaded through from the caller so programmatic
+	// config overrides the env-var / gitmeta path when non-nil.
+	limit := effectiveLimit(absRepo, cfg)
 	if totalChanged > limit {
 		return fallback(t0, fmt.Sprintf("too-many-changed files=%d limit=%d",
 			totalChanged, limit))

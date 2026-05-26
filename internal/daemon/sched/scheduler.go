@@ -46,6 +46,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/extractor"
 )
 
 // IndexFn re-indexes a single repo at a specific git ref. The scheduler
@@ -175,9 +177,9 @@ type Config struct {
 	Clone CloneFn
 
 	// Incremental, when non-nil, is attempted before IndexFn when the
-	// ARCHIGRAPH_INCREMENTAL_REINDEX=1 env var is set (S3 of epic #2149,
-	// issue #2153). It performs a surgical file-level graph patch that is
-	// ~25× faster than a full reindex for single-file edits.
+	// incremental reindex path is enabled (S3 of epic #2149, issue #2153).
+	// It performs a surgical file-level graph patch that is ~25× faster
+	// than a full reindex for single-file edits.
 	//
 	// The function returns (done=true) when the incremental patch succeeded
 	// and the full IndexFn should be skipped. It returns (done=false) on any
@@ -187,6 +189,17 @@ type Config struct {
 	// Default (nil): incremental path is never tried; behaviour is identical
 	// to before this field was added.
 	Incremental IncrementalFn
+
+	// ExtractorConfig, when non-nil, is consulted by the scheduler to
+	// determine whether the incremental reindex path is active (issue #2397).
+	// IsIncrementalEnabled() on this config replaces the private
+	// incrementalEnabled() helper that read ARCHIGRAPH_INCREMENTAL_REINDEX
+	// directly, establishing a single source of truth.
+	//
+	// When nil the scheduler falls back to env-var reads via a nil-safe
+	// ExtractorConfig.IsIncrementalEnabled() call, preserving backward
+	// compatibility for callers that have not yet been migrated.
+	ExtractorConfig *extractor.ExtractorConfig
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -674,13 +687,18 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 	// S3: attempt incremental file-level reindex before the full index or
 	// clone-from-parent path. Only tried when the Incremental callback is
-	// configured AND the opt-in env var is set.
+	// configured AND the incremental toggle is active.
+	//
+	// Issue #2397: consult s.cfg.ExtractorConfig.IsIncrementalEnabled()
+	// (single source of truth) instead of the private incrementalEnabled()
+	// helper that read ARCHIGRAPH_INCREMENTAL_REINDEX directly. The nil-
+	// receiver method falls through to the env-var for backward compat.
 	//
 	// On success (res.Done=true) we skip both clone and full reindex.
 	// On fallback (res.Done=false) we log the reason and fall through normally.
 	var err error
 	incrementalDone := false
-	if s.cfg.Incremental != nil && incrementalEnabled() {
+	if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
 		res := s.cfg.Incremental(context.Background(), repoPath, tok.ref)
 		if res.Done {
 			incrementalDone = true
@@ -1034,14 +1052,6 @@ func formatMB(mb int64) string {
 		return "0MB"
 	}
 	return itoa(mb) + "MB"
-}
-
-// incrementalEnabled reports whether the S3 incremental reindex path is
-// active. Reads ARCHIGRAPH_INCREMENTAL_REINDEX once per call. Default is
-// false so behaviour is unchanged for existing installations.
-func incrementalEnabled() bool {
-	v := os.Getenv("ARCHIGRAPH_INCREMENTAL_REINDEX")
-	return v == "1" || v == "true"
 }
 
 func itoa(n int64) string {
