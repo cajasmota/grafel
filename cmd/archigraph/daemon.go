@@ -604,6 +604,55 @@ func makeDaemonRebuildFunc(concurrency int) daemon.RebuildFunc {
 	}
 }
 
+// repoResult holds the outcome of indexing a single repo during a rebuild.
+// It is shared between the serial and parallel paths in daemonRebuildFuncCore
+// and filled by rebuildWorkerPool.
+type repoResult struct {
+	path string
+	slug string
+	err  error
+	took time.Duration
+}
+
+// repoWork is the unit of work dispatched to each indexer invocation.
+type repoWork struct {
+	r registry.Repo
+}
+
+// rebuildWorkerPool dispatches work items to at most conc concurrent goroutines
+// and collects the results into a slice that preserves input order.
+//
+// workFn is called once per item. It must be safe to invoke concurrently.
+// Panics inside workFn are NOT recovered here — callers are responsible for
+// protecting workFn with a recover if needed (see daemonRebuildFuncCore).
+//
+// The semaphore protocol guarantees that the defer releasing a slot only fires
+// after the slot has been acquired, so a panic before sem<- cannot leave a
+// phantom holder. The deferred wg.Done is registered before sem<-, which means
+// it fires even if the goroutine panics after launch but before acquiring the
+// slot — in that rare edge the slot is simply never acquired and the result
+// slot stays at its zero value.
+func rebuildWorkerPool(conc int, work []repoWork, workFn func(idx int, rw repoWork) repoResult) []repoResult {
+	results := make([]repoResult, len(work))
+	sem := make(chan struct{}, conc)
+	var wg sync.WaitGroup
+	for i, w := range work {
+		wg.Add(1)
+		go func(idx int, rw repoWork) {
+			defer wg.Done()
+
+			// Acquire semaphore slot. This MUST come before any panic-recovery
+			// defer so the defer's <-sem only fires once the slot is actually held.
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			results[idx] = workFn(idx, rw)
+		}(i, w)
+	}
+	wg.Wait()
+	return results
+}
+
 // daemonRebuildFuncCore is the testable inner implementation of the rebuild
 // logic. concurrency is supplied by the caller (captured in the closure
 // returned by makeDaemonRebuildFunc, or set directly in tests). indexFn and
@@ -650,9 +699,6 @@ func daemonRebuildFuncCore(
 	}
 
 	// Collect repos to index, respecting the optional single-slug filter.
-	type repoWork struct {
-		r registry.Repo
-	}
 	var work []repoWork
 	for _, r := range cfg.Repos {
 		if args.Slug != "" && r.Slug != args.Slug {
@@ -667,121 +713,63 @@ func daemonRebuildFuncCore(
 		conc = 1
 	}
 
-	// Results collected from workers.
-	type repoResult struct {
-		path string
-		slug string
-		err  error
-		took time.Duration
+	// indexOne executes the index function for a single repo and returns its
+	// result. It is shared by both the serial and parallel paths so the logic
+	// (panic recovery, wipe, incremental opts, progress slugs, slug tag) stays
+	// in one place.
+	indexOne := func(idx int, rw repoWork) repoResult {
+		t0 := time.Now()
+		var indexErr error
+		func() {
+			// Panic recovery (#2097): convert an extractor panic into an error so
+			// the remaining repos in the batch can still run, and so a panicking
+			// goroutine cannot crash the daemon process.
+			defer func() {
+				if r := recover(); r != nil {
+					indexErr = fmt.Errorf("index panic: %v", r)
+					fmt.Fprintf(os.Stderr,
+						"archigraph: rebuild %s panic recovered: %v\n",
+						rw.r.Slug, r)
+				}
+			}()
+			if args.Wipe {
+				_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
+			}
+			var opts []IndexOption
+			if args.Incremental && !args.Wipe {
+				opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
+			}
+			// Publish granular per-repo progress into the shared broker so the
+			// WebUI Index step renders live rows + file counters (#1531).
+			opts = append(opts,
+				WithPublisher(daemonProgressBroker),
+				WithProgressSlugs(args.Group, rw.r.Slug))
+			// #1576: tag the graph with the CONFIG slug (not the on-disk
+			// directory basename) so doc.Repo matches the slug the dashboard
+			// keys nodes by and the slug the cross-repo link pass emits as the
+			// link endpoint prefix. When the wizard slugifies a repo name
+			// (e.g. upvate_core → upvate-core) an empty repoTag would fall back
+			// to the dir basename and diverge, dropping every cross-repo edge.
+			indexErr = indexFn(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
+		}()
+		return repoResult{
+			path: rw.r.Path,
+			slug: rw.r.Slug,
+			err:  indexErr,
+			took: time.Since(t0),
+		}
 	}
-	results := make([]repoResult, len(work))
 
+	var results []repoResult
 	if conc == 1 || len(work) <= 1 {
 		// --- Serial path ---
+		results = make([]repoResult, len(work))
 		for i, w := range work {
-			t0 := time.Now()
-			// Panic recovery (#2097): convert an extractor panic into an error so
-			// the remaining repos in the batch can still run.
-			var indexErr error
-			func(rw repoWork, idx int) {
-				defer func() {
-					if r := recover(); r != nil {
-						indexErr = fmt.Errorf("index panic: %v", r)
-						fmt.Fprintf(os.Stderr,
-							"archigraph: rebuild %s panic recovered: %v\n",
-							rw.r.Slug, r)
-					}
-				}()
-				if args.Wipe {
-					_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
-				}
-				var opts []IndexOption
-				if args.Incremental && !args.Wipe {
-					opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
-				}
-				// Publish granular per-repo progress into the shared broker so the
-				// WebUI Index step renders live rows + file counters (#1531).
-				opts = append(opts,
-					WithPublisher(daemonProgressBroker),
-					WithProgressSlugs(args.Group, rw.r.Slug))
-				// #1576: tag the graph with the CONFIG slug (not the on-disk
-				// directory basename) so doc.Repo matches the slug the dashboard
-				// keys nodes by and the slug the cross-repo link pass emits as the
-				// link endpoint prefix. When the wizard slugifies a repo name
-				// (e.g. upvate_core → upvate-core) an empty repoTag would fall back
-				// to the dir basename and diverge, dropping every cross-repo edge.
-				indexErr = indexFn(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
-			}(w, i)
-			results[i] = repoResult{
-				path: w.r.Path,
-				slug: w.r.Slug,
-				err:  indexErr,
-				took: time.Since(t0),
-			}
+			results[i] = indexOne(i, w)
 		}
 	} else {
-		// --- Parallel path: semaphore-bounded worker pool ---
-		//
-		// Panic recovery (#2097): a panic inside indexFn would
-		// propagate out of the goroutine and crash the daemon. We recover,
-		// convert the panic to an error stored in results[idx], and release
-		// the semaphore slot via defer so subsequent goroutines are not
-		// starved. The deferred <-sem is registered AFTER the blocking
-		// sem<- succeeds, so a panic before acquiring the slot cannot leave
-		// a phantom holder either.
-		sem := make(chan struct{}, conc)
-		var wg sync.WaitGroup
-		for i, w := range work {
-			wg.Add(1)
-			go func(idx int, rw repoWork) {
-				defer wg.Done()
-
-				// Acquire semaphore slot. This MUST come before the
-				// panic-recovery defer so the defer's <-sem only fires
-				// once the slot is actually held.
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				t0 := time.Now()
-
-				// Recover from panics in the index function so a single
-				// failing repo does not crash the daemon process (#2097).
-				var indexErr error
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							indexErr = fmt.Errorf("index panic: %v", r)
-							fmt.Fprintf(os.Stderr,
-								"archigraph: rebuild %s panic recovered: %v\n",
-								rw.r.Slug, r)
-						}
-					}()
-
-					if args.Wipe {
-						_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
-					}
-					var opts []IndexOption
-					if args.Incremental && !args.Wipe {
-						opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
-					}
-					// Publish granular per-repo progress into the shared broker so
-					// the WebUI Index step renders live rows + file counters (#1531).
-					opts = append(opts,
-						WithPublisher(daemonProgressBroker),
-						WithProgressSlugs(args.Group, rw.r.Slug))
-					// #1576: tag with the CONFIG slug — see serial path above.
-					indexErr = indexFn(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
-				}()
-
-				results[idx] = repoResult{
-					path: rw.r.Path,
-					slug: rw.r.Slug,
-					err:  indexErr,
-					took: time.Since(t0),
-				}
-			}(i, w)
-		}
-		wg.Wait()
+		// --- Parallel path: delegate to rebuildWorkerPool ---
+		results = rebuildWorkerPool(conc, work, indexOne)
 	}
 
 	// Collect successful paths; log per-repo wall time; gather errors.
