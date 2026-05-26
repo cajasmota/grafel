@@ -23,7 +23,7 @@ var SkillNames = []string{
 	"archigraph-aware-review",
 	"archigraph-patterns-discover",
 	"archigraph-patterns-sync",
-	"archigraph-quality-check",
+	"archigraph-graph-quality",
 	"archigraph-resolve",
 	"archigraph-test-page",
 	"extend-convention",

@@ -123,16 +123,6 @@ var marketplaceCatalog = []CatalogSkill{
 		},
 	},
 	{
-		Slug:   "archigraph-graph-enrich",
-		Source: "archigraph-bundled",
-		SkillMeta: SkillMeta{
-			Name:        "archigraph-graph-enrich",
-			Description: "Annotates the graph with structured YAML frontmatter for http_endpoint, process_flow, and message_topic entities so the dashboard panels (Paths, Flows, Topology) display rich data.",
-			Type:        "action",
-			WhenToUse:   "When dashboard panels are blank or after indexing new entities to populate Paths, Flows, and Topology with summaries, ranks, and gap analysis.",
-		},
-	},
-	{
 		Slug:   "archigraph-graph-quality",
 		Source: "archigraph-bundled",
 		SkillMeta: SkillMeta{
@@ -152,16 +142,6 @@ var marketplaceCatalog = []CatalogSkill{
 			Type:        "action",
 			WhenToUse:   "When the pending queue is non-empty and repairs have been reviewed.",
 			Version:     "bundled",
-		},
-	},
-	{
-		Slug:   "archigraph-tech-docs",
-		Source: "archigraph-bundled",
-		SkillMeta: SkillMeta{
-			Name:        "archigraph-tech-docs",
-			Description: "Generates the complete technical documentation set for a registered group: per-module READMEs, API reference, cross-cutting concerns, group synthesis, cross-repo links, and pattern library.",
-			Type:        "action",
-			WhenToUse:   "When documenting a repo or group for engineers. Run after /archigraph-resolve and optionally /archigraph-graph-quality to confirm graph health before spending tokens.",
 		},
 	},
 	// Third-party stub entries — demo marketplace entries
