@@ -115,3 +115,47 @@ func Test_handleListCommunities_ExplicitLimitHigherThanLen_2289(t *testing.T) {
 		t.Errorf("limit=10 with 2 entities should return 2, got %v", top)
 	}
 }
+
+// Test_handleListCommunities_SortBySize_2319 verifies that communities are
+// sorted by size in descending order before applying min_size and top_entities_limit.
+// This ensures the cap applies to the largest communities, not an arbitrary subset.
+// Issue #2319: without sorting, top_entities_limit=3 would pick 3 communities in
+// iteration order rather than the 3 largest.
+func Test_handleListCommunities_SortBySize_2319(t *testing.T) {
+	doc := &graph.Document{
+		Communities: []graph.CommunityResult{
+			// Provided in unsorted order (sizes 10, 50, 30)
+			{ID: 1, Size: 10, Modularity: 0.5, TopEntities: []string{"a"}},
+			{ID: 2, Size: 50, Modularity: 0.6, TopEntities: []string{"b", "c"}},
+			{ID: 3, Size: 30, Modularity: 0.4, TopEntities: []string{"d", "e", "f"}},
+		},
+	}
+	srv := newTestServerWithDocs(t, map[string]*graph.Document{"r": doc})
+	text := callEndpointToolText(t, srv.handleListCommunities, map[string]any{
+		"group":              "test",
+		"min_size":           20,  // filters out id=1 (size 10)
+		"top_entities_limit": 3,   // default; not a limit on count but per-community
+	})
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(text), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nbody=%s", err, text)
+	}
+	// Should keep ids 2 (50) and 3 (30), filtered in size descending order.
+	if len(got) != 2 {
+		t.Fatalf("want 2 communities (sizes 50 and 30 >= min_size 20), got %d: %+v", len(got), got)
+	}
+	// First result should be the largest (id=2, size 50)
+	if got[0]["id"].(float64) != 2 {
+		t.Errorf("first community should be id=2 (size 50), got id=%v", got[0]["id"])
+	}
+	if got[0]["size"].(float64) != 50 {
+		t.Errorf("first community size should be 50, got %v", got[0]["size"])
+	}
+	// Second result should be id=3 (size 30)
+	if got[1]["id"].(float64) != 3 {
+		t.Errorf("second community should be id=3 (size 30), got id=%v", got[1]["id"])
+	}
+	if got[1]["size"].(float64) != 30 {
+		t.Errorf("second community size should be 30, got %v", got[1]["size"])
+	}
+}

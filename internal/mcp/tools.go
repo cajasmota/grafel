@@ -1227,6 +1227,11 @@ func (s *Server) handleListCommunities(ctx context.Context, req mcpapi.CallToolR
 		if r.Doc == nil {
 			continue
 		}
+		// Sort communities by size descending so top_entities_limit applies to the
+		// largest communities (issue #2319). This ensures deterministic results.
+		sort.SliceStable(r.Doc.Communities, func(i, j int) bool {
+			return r.Doc.Communities[i].Size > r.Doc.Communities[j].Size
+		})
 		for _, c := range r.Doc.Communities {
 			if c.Size < minSize {
 				continue
