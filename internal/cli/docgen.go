@@ -830,7 +830,12 @@ making any changes.`,
 			}
 
 			migrateOpts := docgen.MigrateOptions{
-				Group: resolvedGroup,
+				Group:   resolvedGroup,
+				HomeDir: homeDir,
+				// StagingOnly: Phase 1 above already processed docs/ dirs with
+				// the idempotency guard; RunMigrateInRepo must only sweep
+				// orphaned staging runs to avoid double-processing docs/ dirs.
+				StagingOnly: true,
 				GroupConfigLoader: func(_ string) ([]docgen.MigrateRepo, error) {
 					return migrateRepos, nil
 				},

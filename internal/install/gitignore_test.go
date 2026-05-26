@@ -229,21 +229,14 @@ func TestDetectGitRepo_InRepo(t *testing.T) {
 		t.Fatalf("create git repo dir: %v", err)
 	}
 
-	// Try to init a real git repo; if git is not available, skip this test
-	// (the NotInRepo test still verifies the false case).
-	gerr := os.Chdir(gitRepo)
-	if gerr != nil {
-		t.Skipf("cannot chdir to temp dir: %v", gerr)
-	}
-	defer func() {
-		// Restore original directory (if needed; temp dir will be cleaned up anyway).
-		_ = os.Chdir("/tmp")
-	}()
-
-	out, gerr := exec.Command("git", "init", "-q").CombinedOutput()
-	if gerr != nil {
+	// Initialise the repo by passing the path directly to git init — avoids
+	// os.Chdir which holds the process CWD on the TempDir and causes
+	// "The process cannot access the file because it is being used by
+	// another process" cleanup failures on Windows.
+	out, err := exec.Command("git", "init", "-q", gitRepo).CombinedOutput()
+	if err != nil {
 		// Git not available — skip this test.
-		t.Skipf("git init failed: %v: %s", gerr, out)
+		t.Skipf("git init failed: %v: %s", err, out)
 	}
 
 	// Call DetectGitRepo from within the repo.

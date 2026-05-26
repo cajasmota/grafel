@@ -39,7 +39,7 @@ func setDirModTime(t *testing.T, dir string, mt time.Time) {
 // than the max-age threshold are removed.
 func TestCleanupRemovesStaleBackups(t *testing.T) {
 	home := setupFakeHome(t)
-	docsRoot := filepath.Join(home, ".archigraph", "docs")
+	docsRoot := filepath.Join(home, "docs")
 
 	// Create a stale backup: mygroup.previous-20260101T000000Z/
 	staleBackup := filepath.Join(docsRoot, "mygroup.previous-20260101T000000Z")
@@ -83,7 +83,7 @@ func TestCleanupRemovesStaleBackups(t *testing.T) {
 // old (below the 7-day threshold) is not removed.
 func TestCleanupFreshBackupPreserved(t *testing.T) {
 	home := setupFakeHome(t)
-	docsRoot := filepath.Join(home, ".archigraph", "docs")
+	docsRoot := filepath.Join(home, "docs")
 
 	freshBackup := filepath.Join(docsRoot, "mygroup.previous-20990101T000000Z")
 	writeFile(t, filepath.Join(freshBackup, "index.md"))
@@ -112,7 +112,7 @@ func TestCleanupFreshBackupPreserved(t *testing.T) {
 // TestCleanupDryRun verifies that --dry-run reports paths without removing them.
 func TestCleanupDryRun(t *testing.T) {
 	home := setupFakeHome(t)
-	docsRoot := filepath.Join(home, ".archigraph", "docs")
+	docsRoot := filepath.Join(home, "docs")
 
 	staleBackup := filepath.Join(docsRoot, "mygroup.previous-20260101T000000Z")
 	writeFile(t, filepath.Join(staleBackup, "index.md"))
@@ -142,7 +142,7 @@ func TestCleanupDryRun(t *testing.T) {
 // backups and leaves other groups untouched.
 func TestCleanupGroupScope(t *testing.T) {
 	home := setupFakeHome(t)
-	docsRoot := filepath.Join(home, ".archigraph", "docs")
+	docsRoot := filepath.Join(home, "docs")
 
 	staleA := filepath.Join(docsRoot, "groupA.previous-20260101T000000Z")
 	writeFile(t, filepath.Join(staleA, "index.md"))

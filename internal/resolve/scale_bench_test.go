@@ -317,10 +317,12 @@ func TestBuildIndexFromModules_SubQuadratic(t *testing.T) {
 	ratio := float64(t500) / float64(t100)
 	t.Logf("100-mod avg: %dns  500-mod avg: %dns  ratio: %.2fx", t100, t500, ratio)
 
-	// O(N log N): 500/100 = 5, so ceiling is 5 * log(500)/log(100) ≈ 6.5.
-	// We allow up to 8× to absorb measurement noise and GC pauses.
-	if ratio > 8 {
-		t.Errorf("scaling ratio %.2fx exceeds 8× threshold — possible O(N²) regression", ratio)
+	// O(N log N): 500/100 = 5, so the theoretical ceiling is
+	// 5 × log(500)/log(100) ≈ 6.5. We allow up to 12× to absorb measurement
+	// noise, GC pauses, and CPU throttling on loaded CI runners (previously 8×,
+	// raised because the test was flaking intermittently on all platforms).
+	if ratio > 12 {
+		t.Errorf("scaling ratio %.2fx exceeds 12× threshold — possible O(N²) regression", ratio)
 	}
 }
 

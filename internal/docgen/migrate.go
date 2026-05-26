@@ -45,6 +45,13 @@ type MigrateOptions struct {
 	// When nil and Yes==false, the CLI wraps this with an interactive stdin reader.
 	// Returning true = proceed, false = skip.
 	ConfirmFn func(msg string) bool
+
+	// StagingOnly restricts RunMigrateInRepo to orphaned staging runs (Part B)
+	// and skips in-repo docs/ scanning (Part A). Set this when the caller
+	// already handles docs/ migration itself (e.g. the CLI Phase 1 handler)
+	// to avoid double-processing docs/ directories with a different idempotency
+	// guard.
+	StagingOnly bool
 }
 
 // MigrateRepo describes a single repo within a group.
@@ -112,7 +119,9 @@ func RunMigrateInRepo(opts MigrateOptions) (*MigrateResult, error) {
 			continue
 		}
 
-		canonicalBase := filepath.Join(homeDir, ".archigraph", "docs", group)
+		// homeDir is already the archigraph home (resolveHomeDir guarantees
+		// this convention) — do NOT append ".archigraph".
+		canonicalBase := filepath.Join(homeDir, "docs", group)
 
 		for _, repo := range repos {
 			if repo.Path == "" {
@@ -120,22 +129,26 @@ func RunMigrateInRepo(opts MigrateOptions) (*MigrateResult, error) {
 			}
 
 			// ── A. In-repo docs/ (or doc/) ────────────────────────────────
-			for _, sub := range []string{"docs", "doc"} {
-				srcDir := filepath.Join(repo.Path, sub)
-				info, statErr := os.Stat(srcDir)
-				if statErr != nil || !info.IsDir() {
-					continue
-				}
-				if !looksLikeDocgenOutput(srcDir) {
-					continue
-				}
-				slug := repo.Slug
-				if slug == "" {
-					slug = filepath.Base(repo.Path)
-				}
-				dstDir := filepath.Join(canonicalBase, slug)
-				if err := migrateDir(srcDir, dstDir, opts.DryRun, confirm, result); err != nil {
-					result.Errors = append(result.Errors, fmt.Sprintf("migrate %s → %s: %v", srcDir, dstDir, err))
+			// Skipped when StagingOnly is set — the CLI Phase-1 handler owns
+			// docs/ migration and has already applied the idempotency guard.
+			if !opts.StagingOnly {
+				for _, sub := range []string{"docs", "doc"} {
+					srcDir := filepath.Join(repo.Path, sub)
+					info, statErr := os.Stat(srcDir)
+					if statErr != nil || !info.IsDir() {
+						continue
+					}
+					if !looksLikeDocgenOutput(srcDir) {
+						continue
+					}
+					slug := repo.Slug
+					if slug == "" {
+						slug = filepath.Base(repo.Path)
+					}
+					dstDir := filepath.Join(canonicalBase, slug)
+					if err := migrateDir(srcDir, dstDir, opts.DryRun, confirm, result); err != nil {
+						result.Errors = append(result.Errors, fmt.Sprintf("migrate %s → %s: %v", srcDir, dstDir, err))
+					}
 				}
 			}
 

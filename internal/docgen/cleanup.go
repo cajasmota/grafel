@@ -79,7 +79,8 @@ func RunDocgenCleanup(opts CleanupOptions) (*CleanupResult, error) {
 	cutoff := time.Now().Add(-opts.MaxAge)
 
 	// ── 1. Clean .previous-* backups under ~/.archigraph/docs/ ───────────────
-	docsRoot := filepath.Join(homeDir, ".archigraph", "docs")
+	// homeDir is already the archigraph home (resolveHomeDir guarantees this).
+	docsRoot := filepath.Join(homeDir, "docs")
 	if err := cleanPreviousBackups(docsRoot, opts.Group, cutoff, opts.DryRun, result); err != nil {
 		// Non-fatal: record and continue.
 		result.Errors = append(result.Errors, fmt.Sprintf("scan %s: %v", docsRoot, err))
@@ -353,14 +354,24 @@ func humanBytes(n int64) string {
 	}
 }
 
-// resolveHomeDir returns opts.HomeDir if set, otherwise os.UserHomeDir.
+// resolveHomeDir returns the archigraph home directory using the same
+// convention as registry.HomeDir:
+//   - override if explicitly provided (used by tests and the daemon)
+//   - $ARCHIGRAPH_HOME if the environment variable is set
+//   - ~/.archigraph otherwise
+//
+// The returned path IS the archigraph home (e.g. ~/.archigraph), NOT the raw
+// OS home directory, so callers must NOT append an extra ".archigraph" segment.
 func resolveHomeDir(override string) (string, error) {
 	if override != "" {
 		return override, nil
+	}
+	if env := os.Getenv("ARCHIGRAPH_HOME"); env != "" {
+		return env, nil
 	}
 	h, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return h, nil
+	return filepath.Join(h, ".archigraph"), nil
 }

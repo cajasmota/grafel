@@ -3,6 +3,7 @@ package install_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -341,7 +342,8 @@ func assertHookExists(t *testing.T, hookName, hookPath string) {
 	if err != nil {
 		t.Fatalf("%s hook not found at %s: %v", hookName, hookPath, err)
 	}
-	if info.Mode()&0o111 == 0 {
+	// Windows does not expose Unix exec bits — only check on non-Windows.
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		t.Errorf("%s hook at %s is not executable (mode %v)", hookName, hookPath, info.Mode())
 	}
 
@@ -396,8 +398,8 @@ func assertPrePushHookExists(t *testing.T, hookPath string) {
 		t.Fatalf("pre-push hook not found at %s: %v", hookPath, err)
 	}
 
-	// Must be executable.
-	if info.Mode()&0o111 == 0 {
+	// Must be executable (Unix only — Windows does not expose exec bits).
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		t.Errorf("pre-push hook at %s is not executable (mode %v)", hookPath, info.Mode())
 	}
 
