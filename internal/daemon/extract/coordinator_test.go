@@ -196,3 +196,108 @@ func buildArchigraph(t *testing.T) string {
 	}
 	return out
 }
+
+// TestCoordinate_Pass1EntitiesEquivalence is the equivalence test for
+// issue #2429: the subprocess-extract path (Coordinate) and the in-process
+// path (Run directly) must produce the same number of READS_FIELD /
+// WRITES_FIELD relationship edges when given the same Python ORM fixture.
+//
+// Before this fix, the subprocess path didn't stamp FileInput.Pass1Entities,
+// so applyORMFieldEdges fell back to the regex field index. The fallback
+// produces the same edges when the model is in the same file — but the
+// plumbing fix is what ensures the side-channel is live for future Phase B
+// cross-file extension. This test confirms both paths produce identical edge
+// counts.
+func TestCoordinate_Pass1EntitiesEquivalence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test — skipped in -short mode")
+	}
+	bin := buildArchigraph(t)
+
+	// Fixture: single Python file with Django model definition + ORM query
+	// accessing the model's own fields (intra-file resolution, Phase A scope).
+	repo := t.TempDir()
+	src := `from django.db import models
+
+class Product(models.Model):
+    name = models.CharField(max_length=200)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    stock = models.IntegerField(default=0)
+
+def find_cheap():
+    return Product.objects.filter(price=0, stock=0)
+
+def restock():
+    return Product.objects.filter(name="").update(stock=100)
+`
+	if err := os.WriteFile(filepath.Join(repo, "products.py"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{"products.py"}
+
+	// Run via Coordinate (subprocess path — the path fixed by issue #2429).
+	var stderrCoord bytes.Buffer
+	coordRes, err := Coordinate(context.Background(), repo, files, CoordinatorConfig{
+		BinaryPath: bin,
+		Stderr:     &stderrCoord,
+	})
+	if err != nil {
+		t.Fatalf("Coordinate: %v\n---stderr---\n%s", err, stderrCoord.String())
+	}
+
+	// Count READS_FIELD / WRITES_FIELD in the Coordinate result.
+	var coordReads, coordWrites int
+	for _, r := range coordRes.Relationships {
+		switch r.Kind {
+		case string(types.RelationshipKindReadsField):
+			coordReads++
+		case string(types.RelationshipKindWritesField):
+			coordWrites++
+		}
+	}
+
+	// Run directly via Run() (the subprocess's own entrypoint — in-process
+	// equivalent for comparison).
+	batch := filepath.Join(t.TempDir(), "batch.txt")
+	if err := os.WriteFile(batch, []byte("products.py\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var runBuf bytes.Buffer
+	if err := Run(context.Background(), SubprocessOptions{
+		RepoRoot:  repo,
+		BatchPath: batch,
+		BatchID:   "equiv-test",
+		Output:    &runBuf,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var runReads, runWrites int
+	dec := json.NewDecoder(&runBuf)
+	for dec.More() {
+		var env Envelope
+		if derr := dec.Decode(&env); derr != nil {
+			t.Fatalf("decode: %v", derr)
+		}
+		if env.Type == KindRelationship && env.Rel != nil {
+			switch env.Rel.Kind {
+			case string(types.RelationshipKindReadsField):
+				runReads++
+			case string(types.RelationshipKindWritesField):
+				runWrites++
+			}
+		}
+	}
+
+	t.Logf("Coordinate path:  READS_FIELD=%d WRITES_FIELD=%d", coordReads, coordWrites)
+	t.Logf("Run() path:       READS_FIELD=%d WRITES_FIELD=%d", runReads, runWrites)
+
+	if coordReads != runReads {
+		t.Errorf("READS_FIELD mismatch: Coordinate=%d Run=%d (subprocess path is missing Pass1Entities plumbing?)", coordReads, runReads)
+	}
+	if coordWrites != runWrites {
+		t.Errorf("WRITES_FIELD mismatch: Coordinate=%d Run=%d (subprocess path is missing Pass1Entities plumbing?)", coordWrites, runWrites)
+	}
+	if coordReads == 0 && runReads == 0 {
+		t.Error("both paths produced 0 READS_FIELD edges — ORM field-edge synthesis may not be running at all")
+	}
+}

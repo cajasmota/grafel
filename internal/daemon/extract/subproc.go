@@ -20,6 +20,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/treesitter"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // SubprocessOptions configures a single short-lived extractor run.
@@ -245,6 +246,16 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 		}
 
 		// Pass 1 — per-language extraction.
+		//
+		// Issue #2429: collect Pass 1 entities into a local slice so we can
+		// stamp FileInput.Pass1Entities before Pass 2.5. This mirrors the
+		// in-process side-channel added by PR #2425 (#2352): the indexer
+		// groups Pass 1 records by source file in runPass25FrameworkRules
+		// and stamps the matching SCOPE.Schema(subtype=field) slice onto
+		// FileInput.Pass1Entities before calling Detector.Detect. Without
+		// this, engine passes (notably applyORMFieldEdges) fall through to
+		// the regex fallback regardless of pass1Entities being collected.
+		var pass1EntsForFile []types.EntityRecord
 		if runExtract {
 			ents, exErr := extractors.Extract(ctx, file)
 			if exErr != nil {
@@ -261,6 +272,8 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 				for k := range ents {
 					rels += len(ents[k].Relationships)
 					e := ents[k]
+					// Collect for Pass 2.5 side-channel (issue #2429).
+					pass1EntsForFile = append(pass1EntsForFile, e)
 					emit(Envelope{Type: KindEntity, Entity: &e})
 				}
 				stats.Pass1Rels += rels
@@ -285,6 +298,22 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 		}
 
 		// Pass 2.5 — YAML framework rules.
+		// Stamp Pass1Entities with the SCOPE.Schema(subtype=field) subset of
+		// the Pass 1 records collected above (issue #2429). This is the same
+		// filter as the in-process path in cmd/archigraph/index.go
+		// (runPass25FrameworkRules). Engine passes that consume this field
+		// (e.g. applyORMFieldEdges) MUST fall back to their pre-#2352
+		// source-scan behaviour when Pass1Entities is nil/empty, so this
+		// stamp is additive and backwards-compatible.
+		if runFramework && len(pass1EntsForFile) > 0 {
+			var fieldEnts []types.EntityRecord
+			for _, e := range pass1EntsForFile {
+				if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
+					fieldEnts = append(fieldEnts, e)
+				}
+			}
+			file.Pass1Entities = fieldEnts
+		}
 		if runFramework {
 			if res, derr := detector.Detect(ctx, file); derr == nil && res != nil {
 				for k := range res.Entities {
