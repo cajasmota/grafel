@@ -180,6 +180,12 @@ func (s *Server) ListToolsForCWD(cwd string) ([]MCPToolEntry, error) {
 	return s.fullToolList()
 }
 
+// sentinelEmptyInputSchema is the canonical MCP-compliant inputSchema for a
+// no-argument tool. Strict MCP clients (e.g. Claude Code with Zod validation)
+// reject a tool whose tools/list entry omits "inputSchema" entirely (#2257).
+// We pre-marshal this once to avoid repeated allocations on every list call.
+var sentinelEmptyInputSchema = json.RawMessage(`{"type":"object","properties":{},"required":[]}`)
+
 // sentinelToolList returns the single archigraph_status sentinel entry with a
 // context-aware description based on cwd, the (empty) group, and nearby groups.
 func (s *Server) sentinelToolList(cwd, group string, groupEmpty bool) []MCPToolEntry {
@@ -191,6 +197,7 @@ func (s *Server) sentinelToolList(cwd, group string, groupEmpty bool) []MCPToolE
 		{
 			Name:        sentinelToolName,
 			Description: desc,
+			InputSchema: sentinelEmptyInputSchema,
 		},
 	}
 }

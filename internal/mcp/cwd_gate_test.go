@@ -11,6 +11,7 @@ package mcp
 //   - archigraph_status call from no-match cwd → expected guidance text.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -268,5 +269,90 @@ func TestListToolsForCWD_MCPToolListArgs_CWDForwarded(t *testing.T) {
 	}
 	if entry.Name != sentinelToolName {
 		t.Errorf("MCPToolEntry name: %q", entry.Name)
+	}
+}
+
+// TestSentinelTool_HasValidInputSchema — sentinel tool must include a valid
+// JSON Schema inputSchema so strict MCP clients (Claude Code Zod validation)
+// do not reject the tools/list response (#2257).
+func TestSentinelTool_HasValidInputSchema(t *testing.T) {
+	srv := makeTestServer(t, map[string]map[string]string{})
+
+	entries, err := srv.ListToolsForCWD("/tmp")
+	if err != nil {
+		t.Fatalf("ListToolsForCWD: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name != sentinelToolName {
+		t.Fatalf("expected only sentinel tool, got %v", toolNames(entries))
+	}
+
+	sentinel := entries[0]
+	if sentinel.InputSchema == nil {
+		t.Fatal("sentinel tool InputSchema is nil — strict MCP clients will reject this")
+	}
+
+	var schema map[string]json.RawMessage
+	if err := json.Unmarshal(sentinel.InputSchema, &schema); err != nil {
+		t.Fatalf("sentinel InputSchema is not valid JSON: %v — raw: %s", err, sentinel.InputSchema)
+	}
+
+	typeRaw, ok := schema["type"]
+	if !ok {
+		t.Fatal("sentinel InputSchema missing required 'type' field")
+	}
+	var typStr string
+	if err := json.Unmarshal(typeRaw, &typStr); err != nil || typStr != "object" {
+		t.Fatalf("sentinel InputSchema 'type' must be \"object\", got: %s", typeRaw)
+	}
+
+	if _, ok := schema["properties"]; !ok {
+		t.Fatal("sentinel InputSchema missing required 'properties' field")
+	}
+}
+
+// TestAllRegisteredTools_HaveValidInputSchema — every tool returned by
+// fullToolList must carry a non-nil inputSchema with type=object. This guards
+// against regressions in both the full-list path and any future tool addition
+// that forgets to set up a schema (#2257).
+func TestAllRegisteredTools_HaveValidInputSchema(t *testing.T) {
+	repoDir := t.TempDir()
+	srv := makeTestServer(t, map[string]map[string]string{
+		"testgroup": {"testrepo": repoDir},
+	})
+
+	entries, err := srv.ListToolsForCWD(repoDir)
+	if err != nil {
+		t.Fatalf("ListToolsForCWD: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected at least one tool in the full list")
+	}
+
+	for _, e := range entries {
+		if e.Name == sentinelToolName {
+			t.Errorf("sentinel must not appear in full tool list")
+			continue
+		}
+		if e.InputSchema == nil {
+			t.Errorf("tool %q: InputSchema is nil — strict MCP clients will reject this", e.Name)
+			continue
+		}
+		var schema map[string]json.RawMessage
+		if err := json.Unmarshal(e.InputSchema, &schema); err != nil {
+			t.Errorf("tool %q: InputSchema is not valid JSON: %v", e.Name, err)
+			continue
+		}
+		typeRaw, ok := schema["type"]
+		if !ok {
+			t.Errorf("tool %q: InputSchema missing 'type' field", e.Name)
+			continue
+		}
+		var typStr string
+		if err := json.Unmarshal(typeRaw, &typStr); err != nil || typStr != "object" {
+			t.Errorf("tool %q: InputSchema 'type' must be \"object\", got: %s", e.Name, typeRaw)
+		}
+		if _, ok := schema["properties"]; !ok {
+			t.Errorf("tool %q: InputSchema missing 'properties' field", e.Name)
+		}
 	}
 }
