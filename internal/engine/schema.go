@@ -25,6 +25,21 @@ type FrameworkRule struct {
 type FileConvention struct {
 	Pattern     string `yaml:"pattern"`
 	Description string `yaml:"description"`
+	// Glob is a path glob (path.Match syntax) matched against the repo-relative
+	// file path. When a file matches, the convention identifies the file as
+	// carrying entities of EntityType.
+	Glob string `yaml:"glob"`
+	// EntityType is the Kind that should be applied to entities in files
+	// matching Glob (e.g. "Migration", "Model", "View").
+	EntityType string `yaml:"entity_type"`
+	// NameFrom controls how the entity name is derived from a matching file.
+	// Supported values:
+	//   "filename"   — the base filename without the .py/.js/… extension
+	//   "parent_dir" — the immediate parent directory name
+	//   "class_name" — entity name comes from source content (not file-driven;
+	//                  file convention only tags the file type, name is left
+	//                  to source_patterns to supply)
+	NameFrom string `yaml:"name_from"`
 }
 
 // SourcePattern maps a regex pattern to an entity type.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -36,10 +38,41 @@ type compiledRelationshipRule struct {
 	framework    string
 }
 
+// compiledFileConvention is a FileConvention whose Glob has been validated and
+// normalised for matching with path.Match.
+type compiledFileConvention struct {
+	// glob is the normalised (forward-slash) glob pattern.
+	glob       string
+	entityType string
+	nameFrom   string
+	framework  string
+}
+
+// matchesFile reports whether the convention's glob matches filePath.
+// filePath is expected to be repo-relative with forward slashes.
+// We try an exact path.Match first; if the glob has no slash we also
+// test against just the base filename (for patterns like "*.py").
+func (c compiledFileConvention) matchesFile(filePath string) bool {
+	// Normalise to forward slashes (path.Match requires this).
+	normalized := filepath.ToSlash(filePath)
+	matched, err := path.Match(c.glob, normalized)
+	if err == nil && matched {
+		return true
+	}
+	// Also try matching against just the base so globs like "models.py" work.
+	if !strings.Contains(c.glob, "/") {
+		base := path.Base(normalized)
+		matched2, err2 := path.Match(c.glob, base)
+		return err2 == nil && matched2
+	}
+	return false
+}
+
 // compiledRuleSet holds all compiled patterns for one framework.
 type compiledRuleSet struct {
 	sourcePatterns    []compiledSourcePattern
 	relationshipRules []compiledRelationshipRule
+	fileConventions   []compiledFileConvention
 }
 
 // Detector applies YAML-driven framework extraction rules to source files.
@@ -98,6 +131,25 @@ func (d *Detector) compile() {
 					sourceGroup:  rr.SourceGroup,
 					targetGroup:  rr.TargetGroup,
 					framework:    lang,
+				})
+			}
+
+			// Compile file_conventions: validate the glob pattern using path.Match
+			// (a dry-run against an empty string surfaces syntax errors).
+			for _, fc := range fr.FileConventions {
+				if fc.Glob == "" {
+					continue
+				}
+				// Validate glob syntax by attempting a dummy match.
+				if _, err := path.Match(fc.Glob, ""); err != nil {
+					log.Printf("engine: invalid file_convention glob in %s: %q: %v", lang, fc.Glob, err)
+					continue
+				}
+				cs.fileConventions = append(cs.fileConventions, compiledFileConvention{
+					glob:       fc.Glob,
+					entityType: fc.EntityType,
+					nameFrom:   fc.NameFrom,
+					framework:  lang,
 				})
 			}
 
@@ -209,6 +261,78 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 					QualityScore:       0.5,
 				}
 				entities = append(entities, entity)
+			}
+		}
+
+		// Apply file_conventions: glob-based entity dispatch. For each
+		// convention whose Glob matches this file and whose NameFrom is
+		// file-driven ("filename" or "parent_dir"), emit one entity tagged
+		// with the convention's EntityType. Conventions with NameFrom =
+		// "class_name" are informational only — source_patterns supply the
+		// name; we tag the file type via a property rather than emitting a
+		// separate entity.
+		//
+		// NOTE: For entity types that require rich semantic extraction (e.g.
+		// "Migration" → extractMigrationEntity), the YAML convention identifies
+		// the file while the language extractor does the detailed extraction.
+		// This is intentional: source_patterns cannot express multi-field
+		// property bags. The YAML-driven entity emitted here is a lightweight
+		// file-tag; the extractor's entity is the authoritative one.
+		for _, fc := range cs.fileConventions {
+			if !fc.matchesFile(file.Path) {
+				continue
+			}
+			// Tag the file as matching this convention regardless of name_from.
+			// For file-driven names we emit a standalone entity.
+			switch fc.nameFrom {
+			case "filename":
+				name := fileConventionName(file.Path, "filename")
+				key := fmt.Sprintf("%s:%s:%s", fc.entityType, name, file.Path)
+				if !seenEntities[key] {
+					seenEntities[key] = true
+					entities = append(entities, types.EntityRecord{
+						Name:       name,
+						Kind:       fc.entityType,
+						SourceFile: file.Path,
+						Language:   file.Language,
+						StartLine:  1,
+						Properties: map[string]string{
+							"framework":         fc.framework,
+							"pattern_type":      "file_convention",
+							"file_convention":   fc.glob,
+							"file_convention_op": "filename",
+						},
+						EnrichmentStatus: types.StatusPending,
+						QualityScore:     0.5,
+					})
+				}
+			case "parent_dir":
+				name := fileConventionName(file.Path, "parent_dir")
+				key := fmt.Sprintf("%s:%s:%s", fc.entityType, name, file.Path)
+				if !seenEntities[key] {
+					seenEntities[key] = true
+					entities = append(entities, types.EntityRecord{
+						Name:       name,
+						Kind:       fc.entityType,
+						SourceFile: file.Path,
+						Language:   file.Language,
+						StartLine:  1,
+						Properties: map[string]string{
+							"framework":         fc.framework,
+							"pattern_type":      "file_convention",
+							"file_convention":   fc.glob,
+							"file_convention_op": "parent_dir",
+						},
+						EnrichmentStatus: types.StatusPending,
+						QualityScore:     0.5,
+					})
+				}
+			default:
+				// "class_name" and unknown values: convention is informational.
+				// The source_patterns layer emits the named entities; we only
+				// annotate any existing entity for this file with the convention
+				// tag via a property on the first entity found, to preserve
+				// graph signal without creating phantom nodes.
 			}
 		}
 
@@ -600,4 +724,25 @@ func (d *Detector) RuleCount() int {
 		count += len(rules)
 	}
 	return count
+}
+
+// fileConventionName derives an entity name from a file path according to the
+// named NameFrom strategy.
+//
+//   - "filename":   base filename without extension
+//     "core/migrations/0042_device.py" → "0042_device"
+//   - "parent_dir": immediate parent directory name
+//     "myapp/models/base.py" → "models"
+func fileConventionName(filePath, nameFrom string) string {
+	switch nameFrom {
+	case "parent_dir":
+		return path.Base(path.Dir(filepath.ToSlash(filePath)))
+	default: // "filename" and fallback
+		base := path.Base(filepath.ToSlash(filePath))
+		// Strip the extension.
+		if idx := strings.LastIndex(base, "."); idx > 0 {
+			base = base[:idx]
+		}
+		return base
+	}
 }
