@@ -80,19 +80,17 @@ func TestGetSource_ReturnsWindowedSnippet(t *testing.T) {
 	if res == nil || res.IsError {
 		t.Fatalf("unexpected error result: %+v", res)
 	}
-	tc, ok := res.Content[0].(mcpapi.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
+	// get_source returns line-numbered plain text, not JSON — use extractResultText.
+	text := extractResultText(t, res)
 	// With context_lines=1, expect lines 2..6 (inclusive) — 5 numbered lines.
-	if !strings.Contains(tc.Text, "    3  func Foo()") {
-		t.Errorf("expected line 3 (Foo) in output, got:\n%s", tc.Text)
+	if !strings.Contains(text, "    3  func Foo()") {
+		t.Errorf("expected line 3 (Foo) in output, got:\n%s", text)
 	}
-	if strings.Contains(tc.Text, "    1  package sample") {
-		t.Errorf("did not expect line 1 in output (context_lines=1, start=3), got:\n%s", tc.Text)
+	if strings.Contains(text, "    1  package sample") {
+		t.Errorf("did not expect line 1 in output (context_lines=1, start=3), got:\n%s", text)
 	}
-	if strings.Contains(tc.Text, "    7  func Bar()") {
-		t.Errorf("did not expect line 7 in output (context_lines=1, end=5), got:\n%s", tc.Text)
+	if strings.Contains(text, "    7  func Bar()") {
+		t.Errorf("did not expect line 7 in output (context_lines=1, end=5), got:\n%s", text)
 	}
 }
 

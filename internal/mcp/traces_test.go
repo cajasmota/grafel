@@ -216,12 +216,7 @@ func TestTracesList_DefaultLimit10(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("tool error: %v", res.Content)
 	}
-	var out map[string]any
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			json.Unmarshal([]byte(tc.Text), &out)
-		}
-	}
+	out := extractResultJSON(t, res)
 	count, _ := out["count"].(float64)
 	if int(count) > 10 {
 		t.Errorf("traces list returned %v items, want ≤10 (default limit)", count)
@@ -247,12 +242,7 @@ func TestTracesList_TokenBudgetEnforced(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("tool error: %v", res.Content)
 	}
-	var out map[string]any
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			json.Unmarshal([]byte(tc.Text), &out)
-		}
-	}
+	out := extractResultJSON(t, res)
 	count, _ := out["count"].(float64)
 	if int(count) >= 20 {
 		t.Errorf("traces list returned %v items, want <20 (budget cap)", count)

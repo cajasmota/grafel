@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -136,17 +135,7 @@ func callAuthCoverageTool(t *testing.T, s *Server, args map[string]any) map[stri
 	if res.IsError {
 		t.Fatalf("tool error: %v", res.Content)
 	}
-	var out map[string]any
-	for _, c := range res.Content {
-		tc, ok := c.(mcpapi.TextContent)
-		if !ok {
-			continue
-		}
-		if err := json.Unmarshal([]byte(tc.Text), &out); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-	}
-	return out
+	return extractResultJSON(t, res)
 }
 
 // endpointsByID extracts the endpoints array and indexes by entity_id suffix

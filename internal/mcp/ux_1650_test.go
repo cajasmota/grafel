@@ -12,7 +12,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -92,9 +91,9 @@ func TestUX1650_GetSourceAcceptsLabelWithClarifier(t *testing.T) {
 	}
 	// Read the error text — qualified_name resolved past the not-found check.
 	if res2.IsError {
-		tc, _ := res2.Content[0].(mcpapi.TextContent)
-		if strings.Contains(tc.Text, "node not found") {
-			t.Errorf("qualified_name lookup failed at the resolution stage: %s", tc.Text)
+		text := extractResultText(t, res2)
+		if strings.Contains(text, "node not found") {
+			t.Errorf("qualified_name lookup failed at the resolution stage: %s", text)
 		}
 	}
 }
@@ -248,14 +247,7 @@ func TestUX1650_WrapInjectsElapsedMS(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("tool error: %v", res.Content)
 	}
-	tc, ok := res.Content[0].(mcpapi.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(tc.Text), &payload); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	payload := extractResultJSON(t, res)
 	if _, ok := payload["elapsed_ms"]; !ok {
 		t.Errorf("expected elapsed_ms in tool payload, got keys: %v", keysOf(payload))
 	}
@@ -279,12 +271,10 @@ func TestUX1687_WrapInjectsElapsedMSOnError(t *testing.T) {
 	if !res.IsError {
 		t.Fatalf("expected IsError=true for missing entity_id, got success")
 	}
-	tc, ok := res.Content[0].(mcpapi.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent in error result, got %T", res.Content[0])
-	}
-	if !strings.Contains(tc.Text, "elapsed_ms=") {
-		t.Errorf("expected elapsed_ms= trailer in error response, got: %q", tc.Text)
+	// Error responses use a plain text trailer format, not JSON — use extractResultText.
+	text := extractResultText(t, res)
+	if !strings.Contains(text, "elapsed_ms=") {
+		t.Errorf("expected elapsed_ms= trailer in error response, got: %q", text)
 	}
 }
 

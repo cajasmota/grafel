@@ -9,7 +9,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -230,18 +229,9 @@ func TestHandleFindPathsSyntheticEdgesRelIdx(t *testing.T) {
 	if res == nil || res.IsError {
 		t.Fatalf("handleFindPaths returned error: %+v", res)
 	}
-	var body string
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			body = tc.Text
-		}
-	}
-	var out map[string]any
-	if err := json.Unmarshal([]byte(body), &out); err != nil {
-		t.Fatalf("decode: %v\nraw: %s", err, body)
-	}
+	out := extractResultJSON(t, res)
 	if found, _ := out["found"].(bool); !found {
-		t.Errorf("expected found=true for direct src->dst CALLS edge; got: %s", body)
+		t.Errorf("expected found=true for direct src->dst CALLS edge; got: %v", out)
 	}
 }
 
@@ -356,12 +346,7 @@ func TestNoSessionMetaInNonWhoamiHandlers(t *testing.T) {
 			if res == nil {
 				t.Fatalf("%s: nil result", c.name)
 			}
-			var body string
-			for _, cont := range res.Content {
-				if tc2, ok := cont.(mcpapi.TextContent); ok {
-					body += tc2.Text
-				}
-			}
+			body := extractResultText(t, res)
 			for _, key := range banned {
 				// Use string search on the raw JSON to catch any embedding
 				// regardless of nesting depth.

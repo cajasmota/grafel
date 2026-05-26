@@ -224,16 +224,7 @@ func TestListToolsForCWD_SentinelCallable(t *testing.T) {
 	}
 
 	// Extract text content.
-	var text string
-	for _, c := range result.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			text = tc.Text
-			break
-		}
-	}
-	if text == "" {
-		t.Fatal("handleStatus returned no text content")
-	}
+	text := extractResultText(t, result)
 	// Should mention the cwd or registered groups.
 	if !strings.Contains(text, "Archigraph") {
 		t.Errorf("guidance text should mention Archigraph: %q", text)

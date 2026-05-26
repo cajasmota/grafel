@@ -13,7 +13,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -55,12 +54,7 @@ func TestPerf2285_FindCompactEmitsEdgesBetweenVisibleNodes(t *testing.T) {
 	if res == nil || res.IsError {
 		t.Fatalf("handleQueryGraph returned error: %+v", res)
 	}
-	var body string
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			body = tc.Text
-		}
-	}
+	body := extractResultText(t, res)
 	// Visible-subgraph edges Root->A and A->B should be carried (two edges
 	// inside the BFS-visited set). The B->Orphan edge straddles the visible
 	// boundary at depth=2 (orphan is unreachable from Root within 2 hops via
@@ -112,16 +106,7 @@ func TestPerf2285_AgentResolvedEdgesUsesAdjacency(t *testing.T) {
 	if res == nil || res.IsError {
 		t.Fatalf("handleGetNode error: %+v", res)
 	}
-	var body string
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			body = tc.Text
-		}
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
-		t.Fatalf("decode: %v\nraw: %s", err, body)
-	}
+	decoded := extractResultJSON(t, res)
 	raw, ok := decoded["agent_resolved_edges"]
 	if !ok {
 		t.Fatalf("expected agent_resolved_edges in response, got: %v", decoded)
@@ -169,12 +154,7 @@ func TestPerf2285_AgentResolvedEdgesEmptyWhenNoAgentEdges(t *testing.T) {
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"group": "test", "entity_id": "src"}
 	res, _ := srv.handleGetNode(context.Background(), req)
-	var body string
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			body = tc.Text
-		}
-	}
+	body := extractResultText(t, res)
 	if strings.Contains(body, "agent_resolved_edges") {
 		t.Errorf("expected agent_resolved_edges absent when no agent edges; got:\n%s", body)
 	}

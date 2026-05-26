@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -88,17 +87,7 @@ func callEndpointTool(t *testing.T, fn func(context.Context, mcpapi.CallToolRequ
 	if res.IsError {
 		t.Fatalf("tool error: %v", res.Content)
 	}
-	var out map[string]any
-	for _, c := range res.Content {
-		tc, ok := c.(mcpapi.TextContent)
-		if !ok {
-			continue
-		}
-		if err := json.Unmarshal([]byte(tc.Text), &out); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-	}
-	return out
+	return extractResultJSON(t, res)
 }
 
 func getSlice(t *testing.T, m map[string]any, key string) []any {
@@ -641,17 +630,9 @@ func TestSearchEntities_LegacyKindFilterExpands(t *testing.T) {
 	if err != nil || res.IsError {
 		t.Fatalf("handleSearchEntities error: err=%v, isError=%v", err, res)
 	}
-	var out map[string]any
-	for _, c := range res.Content {
-		tc, ok := c.(mcpapi.TextContent)
-		if !ok {
-			continue
-		}
-		_ = tc
-	}
-	_ = out
 	// The test verifies compilation + no panic. Functional assertion is in
 	// TestMatchesKindFilter_* above which covers the underlying logic.
+	_ = extractResultText(t, res)
 }
 
 // TestQualityOrphans_LegacyKindFilterExpands verifies that the orphans handler

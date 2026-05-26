@@ -30,18 +30,13 @@ func callFlowTool(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest)
 	if res.IsError {
 		t.Fatalf("tool error: %v", res.Content)
 	}
+	text := extractResultText(t, res)
 	var out map[string]any
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			if err := json.Unmarshal([]byte(tc.Text), &out); err != nil {
-				// May be markdown (summarize_subgraph) — return nil.
-				return nil
-			}
-			return out
-		}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		// May be markdown (summarize_subgraph) — return nil.
+		return nil
 	}
-	t.Fatal("no text content")
-	return nil
+	return out
 }
 
 // callFlowToolText returns the raw text result (for summarize_subgraph markdown).
@@ -59,13 +54,7 @@ func callFlowToolText(t *testing.T, fn func(context.Context, mcpapi.CallToolRequ
 	if res.IsError {
 		t.Fatalf("tool error: %v", res.Content)
 	}
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			return tc.Text
-		}
-	}
-	t.Fatal("no text content")
-	return ""
+	return extractResultText(t, res)
 }
 
 // callFlowToolError expects the handler to return a tool error; returns the error text.
@@ -78,11 +67,7 @@ func callFlowToolError(t *testing.T, fn func(context.Context, mcpapi.CallToolReq
 		return err.Error()
 	}
 	if res != nil && res.IsError {
-		for _, c := range res.Content {
-			if tc, ok := c.(mcpapi.TextContent); ok {
-				return tc.Text
-			}
-		}
+		return extractResultText(t, res)
 	}
 	t.Fatal("expected error result but got success")
 	return ""
@@ -1048,12 +1033,9 @@ func TestExpand_WithEdgesNoSignal(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("unexpected tool error: %v", res.Content)
 	}
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			if strings.Contains(tc.Text, `"result"`) && strings.Contains(tc.Text, `"no_edges"`) {
-				t.Errorf("no_edges signal must not appear when edges exist: %s", tc.Text)
-			}
-		}
+	text := extractResultText(t, res)
+	if strings.Contains(text, `"result"`) && strings.Contains(text, `"no_edges"`) {
+		t.Errorf("no_edges signal must not appear when edges exist: %s", text)
 	}
 }
 
@@ -1171,12 +1153,8 @@ func TestExpand_TokenBudgetEnforced(t *testing.T) {
 		t.Fatalf("tool error: %v", res.Content)
 	}
 	var rawResult any
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			if err := json.Unmarshal([]byte(tc.Text), &rawResult); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-		}
+	if err := json.Unmarshal([]byte(extractResultText(t, res)), &rawResult); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
 	// Result is either a raw array (no truncation path) or a map (truncated path).
 	switch v := rawResult.(type) {

@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -66,17 +65,7 @@ func callDashboardTool(t *testing.T, fn func(context.Context, mcpapi.CallToolReq
 	if res.IsError {
 		t.Fatalf("handler returned tool error: %v", res.Content)
 	}
-	var out map[string]any
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			if err := json.Unmarshal([]byte(tc.Text), &out); err != nil {
-				t.Fatalf("decode result: %v\nraw: %s", err, tc.Text)
-			}
-			return out
-		}
-	}
-	t.Fatal("no text content in result")
-	return nil
+	return extractResultJSON(t, res)
 }
 
 // minDoc builds a minimal document.

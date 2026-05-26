@@ -83,13 +83,7 @@ func callHandlerText(t *testing.T, fn func(context.Context, mcpapi.CallToolReque
 	if res == nil || res.IsError {
 		t.Fatalf("tool returned nil or error: %v", res)
 	}
-	for _, c := range res.Content {
-		if tc, ok := c.(mcpapi.TextContent); ok {
-			return tc.Text
-		}
-	}
-	t.Fatal("no text content in result")
-	return ""
+	return extractResultText(t, res)
 }
 
 // decodeArray decodes a raw JSON string as a []map[string]any.

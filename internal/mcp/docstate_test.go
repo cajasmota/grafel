@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -247,10 +246,7 @@ func TestHandleWhoami_enrichedResponse_neverGenerated(t *testing.T) {
 		t.Fatalf("tool error: %v", res.Content)
 	}
 
-	var out map[string]any
-	if err := json.Unmarshal([]byte(res.Content[0].(mcpapi.TextContent).Text), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	out := extractResultJSON(t, res)
 
 	checkField(t, out, "documentation_state", "never_generated")
 	checkField(t, out, "suggested_action", "run /archigraph-tech-docs")
@@ -288,10 +284,7 @@ func TestHandleWhoami_enrichedResponse_afterDocgen_fresh(t *testing.T) {
 		t.Fatalf("handleWhoami: %v", err)
 	}
 
-	var out map[string]any
-	if err := json.Unmarshal([]byte(res.Content[0].(mcpapi.TextContent).Text), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	out := extractResultJSON(t, res)
 
 	checkField(t, out, "documentation_state", "fresh")
 	checkField(t, out, "suggested_action", "none — graph is healthy")
@@ -343,10 +336,7 @@ func TestHandleWhoami_enrichedResponse_stale(t *testing.T) {
 		t.Fatalf("handleWhoami: %v", err)
 	}
 
-	var out map[string]any
-	if err := json.Unmarshal([]byte(res.Content[0].(mcpapi.TextContent).Text), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	out := extractResultJSON(t, res)
 
 	checkField(t, out, "documentation_state", "stale")
 	sc, _ := out["stale_count"].(float64)
@@ -379,10 +369,7 @@ func TestHandleWhoami_quietMode(t *testing.T) {
 		t.Fatalf("handleWhoami: %v", err)
 	}
 
-	var out map[string]any
-	if err := json.Unmarshal([]byte(res.Content[0].(mcpapi.TextContent).Text), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	out := extractResultJSON(t, res)
 
 	// In quiet mode, documentation_state must NOT be present.
 	if _, found := out["documentation_state"]; found {
@@ -433,10 +420,7 @@ func TestHandleWhoami_wireVersion(t *testing.T) {
 				t.Fatalf("tool error: %v", res.Content)
 			}
 
-			var out map[string]any
-			if err := json.Unmarshal([]byte(res.Content[0].(mcpapi.TextContent).Text), &out); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
+			out := extractResultJSON(t, res)
 
 			wv, ok := out["wire_version"].(string)
 			if !ok || wv == "" {
