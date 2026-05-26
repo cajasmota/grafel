@@ -37,27 +37,11 @@ import (
 )
 
 // defaultCeiling is the maximum allowed handshake token count.
-// Empirical baseline: 2,963 tokens (28 tools, measured 2026-05-21 with 4-chars/token,
-// after refactor/mcp-real-3k schema compression). Ceiling = 3,000 (hard spec target).
-// Bump this constant when intentionally adding new tools (with justification comment).
-//
-// 2026-05-23 (#1384, epic #1380): bumped 3000 → 3100 to seat the new
-// archigraph_module_analysis tool. Module-level GDS (SCC + PageRank + betweenness
-// on the aggregated module graph) is a strategic addition — the bird's-eye-view
-// counterpart to the entity-level surface. Bundled into one action-dispatched
-// tool (cycles|centrality|all) to minimise footprint; measured at 3085 tokens
-// (+85 above the previous ceiling, +122 above baseline). +100-token bump is the
-// smallest round number that fits with a safety margin.
-// 2026-05-24 (token-sprint bundle #1741/#1753): bumped to 3500 to seat
-// archigraph_neighbors (folds find_callers + find_callees) and `fields` array
-// params on find/inspect/expand/search_entities/neighbors. find_callers and
-// find_callees stay as deprecated aliases for one release; ceiling drops to
-// ~3,200 next release when the aliases are removed.
-// 2026-05-27 (#2367): bumped to 4200 to match internal/mcp/budget_test.go.
-// Actual measured value is 4128 tokens; internal tests were already bumped
-// in #2207 but cmd/mcp-audit was not synced. Using shared constant is a
-// follow-up fix to prevent future drift.
-const defaultCeiling = 4200
+// The value is sourced from mcp.TokenCeiling (internal/mcp/budget.go) —
+// the single source of truth shared with internal/mcp/budget_test.go.
+// See that file's const comment for the full bump history.
+// To raise the ceiling, update TokenCeiling in internal/mcp/budget.go only.
+var defaultCeiling = mcp.TokenCeiling
 
 // maxDescLen is the per-tool description character limit.
 const maxDescLen = 80

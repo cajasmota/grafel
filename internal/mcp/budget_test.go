@@ -27,35 +27,10 @@ import (
 //     handshake section with a justification comment.
 func TestMCPHandshakeBudget(t *testing.T) {
 	const (
-		// tokenCeiling matches cmd/mcp-audit defaultCeiling.
-		// Baseline: 2,963 tokens (28 tools, measured 2026-05-21 post refactor/mcp-real-3k).
-		// 2026-05-23 (#1384, epic #1380): ceiling bumped to 3,100 to seat the new
-		// archigraph_module_analysis tool (module-level SCC/PageRank/betweenness).
-		// Current measurement at 29 tools: 3,085 tokens. See cmd/mcp-audit/main.go.
-		// 2026-05-23 (#1659): ceiling bumped to 3,200 to seat archigraph_apply_docgen_repairs
-		// (docgen→graph repair feedback loop). 30 tools, measured 3,176 tokens.
-		// 2026-05-23 (#1738): ceiling bumped to 3,300 to seat token_budget params on
-		// expand/traces/endpoints/find_callers/find_callees (5 params, +48 tokens).
-		// Measured: 3,248 tokens.
-		// 2026-05-23 (#1754): ceiling bumped to 3,350 to seat archigraph_subgraph
-		// unified tool. Pre-shim-drop measurement: 3,319 tokens (31 tools).
-		// feat/drop-subgraph-shims: drop archigraph_get_subgraph + archigraph_summarize_subgraph
-		// shims (0 real callers per #1742 research). Net saving: ~180 tokens.
-		// 29 tools, ceiling lowered to 3,200.
-		// 2026-05-24 (#1741/#1753/#1741/#1772 token sprint bundle): +archigraph_neighbors
-		// tool (unifies find_callers + find_callees) + `fields` array param added to
-		// find/inspect/expand/search_entities/neighbors for #1741 GraphQL-style
-		// selection. Old find_callers/find_callees stay as deprecated aliases until
-		// next release (one-release deprecation policy). Net: +1 tool, +5 fields params,
-		// shorter sentinel/expand descriptions. Measured: 3,452 tokens (31 tools).
-		// Ceiling bumped to 3,500 to seat the new surface. Drops to ~3,200 next release
-		// when find_callers/find_callees aliases are removed.
-		// PH5 (#2093): +archigraph_diff_refs (ref_a, ref_b, repo, group, cwd params).
-		// Measured: 3,562 tokens (32 tools). Ceiling bumped to 3,600.
-		// #2214 (epic #2207): +6 archigraph_docgen_* tools (start_run/status/validate/
-		// promote/abort/list). These are the daemon-side docgen staging tools.
-		// Measured: 4,128 tokens (38 tools). Ceiling bumped to 4,200.
-		tokenCeiling  = 4200
+		// tokenCeiling is sourced from mcp.TokenCeiling (internal/mcp/budget.go),
+		// the single source of truth shared with cmd/mcp-audit. See that file for
+		// the full bump history.
+		tokenCeiling  = mcp.TokenCeiling
 		charsPerToken = 4
 		envelopeBytes = 512 // initEnvelopeBytes constant from cmd/mcp-audit
 		maxDescLen    = 80
