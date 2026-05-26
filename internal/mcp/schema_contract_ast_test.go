@@ -135,6 +135,30 @@ var intentionalGaps = []intentionalGap{
 
 	// archigraph_traces: branching_factor — follow-action-only arg, undeclared for token budget (#1639).
 	{"archigraph_traces", "branching_factor", "#1639 token ceiling pattern — follow-only arg"},
+
+	// archigraph_save_finding: optional args undeclared for token budget (#2426 / #1639 pattern).
+	{"archigraph_save_finding", "type", "#2426 token ceiling pattern — optional note type"},
+	{"archigraph_save_finding", "nodes", "#2426 token ceiling pattern — optional node list"},
+	{"archigraph_save_finding", "repo_filter", "#2426 token ceiling pattern — optional repo filter"},
+
+	// archigraph_list_findings: optional args undeclared for token budget (#2426 / #1639 pattern).
+	{"archigraph_list_findings", "since", "#2426 token ceiling pattern — optional RFC3339 filter"},
+	{"archigraph_list_findings", "entity_id", "#2426 token ceiling pattern — optional entity filter"},
+	{"archigraph_list_findings", "limit", "#2426 token ceiling pattern — optional result limit"},
+
+	// archigraph_cross_links: per-action args undeclared for token budget (#2424 / #1639 pattern).
+	{"archigraph_cross_links", "channel", "#2424 token ceiling pattern — list filter"},
+	{"archigraph_cross_links", "method", "#2424 token ceiling pattern — list filter"},
+	{"archigraph_cross_links", "limit", "#2424 token ceiling pattern — list limit"},
+	{"archigraph_cross_links", "repo_filter", "#2424 token ceiling pattern — list filter"},
+	{"archigraph_cross_links", "candidate_id", "#2424 token ceiling pattern — accept/reject arg"},
+	{"archigraph_cross_links", "override_target", "#2424 token ceiling pattern — accept override"},
+	{"archigraph_cross_links", "reason", "#2424 token ceiling pattern — reject reason"},
+
+	// archigraph_license_audit: optional args undeclared for token budget (#2427 / #1639 pattern).
+	{"archigraph_license_audit", "include_transitive", "#2427 token ceiling pattern — optional transitive flag"},
+	{"archigraph_license_audit", "severity", "#2427 token ceiling pattern — optional severity filter"},
+	{"archigraph_license_audit", "limit", "#2427 token ceiling pattern — optional result limit"},
 }
 
 // handlerToTool and dispatchTree have been REMOVED.
@@ -155,33 +179,26 @@ var intentionalGaps = []intentionalGap{
 // Adding a new entry requires a comment explaining which tool was dropped and why.
 // Removing an entry means the dead code has been deleted — also correct.
 var orphanedHandlers = map[string]string{
-	// archigraph_cross_links was dropped (niche; see server.go line ~398).
-	// handleCrossLinks is gone but its sub-handlers still exist.
-	"handleListLinkCandidates":         "archigraph_cross_links dropped (niche; see registerTools comment)",
-	"handleResolveLinkCandidate":       "archigraph_cross_links dropped (niche; see registerTools comment)",
-	"handleResolveLinkCandidateAction": "archigraph_cross_links dropped (niche; see registerTools comment)",
+	// archigraph_recent_activity — superseded by MCPActivityBroker SSE/HTTP (#2428).
+	// Function body still exists pending deletion in this PR.
+	"handleRecentActivity": "archigraph_recent_activity dropped (superseded by MCPActivityBroker SSE/HTTP; #2428)",
 
-	// archigraph_save_result / archigraph_list_findings were dropped (use enrichments instead;
-	// see server.go registerTools comment).
-	"handleSaveResult":   "archigraph_save_result dropped (use enrichments; see registerTools comment)",
-	"handleListFindings": "archigraph_list_findings dropped (use enrichments; see registerTools comment)",
+	// archigraph_get_next_enrichment_task — subsumed by archigraph_enrichments(action=list,limit=1) (#2428).
+	// Function body still exists pending deletion in this PR.
+	"handleGetNextEnrichmentTask": "archigraph_get_next_enrichment_task dropped (use enrichments action=list; #2428)",
 
-	// archigraph_recent_activity was dropped (absorbed into whoami/dashboard).
-	"handleRecentActivity": "archigraph_recent_activity dropped (absorbed into whoami/dashboard)",
+	// handleQualityOrphans — HTTP served at /api/quality/orphans/{group}; archigraph_find_dead_code
+	// is the agent-facing substitute (#2428). Function body still exists pending deletion in this PR.
+	"handleQualityOrphans": "handleQualityOrphans orphaned from archigraph_quality_cycles (HTTP-served; #2428)",
 
-	// archigraph_get_next_enrichment_task was dropped (niche).
-	"handleGetNextEnrichmentTask": "archigraph_get_next_enrichment_task dropped (niche)",
+	// handleSubmitRepair — duplicate of handleSubmitRepairFromBundle (#2428).
+	// Function body still exists pending deletion in this PR.
+	"handleSubmitRepair": "standalone repair-submit superseded by handleSubmitRepairFromBundle (#2428)",
 
-	// archigraph_quality_cycles sub-handler handleQualityOrphans — the orphan
-	// sub-action was removed from the cycles bundle but the function body remains.
-	"handleQualityOrphans": "handleQualityOrphans orphaned from archigraph_quality_cycles (sub-action removed)",
-
-	// archigraph_license_audit was dropped (HTTP API still available).
-	"handleLicenseAudit": "archigraph_license_audit dropped (HTTP API still available; see registerTools comment)",
-
-	// handleSubmitRepair — standalone repair-submit handler, superseded by the
-	// bundled submit action in handleRepairs (handleSubmitRepairFromBundle).
-	"handleSubmitRepair": "standalone repair-submit superseded by handleSubmitRepairFromBundle",
+	// handleResolveLinkCandidate — legacy standalone pre-bundle version.
+	// archigraph_cross_links now dispatches via handleResolveLinkCandidateAction
+	// (the bundle-aware shim); this standalone is never called. Delete in #2428.
+	"handleResolveLinkCandidate": "pre-bundle standalone; superseded by handleResolveLinkCandidateAction (#2428)",
 }
 
 // sharedHelpers are functions that call argXxx but are not handlers — their

@@ -259,20 +259,17 @@ func (s *Server) fullToolList() ([]MCPToolEntry, error) {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 28 (#1281: 9→4 bundles; #1293: desc trim; #1312: +quality_cycles; #1314: +auth_coverage;
+// Tool count: 42 (#1281: 9→4 bundles; #1293: desc trim; #1312: +quality_cycles; #1314: +auth_coverage;
 //
 //	#1322: +secrets; #1323: +test_coverage; #1333: desc ≤80 chars;
-//	refactor/mcp-real-3k: ≤3k handshake, -license_audit for token ceiling).
+//	refactor/mcp-real-3k: ≤3k handshake; #2424: +cross_links; #2426: +save_finding,+list_findings;
+//	#2427: +license_audit re-wired — no HTTP route found in internal/dashboard/).
 //
 // Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
 //
 //	archigraph_get_next_enrichment_task, archigraph_get_telemetry.
 //
-// Dropped (agent-facing, ≤3k): archigraph_recent_activity (UI), archigraph_save_finding,
-//
-//	archigraph_list_findings (use enrichments), archigraph_cross_links (niche).
-//
-// Dropped (HTTP-only, ≤3k optimization): archigraph_license_audit (#1334, HTTP API still available).
+// Dropped (agent-facing, superseded): archigraph_recent_activity (superseded by MCPActivityBroker SSE/HTTP).
 func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_whoami",
 		mcpapi.WithDescription("Infer group/repo/ref for caller (cwd_resolved_to, indexed_ref, is_worktree)."),
@@ -395,7 +392,17 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_enrichments", s.handleEnrichments))
 
 	// archigraph_get_next_enrichment_task dropped (use enrichments(action=list,limit=1) instead).
-	// archigraph_cross_links dropped (niche; agents rarely invoke; saves 164 tokens).
+
+	// archigraph_cross_links — action=list|accept|reject (#2424).
+	// Per-action optional args read from the request map but undeclared to
+	// stay under the token ceiling (#1639 pattern): channel, method,
+	// limit, repo_filter, candidate_id, override_target.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_cross_links",
+		mcpapi.WithDescription("Cross-repo link candidates: list=pending, accept|reject=resolve."),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_cross_links", s.handleCrossLinks))
 
 	// archigraph_repairs — action: list|submit. ADR-0015 residual-edge repair.
 	// Submit-only optional args are read from request map but undeclared in
@@ -654,7 +661,33 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
 	), s.wrap("archigraph_secrets", s.handleSecrets))
 
-	// archigraph_license_audit dropped (HTTP API still available); see registerTools comments.
+	// archigraph_save_finding + archigraph_list_findings (#2426).
+	// Optional args read from the request map but undeclared to stay under
+	// the token ceiling (#1639 pattern):
+	//   save_finding: type, nodes, repo_filter.
+	//   list_findings: since, entity_id, limit.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_save_finding",
+		mcpapi.WithDescription("Persist a Q&A finding to the group memory store."),
+		mcpapi.WithString("question", mcpapi.Required()),
+		mcpapi.WithString("answer", mcpapi.Required()),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_save_finding", s.handleSaveResult))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_list_findings",
+		mcpapi.WithDescription("List findings from the group memory store."),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_list_findings", s.handleListFindings))
+
+	// archigraph_license_audit — re-wired (#2427): no HTTP route found in internal/dashboard/.
+	// Optional args read from the request map but undeclared to stay under
+	// the token ceiling (#1639 pattern): include_transitive, severity, limit.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_license_audit",
+		mcpapi.WithDescription("Audit dependency licenses; flag GPL/AGPL conflicts."),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_license_audit", s.handleLicenseAudit))
 
 	// archigraph_diff_refs — PH5 (#2093): compare two indexed git refs.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_diff_refs",
