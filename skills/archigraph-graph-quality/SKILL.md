@@ -218,6 +218,7 @@ Source snippets are referenced by path+line, not embedded. The raw-data appendix
 - The orchestrator spawns Phase 2 and Phase 3 as independent subagents with no shared transcript.
 - The skill calls `archigraph_whoami` before generating any question, and questions reference only entities actually present in the group.
 - Token counts come from the host's `usage_info`, with a labeled estimation fallback.
+- Phase 3 captures `[mcp-rpc] tool=<X> elapsed=<N>ms` lines from `~/.archigraph/logs/daemon.log` during each question, aggregates them into `mcp_rpc_count` / `mcp_rpc_handler_ms_sum` / `mcp_rpc_handler_ms_p50` / `mcp_rpc_handler_ms_p99` per question, and the Phase 5 report includes a "Handler vs Transport" subsection splitting wall time into handler and transport (#2291).
 - Ground truth is established by an independent grep+read pass in Phase 4 before scoring either answer — Phase 4 does not read `without-mcp.json` or `with-mcp.json` until after its own grep pass is committed.
 - The report is written to `--output` (default `~/private/benchmarks/mcp-quality-bench-<date>.md`).
 - The skill never spawns a daemon and never names real competitor tools in any artifact.

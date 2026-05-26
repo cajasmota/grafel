@@ -16,10 +16,40 @@ For each question in `questions.json`:
 
 1. Note the host's `usage_info` snapshot at question start (input/output/cache tokens emitted so far in this session).
 2. Note `wall_clock_start` (monotonic time, RFC3339 nanos).
-3. Answer the question using archigraph MCP tools. Take as many tool calls as needed but stop when you reach a defensible answer.
-4. Note `wall_clock_end`.
-5. Note the host's `usage_info` at question end.
-6. Compute the delta and record the metrics below.
+3. **Snapshot the daemon log byte-offset.** Read the current size of `~/.archigraph/logs/daemon.log` (`stat -f%z` on macOS, `stat -c%s` on Linux) and remember it as `log_start_offset`. If the file does not exist (rare; daemon may have just started and not yet flushed), set `log_start_offset = 0` and proceed.
+4. Answer the question using archigraph MCP tools. Take as many tool calls as needed but stop when you reach a defensible answer.
+5. Note `wall_clock_end`.
+6. Note the host's `usage_info` at question end.
+7. **Read daemon log lines emitted during this question.** `tail -c +<log_start_offset+1>` (or read from the snapshotted offset to current EOF). Filter to lines matching `[mcp-rpc] tool=<X> elapsed=<N>ms repo=<Y>` (the "elapsed" form, not the "received" form). Extract every `elapsed=<N>ms` integer and the tool name. These are the daemon-side handler durations for the RPC calls that ran while answering this question. See "Daemon RPC capture" below.
+8. Compute the delta and record the metrics below.
+
+## Daemon RPC capture (handler vs transport split)
+
+**Why:** the daemon logs `[mcp-rpc] tool=<name> elapsed=<N>ms repo=<repo>` at `internal/daemon/mcp_rpc.go:193` for every RPC call dispatched. The `elapsed` value is the **handler** time — what the daemon spent actually computing the answer, exclusive of the JSON-RPC bridge transport. Wall-clock per-question time minus the sum of `elapsed` values is the **transport** time (bridge serialization, stdio pipe, host overhead).
+
+This split is the whole point of the capture: a question with `wall=8000ms, handler_sum=7500ms` says the handler is the lever; a question with `wall=8000ms, handler_sum=400ms` says the transport is the lever.
+
+**Where to read:** `~/.archigraph/logs/daemon.log`. Format (one line per call):
+
+```
+archigraph-daemon: 2026/05/26 22:40:38.695982 [mcp-rpc] tool=archigraph_search_entities elapsed=8095ms repo=/path/to/repo
+```
+
+A `received` companion line is emitted **before** dispatch and must be ignored — it has no `elapsed=` field. Only count lines containing `elapsed=`.
+
+**Parsing regex:** `\[mcp-rpc\] tool=(\S+) elapsed=(\d+)ms repo=`. Two capture groups: tool name, integer milliseconds.
+
+**Bounding the window:** read the file slice `[log_start_offset, log_end_offset)` where `log_start_offset` was captured before the first MCP tool call of the question and `log_end_offset` is the file size at question end. This avoids cross-contamination if other sessions share the daemon. If the daemon log was rotated mid-question (file size shrank), reset `log_start_offset = 0` for that question and add a note in `notes`.
+
+**Aggregation per question:**
+
+- `mcp_rpc_count` = number of `elapsed=` lines captured in the window.
+- `mcp_rpc_handler_ms_sum` = sum of all elapsed_ms values.
+- `mcp_rpc_handler_ms_p50` = median (linear interpolation if even count). For `mcp_rpc_count == 0`, emit `null`.
+- `mcp_rpc_handler_ms_p99` = 99th percentile (same null rule).
+- `mcp_rpc_per_tool` (optional but recommended) = `{ "<tool>": { "count": N, "sum_ms": ... } }` — useful for spotting one slow tool dominating.
+
+If `~/.archigraph/logs/daemon.log` is unreadable (permissions, missing, host sandbox), record `mcp_rpc_count: null` for every question and add an `"mcp_rpc_capture_error": "<reason>"` field. Phase 5 will surface the failure in the report rather than silently drop the split.
 
 ## Output schema (`with-mcp.json`)
 
@@ -46,7 +76,16 @@ For each question in `questions.json`:
         "output_tokens": 678,
         "cache_read_tokens": 5000,
         "cache_creation_tokens": 0,
-        "wall_clock_ms": 8421
+        "wall_clock_ms": 8421,
+        "mcp_rpc_count": 4,
+        "mcp_rpc_handler_ms_sum": 7980,
+        "mcp_rpc_handler_ms_p50": 1850,
+        "mcp_rpc_handler_ms_p99": 2410,
+        "mcp_rpc_per_tool": {
+          "archigraph_search": {"count": 2, "sum_ms": 3600},
+          "archigraph_describe": {"count": 1, "sum_ms": 2120},
+          "archigraph_related": {"count": 1, "sum_ms": 2260}
+        }
       },
       "notes": "Mentioned archigraph_search returned 0 hits initially; widened query."
     }

@@ -50,6 +50,41 @@ At this token rate, a 1000-query session would cost roughly:
 | With MCP | ... | ... | ... | ... |
 | Without MCP | ... | ... | ... | ... |
 
+### Handler vs Transport (with-MCP only)
+
+The daemon logs handler-side latency per RPC at `internal/daemon/mcp_rpc.go:193`
+(`[mcp-rpc] tool=<X> elapsed=<N>ms`). Phase 3 captures every such line emitted
+during each question's MCP run and persists `mcp_rpc_count`,
+`mcp_rpc_handler_ms_sum`, `mcp_rpc_handler_ms_p50`, `mcp_rpc_handler_ms_p99` in
+`with-mcp.json`. This subsection splits the with-MCP wall-clock budget into
+handler time (work inside the daemon) and transport time (everything else —
+JSON-RPC bridge marshal, stdio pipe, host overhead, agent thinking between
+tool calls).
+
+| Metric | Value |
+|---|---:|
+| Total with-MCP wall-clock (ms) | `<sum of wall_clock_ms across questions>` |
+| Total handler time (ms) | `<sum of mcp_rpc_handler_ms_sum>` |
+| Total transport + agent gap (ms) | `<wall − handler>` |
+| Handler share of wall | `<handler / wall × 100>%` |
+| Transport share of wall | `<transport / wall × 100>%` |
+| Median per-call handler ms (p50) | `<median of mcp_rpc_handler_ms_p50>` |
+| Worst per-call handler ms (p99) | `<max of mcp_rpc_handler_ms_p99>` |
+
+| # | Question | Wall (ms) | RPC calls | Handler sum (ms) | Transport (ms) | Handler share |
+|---|---|---:|---:|---:|---:|---:|
+| q01 | ... | ... | ... | ... | ... | ...% |
+
+**Interpretation guide** (do not omit — paste verbatim into the report):
+
+- If **handler share ≥ 70%**, the lever is the handler path (graph traversal, marshaling inside the tool). Adjacency-indexing (#2285) and single-marshal (#2287) are the right next moves.
+- If **handler share ≤ 30%**, the lever is the bridge: a batch macro (#2286), keeping the daemon hot, or trimming per-call agent overhead.
+- If the split is **between 30% and 70%**, both levers matter; prioritise by absolute ms saved, not percentage.
+
+If `mcp_rpc_count` is `null` for any question (capture failure), call this out in
+a "Capture gaps" callout under this table and exclude those questions from the
+totals.
+
 ## Quality
 
 | Method | Full | Partial | Wrong | Unknown | Avg confidence | Net quality (full=1, partial=0.5, wrong=-0.5, unknown=0) |
