@@ -63,6 +63,17 @@ type SubprocessOptions struct {
 	// calls in files assigned to other batches. This is the fix for the
 	// multi-batch ghost path regression described in issue #1292.
 	DRFNamesPath string
+
+	// ORMFieldsPath is the absolute path of a newline-delimited file that
+	// contains every "<Model>.<field>" name collected by the coordinator's
+	// repo-wide pre-pass across ALL Python files (not just this batch).
+	// When set, the subprocess uses it as the cross-file ORM field-lookup
+	// closure instead of building one from its own (partial) batch — which
+	// would miss models defined in files assigned to other batches.
+	// This is the fix for the multi-batch correctness gap described in
+	// issue #2505. When empty (single-batch mode or tests) the subprocess
+	// falls back to scanning its own batch (the original #2448 behaviour).
+	ORMFieldsPath string
 }
 
 // Run is the subprocess-side entrypoint. It is invoked from
@@ -197,19 +208,23 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 		}
 	}
 
-	// Pre-pass (#2448 / Phase B): build the cross-file ORM field lookup
-	// for this batch. Engine pass applyORMFieldEdges resolves
-	// <Model>.<field> references first via FileInput.Pass1Entities
-	// (intra-file). When the model lives in a SIBLING file (canonical
-	// Django split — models.py defines User, views.py queries it), it
-	// falls back to this closure.
+	// Pre-pass (#2448 / Phase B, #2505): build the cross-file ORM field
+	// lookup. Engine pass applyORMFieldEdges resolves <Model>.<field>
+	// references first via FileInput.Pass1Entities (intra-file). When
+	// the model lives in a SIBLING file (canonical Django split —
+	// models.py defines User, views.py queries it), it falls back to
+	// this closure.
 	//
-	// Subprocess-scope caveat: the lookup only covers files in THIS
-	// batch. A model defined in a file assigned to a different
-	// subprocess is invisible here. The coordinator pre-groups batches
-	// per repo to keep imports together, but it does not formally
-	// guarantee co-location of models.py and views.py. Tech debt
-	// surfaced; see commit body.
+	// Multi-batch path (#2505): when the coordinator provides an
+	// ORMFieldsPath file, we load the globally-collected field names from
+	// it — those names span ALL Python files in the repo, not just the
+	// files in this batch. This eliminates the cross-batch visibility gap
+	// from #2448 Phase B: models defined in a file assigned to a different
+	// subprocess are now visible to every batch.
+	//
+	// Single-batch / fallback path (#2448 original): when ORMFieldsPath
+	// is empty, we scan only this batch's Python files (the original
+	// behaviour, correct for single-batch repos and tests).
 	//
 	// Cost model: one extra regex pass over each Python file's content
 	// at pre-pass time (no AST, no tree-sitter), keyed by model name in
@@ -217,27 +232,35 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 	// pointer; per-file extra memory is zero.
 	var crossFileBatchFields []types.EntityRecord
 	if runFramework {
-		for _, rel := range files {
-			if !strings.HasSuffix(strings.ToLower(rel), ".py") {
-				continue
+		if opts.ORMFieldsPath != "" {
+			// Multi-batch path (#2505): load the coordinator-written global set.
+			if recs, err := readORMFieldsFile(opts.ORMFieldsPath); err == nil {
+				crossFileBatchFields = recs
 			}
-			abs := filepath.Join(opts.RepoRoot, rel)
-			pyContent, rerr := os.ReadFile(abs)
-			if rerr != nil {
-				continue
-			}
-			idx := engine.BuildFieldIndex(string(pyContent))
-			if len(idx) == 0 {
-				continue
-			}
-			for name := range idx {
-				crossFileBatchFields = append(crossFileBatchFields, types.EntityRecord{
-					Name:       name,
-					Kind:       "SCOPE.Schema",
-					Subtype:    "field",
-					SourceFile: rel,
-					Language:   "python",
-				})
+		} else {
+			// Single-batch / fallback path (#2448): scan only the files in this batch.
+			for _, rel := range files {
+				if !strings.HasSuffix(strings.ToLower(rel), ".py") {
+					continue
+				}
+				abs := filepath.Join(opts.RepoRoot, rel)
+				pyContent, rerr := os.ReadFile(abs)
+				if rerr != nil {
+					continue
+				}
+				idx := engine.BuildFieldIndex(string(pyContent))
+				if len(idx) == 0 {
+					continue
+				}
+				for name := range idx {
+					crossFileBatchFields = append(crossFileBatchFields, types.EntityRecord{
+						Name:       name,
+						Kind:       "SCOPE.Schema",
+						Subtype:    "field",
+						SourceFile: rel,
+						Language:   "python",
+					})
+				}
 			}
 		}
 	}
@@ -433,6 +456,45 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 	emit(Envelope{Type: KindStats, Stats: &stats})
 
 	return bw.Flush()
+}
+
+// readORMFieldsFile reads the coordinator-written ORM field-name file and
+// returns a slice of EntityRecord stubs — one per "<Model>.<field>" line —
+// suitable for feeding into engine.BuildCrossFileFieldLookup. The file
+// format is one "<Model>.<field>" name per line; blank lines and lines
+// beginning with '#' are skipped.
+//
+// This is the subprocess side of the #2505 multi-batch ORM fix. The
+// coordinator writes ALL repo-wide ORM field names before spawning any
+// subprocesses; each subprocess loads this file instead of scanning only
+// its own (partial) batch — eliminating the cross-batch visibility gap
+// introduced by #2448 Phase B.
+//
+// SourceFile is intentionally left blank for records loaded from this file:
+// the model may live in any batch, so we cannot claim a specific source file
+// without risking misattribution. BuildCrossFileFieldLookup only uses
+// Name+Kind+Subtype for its model-keyed closure, so the omission is safe.
+func readORMFieldsFile(path string) ([]types.EntityRecord, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	var out []types.EntityRecord
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		out = append(out, types.EntityRecord{
+			Name:     line,
+			Kind:     "SCOPE.Schema",
+			Subtype:  "field",
+			Language: "python",
+		})
+	}
+	return out, sc.Err()
 }
 
 // readBatch reads a newline-delimited file of repo-relative paths.

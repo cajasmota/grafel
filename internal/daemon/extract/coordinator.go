@@ -174,6 +174,23 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 		drfNamesPath = ""
 	}
 
+	// Pre-pass (#2505): build the repo-wide ORM field-name index by scanning
+	// ALL Python files before any extraction batch spawns. This ensures every
+	// subprocess receives the complete set of Django model field names
+	// regardless of which batch those model files land in.
+	//
+	// Without this, each subprocess only scanned its own partial batch, so
+	// model fields defined in batch N were invisible to batch M — causing
+	// applyORMFieldEdges in batch M to emit no READS_FIELD edges for cross-
+	// batch ORM references (e.g. views.py in batch M querying User.cognito_id
+	// where User is defined in models.py in batch N).
+	ormFieldsPath, ormWriteErr := writeORMFieldsFile(batchDir, repoRoot, buckets["python"])
+	if ormWriteErr != nil {
+		// Non-fatal: fall back to per-batch scan (original #2448 behaviour,
+		// correct for single-batch repos and avoids a hard failure on I/O error).
+		ormFieldsPath = ""
+	}
+
 	skip := strings.Join(cfg.SkipPasses, ",")
 	stderr := cfg.Stderr
 	if stderr == nil {
@@ -219,6 +236,9 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 			}
 			if drfNamesPath != "" {
 				args = append(args, "--drf-names", drfNamesPath)
+			}
+			if ormFieldsPath != "" {
+				args = append(args, "--orm-fields", ormFieldsPath)
 			}
 			if skip != "" {
 				args = append(args, "--skip-pass", skip)
@@ -452,6 +472,71 @@ func writeDRFNamesFile(dir, repoRoot string, pyFiles []string) (string, error) {
 	}
 	if err := w.Flush(); err != nil {
 		return "", fmt.Errorf("flush drf-names file: %w", err)
+	}
+	return f.Name(), nil
+}
+
+// writeORMFieldsFile scans all Python files in pyFiles for Django model field
+// declarations and writes one "<Model>.<field>" name per line to a temp file
+// in dir. Returns the absolute path of the written file, or ("", nil) when no
+// field names were found (so subprocesses stay in fallback mode).
+//
+// This is the coordinator side of the #2505 multi-batch ORM cross-file fix.
+// By scanning ALL Python files at once (before any subprocess spawns), we
+// produce a complete, repo-wide set of Django model field names. Each
+// subprocess then loads this file via --orm-fields instead of scanning only
+// its own partial batch — eliminating the cross-batch visibility gap that
+// caused applyORMFieldEdges to miss READS_FIELD edges for models defined in
+// other batches (e.g. User.cognito_id defined in models.py, queried in
+// views.py, where the two files land in different subprocess batches).
+//
+// The temp file lives in batchDir and is cleaned up by the caller's
+// `defer os.RemoveAll(batchDir)` — no separate cleanup is required.
+func writeORMFieldsFile(dir, repoRoot string, pyFiles []string) (string, error) {
+	if len(pyFiles) == 0 {
+		return "", nil
+	}
+
+	// Collect all "<Model>.<field>" names across every Python file using
+	// the shared regex-based BuildFieldIndex. No AST / tree-sitter needed.
+	seen := map[string]bool{}
+	for _, rel := range pyFiles {
+		abs := filepath.Join(repoRoot, rel)
+		content, err := os.ReadFile(abs)
+		if err != nil {
+			continue // skip unreadable files; don't fail the whole pre-pass
+		}
+		idx := engine.BuildFieldIndex(string(content))
+		for name := range idx {
+			seen[name] = true
+		}
+	}
+
+	if len(seen) == 0 {
+		return "", nil // no Django model fields found; subprocesses use fallback
+	}
+
+	// Sort for determinism so that the file is byte-identical across runs.
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	f, err := os.CreateTemp(dir, "orm-fields-*.txt")
+	if err != nil {
+		return "", fmt.Errorf("create orm-fields file: %w", err)
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	for _, n := range names {
+		if _, err := fmt.Fprintln(w, n); err != nil {
+			return "", fmt.Errorf("write orm-fields file: %w", err)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		return "", fmt.Errorf("flush orm-fields file: %w", err)
 	}
 	return f.Name(), nil
 }

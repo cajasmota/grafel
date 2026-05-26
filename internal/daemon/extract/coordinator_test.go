@@ -180,6 +180,96 @@ func TestCoordinate_EmitsConfigEntities(t *testing.T) {
 	}
 }
 
+// TestCoordinate_CrossBatchORMFieldLookup is the multi-batch integration test
+// for issue #2505.
+//
+// Setup:
+//   - Batch A: models.py — defines the Django User model with field cognito_id.
+//   - Batch B: views.py  — queries User.objects.filter(cognito_id=...).
+//
+// The coordinator must scan ALL Python files before spawning subprocesses and
+// write a shared ORM-fields file. Each subprocess loads this file so models
+// from other batches are visible.
+//
+// Expected outcome:
+//   - At least one READS_FIELD relationship emitted for cognito_id (the cross-
+//     batch field reference in views.py).
+//
+// Skipped under `go test -short`.
+func TestCoordinate_CrossBatchORMFieldLookup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test — skipped in -short mode")
+	}
+	bin := buildArchigraph(t)
+
+	repo := t.TempDir()
+	must := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	// Batch A source: Django model definition in models.py.
+	must("models.py", `from django.db import models
+
+class User(models.Model):
+    cognito_id = models.CharField(max_length=200)
+    email = models.EmailField()
+`)
+
+	// Batch B source: ORM query in views.py — references User.cognito_id
+	// which is defined in a DIFFERENT file (models.py).
+	must("views.py", `from django.http import JsonResponse
+from .models import User
+
+def get_user_by_cognito(request, uid):
+    user = User.objects.filter(cognito_id=uid).first()
+    return JsonResponse({"found": user is not None})
+`)
+
+	files := []string{"models.py", "views.py"}
+
+	// Run via Coordinate — the coordinator must write an ORM-fields file
+	// and pass --orm-fields to each subprocess so that views.py (which
+	// may land in a separate batch from models.py) can resolve cognito_id.
+	var stderrBuf bytes.Buffer
+	res, err := Coordinate(context.Background(), repo, files, CoordinatorConfig{
+		BinaryPath: bin,
+		BatchSize:  1, // force 1 file per subprocess → guaranteed cross-batch
+		Stderr:     &stderrBuf,
+	})
+	if err != nil {
+		t.Fatalf("Coordinate: %v\n---stderr---\n%s", err, stderrBuf.String())
+	}
+
+	// Count READS_FIELD relationships in the result.
+	var readsField int
+	for _, r := range res.Relationships {
+		if r.Kind == string(types.RelationshipKindReadsField) {
+			readsField++
+		}
+	}
+
+	t.Logf("cross-batch ORM test: READS_FIELD=%d subprocesses=%d stderr=%s",
+		readsField, res.Subprocesses, stderrBuf.String())
+
+	// With the fix: at least one READS_FIELD edge must exist for
+	// User.cognito_id resolved from views.py across the batch boundary.
+	if readsField == 0 {
+		t.Errorf("expected at least one READS_FIELD edge for cross-batch ORM reference "+
+			"(views.py → User.cognito_id defined in models.py); got 0\n"+
+			"subprocesses=%d — confirm BatchSize=1 forced cross-batch split\n"+
+			"stderr:\n%s", res.Subprocesses, stderrBuf.String())
+	}
+
+	// Confirm the coordinator actually spawned multiple subprocesses (one
+	// per file with BatchSize=1) — otherwise we're testing intra-batch only.
+	if res.Subprocesses < 2 {
+		t.Errorf("expected >=2 subprocesses with BatchSize=1 for 2 Python files; got %d", res.Subprocesses)
+	}
+}
+
 func buildArchigraph(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

@@ -207,6 +207,86 @@ def get_pending():
 	t.Logf("subprocess Run(): field_entities=%d reads_field_rels=%d", fieldEntities, readsFieldRels)
 }
 
+// TestRun_ORMFieldsPath_CrossBatchLookup tests the ORMFieldsPath subprocess
+// path introduced by issue #2505. The fixture simulates a cross-batch split:
+// the ORM field names (User.cognito_id) are written to a shared file (as if
+// the coordinator had pre-scanned models.py from another batch), and the
+// subprocess is given only views.py — which references User.cognito_id.
+//
+// Without the fix (ORMFieldsPath empty, batch-only fallback): the subprocess
+// builds its field index only from views.py, which has no model definitions,
+// so the crossFileFields closure is nil → applyORMFieldEdges cannot resolve
+// cognito_id as a known field → 0 READS_FIELD edges from the cross-file path.
+//
+// With the fix (ORMFieldsPath set): the subprocess loads User.cognito_id from
+// the coordinator-written file → BuildCrossFileFieldLookup builds a closure
+// over it → applyORMFieldEdges emits READS_FIELD for the filter() call.
+//
+// Note: the intra-file regex fallback inside applyORMFieldEdges can still emit
+// READS_FIELD edges if it finds a model body in the SAME file. This test uses
+// a views.py that has NO model body, so any READS_FIELD edge that appears when
+// ORMFieldsPath is set comes exclusively from the cross-file closure.
+func TestRun_ORMFieldsPath_CrossBatchLookup(t *testing.T) {
+	repo := t.TempDir()
+
+	// views.py only — no model definition. Simulates Batch B in a cross-batch split.
+	viewsSrc := `from django.http import JsonResponse
+from .models import User
+
+def get_by_cognito(request, uid):
+    user = User.objects.filter(cognito_id=uid).first()
+    return JsonResponse({"found": user is not None})
+`
+	if err := os.WriteFile(filepath.Join(repo, "views.py"), []byte(viewsSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	batch := filepath.Join(t.TempDir(), "batch.txt")
+	if err := os.WriteFile(batch, []byte("views.py\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write the shared ORM-fields file — mimics what the coordinator would
+	// write after scanning models.py from a different batch.
+	ormFile := filepath.Join(t.TempDir(), "orm-fields.txt")
+	if err := os.WriteFile(ormFile, []byte("User.cognito_id\nUser.email\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := Run(context.Background(), SubprocessOptions{
+		RepoRoot:      repo,
+		BatchPath:     batch,
+		BatchID:       "test-orm-cross-batch",
+		Output:        &buf,
+		ORMFieldsPath: ormFile,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var readsField int
+	dec := json.NewDecoder(strings.NewReader(buf.String()))
+	for dec.More() {
+		var env Envelope
+		if derr := dec.Decode(&env); derr != nil {
+			t.Fatalf("decode: %v\n---stream---\n%s", derr, buf.String())
+		}
+		if env.Type == KindRelationship && env.Rel != nil &&
+			env.Rel.Kind == string(types.RelationshipKindReadsField) {
+			readsField++
+		}
+	}
+
+	t.Logf("cross-batch ORM (ORMFieldsPath set): READS_FIELD=%d", readsField)
+
+	// With ORMFieldsPath set, the cross-file closure covers User.cognito_id,
+	// so applyORMFieldEdges should emit at least one READS_FIELD edge.
+	if readsField == 0 {
+		t.Errorf("expected at least one READS_FIELD relationship when ORMFieldsPath provides "+
+			"User.cognito_id; got 0\n---stream---\n%s", buf.String())
+	}
+}
+
 // TestRun_Pass1PlumbedCounters verifies that BatchStats.Pass1PlumbedTrueCount
 // and Pass1PlumbedFalseCount are correctly incremented by Run() (issue #2447).
 //
