@@ -183,9 +183,31 @@ type Service struct {
 // per-call logging (tool=name elapsed=X repo=Y).
 // maxConcurrentGroups controls how many groups may be rebuilt in parallel
 // (0 or 1 → serial; ≥2 → worker pool). Added in #1276.
+//
+// JSON-lines mode (ARCHIGRAPH_DAEMON_LOG_JSON=1, added in PR #2350):
+// When this env var is set, every log line is emitted as a JSON object so
+// structured log shippers can parse it. For this to produce valid JSON the
+// underlying logger MUST be created with log.New(w, "", 0) — no prefix and
+// no flags. If the logger has any flags set (e.g. log.LstdFlags adds a
+// timestamp prefix), log lines will look like:
+//
+//	2026/05/27 12:00:00 {"event":"mcp_rpc",...}
+//
+// which is NOT valid JSON and will cause log shippers to silently discard
+// the entry. newService warns to stderr at startup if it detects this
+// misconfiguration. Long-term: migrate to log/slog (tracked as follow-up).
 func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath string, stopReq chan<- struct{}, logger *log.Logger, maxConcurrentGroups int) *Service {
 	if maxConcurrentGroups < 1 {
 		maxConcurrentGroups = 1
+	}
+	// Guard: warn at startup if JSON-lines mode is active but the logger has
+	// flags set. Flags like log.LstdFlags prepend a timestamp to every line,
+	// making the JSON output invalid. The check is cheap and non-fatal — the
+	// daemon continues to run, but operators are alerted immediately rather
+	// than discovering parse failures in their log shipper.
+	if logger != nil && daemonLogJSON() && logger.Flags() != 0 {
+		logger.Printf("WARN: %s=1 but log.Logger has flags=%d — JSON lines may be prefixed with timestamps and unparseable by log shippers; recreate the logger with log.New(w, \"\", 0)",
+			EnvDaemonLogJSON, logger.Flags())
 	}
 	return &Service{
 		startedAt:           time.Now(),
