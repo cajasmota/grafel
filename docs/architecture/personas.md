@@ -47,11 +47,29 @@ name: archigraph-<persona-name>           # lowercase, hyphens, prefixed archigr
 description: >
   One tight sentence: what this consultant is good at, and what kind of
   user question signals "hire this one".
-model: sonnet
+# Recommended model: <tier> — one-line rationale. Host agent may override.
+model: sonnet   # or opus — see Section 2.3 for per-persona recommendations
 ---
 ```
 
 **Tool inheritance:** Personas omit the `tools:` field from frontmatter to inherit the host agent's full toolset (Read, Write, Bash, all user-configured MCPs, etc.). Safety is enforced by the host agent's permission model, not by per-persona allowlists. If a persona has a specific tool restriction by design, document it in the Role section rather than via frontmatter.
+
+### 2.3 Per-persona model recommendations
+
+The `model:` frontmatter field is an **opinionated suggestion** to the host agent's invocation layer. It is not enforced — the host agent picks the active model and may override it based on user settings, cost policy, or context window. When omitted, the host agent decides.
+
+| Persona | Recommended model | Rationale |
+|---|---|---|
+| `architect` | `opus` | Multi-hop structural inference across large dependency graphs requires depth |
+| `security-auditor` | `opus` | Subtle vulnerability detection needs deep reachability and adversarial reasoning |
+| `performance-reviewer` | `opus` | Multi-pass hot-path analysis holds large call-graph contexts simultaneously |
+| `business-analyst` | `sonnet` | Business synthesis from route/flow data does not require deep technical inference |
+| `refactor-critic` | `sonnet` | Refactor signals are clear from graph degree/duplication data |
+| `api-designer` | `sonnet` | API review is primarily inventory and spec comparison work |
+| `data-engineer` | `sonnet` | Schema and query analysis follows clear structural patterns |
+| `qa-reviewer` | `sonnet` | Test inventory and TESTS-edge coverage analysis is structured enumeration |
+
+**Override contract:** The host agent MUST honour an explicit `--model` flag from the user (e.g. `/archigraph-consult --model haiku`) over the persona's own `model:` recommendation. The recommendation is a default, not a lock.
 
 ### 2.2 Body structure (v3)
 
@@ -84,11 +102,26 @@ trigger conditions. See Section 5.
 The persona responds in whatever shape best serves the user's question.
 No fixed report template. If the user asks "is this module too coupled?",
 answer that — don't deliver a 7-section structural audit.
+
+## When the user asks to save this analysis
+Documents how to persist findings on explicit user request. Default path:
+`~/.archigraph/groups/<group>/findings/<persona>-<short-slug>-<YYYY-MM-DD>.md`.
+Confirm path with user if ambiguous. Also offers `archigraph_save_finding`
+as the canonical graph-persistence path when the MCP exposes it.
 ```
 
 There is **no STOP-criteria section** in v3. The session ends when the user releases the persona.
 
 There is **no OUTPUT format section** in v3. Personas respond to questions in domain-appropriate shapes.
+
+### 2.4 Save-finding affordance contract
+
+Findings save **only on explicit user request**. The trigger phrases are: "save this", "write a report", "create a follow-up doc", or equivalent. On trigger:
+
+1. The persona uses the host agent's `Write` tool to save a markdown file at the default path (`~/.archigraph/groups/<group>/findings/<persona>-<short-slug>-<YYYY-MM-DD>.md`).
+2. If the path is ambiguous (e.g. multiple groups, or the user specifies a different location), the persona confirms the path with the user before writing.
+3. If `archigraph_save_finding` is available in the host MCP, the persona SHOULD also call it — this is the canonical path for graph-registered findings that appear in dashboard panels. The `Write` call and the MCP call are not mutually exclusive.
+4. The persona does **not** auto-save at confidence thresholds. There is no background materialisation. This was the v1/v2 model and is retired.
 
 ---
 
@@ -277,9 +310,9 @@ This section is non-negotiable. Any implementation that violates these invariant
 | True multi-persona panel mode | v1/v2 attempted this; postponed until interactive model is validated |
 | Persistent active-persona sidecar for Windsurf | Needs design work; conversation-marker workaround ships in this PR |
 | Codex / generic-markdown wrappers | Low user demand; defer until requested |
-| Persona-emitted findings → graph (opt-in) | User-driven `archigraph_save_finding` call works today; first-class "save this finding" affordance in persona body is followup |
+| Persona-emitted findings → graph (opt-in) | **Shipped in #2472** — "When the user asks to save this analysis" section added to all 8 persona bodies; Section 2.4 defines the contract |
 | Consult-Out depth > 1 (peer of peer) | Single hop only in v3 |
 | Telemetry on persona usage / Consult-Out frequency | Needs privacy review |
-| Per-persona model selection strategy | Host-level concern |
+| Per-persona model selection strategy | **Shipped in #2475** — `model:` frontmatter on all 8 personas with opinionated recommendations; Section 2.3 defines the mapping and override contract |
 | Cross-platform renderer CLI | Defer until 3+ platforms stable |
 | Solutions-architect / devops / compliance / dx personas | As per PR #2449 deferral reasons |

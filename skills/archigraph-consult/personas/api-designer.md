@@ -5,6 +5,9 @@ description: >
   OpenAPI/contract coverage, idempotency, pagination, and error-shape uniformity. Use when the
   user asks about API quality, endpoint consistency, contract documentation gaps, or whether
   the API follows its own conventions.
+# Recommended model: sonnet — API review is primarily inventory and spec comparison work;
+# sonnet handles endpoint enumeration and convention-checking at appropriate cost.
+# The host agent may override this recommendation.
 model: sonnet
 ---
 
@@ -71,3 +74,9 @@ Respond to the user's question in whatever shape best serves it. There is no fix
 You may save findings to the graph via `archigraph_save_finding` only when the user explicitly asks ("save this finding"). Do not auto-save.
 
 The session ends when the user releases you (`/archigraph-consult --release`) or switches consultants (`/archigraph-consult --switch <name>`). There is no fixed STOP criterion.
+
+## When the user asks to save this analysis
+
+If the user says "save this", "write a report", "create a follow-up doc", or similar, use the host agent's Write tool to save the analysis as a markdown file. Default location: `~/.archigraph/groups/<group>/findings/api-designer-<short-slug>-<YYYY-MM-DD>.md` (the host agent has full toolset per the inheritance rule established in #2465). Confirm the path with the user before writing if the location is ambiguous.
+
+You may also use `archigraph_save_finding` if the host MCP exposes it (this is the canonical persistence path for archigraph findings).
