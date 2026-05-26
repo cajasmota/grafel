@@ -13,7 +13,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -23,6 +22,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/pflag"
 )
 
 // defaultDaemonLog is the default daemon log path used when --log is not given.
@@ -57,10 +58,10 @@ type BenchCaptureOutput struct {
 	McpRPCPerTool      map[string]*ToolRPCStats `json:"mcp_rpc_per_tool"`
 }
 
-// runBenchCapture is the entry-point for `archigraph bench-capture rpc`.
+// runBenchCaptureRPC is the entry-point for `archigraph bench-capture rpc`.
 // argv is everything after "bench-capture rpc".
-func runBenchCapture(argv []string) error {
-	fs := flag.NewFlagSet("bench-capture rpc", flag.ContinueOnError)
+func runBenchCaptureRPC(argv []string) error {
+	fs := pflag.NewFlagSet("bench-capture rpc", pflag.ContinueOnError)
 	logPath := fs.String("log", defaultDaemonLog, "path to daemon log file")
 	startOff := fs.Int64("start-offset", 0, "byte offset to start reading from (inclusive)")
 	endOff := fs.Int64("end-offset", -1, "byte offset to stop reading at (exclusive); -1 = EOF")
@@ -201,17 +202,25 @@ func parseBenchCapture(data []byte) BenchCaptureOutput {
 	return out
 }
 
+// benchCaptureSubcommands maps subverb names to their handler functions.
+// Adding a new verb (e.g., "tokens") is a simple map entry addition.
+var benchCaptureSubcommands = map[string]func([]string) error{
+	"rpc": runBenchCaptureRPC,
+}
+
 // runBenchCaptureDispatch handles `archigraph bench-capture <subverb> [flags]`.
-// Currently only "rpc" is supported; this wrapper makes it easy to add
-// further subverbs (e.g., "tokens") without changing the top-level dispatch.
+// It looks up the subverb in the subcommand table and delegates.
 func runBenchCaptureDispatch(argv []string) error {
 	if len(argv) == 0 {
 		return fmt.Errorf("usage: archigraph bench-capture <subverb> [flags]\n  subverbs: rpc")
 	}
-	switch argv[0] {
-	case "rpc":
-		return runBenchCapture(argv[1:])
-	default:
-		return fmt.Errorf("unknown bench-capture subverb %q; supported: rpc", argv[0])
+	handler, ok := benchCaptureSubcommands[argv[0]]
+	if !ok {
+		var supported []string
+		for k := range benchCaptureSubcommands {
+			supported = append(supported, k)
+		}
+		return fmt.Errorf("unknown bench-capture subverb %q; supported: %v", argv[0], supported)
 	}
+	return handler(argv[1:])
 }

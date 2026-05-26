@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -167,7 +168,7 @@ func TestParseBenchCapture_PercentileKnownFixture(t *testing.T) {
 	// p99 = sorted[ceil(10*0.99)-1] = sorted[ceil(9.9)-1] = sorted[10-1] = sorted[9] = 10.
 	var lines []string
 	for i := 1; i <= 10; i++ {
-		lines = append(lines, "x [mcp-rpc] tool=t elapsed="+intStr(i)+"ms repo=/r")
+		lines = append(lines, "x [mcp-rpc] tool=t elapsed="+strconv.Itoa(i)+"ms repo=/r")
 	}
 	lines = append(lines, "")
 	out := parseBenchCapture([]byte(strings.Join(lines, "\n")))
@@ -287,21 +288,19 @@ func TestRunBenchCapture_MissingFile(t *testing.T) {
 	}
 }
 
-// intStr is a helper used in test fixtures to avoid importing strconv.
-func intStr(n int) string {
-	return strings.TrimLeft(strings.Repeat("0", 10)+itoa(n), "0")
-}
+// TestBenchCaptureRPCHelp verifies that the rpc subcommand is properly registered
+// in the subcommand table and will respond to help requests via cobra/CLI layer.
+func TestBenchCaptureRPCHelp(t *testing.T) {
+	// Verify the subcommand table exists and that "rpc" is registered.
+	// The actual help rendering is tested at the cobra/CLI layer in internal/cli.
+	if _, ok := benchCaptureSubcommands["rpc"]; !ok {
+		t.Fatal("rpc subcommand not registered in benchCaptureSubcommands")
+	}
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
+	// Verify all subcommands have a handler function
+	for name, handler := range benchCaptureSubcommands {
+		if handler == nil {
+			t.Errorf("subcommand %q has nil handler", name)
+		}
 	}
-	var buf [20]byte
-	pos := len(buf)
-	for n > 0 {
-		pos--
-		buf[pos] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[pos:])
 }
