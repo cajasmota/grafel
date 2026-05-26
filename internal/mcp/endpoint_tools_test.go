@@ -459,12 +459,15 @@ func TestQualityOrphans_LegacyKindFilterExpands(t *testing.T) {
 
 func TestHandleEndpoints_Definitions(t *testing.T) {
 	srv := newEndpointServer(t)
+	// #2288: request format=full so the response includes the `definitions`
+	// struct array (terse default omits it; lines-only).
 	res := callEndpointTool(t, srv.handleEndpoints, map[string]any{
 		"group":  "test",
 		"action": "definitions",
+		"format": "full",
 	})
 	if _, ok := res["definitions"]; !ok {
-		t.Error("expected definitions key in response for action=definitions")
+		t.Error("expected definitions key in response for action=definitions (format=full)")
 	}
 	defs := getSlice(t, res, "definitions")
 	if len(defs) != 2 {
@@ -521,6 +524,7 @@ func TestEndpointDefinitions_PathContainsFilter(t *testing.T) {
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":         "test",
 		"path_contains": "users",
+		"format":        "full", // #2288: opt-in to `definitions` struct array
 	})
 	defs := getSlice(t, res, "definitions")
 	if len(defs) != 1 {
@@ -537,6 +541,7 @@ func TestEndpointDefinitions_MethodFilter(t *testing.T) {
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":  "test",
 		"method": "POST",
+		"format": "full", // #2288: opt-in to `definitions` struct array
 	})
 	defs := getSlice(t, res, "definitions")
 	if len(defs) != 1 {
@@ -544,21 +549,42 @@ func TestEndpointDefinitions_MethodFilter(t *testing.T) {
 	}
 }
 
-// #1650: terse default returns "lines" with one-line entries; verbose=true
-// returns full per-record fields without "lines".
+// #1650 + #2288: terse default returns "lines" with one-line entries; the
+// full `definitions` struct array is OMITTED in terse mode (saves ~22 KB on
+// large responses per #2288). verbose=true/format=full returns `definitions`
+// without `lines`.
 func TestEndpointDefinitions_TerseDefault(t *testing.T) {
 	srv := newEndpointServer(t)
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test"})
 	if _, ok := res["lines"]; !ok {
 		t.Error("expected 'lines' key in terse default response")
 	}
-	defs := getSlice(t, res, "definitions")
-	for _, d := range defs {
-		obj := d.(map[string]any)
-		// Terse rows omit name/kind/properties.
-		if _, has := obj["properties"]; has {
-			t.Errorf("terse row should omit properties: %v", obj)
-		}
+	if _, has := res["definitions"]; has {
+		t.Error("terse default should OMIT 'definitions' (#2288): only 'lines' is emitted")
+	}
+}
+
+// TestEndpointDefinitions_FullModeIncludesDefinitions verifies that the
+// explicit opt-in (#2288) restores the full `definitions` struct array.
+func TestEndpointDefinitions_FullModeIncludesDefinitions(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":  "test",
+		"format": "full",
+	})
+	if _, ok := res["definitions"]; !ok {
+		t.Error("format=full should include 'definitions' key")
+	}
+	if _, ok := res["lines"]; ok {
+		t.Error("format=full should NOT include 'lines' key")
+	}
+	// verbose=true alias must work too.
+	res2 := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":   "test",
+		"verbose": true,
+	})
+	if _, ok := res2["definitions"]; !ok {
+		t.Error("verbose=true should include 'definitions' key (alias for format=full)")
 	}
 }
 
@@ -602,10 +628,18 @@ func buildLargeEndpointDoc(n int) *graph.Document {
 // limit=N, handleEndpointDefinitions returns at most 20 items (#1738).
 func TestEndpointDefaultLimit_Definitions(t *testing.T) {
 	srv := newTestServerWithDoc(t, buildLargeEndpointDoc(30))
+	// #2288: terse-default response omits `definitions`; use `lines` for the
+	// rendered count assertion, plus a parallel full-mode call to assert the
+	// struct-array slice is also capped.
 	out := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test"})
-	defs := getSlice(t, out, "definitions")
+	lines, _ := out["lines"].([]any)
+	if len(lines) > 20 {
+		t.Errorf("handleEndpointDefinitions (terse) returned %d lines, want ≤20 (default limit)", len(lines))
+	}
+	outFull := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test", "format": "full"})
+	defs := getSlice(t, outFull, "definitions")
 	if len(defs) > 20 {
-		t.Errorf("handleEndpointDefinitions returned %d items, want ≤20 (default limit)", len(defs))
+		t.Errorf("handleEndpointDefinitions (full) returned %d items, want ≤20 (default limit)", len(defs))
 	}
 }
 
@@ -618,6 +652,7 @@ func TestEndpointTokenBudget_Definitions(t *testing.T) {
 		"group":        "test",
 		"limit":        float64(30), // ask for all 30
 		"token_budget": float64(50), // tiny budget
+		"format":       "full",      // #2288: need full struct array to assert cap
 	})
 	defs := getSlice(t, out, "definitions")
 	if len(defs) >= 30 {
@@ -783,6 +818,7 @@ func TestEndpointDefinitions_PathContainsFilterBeforeLimit(t *testing.T) {
 		"group":         "test",
 		"path_contains": "proposal",
 		"limit":         float64(5),
+		"format":        "full", // #2288: opt-in to `definitions` struct array
 	})
 	defs := getSlice(t, res, "definitions")
 	if len(defs) != 2 {
@@ -812,6 +848,7 @@ func TestEndpointDefinitions_MethodFilterBeforeLimit(t *testing.T) {
 		"group":  "test",
 		"method": "get",
 		"limit":  float64(1),
+		"format": "full", // #2288: opt-in to `definitions` struct array
 	})
 	defs := getSlice(t, res, "definitions")
 	if len(defs) != 1 {

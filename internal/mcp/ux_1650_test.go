@@ -123,18 +123,33 @@ func TestUX1650_EndpointsFilterAndTerse(t *testing.T) {
 	srv := newTestServerWithDoc(t, doc)
 
 	// path_contains="proposal" → 1 line, not 5,780.
+	// #2288: terse default omits `definitions` — assert `count` and `lines`
+	// reflect the filter. A second full-mode call verifies the struct array
+	// is also size-1.
 	res := callEndpointTool(t, srv.handleEndpoints, map[string]any{
 		"group":         "test",
 		"action":        "definitions",
 		"path_contains": "proposal",
 	})
-	defs := getSlice(t, res, "definitions")
-	if len(defs) != 1 {
-		t.Errorf("path_contains=proposal: want 1, got %d", len(defs))
+	if _, has := res["definitions"]; has {
+		t.Error("terse default should omit `definitions` (#2288)")
+	}
+	if count, _ := res["count"].(float64); count != 1 {
+		t.Errorf("path_contains=proposal: want count=1, got %v", count)
 	}
 	lines, _ := res["lines"].([]any)
 	if len(lines) != 1 {
 		t.Errorf("expected 1 terse line, got %d", len(lines))
+	}
+	resFull := callEndpointTool(t, srv.handleEndpoints, map[string]any{
+		"group":         "test",
+		"action":        "definitions",
+		"path_contains": "proposal",
+		"format":        "full",
+	})
+	defs := getSlice(t, resFull, "definitions")
+	if len(defs) != 1 {
+		t.Errorf("path_contains=proposal (full): want 1, got %d", len(defs))
 	}
 	// One-line shape contains METHOD PATH file:line.
 	if line, _ := lines[0].(string); !strings.Contains(line, "GET") || !strings.Contains(line, "/proposals/get_counts") {

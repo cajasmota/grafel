@@ -298,8 +298,12 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 	preCapLen := len(out)
 	out = capByRenderedBytes(out, budgetBytes, !verbose)
 
+	// #2288: in terse mode (default), the full `definitions` struct array is
+	// dropped — `lines` is sufficient for the LLM consumer and avoids ~22 KB
+	// of payload duplication on large responses (e.g. bench Q10's 473 rows).
+	// Callers that need the full struct shape opt in via format=full or
+	// verbose=true (matches the existing arg convention in this file).
 	resp := map[string]any{
-		"definitions":   out,
 		"count":         len(out),
 		"total":         total,
 		"offset":        offset,
@@ -308,16 +312,18 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		"path_contains": pathContains,
 		"method":        method,
 		"token_budget":  tokenBudget,
-		"note":          "format=terse (default) returns one-line 'lines' entries. Use path_contains/method to narrow; limit/token_budget cap rendered size.",
+		"note":          "format=terse (default) returns one-line 'lines' entries only. Pass format=full (or verbose=true) to also receive the full `definitions` struct array.",
+	}
+	if verbose {
+		resp["definitions"] = out
+	} else {
+		resp["lines"] = renderTerseDefinitions(out)
 	}
 	if preCapLen > len(out) {
 		resp["truncation_note"] = fmt.Sprintf(
 			"response capped at token_budget=%d (~%d bytes); %d definitions omitted — use path_contains/method to narrow or pass a larger token_budget",
 			tokenBudget, budgetBytes, preCapLen-len(out),
 		)
-	}
-	if !verbose {
-		resp["lines"] = renderTerseDefinitions(out)
 	}
 	return jsonResult(resp), nil
 }
