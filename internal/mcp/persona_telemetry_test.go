@@ -125,11 +125,13 @@ func TestPersonaEventJSONLAppend(t *testing.T) {
 		t.Errorf("expected non-empty ts, got %v", got["ts"])
 	}
 
-	// Emit a consult_out event.
+	// Emit a consult_out event with depth and chain.
 	res2 := callTool(t, srv, "archigraph_persona_event", map[string]any{
 		"persona":        "architect",
 		"event_type":     "consult_out",
 		"target_persona": "performance-reviewer",
+		"depth":          2,
+		"chain":          []string{"architect", "security-auditor"},
 	})
 	if res2 == nil || res2.IsError {
 		t.Fatalf("consult_out event failed: %v", resultText(res2))
@@ -179,6 +181,12 @@ func TestPersonaEventJSONLAppend(t *testing.T) {
 	}
 	if evt2.TargetPersona != "performance-reviewer" {
 		t.Errorf("evt2.TargetPersona: want performance-reviewer, got %q", evt2.TargetPersona)
+	}
+	if evt2.Depth != 2 {
+		t.Errorf("evt2.Depth: want 2, got %d", evt2.Depth)
+	}
+	if len(evt2.Chain) != 2 || evt2.Chain[0] != "architect" || evt2.Chain[1] != "security-auditor" {
+		t.Errorf("evt2.Chain: want [architect security-auditor], got %v", evt2.Chain)
 	}
 }
 

@@ -51,6 +51,10 @@ type PersonaEvent struct {
 	EventType string `json:"event_type"`
 	// TargetPersona is the peer persona name on consult_out events. Empty otherwise.
 	TargetPersona string `json:"target_persona,omitempty"`
+	// Depth is the hop count for consult_out events (PR #2531). Empty otherwise.
+	Depth int `json:"depth,omitempty"`
+	// Chain is the ordered sequence of persona names visited in a consult chain (PR #2531). Empty otherwise.
+	Chain []string `json:"chain,omitempty"`
 	// Metadata is an optional free-form map for future extensibility.
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
@@ -118,6 +122,12 @@ func (s *Server) handlePersonaEvent(ctx context.Context, req mcpapi.CallToolRequ
 
 	targetPersona := argString(req, "target_persona", "")
 
+	// Extract depth if present (consult_out events only, but allow all event types for flexibility).
+	depth := argInt(req, "depth", 0)
+
+	// Extract chain if present (consult_out events only, but allow all event types for flexibility).
+	chain := argStringSlice(req, "chain")
+
 	// metadata is accepted as a raw map if the client provides it.
 	var metadata map[string]any
 	if raw, ok := req.GetArguments()["metadata"]; ok {
@@ -132,6 +142,8 @@ func (s *Server) handlePersonaEvent(ctx context.Context, req mcpapi.CallToolRequ
 		Persona:       persona,
 		EventType:     eventType,
 		TargetPersona: targetPersona,
+		Depth:         depth,
+		Chain:         chain,
 		Metadata:      metadata,
 	}
 
