@@ -42,7 +42,7 @@ func TestMigrateInRepoDocsDir(t *testing.T) {
 	}
 
 	// Canonical destination should exist.
-	dst := filepath.Join(home, ".archigraph", "docs", "testgroup", "myrepo")
+	dst := filepath.Join(home, "docs", "testgroup", "myrepo")
 	if _, statErr := os.Stat(dst); statErr != nil {
 		t.Errorf("canonical dst should exist: %s: %v", dst, statErr)
 	}
@@ -83,7 +83,7 @@ func TestMigrateInRepoStagingRun(t *testing.T) {
 	}
 
 	// Recovered destination should exist.
-	dst := filepath.Join(home, ".archigraph", "docs", "testgroup", ".staging-recovered", "2026-05-25-abcd1234")
+	dst := filepath.Join(home, "docs", "testgroup", ".staging-recovered", "2026-05-25-abcd1234")
 	if _, statErr := os.Stat(dst); statErr != nil {
 		t.Errorf("staging-recovered dst should exist: %s: %v", dst, statErr)
 	}
@@ -168,7 +168,7 @@ func TestMigrateInRepoBacksUpExistingCanonical(t *testing.T) {
 	projectRoot := t.TempDir()
 
 	// Pre-create the canonical destination.
-	canonical := filepath.Join(home, ".archigraph", "docs", "testgroup", "myrepo")
+	canonical := filepath.Join(home, "docs", "testgroup", "myrepo")
 	writeFile(t, filepath.Join(canonical, "old.md"))
 
 	// Create an in-repo docs/ to migrate.

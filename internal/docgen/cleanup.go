@@ -353,14 +353,25 @@ func humanBytes(n int64) string {
 	}
 }
 
-// resolveHomeDir returns opts.HomeDir if set, otherwise os.UserHomeDir.
+// resolveHomeDir returns the archigraph home directory using the same
+// convention as registry.HomeDir:
+//   - opts.HomeDir if explicitly provided (used by tests and the daemon)
+//   - $ARCHIGRAPH_HOME if the environment variable is set
+//   - ~/.archigraph otherwise
+//
+// The returned path is the archigraph home itself (e.g. ~/.archigraph), NOT
+// the raw OS home directory, so callers must NOT append an extra ".archigraph"
+// segment.
 func resolveHomeDir(override string) (string, error) {
 	if override != "" {
 		return override, nil
+	}
+	if env := os.Getenv("ARCHIGRAPH_HOME"); env != "" {
+		return env, nil
 	}
 	h, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return h, nil
+	return filepath.Join(h, ".archigraph"), nil
 }
