@@ -512,22 +512,29 @@ func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) erro
 }
 
 // daemonSchedulerLinks re-runs the cross-repo link passes for a group.
-// Delegates to the same hook the Rebuild RPC uses so behaviour is
-// identical to a force rebuild's link step.
-func daemonSchedulerLinks(_ context.Context, group string) error {
-	return runLinksHook(group)
+// Delegates to the context-aware version of the links hook so the scheduler's
+// shutdownCtx is threaded through for clean cancellation on daemon shutdown.
+// Behaviour is identical to a force rebuild's link step, except context is
+// propagated.
+func daemonSchedulerLinks(ctx context.Context, group string) error {
+	return runLinksHookWithCtx(ctx, group)
 }
 
 // daemonSchedulerAlgo runs the full index (including Pass 4 algorithms)
 // against a repo. The scheduler arranges cancel+reschedule on new
 // writes, so this is allowed to be slow.
-func daemonSchedulerAlgo(_ context.Context, repoPath string) error {
+// The ctx is the scheduler's shutdownCtx and is available for future use
+// (e.g. to cancel long-running subprocess operations on daemon shutdown).
+func daemonSchedulerAlgo(ctx context.Context, repoPath string) error {
 	// ADR-0016 flip-day (#808): graph.fb is always written by default now.
 	// #1576: tag with the registered CONFIG slug when this path is known to a
 	// group, so a watcher-triggered re-index keeps doc.Repo aligned with the
 	// dashboard's node slugs and the cross-repo link endpoints. An empty
 	// repoTag would fall back to the dir basename and diverge from a slugified
 	// config slug (e.g. upvate_core vs upvate-core), dropping cross-repo edges.
+	// NOTE: ctx is not yet used by Index, but is threaded through for future
+	// context-aware subprocess handling (similar to SchedulerIncremental above).
+	_ = ctx
 	err := Index(repoPath, "", configSlugForPath(repoPath), nil, false, false)
 	invalidateAfterIndex(repoPath)
 	// PH2 (#2090): re-activate the tier slot as HOT. ref="" here — the algo
