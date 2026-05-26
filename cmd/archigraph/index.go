@@ -276,9 +276,16 @@ type indexerStats struct {
 	// PORT-EXT: external-entity synthesis counters (Pass 4.5).
 	extSynth external.Stats
 
-	// Pass1Plumbed counters (issue #2447): files where FileInput.Pass1Entities
-	// was non-empty (True) vs empty (False) when Detector.Detect was called.
-	// Non-zero False count signals the side-channel is being bypassed.
+	// Pass1Plumbed counters (issue #2447): track how many files had
+	// FileInput.Pass1Entities non-empty (True) vs empty (False) when
+	// Detector.Detect was called for Pass 2.5.
+	//
+	// Heterogeneous-repo semantics (issue #2464): runPass25FrameworkRules
+	// runs Pass 2.5 against ALL classified files regardless of language.
+	// Non-Django files (Go, JS, TypeScript, etc.) never produce
+	// SCOPE.Schema(subtype=field) entities in Pass 1, so they legitimately
+	// contribute to FalseCount. A non-zero FalseCount is therefore EXPECTED
+	// on any multi-language repository and does NOT indicate a plumbing bug.
 	pass1PlumbedTrue  int
 	pass1PlumbedFalse int
 }
@@ -2268,8 +2275,13 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, absRepo string, c
 	)
 
 	// Issue #2447: atomic counters for Pass1Entities plumbing observability.
-	// Incremented per-file before Detect() so a non-zero False count in
-	// production signals the side-channel is being bypassed.
+	// Track how many files had FileInput.Pass1Entities non-empty (True) vs
+	// empty (False) when Detector.Detect was called for Pass 2.5.
+	//
+	// Heterogeneous-repo semantics (issue #2464): non-Django files never
+	// produce SCOPE.Schema(subtype=field) entities in Pass 1, so they
+	// legitimately contribute to FalseCount. A non-zero FalseCount is
+	// therefore EXPECTED on any multi-language repository.
 	var plumbedTrue, plumbedFalse atomic.Int64
 
 	work := make(chan classifiedFile, len(classified))
