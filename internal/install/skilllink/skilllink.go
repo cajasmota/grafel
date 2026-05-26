@@ -26,6 +26,7 @@ var SkillNames = []string{
 	"archigraph-patterns-discover",
 	"archigraph-patterns-sync",
 	"archigraph-resolve",
+	"archigraph-tech-docs",
 	"archigraph-test-page",
 	"extend-convention",
 	"generate-docs",

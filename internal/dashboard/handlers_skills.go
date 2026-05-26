@@ -154,6 +154,16 @@ var marketplaceCatalog = []CatalogSkill{
 			Version:     "bundled",
 		},
 	},
+	{
+		Slug:   "archigraph-tech-docs",
+		Source: "archigraph-bundled",
+		SkillMeta: SkillMeta{
+			Name:        "archigraph-tech-docs",
+			Description: "Generates the complete technical documentation set for a registered group: per-module READMEs, API reference, cross-cutting concerns, group synthesis, cross-repo links, and pattern library.",
+			Type:        "action",
+			WhenToUse:   "When documenting a repo or group for engineers. Run after /archigraph-resolve and optionally /archigraph-graph-quality to confirm graph health before spending tokens.",
+		},
+	},
 	// Third-party stub entries — demo marketplace entries
 	{
 		Slug:   "openapi-diff",
