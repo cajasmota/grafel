@@ -22,9 +22,13 @@ import (
 // passes to skip — pass nil to run everything.
 func newTestIndexer(t *testing.T, repoTag string, skipPasses []string) *Indexer {
 	t.Helper()
-	// #1626: per-repo state lives in the external store. Pin DAEMON_ROOT
-	// to an isolated temp so indexer runs (a) don't pollute the source
-	// tree fixtures with state and (b) don't load stale state across runs.
+	// #1626 / #2083: per-repo state lives in the external store. Pin
+	// ARCHIGRAPH_DAEMON_ROOT to an isolated temp so indexer runs
+	// (a) don't pollute the source tree fixtures with state and
+	// (b) don't load stale state across runs.
+	// Only set if the caller hasn't already established an isolated root
+	// (e.g. index_enrichment_test.go sets it before seeding resolution files
+	// that the second run must find in the same dir).
 	if os.Getenv("ARCHIGRAPH_DAEMON_ROOT") == "" {
 		t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	}

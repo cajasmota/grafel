@@ -18,6 +18,10 @@ import (
 
 // writeGraph writes a graph.Document to the repo's external store state
 // dir (#1626: per-repo state no longer lives in <repo>/.archigraph).
+// #2083: pins ARCHIGRAPH_DAEMON_ROOT to an isolated temp dir so state never
+// leaks into the real ~/.archigraph/store/. Only sets the env var if the
+// caller hasn't already established a root (so multi-writeGraph tests share
+// one consistent root across calls).
 func writeGraph(t *testing.T, repoDir string, doc *graph.Document) string {
 	t.Helper()
 	if os.Getenv("ARCHIGRAPH_DAEMON_ROOT") == "" {
@@ -2922,6 +2926,9 @@ func TestTOONWire_LiveEnvelopeTool_Topology(t *testing.T) {
 
 // writeGraphFB writes a graph.Document to <repoDir>/.archigraph/graph.fb
 // (FlatBuffers format). Used to verify fix for issue #1374 item #1.
+// #2083: pins ARCHIGRAPH_DAEMON_ROOT to an isolated temp dir so state never
+// leaks into the real ~/.archigraph/store/. Only sets the env var if the
+// caller hasn't already established a root.
 func writeGraphFB(t *testing.T, repoDir string, doc *graph.Document) string {
 	t.Helper()
 	if os.Getenv("ARCHIGRAPH_DAEMON_ROOT") == "" {

@@ -21,6 +21,9 @@ import (
 // generated_at timestamp is reproducible — verifying that the rest of the
 // document is stable.
 func TestIssue481_GraphJSONIsByteIdenticalAcrossRuns(t *testing.T) {
+	// #2083: pin ARCHIGRAPH_DAEMON_ROOT so Index() writes per-repo state into
+	// an isolated temp dir, not into the real ~/.archigraph/store/.
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	fixture := writeFixtureRepo(t)
 	t.Setenv("SOURCE_DATE_EPOCH", "1700000000")
 

@@ -31,6 +31,9 @@ func TestRunIndexInternalBadRepo(t *testing.T) {
 // against an empty temporary directory without panicking. The indexer will
 // produce a graph with zero entities; exit code must be 0.
 func TestRunIndexInternalEmptyDir(t *testing.T) {
+	// #2083: pin ARCHIGRAPH_DAEMON_ROOT so runIndexInternal writes per-repo
+	// state into an isolated temp dir, not into the real ~/.archigraph/store/.
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	dir := t.TempDir()
 	// Build a minimal valid-looking repo dir (no files, no git). The
 	// indexer should still succeed with 0 entities.
@@ -50,6 +53,9 @@ func TestRunIndexInternalEmptyDir(t *testing.T) {
 // TestRunIndexInternalSkipPasses verifies that skip-pass parsing works
 // correctly for multi-value comma-separated input.
 func TestRunIndexInternalSkipPasses(t *testing.T) {
+	// #2083: pin ARCHIGRAPH_DAEMON_ROOT so runIndexInternal writes per-repo
+	// state into an isolated temp dir, not into the real ~/.archigraph/store/.
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	dir := t.TempDir()
 	// Write a trivial Go file so the indexer has something to chew on.
 	src := filepath.Join(dir, "main.go")
