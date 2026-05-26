@@ -5,7 +5,6 @@ description: >
   continuity from the implementation perspective. Use when the user asks what the product
   actually does, wants feature gaps identified, or needs a non-technical summary of what
   is and isn't implemented.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 

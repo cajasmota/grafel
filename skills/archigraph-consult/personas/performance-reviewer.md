@@ -4,7 +4,6 @@ description: >
   Reviews hot paths, N+1 queries, synchronous blocking on the request path, unbounded queries,
   and caching opportunities. Use when the user asks about latency, throughput risks, slow
   endpoints, or database query efficiency.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 

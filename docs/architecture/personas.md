@@ -47,10 +47,11 @@ name: archigraph-<persona-name>           # lowercase, hyphens, prefixed archigr
 description: >
   One tight sentence: what this consultant is good at, and what kind of
   user question signals "hire this one".
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 ```
+
+**Tool inheritance:** Personas omit the `tools:` field from frontmatter to inherit the host agent's full toolset (Read, Write, Bash, all user-configured MCPs, etc.). Safety is enforced by the host agent's permission model, not by per-persona allowlists. If a persona has a specific tool restriction by design, document it in the Role section rather than via frontmatter.
 
 ### 2.2 Body structure (v3)
 

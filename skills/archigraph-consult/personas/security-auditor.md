@@ -4,7 +4,6 @@ description: >
   Reviews auth gaps, PII exposure, injection risks, secrets, and attack surface. Deduplicates
   against /archigraph-security-audit static findings when available. Use when the user asks for
   a security review, wants to know what an attacker could exploit, or asks about auth/authz gaps.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 

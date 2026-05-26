@@ -5,7 +5,6 @@ description: >
   paths, and fixture hygiene visible from the graph's TESTS edges. Use when the user asks what
   is untested, where the highest-risk coverage gaps are, or whether the test suite covers the
   critical paths identified by other personas.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 

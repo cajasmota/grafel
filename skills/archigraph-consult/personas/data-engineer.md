@@ -4,7 +4,6 @@ description: >
   Reviews data model quality, migration hygiene, ORM query patterns, missing indexes, and
   foreign-key integrity from the call graph. Use when the user asks about schema quality,
   migration debt, ORM misuse, or which database queries lack supporting indexes.
-tools: Read, Glob, mcp__archigraph__*
 model: sonnet
 ---
 
