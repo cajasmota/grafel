@@ -23,7 +23,12 @@ import (
 
 // FormatVersion is the FlatBuffers schema version this writer emits.
 // Matches the default of Graph.version in graph.fbs.
-const FormatVersion = 2
+//
+// Bumped for #2370 — Entity now carries `language` slot directly; old
+// graph.fb files must be reindexed. archigraph is pre-1.0; there is no
+// backward-compat read path for older versions (the loader fails loudly
+// and instructs the user to run `archigraph index <repo>`).
+const FormatVersion = 3
 
 // WriteAtomic serializes doc to a FlatBuffers buffer and writes it to
 // outPath atomically via a sibling .tmp + rename. The on-disk file is
@@ -81,26 +86,20 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	nameOff := b.CreateString(e.Name)
 	srcOff := b.CreateString(e.SourceFile)
 
-	// Issue #2341 — persist Language via Properties["language"] so that the
-	// load.go reader's workaround (fbEntityToGraphEntity restores Language from
-	// props["language"]) can recover it on read. The FlatBuffers schema has no
-	// top-level language slot, so we inject the value into the props map before
-	// building the property vector. We work on a shallow copy of the map to
-	// avoid mutating the caller's entity struct.
-	props := e.Properties
-	if e.Language != "" {
-		if _, alreadySet := props["language"]; !alreadySet {
-			// Shallow-copy only when we need to add the key so the common
-			// "extractor already stamped it" path stays zero-alloc.
-			copied := make(map[string]string, len(props)+1)
-			for k, v := range props {
-				copied[k] = v
-			}
-			copied["language"] = e.Language
-			props = copied
-		}
+	// Issue #2370 — Language is persisted via the dedicated top-level
+	// `language` FlatBuffers slot (see EntityAddLanguage below). The
+	// PR #2365 property-tunnel workaround (writing into Properties["language"])
+	// is retired. We still build the property vector from e.Properties as-is.
+	propsVec := buildPropertyVector(b, e.Properties)
+
+	// PH8 (#2100) embedding_ref offset is created up-front below; the
+	// language offset is similarly created here so it sits with the rest
+	// of the child-string offsets before the parent table opens.
+	var langOff flatbuffers.UOffsetT
+	hasLang := e.Language != ""
+	if hasLang {
+		langOff = b.CreateString(e.Language)
 	}
-	propsVec := buildPropertyVector(b, props)
 
 	// PH8 (#2100): embedding_ref — only create string offset when non-empty
 	// to preserve bytewise identity for pre-PH8 graphs.
@@ -148,6 +147,11 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	// PH8 (#2100): emit embedding_ref only when present (slot 16, offset 36).
 	if hasEmbRef {
 		fb.EntityAddEmbeddingRef(b, embRefOff)
+	}
+	// Issue #2370: emit language only when present so empty-language entities
+	// stay byte-identical to the pre-#2370 shape (modulo FormatVersion bump).
+	if hasLang {
+		fb.EntityAddLanguage(b, langOff)
 	}
 	return fb.EntityEnd(b)
 }

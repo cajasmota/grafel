@@ -238,9 +238,6 @@ func (rcv *Graph) MutateIsWorktree(n bool) bool {
 	return rcv._tab.MutateBoolSlot(32, n)
 }
 
-// CoverageStatus returns the coverage status string ("" / "full" / "partial").
-// Field slot 15 / vtable offset 34 — appended after is_worktree (#2181 / M4).
-// Returns nil (empty) for graphs written before this field was added.
 func (rcv *Graph) CoverageStatus() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(34))
 	if o != 0 {
@@ -306,13 +303,9 @@ func GraphAddIndexedSha(builder *flatbuffers.Builder, indexedSha flatbuffers.UOf
 func GraphAddIsWorktree(builder *flatbuffers.Builder, isWorktree bool) {
 	builder.PrependBoolSlot(14, isWorktree, false)
 }
-
-// GraphAddCoverageStatus writes the M4 sparse-checkout coverage_status field
-// (#2181). Slot 15, vtable offset 34. Empty string = omitted by FlatBuffers.
 func GraphAddCoverageStatus(builder *flatbuffers.Builder, coverageStatus flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(15, flatbuffers.UOffsetT(coverageStatus), 0)
 }
-
 func GraphEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }

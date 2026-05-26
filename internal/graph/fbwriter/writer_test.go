@@ -1,11 +1,14 @@
 package fbwriter_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	fb "github.com/cajasmota/archigraph/internal/graph/fbgraph"
 	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 )
@@ -268,8 +271,9 @@ func TestRoundtripCoverageStatus(t *testing.T) {
 }
 
 // TestRoundtripLanguage verifies that Entity.Language survives a write→read
-// cycle through graph.fb (issue #2341). Before the fix, Language was never
-// serialized into the FlatBuffer so every entity read back with Language="".
+// cycle through graph.fb (issue #2341, refined by #2370). Before #2341,
+// Language was never serialized; #2341 tunneled it via Properties["language"];
+// #2370 retires the tunnel and persists it via the dedicated FB slot.
 func TestRoundtripLanguage(t *testing.T) {
 	doc := &graph.Document{
 		Version:     1,
@@ -316,11 +320,12 @@ func TestRoundtripLanguage(t *testing.T) {
 	if ea.Language != "python" {
 		t.Errorf("entity a Language: got %q want %q", ea.Language, "python")
 	}
-	// Properties["language"] must also be set so MCP query handlers that read
-	// props directly (not the top-level field) see the value.
-	if ea.Properties["language"] != "python" {
-		t.Errorf("entity a Properties[language]: got %q want %q",
-			ea.Properties["language"], "python")
+	// #2370: Properties["language"] is no longer tunneled by the FB writer.
+	// Entity a was written with Properties unset for "language", so on read
+	// back the props map must not contain a synthesized "language" key.
+	if _, present := ea.Properties["language"]; present {
+		t.Errorf("entity a Properties[language]: unexpectedly present after #2370 retired the property-tunnel; props=%v",
+			ea.Properties)
 	}
 
 	// entity b: Language="go" already in Properties — must not be duplicated
@@ -377,5 +382,99 @@ func TestRoundtripNoAlgoData(t *testing.T) {
 	}
 	if got.Entities[0].CommunityID != nil {
 		t.Errorf("entity community_id: got %v want nil", got.Entities[0].CommunityID)
+	}
+}
+
+// TestLanguageSlotInRawFB verifies that #2370's dedicated `language` slot is
+// actually written into the on-disk FlatBuffer — not just exposed through the
+// high-level loader. We open the raw FB and inspect Entity.Language() directly,
+// which catches any future regression where the writer silently stops emitting
+// the slot.
+func TestLanguageSlotInRawFB(t *testing.T) {
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Date(2026, 5, 27, 0, 0, 0, 0, time.UTC),
+		Repo:        "fixture-language-slot",
+		Entities: []graph.Entity{
+			{ID: "ent0000000000000a", Name: "Foo", Kind: "class",
+				SourceFile: "foo.py", Language: "python"},
+			{ID: "ent0000000000000b", Name: "Bar", Kind: "function",
+				SourceFile: "bar.rs", Language: "rust"},
+			// Entity with no language — slot must be absent (empty string).
+			{ID: "ent0000000000000c", Name: "Baz", Kind: "external", SourceFile: ""},
+		},
+	}
+	doc.Stats.Entities = len(doc.Entities)
+
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	r, err := fbreader.Open(out)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer r.Close()
+
+	want := map[string]string{
+		"ent0000000000000a": "python",
+		"ent0000000000000b": "rust",
+		"ent0000000000000c": "",
+	}
+	for i := 0; i < r.EntityCount(); i++ {
+		ent := r.EntityAt(i)
+		if ent == nil {
+			t.Fatalf("entity %d: nil", i)
+		}
+		id := string(ent.Id())
+		got := string(ent.Language())
+		if got != want[id] {
+			t.Errorf("entity %s Language(): got %q want %q", id, got, want[id])
+		}
+	}
+}
+
+// TestLoaderRejectsOldFormatVersion verifies that the loader fails loudly with
+// the reindex-required error when graph.fb carries an older FormatVersion
+// (#2370). archigraph is pre-1.0; there is no compat path.
+func TestLoaderRejectsOldFormatVersion(t *testing.T) {
+	// Build a minimal graph.fb in-memory with Version=2 (the pre-#2370 format).
+	doc := &graph.Document{
+		Version: 1, GeneratedAt: time.Now().UTC(), Repo: "fixture-old-version",
+		Entities: []graph.Entity{{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "a.go"}},
+	}
+	doc.Stats.Entities = 1
+	buf, err := fbwriter.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	// Patch the on-disk Graph.version field down to 2 to simulate an old file.
+	root := fb.GetRootAsGraph(buf, 0)
+	if !root.MutateVersion(2) {
+		t.Fatalf("MutateVersion(2) returned false — slot missing?")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "graph.fb")
+	if err := os.WriteFile(path, buf, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	_, loadErr := graph.LoadGraphFromDir(dir)
+	if loadErr == nil {
+		t.Fatal("expected reindex error, got nil")
+	}
+	msg := loadErr.Error()
+	// Spot-check the operative phrases — verbatim error string is part of the
+	// loader contract and must point the user at `archigraph index`.
+	for _, want := range []string{
+		"graph.fb format version 2 is older than required version 3",
+		"please reindex",
+		"archigraph index <repo>",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error message missing %q\nfull message: %s", want, msg)
+		}
 	}
 }

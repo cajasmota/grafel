@@ -246,9 +246,6 @@ func (rcv *Entity) MutateIsArticulationPoint(n bool) bool {
 	return rcv._tab.MutateBoolSlot(34, n)
 }
 
-// EmbeddingRef returns the content-hash pointer into the shared embedding
-// cache (PH8 / #2100). Returns nil when the field is absent (old graphs) or
-// empty — callers should treat nil and "" identically as "no cache ref".
 func (rcv *Entity) EmbeddingRef() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(36))
 	if o != 0 {
@@ -257,8 +254,16 @@ func (rcv *Entity) EmbeddingRef() []byte {
 	return nil
 }
 
+func (rcv *Entity) Language() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(38))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
 func EntityStart(builder *flatbuffers.Builder) {
-	builder.StartObject(17)
+	builder.StartObject(18)
 }
 func EntityAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -308,11 +313,14 @@ func EntityAddIsGodNode(builder *flatbuffers.Builder, isGodNode bool) {
 func EntityAddIsSurpriseEndpoint(builder *flatbuffers.Builder, isSurpriseEndpoint bool) {
 	builder.PrependBoolSlot(14, isSurpriseEndpoint, false)
 }
+func EntityAddIsArticulationPoint(builder *flatbuffers.Builder, isArticulationPoint bool) {
+	builder.PrependBoolSlot(15, isArticulationPoint, false)
+}
 func EntityAddEmbeddingRef(builder *flatbuffers.Builder, embeddingRef flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(16, flatbuffers.UOffsetT(embeddingRef), 0)
 }
-func EntityAddIsArticulationPoint(builder *flatbuffers.Builder, isArticulationPoint bool) {
-	builder.PrependBoolSlot(15, isArticulationPoint, false)
+func EntityAddLanguage(builder *flatbuffers.Builder, language flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(17, flatbuffers.UOffsetT(language), 0)
 }
 func EntityEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

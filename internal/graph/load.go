@@ -23,6 +23,13 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 )
 
+// minSupportedFBFormatVersion is the lowest graph.fb FormatVersion the loader
+// will accept. It must stay in sync with fbwriter.FormatVersion; we keep a
+// local copy here to avoid an import cycle (fbwriter imports the graph
+// package). Bumped for #2370 — Entity now carries `language` directly; old
+// graph.fb files lack the slot and must be reindexed.
+const minSupportedFBFormatVersion = 3
+
 // LoadGraphFromDir loads a graph.Document from dir, where dir is the
 // .archigraph state directory for a repo (the directory that contains
 // graph.fb / graph.json).
@@ -80,6 +87,17 @@ func loadFBDocument(path string) (*Document, error) {
 		return nil, fmt.Errorf("graph.loadFBDocument: open %s: %w", path, err)
 	}
 	defer r.Close()
+
+	// #2370 — refuse to read old-format graph.fb files. archigraph is
+	// pre-1.0; there is no on-disk compat path. The user is expected to
+	// rerun `archigraph index <repo>` to regenerate graph.fb against the
+	// current schema.
+	if v := r.Version(); v < minSupportedFBFormatVersion {
+		return nil, fmt.Errorf(
+			"graph.loadFBDocument: graph.fb format version %d is older than required version %d — please reindex (run: archigraph index <repo>)",
+			v, minSupportedFBFormatVersion,
+		)
+	}
 
 	meta := r.LoadGraphMeta()
 	generatedAt, _ := time.Parse(time.RFC3339, meta.ComputedAt)
@@ -209,8 +227,9 @@ func fbEntityToGraphEntity(e *fb.Entity) Entity {
 		props["module"] = mod
 		ent.Properties = props
 	}
-	// Restore Language from Properties if the indexer stored it there.
-	if lang, ok := props["language"]; ok {
+	// Issue #2370 — Language is read directly from the dedicated FB slot.
+	// The PR #2365 property-tunnel restore (props["language"]) is retired.
+	if lang := string(e.Language()); lang != "" {
 		ent.Language = lang
 	}
 	// Restore Pass 4 (graph-algorithm) attributes (#1620). community_id uses

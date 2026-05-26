@@ -53,6 +53,14 @@ table Entity {
   // graphs have this field absent (FlatBuffers defaults to "") and continue
   // to work — their vectors are served from embeddings.bin as before.
   embedding_ref: string;
+
+  // Issue #2370: dedicated top-level slot for the entity language tag
+  // (e.g. "python", "rust", "ocaml"). Previously tunneled through
+  // Properties["language"] by PR #2365 because the FB schema had no
+  // such slot. Adding it here retires the property-tunnel workaround;
+  // FormatVersion is bumped to force a clean reindex (archigraph is
+  // pre-1.0; no backward-compat path).
+  language: string;
 }
 
 // Community is one Louvain modularity community summarised for the
