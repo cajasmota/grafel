@@ -233,10 +233,10 @@ func TestDetectGitRepo_InRepo(t *testing.T) {
 	// os.Chdir which holds the process CWD on the TempDir and causes
 	// "The process cannot access the file because it is being used by
 	// another process" cleanup failures on Windows.
-	out, err := exec.Command("git", "init", "-q", gitRepo).CombinedOutput()
-	if err != nil {
+	out, gerr := exec.Command("git", "init", "-q", gitRepo).CombinedOutput()
+	if gerr != nil {
 		// Git not available — skip this test.
-		t.Skipf("git init failed: %v: %s", err, out)
+		t.Skipf("git init failed: %v: %s", gerr, out)
 	}
 
 	// Call DetectGitRepo from within the repo.

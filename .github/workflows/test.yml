@@ -70,8 +70,7 @@ jobs:
       # caching; `go clean -testcache` flushes test results but NOT compiled
       # binaries; only `go clean -cache` flushes the build cache. Without
       # this combined clean, a stale compiled test binary from a previous PR
-      # can run, masking the current PR's source changes (resolves #2253:
-      # StagingOnly checks + runtime.GOOS guards weren't taking effect in CI).
+      # can run, masking the current PR's source changes (refs #2253).
       - run: go clean -cache -testcache
 
       # -timeout 15m: the suite with -race on a loaded CI runner (ubuntu-latest,
