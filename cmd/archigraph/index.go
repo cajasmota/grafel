@@ -546,10 +546,16 @@ type JSONStats struct {
 	ExternalUniqueCount  int                 `json:"external_unique_count"`
 	ExternalRelsResolved int                 `json:"external_rels_resolved"`
 
-	// Pass1PlumbedTrue / Pass1PlumbedFalse (issue #2447): files where
-	// FileInput.Pass1Entities was non-empty (True) vs empty (False) when
-	// Detector.Detect was called for Pass 2.5. A non-zero False count
-	// signals the Pass1Entities side-channel is being bypassed.
+	// Pass1Plumbed counters (issue #2447): track how many files had
+	// FileInput.Pass1Entities non-empty (True) vs empty (False) when
+	// Detector.Detect was called for Pass 2.5.
+	//
+	// Heterogeneous-repo semantics (issue #2464): runPass25FrameworkRules
+	// runs Pass 2.5 against ALL classified files regardless of language.
+	// Non-Django files (Go, JS, TypeScript, etc.) never produce
+	// SCOPE.Schema(subtype=field) entities in Pass 1, so they legitimately
+	// contribute to FalseCount. A non-zero FalseCount is therefore EXPECTED
+	// on any multi-language repository and does NOT indicate a plumbing bug.
 	Pass1PlumbedTrue  int `json:"pass1_plumbed_true"`
 	Pass1PlumbedFalse int `json:"pass1_plumbed_false"`
 }
