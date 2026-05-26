@@ -34,6 +34,26 @@ jobs:
         with:
           fetch-depth: 0
 
+      # MinGW is required on Windows for CGO (tree-sitter bindings). Static
+      # linking (-extldflags=-static) ensures the released binary has no
+      # runtime dependency on MinGW DLLs. Closes #937.
+      - name: Setup MSYS2 + MinGW (Windows only)
+        if: matrix.goos == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+          update: false
+
+      - name: Enable CGO on Windows
+        if: matrix.goos == 'windows'
+        shell: bash
+        run: |
+          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+          echo "CC=x86_64-w64-mingw32-gcc" >> $GITHUB_ENV
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
@@ -61,8 +81,14 @@ jobs:
           BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           SHORT_SHA=${GITHUB_SHA::7}
           VERSION=${GITHUB_REF_NAME}
+          # On Windows, -extldflags=-static ensures no MinGW runtime dependency
+          # in the released binary (user machines don't need MinGW installed).
+          EXTRA_LDFLAGS=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            EXTRA_LDFLAGS="-extldflags=-static"
+          fi
           go build -trimpath \
-            -ldflags "-s -w -X github.com/cajasmota/archigraph/internal/version.Version=${VERSION} -X github.com/cajasmota/archigraph/internal/version.Commit=${SHORT_SHA} -X github.com/cajasmota/archigraph/internal/version.Date=${BUILD_DATE}" \
+            -ldflags "-s -w ${EXTRA_LDFLAGS} -X github.com/cajasmota/archigraph/internal/version.Version=${VERSION} -X github.com/cajasmota/archigraph/internal/version.Commit=${SHORT_SHA} -X github.com/cajasmota/archigraph/internal/version.Date=${BUILD_DATE}" \
             -o dist/${BIN} ./cmd/archigraph
         shell: bash
 

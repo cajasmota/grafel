@@ -17,7 +17,7 @@ jobs:
           cache: true
       - name: gofmt
         run: |
-          diff=$(gofmt -l $(git ls-files '*.go' | grep -v '^vendor/') 2>&1)
+          diff=$(gofmt -l $(git ls-files '*.go') 2>&1)
           if [ -n "$diff" ]; then
             echo "::error::gofmt found unformatted files:"
             echo "$diff"

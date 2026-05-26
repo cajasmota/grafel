@@ -1,4 +1,8 @@
-name: Windows CGO Experiment
+name: Windows CGO Smoke
+
+# Previously "Windows CGO Experiment" — graduated to stable in #2230 (closes #937).
+# MinGW + CGO_ENABLED=1 are now standard on the main test matrix in test.yml.
+# This workflow retains the more thorough daemon smoke test (healthz + binary upload).
 
 on:
   workflow_dispatch:
@@ -11,28 +15,29 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
     runs-on: windows-latest
-    continue-on-error: true   # experimental until #937 closed
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - uses: msys2/setup-msys2@v2
+      - name: Setup MSYS2 + MinGW
+        uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          update: true
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf
-          path-type: inherit
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+          update: false
+
+      - name: Enable CGO
+        shell: bash
+        run: |
+          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+          echo "CC=x86_64-w64-mingw32-gcc" >> $GITHUB_ENV
 
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
           cache: true
-
-      - name: Configure CGO for MinGW
-        shell: powershell
-        run: |
-          echo "CGO_ENABLED=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "CC=gcc.exe"    | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: go mod download
         run: go mod download

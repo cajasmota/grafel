@@ -45,8 +45,9 @@ SCRATCH.md
 /.verify/
 
 # Go module cache
-# /vendor/ intentionally NOT ignored — vendored via go mod vendor for #1796
-# (CGO iter.go patch that cannot be applied without vendor)
+# vendor/ was previously kept for the #1796 iter.go CGO patch workaround.
+# MinGW on Windows CI (CGO_ENABLED=1) makes the patch unnecessary — dropped in #2230.
+/vendor/
 
 # archigraph index output
 .archigraph/

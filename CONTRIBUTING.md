@@ -9,8 +9,8 @@ CI is **fast by default**: PRs run zero CI except board-hygiene. Full 3-platform
 | Workflow | Cost | Always? |
 |---|---|---|
 | `board-hygiene` (closure-keyword check) | ~5 s | Yes — all PRs |
-| `test` (3-platform: ubuntu / macos / windows) | ~30 min | No — manual or `ci:full` label only |
-| `windows-cgo-experiment` | ~5 min | No — manual or `ci:full` label only |
+| `test` (3-platform: ubuntu / macos / windows with MinGW) | ~30 min | No — manual or `ci:full` label only |
+| `windows-cgo-smoke` (daemon healthz smoke, graduated from experiment in #2230) | ~5 min | No — manual or `ci:full` label only |
 | `linux-smoke` | ~3 min | Post-merge + tag only |
 
 ---
@@ -31,7 +31,6 @@ Apply the **`ci:full`** label to trigger full 3-platform CI (`test` + `windows-c
 **When to use it:**
 
 - You want to validate code changes across all platforms before merge.
-- You're testing a fix for Windows-specific CGO issues (see #937).
 - You're about to merge and want extra confidence.
 - You changed something in `cmd/`, `internal/`, or `go.mod`/`go.sum` and want to test it before marking ready.
 
@@ -89,7 +88,7 @@ Tags should only be pushed from `main` after all CI is green.
 |---|---|
 | Any PR (default) | `board-hygiene` only |
 | PR with `board:exempt` label | `board-hygiene` (passes via label) |
-| PR with `ci:full` label | `board-hygiene` + `test` (3 platforms) + `windows-cgo-experiment` |
+| PR with `ci:full` label | `board-hygiene` + `test` (3 platforms) + `windows-cgo-smoke` |
 | Push to `main` | `board-hygiene` (passes) + `test` + `linux-smoke` |
 | Tag push (`v1.2.3`) | `board-hygiene` (passes) + `test` + `linux-smoke` + `release` pipeline |
 | `workflow_dispatch` from Actions UI | Whichever workflow(s) you trigger |

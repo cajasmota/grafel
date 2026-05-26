@@ -12,6 +12,10 @@ builds:
     binary: archigraph
     env:
       - CGO_ENABLED=1
+      # On Windows (cross-compiled via MinGW on the windows-latest runner),
+      # use static linking so the end-user binary has no MinGW runtime dependency.
+      - >-
+        {{- if eq .Os "windows" }}CC=x86_64-w64-mingw32-gcc{{- end }}
     goos:
       - linux
       - darwin
@@ -27,6 +31,9 @@ builds:
       - -X github.com/cajasmota/archigraph/internal/version.Version={{.Version}}
       - -X github.com/cajasmota/archigraph/internal/version.Commit={{.ShortCommit}}
       - -X github.com/cajasmota/archigraph/internal/version.Date={{.Date}}
+      # Static-link the C runtime on Windows so the binary runs without MinGW.
+      - >-
+        {{- if eq .Os "windows" }}-extldflags=-static{{- end }}
 
 archives:
   - id: archigraph
