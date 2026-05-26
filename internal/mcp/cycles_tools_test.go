@@ -8,6 +8,7 @@ import "testing"
 // surface their direction. The canonical orders↔payments cycle uses
 // relation=calls one way and relation=publishes_to the other.
 func Test_buildServiceCycles_RelationFieldAlias(t *testing.T) {
+	t.Parallel()
 	lg := &LoadedGroup{
 		Name: "g",
 		Links: []CrossRepoLink{
@@ -27,6 +28,7 @@ func Test_buildServiceCycles_RelationFieldAlias(t *testing.T) {
 // Test_buildServiceCycles_SharedLabelExcluded confirms undirected shared_label
 // links cannot fabricate a service cycle even as a mutual pair.
 func Test_buildServiceCycles_SharedLabelExcluded(t *testing.T) {
+	t.Parallel()
 	lg := &LoadedGroup{
 		Links: []CrossRepoLink{
 			{Source: "a::1", Target: "b::2", Relation: "shared_label"},
@@ -41,6 +43,7 @@ func Test_buildServiceCycles_SharedLabelExcluded(t *testing.T) {
 // Test_buildServiceCycles_RepoFilter restricts the service graph to links whose
 // both endpoints fall inside the filter.
 func Test_buildServiceCycles_RepoFilter(t *testing.T) {
+	t.Parallel()
 	lg := &LoadedGroup{
 		Links: []CrossRepoLink{
 			{Source: "orders::a", Target: "payments::b", Relation: "calls"},
@@ -63,6 +66,7 @@ func Test_buildServiceCycles_RepoFilter(t *testing.T) {
 // Test_buildServiceCycles_KindFieldStillWorks verifies the legacy "kind" field
 // (MCP-appended candidates) is still honoured.
 func Test_buildServiceCycles_KindFieldStillWorks(t *testing.T) {
+	t.Parallel()
 	lg := &LoadedGroup{
 		Links: []CrossRepoLink{
 			{Source: "a::1", Target: "b::2", Kind: "calls"},

@@ -16,6 +16,7 @@ func relCalls2(from, to string) Relationship {
 
 // TestFindImportCycles_SimpleCycle — A imports B, B imports A. Must detect one cycle.
 func TestFindImportCycles_SimpleCycle(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B")
 	rels := []Relationship{
 		relImport("A", "B"),
@@ -40,6 +41,7 @@ func TestFindImportCycles_SimpleCycle(t *testing.T) {
 
 // TestFindImportCycles_ThreeNodeCycle — A→B→C→A. Must detect one 3-member cycle.
 func TestFindImportCycles_ThreeNodeCycle(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C")
 	rels := []Relationship{
 		relImport("A", "B"),
@@ -57,6 +59,7 @@ func TestFindImportCycles_ThreeNodeCycle(t *testing.T) {
 
 // TestFindImportCycles_Acyclic — A→B, B→C. No cycles.
 func TestFindImportCycles_Acyclic(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C")
 	rels := []Relationship{
 		relImport("A", "B"),
@@ -70,6 +73,7 @@ func TestFindImportCycles_Acyclic(t *testing.T) {
 
 // TestFindImportCycles_NoImportEdges — Only CALLS edges; cycle detector must ignore them.
 func TestFindImportCycles_NoImportEdges(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B")
 	rels := []Relationship{
 		relCalls2("A", "B"),
@@ -83,6 +87,7 @@ func TestFindImportCycles_NoImportEdges(t *testing.T) {
 
 // TestFindImportCycles_TwoCycles — Two independent 2-cycles.
 func TestFindImportCycles_TwoCycles(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C", "D")
 	rels := []Relationship{
 		relImport("A", "B"),
@@ -98,6 +103,7 @@ func TestFindImportCycles_TwoCycles(t *testing.T) {
 
 // TestFindImportCycles_SortedBySize — larger cycle listed first.
 func TestFindImportCycles_SortedBySize(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C", "D", "E")
 	rels := []Relationship{
 		// 3-cycle: C→D→E→C
@@ -120,6 +126,7 @@ func TestFindImportCycles_SortedBySize(t *testing.T) {
 // TestFindImportCycles_WeakestLink — the entity with the lowest PageRank
 // should be the weakest-link source.
 func TestFindImportCycles_WeakestLink(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C")
 	rels := []Relationship{
 		relImport("A", "B"),
@@ -147,6 +154,7 @@ func TestFindImportCycles_WeakestLink(t *testing.T) {
 // TestFindImportCycles_SuggestedExtraction — the entity with the highest
 // PageRank should be the suggested extraction target.
 func TestFindImportCycles_SuggestedExtraction(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C")
 	rels := []Relationship{
 		relImport("A", "B"),
@@ -169,6 +177,7 @@ func TestFindImportCycles_SuggestedExtraction(t *testing.T) {
 
 // TestFindImportCycles_SelfImport — self-import should not count as a cycle.
 func TestFindImportCycles_SelfImport(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A")
 	rels := []Relationship{
 		relImport("A", "A"),
@@ -182,6 +191,7 @@ func TestFindImportCycles_SelfImport(t *testing.T) {
 // TestFindImportCycles_DanglingEdge — edge referencing an entity not in the
 // entity list should be silently skipped (no panic, no false positive).
 func TestFindImportCycles_DanglingEdge(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B")
 	rels := []Relationship{
 		relImport("A", "B"),
@@ -197,6 +207,7 @@ func TestFindImportCycles_DanglingEdge(t *testing.T) {
 
 // TestFindImportCycles_Empty — empty input must not panic.
 func TestFindImportCycles_Empty(t *testing.T) {
+	t.Parallel()
 	cycles := FindImportCycles(nil, nil, nil)
 	if len(cycles) != 0 {
 		t.Errorf("empty input: expected 0 cycles, got %d", len(cycles))
@@ -206,6 +217,7 @@ func TestFindImportCycles_Empty(t *testing.T) {
 // TestFindImportCycles_Determinism — multiple calls with same input produce
 // identical output (members and edges sorted, cycles in stable order).
 func TestFindImportCycles_Determinism(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C", "D", "E", "F")
 	rels := []Relationship{
 		relImport("A", "B"), relImport("B", "C"), relImport("C", "A"),

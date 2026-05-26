@@ -7,6 +7,7 @@ import (
 )
 
 func TestTokenize_CamelAndSnake(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		in   string
 		want []string
@@ -28,6 +29,7 @@ func TestTokenize_CamelAndSnake(t *testing.T) {
 }
 
 func TestTokenize_StopwordsAndShort(t *testing.T) {
+	t.Parallel()
 	got := tokenize("a_test_of_the_init_main")
 	// every term is a stopword
 	if len(got) != 0 {
@@ -39,6 +41,7 @@ func TestTokenize_StopwordsAndShort(t *testing.T) {
 // distinguishing term ("order" vs "compliance") should receive distinct
 // auto_names that surface the distinguishing term.
 func TestAssignCommunityNames_DistinguishesOverlappingVocab(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "a1", Name: "OrderService", QualifiedName: "shop.order.OrderService", SourceFile: "shop/order/service.py"},
 		{ID: "a2", Name: "OrderRepository", QualifiedName: "shop.order.OrderRepository", SourceFile: "shop/order/repo.py"},
@@ -79,6 +82,7 @@ func TestAssignCommunityNames_DistinguishesOverlappingVocab(t *testing.T) {
 }
 
 func TestAssignCommunityNames_FallbackOnEmptyTokens(t *testing.T) {
+	t.Parallel()
 	// Entity with only stopword/single-char tokens.
 	entities := []Entity{
 		{ID: "x1", Name: "a", SourceFile: ""},
@@ -92,6 +96,7 @@ func TestAssignCommunityNames_FallbackOnEmptyTokens(t *testing.T) {
 }
 
 func TestAssignCommunityNames_Deterministic(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "a1", Name: "PaymentGateway", QualifiedName: "billing.PaymentGateway", SourceFile: "billing/gateway.go"},
 		{ID: "a2", Name: "PaymentProcessor", QualifiedName: "billing.PaymentProcessor", SourceFile: "billing/processor.go"},
@@ -113,6 +118,7 @@ func TestAssignCommunityNames_Deterministic(t *testing.T) {
 }
 
 func TestAssignCommunityNames_SkipsUnassignedNodes(t *testing.T) {
+	t.Parallel()
 	// commOf=-1 means the entity wasn't placed in any community; it must be
 	// excluded from the corpus so its tokens don't pollute IDF.
 	entities := []Entity{

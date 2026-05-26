@@ -97,12 +97,25 @@ jobs:
       # can run, masking the current PR's source changes (refs #2253).
       - run: go clean -cache -testcache
 
-      # -timeout 15m: the suite with -race on a loaded CI runner (ubuntu-latest,
-      # macos-latest) can take 8-10 minutes end-to-end. The previous 5m budget
-      # was per-package but the cumulative wall-clock regularly exceeded it once
-      # the extractor and daemon integration tests were added (see #2196). 15m
-      # gives ~50% headroom over the observed worst-case while still catching
-      # real deadlocks well before GitHub's 6-hour job limit.
-      # Original rationale (#1797 / #937) still applies: a hard timeout is
-      # better than the default 10-minute Go-level panic.
-      - run: go test -race -count=1 -timeout 15m ./...
+      # Race detector policy (#2406):
+      #   - push to main → always race (post-merge sanity)
+      #   - release event → always race
+      #   - PR with ci:full label → race (platform-sensitive opt-in)
+      #   - all other CI runs (standard PRs) → no race; saves ~4 min per run
+      #
+      # -timeout 15m: the suite with -race on a loaded CI runner can take
+      # 8-10 min end-to-end. Without -race, 3-4 min is the observed ceiling.
+      # 15m gives headroom for both modes while catching real deadlocks well
+      # before GitHub's 6-hour job limit (refs #1797 / #937 / #2196).
+      - name: Test
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]] || \
+             [[ "${{ github.event_name }}" == "release" ]] || \
+             [[ "${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}" == "true" ]]; then
+            echo "Running with -race (main / release / ci:full label)"
+            go test -race -count=1 -timeout 15m ./...
+          else
+            echo "Running without -race (PR fast path)"
+            go test -count=1 -timeout 15m ./...
+          fi

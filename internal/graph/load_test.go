@@ -52,6 +52,7 @@ func makeTestDoc() *graph.Document {
 // TestLoadGraphFromDir_FBOnly verifies that LoadGraphFromDir loads from
 // graph.fb when only the binary file is present.
 func TestLoadGraphFromDir_FBOnly(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	doc := makeTestDoc()
 
@@ -76,6 +77,7 @@ func TestLoadGraphFromDir_FBOnly(t *testing.T) {
 
 // TestLoadGraphFromDir_JSONOnly verifies the JSON fallback path.
 func TestLoadGraphFromDir_JSONOnly(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	doc := makeTestDoc()
 
@@ -102,6 +104,7 @@ func TestLoadGraphFromDir_JSONOnly(t *testing.T) {
 // TestLoadGraphFromDir_BothPresent verifies that graph.fb is preferred when
 // both files exist.
 func TestLoadGraphFromDir_BothPresent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	doc := makeTestDoc()
 
@@ -136,6 +139,7 @@ func TestLoadGraphFromDir_BothPresent(t *testing.T) {
 // TestLoadGraphFromDir_NeitherPresent verifies that an error is returned
 // when the directory is empty.
 func TestLoadGraphFromDir_NeitherPresent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	_, err := graph.LoadGraphFromDir(dir)
 	if err == nil {
@@ -146,6 +150,7 @@ func TestLoadGraphFromDir_NeitherPresent(t *testing.T) {
 // TestLoadGraphFromDir_EntityProperties verifies that Properties on
 // entities are preserved through the FB round-trip.
 func TestLoadGraphFromDir_EntityProperties(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	doc := makeTestDoc()
 	// Add a property that should survive FB serialization.

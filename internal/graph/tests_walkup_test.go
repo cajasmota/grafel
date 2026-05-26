@@ -39,6 +39,7 @@ func makeWalkUpFixture() *Document {
 // TestDeriveTestsWalkUp_BasicScenario verifies that the canonical
 // test → helper → viewset chain produces a derived TESTS edge.
 func TestDeriveTestsWalkUp_BasicScenario(t *testing.T) {
+	t.Parallel()
 	doc := makeWalkUpFixture()
 	stats := DeriveTestsWalkUp(doc)
 
@@ -76,6 +77,7 @@ func TestDeriveTestsWalkUp_BasicScenario(t *testing.T) {
 // TestDeriveTestsWalkUp_NoDerivedWhenNoCallers verifies that when the TESTS
 // target has no inbound CALLS, no derived edge is emitted.
 func TestDeriveTestsWalkUp_NoDerivedWhenNoCallers(t *testing.T) {
+	t.Parallel()
 	doc := makeDoc(
 		[]Entity{
 			{ID: "fn1", Name: "standalone_fn", Kind: "SCOPE.Operation", SourceFile: "lib.py"},
@@ -99,6 +101,7 @@ func TestDeriveTestsWalkUp_NoDerivedWhenNoCallers(t *testing.T) {
 // TestDeriveTestsWalkUp_HighFanInSkipped verifies that helpers with more than
 // maxCallersPerHelper callers are skipped (wide utility detection).
 func TestDeriveTestsWalkUp_HighFanInSkipped(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "helper1", Name: "_util_fn", Kind: "SCOPE.Operation", SourceFile: "utils.py"},
 		{ID: "test1", Name: "test_util", Kind: "SCOPE.Operation", SourceFile: "tests/test_utils.py"},
@@ -132,6 +135,7 @@ func TestDeriveTestsWalkUp_HighFanInSkipped(t *testing.T) {
 // TestDeriveTestsWalkUp_DuplicateSuppressed verifies that if an explicit TESTS
 // edge already exists for the caller, the derived edge is suppressed.
 func TestDeriveTestsWalkUp_DuplicateSuppressed(t *testing.T) {
+	t.Parallel()
 	doc := makeDoc(
 		[]Entity{
 			{ID: "helper1", Name: "_helper", Kind: "SCOPE.Operation", SourceFile: "svc.py"},
@@ -160,6 +164,7 @@ func TestDeriveTestsWalkUp_DuplicateSuppressed(t *testing.T) {
 // reaches the same caller via two different helpers, only one derived edge is
 // emitted (deduplication).
 func TestDeriveTestsWalkUp_MultipleHelpersSharedCaller(t *testing.T) {
+	t.Parallel()
 	doc := makeDoc(
 		[]Entity{
 			{ID: "h1", Name: "_helper_a", Kind: "SCOPE.Operation", SourceFile: "svc.py"},
@@ -188,6 +193,7 @@ func TestDeriveTestsWalkUp_MultipleHelpersSharedCaller(t *testing.T) {
 // TestDeriveTestsWalkUp_TestCallerSkipped verifies that CALLS edges from test
 // entities are not treated as "viewset callers" (only production callers count).
 func TestDeriveTestsWalkUp_TestCallerSkipped(t *testing.T) {
+	t.Parallel()
 	doc := makeDoc(
 		[]Entity{
 			{ID: "h1", Name: "_helper", Kind: "SCOPE.Operation", SourceFile: "svc.py"},
@@ -212,6 +218,7 @@ func TestDeriveTestsWalkUp_TestCallerSkipped(t *testing.T) {
 // checks that the second call adds 0 edges because all callers are already in
 // existingTests via the first derived edge).
 func TestDeriveTestsWalkUp_IDStability(t *testing.T) {
+	t.Parallel()
 	doc := makeWalkUpFixture()
 	s1 := DeriveTestsWalkUp(doc)
 	s2 := DeriveTestsWalkUp(doc)
@@ -227,6 +234,7 @@ func TestDeriveTestsWalkUp_IDStability(t *testing.T) {
 // TestDeriveTestsWalkUp_CoverageIntegration verifies that ComputeCoverage
 // counts the viewset method as covered after DeriveTestsWalkUp runs.
 func TestDeriveTestsWalkUp_CoverageIntegration(t *testing.T) {
+	t.Parallel()
 	doc := makeWalkUpFixture()
 
 	// Before walk-up: only helper1 is covered.

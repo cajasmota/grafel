@@ -10,6 +10,7 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestIsTestFile(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		path string
 		want bool
@@ -66,6 +67,7 @@ func makeDoc(entities []Entity, rels []Relationship) *Document {
 
 // TestComputeCoverage_Empty checks that an empty document returns zeroes.
 func TestComputeCoverage_Empty(t *testing.T) {
+	t.Parallel()
 	report := ComputeCoverage(makeDoc(nil, nil))
 	if report.TotalProduction != 0 {
 		t.Errorf("TotalProduction want 0, got %d", report.TotalProduction)
@@ -78,6 +80,7 @@ func TestComputeCoverage_Empty(t *testing.T) {
 // TestComputeCoverage_DirectTESTSEdge verifies that an explicit TESTS edge
 // marks the target entity as covered.
 func TestComputeCoverage_DirectTESTSEdge(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "prod1", Name: "HandleUser", Kind: "Function", SourceFile: "handler.go"},
 		{ID: "test1", Name: "TestHandleUser", Kind: "Function", SourceFile: "handler_test.go"},
@@ -103,6 +106,7 @@ func TestComputeCoverage_DirectTESTSEdge(t *testing.T) {
 // TestComputeCoverage_FiveTESTSEdges verifies that a test calling 5 production
 // entities generates 5 TESTS edges and marks all 5 as covered.
 func TestComputeCoverage_FiveTESTSEdges(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "t1", Name: "TestAll", Kind: "Function", SourceFile: "all_test.go"},
 	}
@@ -140,6 +144,7 @@ func TestComputeCoverage_FiveTESTSEdges(t *testing.T) {
 // TestComputeCoverage_SyntheticFromCALLS verifies the synthetic fallback:
 // a test entity with CALLS edges to production entities gets virtual TESTS edges.
 func TestComputeCoverage_SyntheticFromCALLS(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "t1", Name: "TestFoo", Kind: "Function", SourceFile: "foo_test.go"},
 		{ID: "p1", Name: "Foo", Kind: "Function", SourceFile: "foo.go"},
@@ -165,6 +170,7 @@ func TestComputeCoverage_SyntheticFromCALLS(t *testing.T) {
 // TestComputeCoverage_UntestedFlagged verifies that entities without any
 // TESTS inbound appear in UncoveredEntities.
 func TestComputeCoverage_UntestedFlagged(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "p1", Name: "HandleUser", Kind: "http_endpoint_definition", SourceFile: "handler.go"},
 		{ID: "p2", Name: "ExportedFn", Kind: "Function", SourceFile: "lib.go"},
@@ -189,6 +195,7 @@ func TestComputeCoverage_UntestedFlagged(t *testing.T) {
 
 // TestComputeCoverage_SeverityOrder checks high < medium < low ordering.
 func TestComputeCoverage_SeverityOrder(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "e1", Name: "internalFn", Kind: "Function", SourceFile: "a.go"},
 		{ID: "e2", Name: "ExportedFn", Kind: "Function", SourceFile: "b.go"},
@@ -230,6 +237,7 @@ func containsSeverity(sev []string, target string) bool {
 
 // TestComputeCoverage_ByDirectory checks per-directory aggregation.
 func TestComputeCoverage_ByDirectory(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "p1", Name: "Foo", Kind: "Function", SourceFile: "pkg/foo/foo.go"},
 		{ID: "p2", Name: "Bar", Kind: "Function", SourceFile: "pkg/foo/bar.go"},
@@ -262,6 +270,7 @@ func TestComputeCoverage_ByDirectory(t *testing.T) {
 
 // TestComputeCoverage_ByModule checks per-module aggregation.
 func TestComputeCoverage_ByModule(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "p1", Name: "A", Kind: "Function", SourceFile: "a.go",
 			Properties: map[string]string{"module": "auth"}},
@@ -298,6 +307,7 @@ func TestComputeCoverage_ByModule(t *testing.T) {
 // TestComputeCoverage_HTTPEndpointHighSeverity ensures HTTP endpoints without
 // tests are surfaced with "high" severity.
 func TestComputeCoverage_HTTPEndpointHighSeverity(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "ep1", Name: "POST /users", Kind: "http_endpoint", SourceFile: "routes.go"},
 	}
@@ -317,6 +327,7 @@ func TestComputeCoverage_HTTPEndpointHighSeverity(t *testing.T) {
 // TestComputeEntityCoverage_KnownTested verifies that a production entity with
 // a direct TESTS inbound edge is reported as tested with the covering test ID.
 func TestComputeEntityCoverage_KnownTested(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "prod1", Name: "HandleUser", Kind: "Function", SourceFile: "handler.go"},
 		{ID: "test1", Name: "TestHandleUser", Kind: "Function", SourceFile: "handler_test.go"},
@@ -342,6 +353,7 @@ func TestComputeEntityCoverage_KnownTested(t *testing.T) {
 // TestComputeEntityCoverage_KnownUntested verifies that a production entity
 // with no inbound TESTS edges (and no CALLS fallback) is reported as untested.
 func TestComputeEntityCoverage_KnownUntested(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "prod1", Name: "UntestedFn", Kind: "Function", SourceFile: "lib.go"},
 		{ID: "test1", Name: "TestOther", Kind: "Function", SourceFile: "other_test.go"},
@@ -365,6 +377,7 @@ func TestComputeEntityCoverage_KnownUntested(t *testing.T) {
 // TestComputeEntityCoverage_Unknown verifies that an unknown entity_id returns
 // found=false (triggering "entity not found" in the MCP handler).
 func TestComputeEntityCoverage_Unknown(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "prod1", Name: "HandleUser", Kind: "Function", SourceFile: "handler.go"},
 	}
@@ -380,6 +393,7 @@ func TestComputeEntityCoverage_Unknown(t *testing.T) {
 // TestComputeEntityCoverage_SyntheticCALLS verifies that the synthetic CALLS
 // fallback also works for the per-entity path.
 func TestComputeEntityCoverage_SyntheticCALLS(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		{ID: "t1", Name: "TestFoo", Kind: "Function", SourceFile: "foo_test.go"},
 		{ID: "p1", Name: "Foo", Kind: "Function", SourceFile: "foo.go"},
@@ -404,6 +418,7 @@ func TestComputeEntityCoverage_SyntheticCALLS(t *testing.T) {
 // compact — the covering_tests slice alone is bounded by the actual test count,
 // not the whole entity list. (Token-budget guard from #1774 spec.)
 func TestComputeEntityCoverage_OutputSize(t *testing.T) {
+	t.Parallel()
 	// Build 100 test entities and 100 production entities; only one covers prod1.
 	entities := []Entity{
 		{ID: "prod1", Name: "TargetFn", Kind: "Function", SourceFile: "target.go"},
@@ -449,6 +464,7 @@ func TestComputeEntityCoverage_OutputSize(t *testing.T) {
 // test files because every Python / Go symbol was counted, including imports,
 // module-level constants, and testmap's SCOPE.Pattern wrapper records.
 func TestComputeCoverage_TotalTestsCountsOnlyCallables(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		// Test file — the actual test function emitted as SCOPE.Operation (counts).
 		{ID: "t1", Name: "test_create_order", Kind: "SCOPE.Operation", SourceFile: "tests/test_orders.py"},

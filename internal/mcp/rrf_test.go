@@ -59,6 +59,7 @@ func sqrt(x float64) float64 {
 }
 
 func TestFuseRRF_SemanticHitWithoutKeywordOverlap(t *testing.T) {
+	t.Parallel()
 	// Two entities, neither shares any token with the query
 	// "where do we handle authentication" -- but `verifyBearer` is semantically
 	// close (shares the token "verify" and "bearer" through its docstring).
@@ -124,6 +125,7 @@ func TestFuseRRF_SemanticHitWithoutKeywordOverlap(t *testing.T) {
 }
 
 func TestFuseRRF_BothSourcesRankFusedHigher(t *testing.T) {
+	t.Parallel()
 	a := &graph.Entity{ID: "a", Name: "AuthCheck"}
 	b := &graph.Entity{ID: "b", Name: "AuthVerify"}
 	c := &graph.Entity{ID: "c", Name: "LogoutHandler"}

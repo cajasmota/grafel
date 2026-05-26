@@ -10,6 +10,7 @@ import (
 // back, mediated by no shared entity. The two services must form exactly one
 // SCC of size 2.
 func Test_FindServiceCycles_TwoNodeCycle(t *testing.T) {
+	t.Parallel()
 	links := []ServiceLink{
 		{FromService: "orders", ToService: "payments", Relation: "calls"},
 		{FromService: "payments", ToService: "orders", Relation: "publishes_to"},
@@ -32,6 +33,7 @@ func Test_FindServiceCycles_TwoNodeCycle(t *testing.T) {
 
 // Test_FindServiceCycles_NoCycle ensures a one-way fan-out produces no SCC.
 func Test_FindServiceCycles_NoCycle(t *testing.T) {
+	t.Parallel()
 	links := []ServiceLink{
 		{FromService: "a", ToService: "b", Relation: "calls"},
 		{FromService: "a", ToService: "c", Relation: "calls"},
@@ -46,6 +48,7 @@ func Test_FindServiceCycles_NoCycle(t *testing.T) {
 // `ledger` only consumes payments.settled (payments → ledger) and never calls
 // back. It must NOT join the orders↔payments SCC.
 func Test_FindServiceCycles_OneWaySubscriberNotPulledIn(t *testing.T) {
+	t.Parallel()
 	links := []ServiceLink{
 		{FromService: "orders", ToService: "payments", Relation: "calls"},
 		{FromService: "payments", ToService: "orders", Relation: "publishes_to"},
@@ -69,6 +72,7 @@ func Test_FindServiceCycles_OneWaySubscriberNotPulledIn(t *testing.T) {
 // string_match co-occurrence links cannot fabricate a cycle even when they form
 // a mutual pair.
 func Test_FindServiceCycles_UndirectedRelationsExcluded(t *testing.T) {
+	t.Parallel()
 	links := []ServiceLink{
 		{FromService: "x", ToService: "y", Relation: "shared_label"},
 		{FromService: "y", ToService: "x", Relation: "shared_label"},
@@ -84,6 +88,7 @@ func Test_FindServiceCycles_UndirectedRelationsExcluded(t *testing.T) {
 // (build-time coupling, e.g. two services importing each other's shared lib)
 // do NOT form a runtime service cycle.
 func Test_FindServiceCycles_ImportsExcluded(t *testing.T) {
+	t.Parallel()
 	links := []ServiceLink{
 		{FromService: "p", ToService: "q", Relation: "imports"},
 		{FromService: "q", ToService: "p", Relation: "imports"},
@@ -95,6 +100,7 @@ func Test_FindServiceCycles_ImportsExcluded(t *testing.T) {
 
 // Test_FindServiceCycles_SelfEdgeIgnored confirms a self-loop is not a cycle.
 func Test_FindServiceCycles_SelfEdgeIgnored(t *testing.T) {
+	t.Parallel()
 	links := []ServiceLink{
 		{FromService: "solo", ToService: "solo", Relation: "calls"},
 	}
@@ -105,6 +111,7 @@ func Test_FindServiceCycles_SelfEdgeIgnored(t *testing.T) {
 
 // Test_FindServiceCycles_ThreeNodeCycle covers a larger SCC and edge ordering.
 func Test_FindServiceCycles_ThreeNodeCycle(t *testing.T) {
+	t.Parallel()
 	links := []ServiceLink{
 		{FromService: "a", ToService: "b", Relation: "calls"},
 		{FromService: "b", ToService: "c", Relation: "calls"},

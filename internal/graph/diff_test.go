@@ -30,6 +30,7 @@ func diffTestRel(fromID, toID, kind string) Relationship {
 // TestDiffRefs_AddedRemovedModified verifies the three entity change buckets
 // when both graphs have a known delta.
 func TestDiffRefs_AddedRemovedModified(t *testing.T) {
+	t.Parallel()
 	docA := &Document{
 		Entities: []Entity{
 			diffTestEntity("aaa", "Function", "funcA", "pkg/a.go", 10, 20),
@@ -99,6 +100,7 @@ func TestDiffRefs_AddedRemovedModified(t *testing.T) {
 
 // TestDiffRefs_RelationshipSetDiff verifies relationship-level added/removed.
 func TestDiffRefs_RelationshipSetDiff(t *testing.T) {
+	t.Parallel()
 	docA := &Document{
 		Entities: []Entity{
 			diffTestEntity("e1", "Function", "fn1", "a.go", 1, 5),
@@ -149,6 +151,7 @@ func TestDiffRefs_RelationshipSetDiff(t *testing.T) {
 // TestDiffRefs_IdenticalGraphs verifies that two identical graphs produce an
 // empty diff.
 func TestDiffRefs_IdenticalGraphs(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		diffTestEntity("x1", "Function", "fn1", "a.go", 1, 5),
 		diffTestEntity("x2", "Class", "MyClass", "b.go", 1, 100),
@@ -170,6 +173,7 @@ func TestDiffRefs_IdenticalGraphs(t *testing.T) {
 
 // TestDiffRefs_EmptyDocuments verifies that diffing two empty documents is safe.
 func TestDiffRefs_EmptyDocuments(t *testing.T) {
+	t.Parallel()
 	got := DiffDocs(&Document{}, &Document{})
 
 	if got.Summary.EntitiesAdded != 0 {
@@ -187,6 +191,7 @@ func TestDiffRefs_EmptyDocuments(t *testing.T) {
 // TestDiffRefs_SourceWindowChange verifies that changing the line range of
 // an entity (without renaming it) is detected as a source_window modification.
 func TestDiffRefs_SourceWindowChange(t *testing.T) {
+	t.Parallel()
 	docA := &Document{
 		Entities: []Entity{diffTestEntity("zzz", "Function", "fn", "a.go", 1, 10)},
 	}

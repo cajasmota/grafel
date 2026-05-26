@@ -18,6 +18,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestExtractResultText_returnsText(t *testing.T) {
+	t.Parallel()
 	res := makeTextResult(`{"hello":"world"}`)
 	got := extractResultText(t, res)
 	if got != `{"hello":"world"}` {
@@ -26,6 +27,7 @@ func TestExtractResultText_returnsText(t *testing.T) {
 }
 
 func TestExtractResultText_nonJSON(t *testing.T) {
+	t.Parallel()
 	res := makeTextResult("# Markdown heading\nsome text")
 	got := extractResultText(t, res)
 	if got == "" {
@@ -38,6 +40,7 @@ func TestExtractResultText_nonJSON(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExtractResultJSON_parsesObject(t *testing.T) {
+	t.Parallel()
 	res := makeTextResult(`{"foo":42,"bar":"baz"}`)
 	out := extractResultJSON(t, res)
 	if out["foo"] != float64(42) {
@@ -49,6 +52,7 @@ func TestExtractResultJSON_parsesObject(t *testing.T) {
 }
 
 func TestExtractResultJSON_multipleContent(t *testing.T) {
+	t.Parallel()
 	// Only the first TextContent should be used.
 	res := &mcpapi.CallToolResult{
 		Content: []mcpapi.Content{
@@ -67,12 +71,14 @@ func TestExtractResultJSON_multipleContent(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAssertResultJSON_matchingValue(t *testing.T) {
+	t.Parallel()
 	res := makeTextResult(`{"status":"ok"}`)
 	// Should not fail the sub-test.
 	assertResultJSON(t, res, "status", "ok")
 }
 
 func TestAssertResultJSON_mismatch(t *testing.T) {
+	t.Parallel()
 	res := makeTextResult(`{"status":"error"}`)
 	// We expect t.Errorf to fire; capture with a sub-recorder.
 	inner := &testing.T{}

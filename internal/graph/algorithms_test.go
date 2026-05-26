@@ -46,6 +46,7 @@ func itoa(n int) string {
 // should split A,B from C,D. Uses MinSize=1 to disable denoising so the
 // structural community assignment is testable on small fixtures.
 func TestLouvainTwoCommunities(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C", "D")
 	rels := []Relationship{
 		rel("A", "B"), rel("B", "A"),
@@ -72,6 +73,7 @@ func TestLouvainTwoCommunities(t *testing.T) {
 // TestPageRankStarGraph — center connected to 4 leaves; PageRank of center
 // should exceed PageRank of any leaf.
 func TestPageRankStarGraph(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("CENTER", "L1", "L2", "L3", "L4")
 	rels := []Relationship{
 		rel("L1", "CENTER"), rel("L2", "CENTER"),
@@ -88,6 +90,7 @@ func TestPageRankStarGraph(t *testing.T) {
 
 // TestBetweennessPathGraph — 1-2-3-4-5; betweenness peaks at the middle node.
 func TestBetweennessPathGraph(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("1", "2", "3", "4", "5")
 	rels := []Relationship{
 		rel("1", "2"), rel("2", "1"),
@@ -107,6 +110,7 @@ func TestBetweennessPathGraph(t *testing.T) {
 // TestArticulationBridge — two triangles connected via a single bridge node.
 // The bridge node must be flagged as an articulation point.
 func TestArticulationBridge(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A1", "A2", "A3", "BRIDGE", "B1", "B2", "B3")
 	rels := []Relationship{
 		rel("A1", "A2"), rel("A2", "A3"), rel("A3", "A1"),
@@ -124,6 +128,7 @@ func TestArticulationBridge(t *testing.T) {
 // single edge should be flagged as a surprise. Uses MinSize=1 to disable
 // denoising so the cross-community edge detection works on small fixtures.
 func TestSurpriseEdges(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A1", "A2", "A3", "B1", "B2", "B3")
 	rels := []Relationship{
 		rel("A1", "A2"), rel("A2", "A3"), rel("A3", "A1"),
@@ -153,6 +158,7 @@ func TestSurpriseEdges(t *testing.T) {
 // Heavier weights on a path should *reduce* shortest-path use elsewhere.
 // We verify that betweenness is *not* identical when weights change.
 func TestEdgeWeightingAffectsCentrality(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("S", "A", "B", "T")
 	// Two parallel 2-hop routes from S to T: via A or via B.
 	relsLight := []Relationship{
@@ -175,6 +181,7 @@ func TestEdgeWeightingAffectsCentrality(t *testing.T) {
 // TestAlgorithmStatsPopulated — RunAlgorithms must populate every stat field.
 // Uses MinSize=1 so small fixtures (2×3-node communities) are not denoised.
 func TestAlgorithmStatsPopulated(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C", "D", "E", "F")
 	rels := []Relationship{
 		rel("A", "B"), rel("B", "C"), rel("C", "A"),
@@ -231,6 +238,7 @@ func makeLargeGraph(cliqueCount int) ([]Entity, []Relationship) {
 // PageRank scores. This catches float drift that crosses the rounding boundary
 // introduced by non-deterministic map iteration order inside PageRankSparse.
 func TestDeterminism_PageRank(t *testing.T) {
+	t.Parallel()
 	const runs = 10
 	ents, rels := makeLargeGraph(50) // 400 nodes, mimics mid-size real corpus
 
@@ -258,6 +266,7 @@ func TestDeterminism_PageRank(t *testing.T) {
 // values to 4 decimal places (1e-4 tolerance), which is the guarantee
 // established by issue #489 to absorb larger-graph float drift.
 func TestRoundForDeterminism_Precision(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		input float64
 		want  float64
@@ -279,6 +288,7 @@ func TestRoundForDeterminism_Precision(t *testing.T) {
 
 // TestDefaultCommunityOptions — DefaultCommunityOptions must set MinSize=5.
 func TestDefaultCommunityOptions(t *testing.T) {
+	t.Parallel()
 	opts := DefaultCommunityOptions()
 	if opts.MinSize != 5 {
 		t.Errorf("DefaultCommunityOptions().MinSize = %d, want 5", opts.MinSize)
@@ -290,6 +300,7 @@ func TestDefaultCommunityOptions(t *testing.T) {
 // singletons should be assigned community_id=-1 and not appear in
 // Communities. The two large clusters should survive.
 func TestDenoise_SingletonsMergedToUngrouped(t *testing.T) {
+	t.Parallel()
 	// Build two 8-cliques (each node connects to all 7 others) plus 2 singletons.
 	var ids []string
 	var rels []Relationship
@@ -344,6 +355,7 @@ func TestDenoise_SingletonsMergedToUngrouped(t *testing.T) {
 // TestDenoise_MinSizeOne_NoDenoise — with MinSize=1, no communities are dropped
 // even for a graph where every node is isolated.
 func TestDenoise_MinSizeOne_NoDenoise(t *testing.T) {
+	t.Parallel()
 	ents := makeEntities("A", "B", "C")
 	// No edges: every node is isolated → 3 singleton communities.
 	res := RunAlgorithmsWithOptions(ents, nil, CommunityOptions{MinSize: 1})
@@ -357,6 +369,7 @@ func TestDenoise_MinSizeOne_NoDenoise(t *testing.T) {
 // DefaultCommunityOptions) should produce fewer or equal named communities
 // compared to MinSize=1 on a graph that has small communities.
 func TestDenoise_DefaultOptions_MatchesBehavior(t *testing.T) {
+	t.Parallel()
 	// Ring of 5-node cliques → mix of reasonable communities.
 	ents, rels := makeLargeGraph(4) // 4 cliques × 8 nodes = 32 nodes
 	// Add extra 3 isolated nodes to ensure singletons exist.
@@ -374,6 +387,7 @@ func TestDenoise_DefaultOptions_MatchesBehavior(t *testing.T) {
 // TestDenoise_Determinism — running denoise twice on the same graph must
 // produce byte-identical community assignments.
 func TestDenoise_Determinism(t *testing.T) {
+	t.Parallel()
 	ents, rels := makeLargeGraph(10) // 80 nodes
 	// Add isolated singletons to ensure denoising is exercised.
 	ents = append(ents, makeEntities("X1", "X2", "X3")...)
@@ -399,6 +413,7 @@ func TestDenoise_Determinism(t *testing.T) {
 // panicked with "mat: zero length in matrix dimension") and returns an empty,
 // well-formed AlgorithmResults.
 func TestRunAlgorithmsWithOptions_EmptyDoc(t *testing.T) {
+	t.Parallel()
 	// Must not panic.
 	res := RunAlgorithmsWithOptions(nil, nil, DefaultCommunityOptions())
 

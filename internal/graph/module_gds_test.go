@@ -35,6 +35,7 @@ func makeModContainer(id, name, repo string) Entity {
 
 // TestRunModuleAlgorithms_EmptyInputs ensures the API never returns nil.
 func TestRunModuleAlgorithms_EmptyInputs(t *testing.T) {
+	t.Parallel()
 	got := RunModuleAlgorithms(nil, nil)
 	if got == nil {
 		t.Fatal("expected non-nil results for empty input")
@@ -47,6 +48,7 @@ func TestRunModuleAlgorithms_EmptyInputs(t *testing.T) {
 // TestAggregation_EntityEdgesCollapseToModules verifies that entity edges in
 // different modules collapse into module edges and intra-module ones are dropped.
 func TestAggregation_EntityEdgesCollapseToModules(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		makeModEntity("e1", "A", "mod_a", "r"),
 		makeModEntity("e2", "B", "mod_a", "r"),
@@ -82,6 +84,7 @@ func TestAggregation_EntityEdgesCollapseToModules(t *testing.T) {
 // DEPENDS_ON edges already exist (post-#1383 documents), they are used and
 // their stored weight is respected.
 func TestAggregation_PrebakedModuleNodes(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		makeModContainer("M_A", "mod_a", "r"),
 		makeModContainer("M_B", "mod_b", "r"),
@@ -110,6 +113,7 @@ func TestAggregation_PrebakedModuleNodes(t *testing.T) {
 // TestExternalBucketDropped — entities without a module label do not get
 // collapsed into the synthetic "_external" bucket as a result.
 func TestExternalBucketDropped(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		makeModContainer("M_EXT", moduleExternal, "r"),
 		makeModContainer("M_A", "mod_a", "r"),
@@ -132,6 +136,7 @@ func TestExternalBucketDropped(t *testing.T) {
 
 // TestSCCDetection_TwoModuleCycle — a 2-module cycle is detected.
 func TestSCCDetection_TwoModuleCycle(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		makeModEntity("a", "A", "mod_a", "r"),
 		makeModEntity("b", "B", "mod_b", "r"),
@@ -167,6 +172,7 @@ func TestSCCDetection_TwoModuleCycle(t *testing.T) {
 
 // TestSCCDetection_NoCycle — a DAG produces no SCC and all SCCOf are -1.
 func TestSCCDetection_NoCycle(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		makeModEntity("a", "A", "mod_a", "r"),
 		makeModEntity("b", "B", "mod_b", "r"),
@@ -189,6 +195,7 @@ func TestSCCDetection_NoCycle(t *testing.T) {
 
 // TestSCCDetection_ThreeModuleCycle — directed triangle a→b→c→a.
 func TestSCCDetection_ThreeModuleCycle(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		makeModEntity("a", "A", "mod_a", "r"),
 		makeModEntity("b", "B", "mod_b", "r"),
@@ -208,6 +215,7 @@ func TestSCCDetection_ThreeModuleCycle(t *testing.T) {
 // TestCentrality_HubHasHighestPageRank — a hub module that everything
 // depends on should sit at the top of the PageRank ranking.
 func TestCentrality_HubHasHighestPageRank(t *testing.T) {
+	t.Parallel()
 	// hub is depended on by all four other modules.
 	entities := []Entity{
 		makeModEntity("h", "H", "hub", "r"),
@@ -240,6 +248,7 @@ func TestCentrality_HubHasHighestPageRank(t *testing.T) {
 // TestCentrality_BottleneckHasHighestBetweenness — a module that sits on
 // every shortest path between two clusters has the highest betweenness.
 func TestCentrality_BottleneckHasHighestBetweenness(t *testing.T) {
+	t.Parallel()
 	// Topology: a → mid → b ; c → mid → d.  mid is the only path.
 	entities := []Entity{
 		makeModEntity("a", "A", "mod_a", "r"),
@@ -265,6 +274,7 @@ func TestCentrality_BottleneckHasHighestBetweenness(t *testing.T) {
 // SCC IDs / member orders / score values. This is a regression guard against
 // gonum's map-iteration noise leaking through (cf. issue #481).
 func TestDeterminism(t *testing.T) {
+	t.Parallel()
 	entities := []Entity{
 		makeModEntity("a", "A", "mod_a", "r"),
 		makeModEntity("b", "B", "mod_b", "r"),
