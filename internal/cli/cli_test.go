@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/install/skilllink"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
@@ -507,14 +508,8 @@ func TestInstallSkillsInClaudeConfigs(t *testing.T) {
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	skillNames := []string{
-		"archigraph-quality-check",
-		"archigraph-patterns-discover",
-		"archigraph-patterns-sync",
-		"archigraph-repair",
-		"extend-convention",
-		"using-archigraph",
-	}
+	// Use the live canonical slice so adding a new skill never breaks this test.
+	skillNames := skilllink.SkillNames
 	for _, skillName := range skillNames {
 		skillPath := filepath.Join(skillsDir, skillName)
 		if err := os.MkdirAll(skillPath, 0o755); err != nil {
@@ -597,7 +592,8 @@ func TestInstallSkillsIdempotent(t *testing.T) {
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	skillNames := []string{"archigraph-quality-check", "archigraph-repair"}
+	// Use the live canonical slice so adding a new skill never breaks this test.
+	skillNames := skilllink.SkillNames
 	for _, skillName := range skillNames {
 		if err := os.MkdirAll(filepath.Join(skillsDir, skillName), 0o755); err != nil {
 			t.Fatal(err)
@@ -655,7 +651,8 @@ func TestRemoveSkillsFromClaudeConfigs(t *testing.T) {
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	skillNames := []string{"archigraph-quality-check", "archigraph-repair"}
+	// Use the live canonical slice so adding a new skill never breaks this test.
+	skillNames := skilllink.SkillNames
 	for _, skillName := range skillNames {
 		if err := os.MkdirAll(filepath.Join(skillsDir, skillName), 0o755); err != nil {
 			t.Fatal(err)

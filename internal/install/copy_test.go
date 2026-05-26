@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/install"
+	"github.com/cajasmota/archigraph/internal/install/skilllink"
 )
 
 // TestRunCopy_HappyPath verifies the complete COPY-mode install transaction:
@@ -254,9 +255,10 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatalf("create fake bin: %v", err)
 	}
 
-	// Create a fake skills source dir with two skills from the canonical list.
+	// Create a fake skills source dir populated with every canonical skill name
+	// so the fixture stays in sync with skilllink.SkillNames automatically.
 	skillsSourceDir := filepath.Join(tmp, "skills")
-	for _, name := range []string{"archigraph-repair", "archigraph-quality-check"} {
+	for _, name := range skilllink.SkillNames {
 		skillDir := filepath.Join(skillsSourceDir, name)
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {
 			t.Fatalf("create skill dir %s: %v", name, err)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/install"
+	"github.com/cajasmota/archigraph/internal/install/skilllink"
 )
 
 // TestRunUninstall_HappyPath verifies the full uninstall flow:
@@ -30,9 +31,9 @@ func TestRunUninstall_HappyPath(t *testing.T) {
 		t.Fatalf("RunCopy: %v", err)
 	}
 
-	// Confirm skills are present.
+	// Confirm skills are present (check all canonical skills).
 	destSkillsDir := filepath.Join(filepath.Dir(env.claudeJSON), "skills")
-	for _, name := range []string{"archigraph-repair", "archigraph-quality-check"} {
+	for _, name := range skilllink.SkillNames {
 		dst := filepath.Join(destSkillsDir, name)
 		if _, err := os.Stat(dst); err != nil {
 			t.Fatalf("skill %s should exist before uninstall: %v", name, err)
