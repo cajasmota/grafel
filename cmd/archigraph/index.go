@@ -2862,6 +2862,9 @@ func (i *Indexer) foldClassHierarchyShadows(
 
 // foldFileComponentStats reports the result of foldFileComponentDuplicates.
 type foldFileComponentStats struct {
+	// Observed is the number of SCOPE.Component class-like nodes examined as
+	// candidates for folding.
+	Observed int
 	// Folded is the number of SCOPE.Component class-like nodes collapsed into
 	// their co-located SCOPE.Component(subtype="file") sibling.
 	Folded int
@@ -2950,6 +2953,8 @@ func (i *Indexer) foldFileComponentDuplicates(
 		if !ok {
 			continue
 		}
+		// Count this as an observed candidate for folding.
+		stats.Observed++
 		// Anti-over-fold: only absorb if the class entity's name matches
 		// the file stem (case-insensitive). This ensures a class named
 		// "LoginPage" in "LoginPage.tsx" is folded, but a helper class
@@ -3296,11 +3301,9 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	if os.Getenv("ARCHIGRAPH_DISABLE_1727_FILE_FOLD") == "" {
 		var fileStats foldFileComponentStats
 		merged, pass2Rels, fileStats = i.foldFileComponentDuplicates(merged, pass2Rels)
-		if fileStats.Folded > 0 {
-			fmt.Fprintf(os.Stderr,
-				"file-component-fold: folded=%d (edges_repointed=%d)\n",
-				fileStats.Folded, fileStats.EdgesRepointed)
-		}
+		fmt.Fprintf(os.Stderr,
+			"foldFileComponentDuplicates: observed=%d folded=%d (edges_repointed=%d)\n",
+			fileStats.Observed, fileStats.Folded, fileStats.EdgesRepointed)
 	}
 
 	// Pass 3.7 — Bazel resolver overlay (#2183 / M6).
