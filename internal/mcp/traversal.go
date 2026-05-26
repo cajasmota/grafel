@@ -24,7 +24,6 @@ type edge struct {
 	target string
 	kind   string
 	weight float64
-	repo   string
 	relIdx int
 }
 
@@ -60,8 +59,8 @@ func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
 		w := 1.0
-		a.out[r.FromID] = append(a.out[r.FromID], edge{target: r.ToID, kind: r.Kind, weight: w, repo: repo, relIdx: i})
-		a.in[r.ToID] = append(a.in[r.ToID], edge{target: r.FromID, kind: r.Kind, weight: w, repo: repo, relIdx: i})
+		a.out[r.FromID] = append(a.out[r.FromID], edge{target: r.ToID, kind: r.Kind, weight: w, relIdx: i})
+		a.in[r.ToID] = append(a.in[r.ToID], edge{target: r.FromID, kind: r.Kind, weight: w, relIdx: i})
 	}
 	return a
 }
