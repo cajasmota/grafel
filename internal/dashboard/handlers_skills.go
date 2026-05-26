@@ -132,6 +132,16 @@ var marketplaceCatalog = []CatalogSkill{
 		},
 	},
 	{
+		Slug:   "archigraph-consult",
+		Source: "archigraph-bundled",
+		SkillMeta: SkillMeta{
+			Name:        "archigraph-consult",
+			Description: "Runs a panel of specialist personas (architect, security auditor, business analyst, performance reviewer, refactor critic) against the group's docs and graph. Produces per-persona reports, a synthesised finding list, and graph entities. Resumable sessions.",
+			Type:        "action",
+			WhenToUse:   "After generating tech docs with /archigraph-tech-docs. Use --persona <name> for a single perspective or --all for the full panel.",
+		},
+	},
+	{
 		Slug:   "archigraph-graph-enrich",
 		Source: "archigraph-bundled",
 		SkillMeta: SkillMeta{

@@ -22,6 +22,7 @@ import (
 var SkillNames = []string{
 	"archigraph-aware-review",
 	"archigraph-business-docs",
+	"archigraph-consult",
 	"archigraph-graph-enrich",
 	"archigraph-graph-quality",
 	"archigraph-help",
