@@ -131,29 +131,49 @@ func BuildCrossFileFieldLookup(pass1 []types.EntityRecord) func(modelName string
 	}
 }
 
-// buildPlumbedFieldIndex constructs the same `<Model>.<field>` presence
-// set as BuildFieldIndex, but sources the data from Pass 1's
-// SCOPE.Schema(subtype=field) entities rather than re-parsing source
-// (issue #2352).
+// buildPlumbedFieldIndex constructs a `<Class>.<member>` presence set
+// sourced from Pass 1 entity records rather than re-parsing source
+// (generalised from issue #2352).
 //
-// `path` filters the input slice to entities whose SourceFile matches
-// (or is unset — defensive for in-memory records that don't carry a
-// path). Entries with Name lacking the `<Class>.<field>` dot convention
-// are skipped silently — matches the byte-identical key shape the
-// regex parser emits.
+// Parameters:
+//   - path: when non-empty, only records whose SourceFile equals path are
+//     considered (records with an empty SourceFile are always included as
+//     a defensive allowance for in-memory test fixtures).
+//   - pass1Entities: the flat slice of Pass-1 records for the scope.
+//   - pred: a caller-supplied predicate that decides whether a given record
+//     should be indexed. The predicate runs AFTER the path filter. Pass a
+//     nil pred to accept every record that passes the path filter.
 //
-// Returns an empty map (never nil) when no field entities match; the
-// caller treats an empty result as "side-channel cold, use fallback".
-func buildPlumbedFieldIndex(path string, pass1Entities []types.EntityRecord) map[string]bool {
+// The predicate pattern lets different consumers (Django ORM fields, future
+// SQLAlchemy columns, non-ORM entity kinds, …) reuse the same index
+// machinery without copy-pasting the path-filter loop. Example:
+//
+//	// Accept only Python ORM SCOPE.Schema(subtype=field) records:
+//	buildPlumbedFieldIndex(path, records, isPythonORMField)
+//
+//	// Accept every record that passes the path filter (useful in tests):
+//	buildPlumbedFieldIndex(path, records, nil)
+//
+// Entries with Name lacking the dot convention (`<Class>.<member>`) are
+// skipped silently — preserving the byte-identical key shape the Python
+// extractor emits at python/extractor.go:1411.
+//
+// Returns an empty map (never nil) when no records match; callers treat
+// an empty result as "side-channel cold, use fallback".
+func buildPlumbedFieldIndex(
+	path string,
+	pass1Entities []types.EntityRecord,
+	pred func(types.EntityRecord) bool,
+) map[string]bool {
 	out := map[string]bool{}
 	if len(pass1Entities) == 0 {
 		return out
 	}
 	for _, e := range pass1Entities {
-		if e.Kind != "SCOPE.Schema" || e.Subtype != "field" {
+		if e.SourceFile != "" && path != "" && e.SourceFile != path {
 			continue
 		}
-		if e.SourceFile != "" && path != "" && e.SourceFile != path {
+		if pred != nil && !pred(e) {
 			continue
 		}
 		if !strings.Contains(e.Name, ".") {
@@ -162,4 +182,25 @@ func buildPlumbedFieldIndex(path string, pass1Entities []types.EntityRecord) map
 		out[e.Name] = true
 	}
 	return out
+}
+
+// isPythonORMField is the predicate that restricts buildPlumbedFieldIndex
+// to Django / Python-ORM SCOPE.Schema(subtype=field) entities — the only
+// record kind the original hardcoded filter accepted (issue #2431).
+//
+// It is exported as a package-level variable so tests and future wrappers
+// can compose it without repeating the Kind/Subtype literals.
+var isPythonORMField = func(e types.EntityRecord) bool {
+	return e.Kind == "SCOPE.Schema" && e.Subtype == "field"
+}
+
+// buildPlumbedPythonORMFieldIndex is a thin wrapper around
+// buildPlumbedFieldIndex that preserves the pre-#2431 call-site API used
+// by orm_field_edges.go. It hard-wires the isPythonORMField predicate so
+// existing callers need no changes.
+//
+// New consumers that need a different record type should call
+// buildPlumbedFieldIndex directly with their own predicate.
+func buildPlumbedPythonORMFieldIndex(path string, pass1Entities []types.EntityRecord) map[string]bool {
+	return buildPlumbedFieldIndex(path, pass1Entities, isPythonORMField)
 }

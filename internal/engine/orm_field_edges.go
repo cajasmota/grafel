@@ -95,7 +95,7 @@ func applyORMFieldEdges(args DetectorPassArgs) DetectorPassResult {
 	// construct FileInput directly without going through Pass 1, and
 	// (b) the subprocess-extract path that merges Pass 1+2.5 outside the
 	// per-file detector loop.
-	fieldIdx := buildPlumbedFieldIndex(path, pass1Entities)
+	fieldIdx := buildPlumbedPythonORMFieldIndex(path, pass1Entities)
 	plumbed := len(fieldIdx) > 0
 	if !plumbed {
 		fieldIdx = BuildFieldIndex(string(content))
