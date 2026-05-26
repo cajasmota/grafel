@@ -53,7 +53,11 @@ import (
 // params on find/inspect/expand/search_entities/neighbors. find_callers and
 // find_callees stay as deprecated aliases for one release; ceiling drops to
 // ~3,200 next release when the aliases are removed.
-const defaultCeiling = 3500
+// 2026-05-27 (#2367): bumped to 4200 to match internal/mcp/budget_test.go.
+// Actual measured value is 4128 tokens; internal tests were already bumped
+// in #2207 but cmd/mcp-audit was not synced. Using shared constant is a
+// follow-up fix to prevent future drift.
+const defaultCeiling = 4200
 
 // maxDescLen is the per-tool description character limit.
 const maxDescLen = 80
