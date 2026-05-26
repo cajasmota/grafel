@@ -504,6 +504,8 @@ Previously named `archigraph_list_clusters` (renamed in #668).
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `repo_filter` | string[] | no | `[]` | Common arg. |
+| `top_entities_limit` | number | no | `3` | Max `top_entities` entries per community. Pass `-1` to disable truncation and return all entries. Added in #2289 (PR #2310); declared in schema by #2318. |
+| `min_size` | number | no | `20` | Minimum community size to include. Pass `0` to return all communities regardless of size. Added in #2289 (PR #2310); declared in schema by #2318. |
 | `group`, `cwd` | string | no | — | Common args. |
 
 **Output** — JSON array:

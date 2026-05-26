@@ -300,6 +300,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
 		// verbose=true (default false), min_score (default 0.15), max_results (default 50, ceiling 200)
 		// read from request map to stay under token ceiling (#1921 / #1807).
+		mcpapi.WithArray("context_filter"), // #2318: documented in SCHEMA.md, was missing from schema declaration
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -362,6 +363,8 @@ func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_clusters",
 		mcpapi.WithDescription("List Louvain communities across loaded graphs."),
 		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithNumber("top_entities_limit", mcpapi.DefaultNumber(3)),  // #2318: added by PR #2310, was missing from schema
+		mcpapi.WithNumber("min_size", mcpapi.DefaultNumber(20)),            // #2318: added by PR #2310, was missing from schema
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
