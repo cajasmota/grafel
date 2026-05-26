@@ -52,6 +52,69 @@ import (
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
+// ---------------------------------------------------------------------------
+// #2313: named constants — eliminate magic string repetition
+// ---------------------------------------------------------------------------
+
+// patternTypeHTTPEndpointClientSynthesis is the pattern_type value that marks
+// an http_endpoint entity as a generated client stub rather than a server-side
+// definition. Repeated across all three endpoint handlers; a single constant
+// prevents silent divergence.
+const patternTypeHTTPEndpointClientSynthesis = "http_endpoint_client_synthesis"
+
+// kindFETCHES is the edge kind that records a call-site's relationship to the
+// endpoint it invokes. Orphan detection in all three handlers checks for this
+// edge kind; the constant prevents the five-site magic-string drift. (#2336)
+const kindFETCHES = "FETCHES"
+
+// ---------------------------------------------------------------------------
+// #2314: typed endpoint-kind classifier — replaces three separate predicate
+// functions that each repeated stripScopePrefix + ToLower.
+// ---------------------------------------------------------------------------
+
+// endpointKindCategory classifies an entity's kind for endpoint-tool routing.
+type endpointKindCategory int
+
+const (
+	endpointKindNone       endpointKindCategory = iota // not an HTTP endpoint kind
+	endpointKindDefinition                              // server-side handler / route
+	endpointKindCall                                    // call-site / FETCHES-edge source
+	endpointKindLegacy                                  // plain "http_endpoint" (pre-Sub-A)
+)
+
+// classifyEndpointKind returns the category for the given raw kind string.
+// The comparison is case-insensitive and scope-prefix-stripped (e.g.
+// "SCOPE.http_endpoint_call" → endpointKindCall).
+func classifyEndpointKind(kind string) endpointKindCategory {
+	k := strings.ToLower(stripScopePrefix(kind))
+	switch k {
+	case "http_endpoint_definition":
+		return endpointKindDefinition
+	case "http_endpoint_call":
+		return endpointKindCall
+	case "http_endpoint":
+		return endpointKindLegacy
+	default:
+		return endpointKindNone
+	}
+}
+
+// isHTTPEndpointKind reports whether kind is any recognised HTTP-endpoint kind.
+func isHTTPEndpointKind(kind string) bool {
+	return classifyEndpointKind(kind) != endpointKindNone
+}
+
+// isDefinitionKind reports whether kind represents a handler/route definition.
+func isDefinitionKind(kind string) bool {
+	c := classifyEndpointKind(kind)
+	return c == endpointKindDefinition || c == endpointKindLegacy
+}
+
+// isCallKind reports whether kind represents a call-site (consumer side).
+func isCallKind(kind string) bool {
+	return classifyEndpointKind(kind) == endpointKindCall
+}
+
 // endpointDefItem is the package-level shape for a definition row, used by
 // both handleEndpointDefinitions and renderTerseDefinitions.
 type endpointDefItem struct {
@@ -144,28 +207,163 @@ func matchesKindFilter(e *graph.Entity, kindFilter string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// isHTTPEndpointKind — shared predicate used by all three endpoint tools
+// #2336: endpointResolution — shared orphan / linked-source-target / definitionIDs
+// helper extracted from the parallel logic in all three endpoint handlers.
 // ---------------------------------------------------------------------------
 
-// isHTTPEndpointKind reports whether kind (lowercased, scope-prefix stripped)
-// is any of the recognised HTTP-endpoint kinds.
-func isHTTPEndpointKind(kind string) bool {
-	k := strings.ToLower(stripScopePrefix(kind))
-	return k == "http_endpoint" ||
-		k == "http_endpoint_definition" ||
-		k == "http_endpoint_call"
+// endpointResolution holds the precomputed lookup structures that all three
+// endpoint handlers need for orphan detection and cross-repo link accounting.
+// Build it once per handler invocation via newEndpointResolution.
+type endpointResolution struct {
+	// definitionIDs holds every prefixed AND bare entity ID that classifies as a
+	// definition (excluding client-synthesis patterns). Used to determine whether
+	// a FETCHES edge target is a known definition.
+	definitionIDs map[string]bool
+
+	// linkedSources holds the Source-side IDs from lg.Links — call-sites that
+	// are resolved via the cross-repo link pass and must NOT be counted as orphans.
+	linkedSources map[string]bool
+
+	// linkedTargets holds the Target-side IDs from lg.Links — definition-side
+	// IDs that are reachable from a cross-repo caller and must NOT be counted
+	// as orphan definitions. Only populated when orphanOnly=true.
+	linkedTargets map[string]bool
 }
 
-// isDefinitionKind reports whether kind represents a handler/route definition.
-func isDefinitionKind(kind string) bool {
-	k := strings.ToLower(stripScopePrefix(kind))
-	return k == "http_endpoint" || k == "http_endpoint_definition"
+// newEndpointResolution builds the shared resolution structures for repos using
+// the cross-repo links from lg. When orphanOnly is false, linkedTargets is left
+// nil (avoids the allocation for callers that don't need it).
+func newEndpointResolution(repos []*LoadedRepo, lg *LoadedGroup, orphanOnly bool) endpointResolution {
+	defIDs := make(map[string]bool)
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if isDefinitionKind(e.Kind) && e.Properties["pattern_type"] != patternTypeHTTPEndpointClientSynthesis {
+				defIDs[prefixedID(r.Repo, e.ID)] = true
+				defIDs[e.ID] = true
+			}
+		}
+	}
+
+	linkedSrc := make(map[string]bool, len(lg.Links))
+	for _, l := range lg.Links {
+		linkedSrc[l.Source] = true
+	}
+
+	var linkedTgt map[string]bool
+	if orphanOnly {
+		linkedTgt = make(map[string]bool, len(lg.Links))
+		for _, l := range lg.Links {
+			if l.Target != "" {
+				linkedTgt[l.Target] = true
+			}
+		}
+	}
+
+	return endpointResolution{
+		definitionIDs: defIDs,
+		linkedSources: linkedSrc,
+		linkedTargets: linkedTgt,
+	}
 }
 
-// isCallKind reports whether kind represents a call-site (consumer side).
-func isCallKind(kind string) bool {
-	k := strings.ToLower(stripScopePrefix(kind))
-	return k == "http_endpoint_call"
+// isOrphanDefinition reports whether the endpoint-definition entity with the
+// given local ID (within repo r) has no inbound client-call edges. An endpoint
+// is orphan when:
+//
+//   - it has no inbound FETCHES edge in its own repo (the semantic
+//     "client → endpoint" edge in this graph; see handleEndpointCalls), AND
+//   - it is not the target of any cross-repo Link in lg.Links.
+//
+// Other inbound edge kinds (CONTAINS, DECLARES, …) are intentionally ignored —
+// they describe structure, not API consumption. (#2292)
+//
+// res.linkedTargets must have been populated (orphanOnly=true passed to
+// newEndpointResolution); passing a resolution with nil linkedTargets is
+// allowed and treated as "no cross-repo callers".
+func isOrphanDefinition(r *LoadedRepo, localID string, res endpointResolution) bool {
+	prefixed := prefixedID(r.Repo, localID)
+	if res.linkedTargets[prefixed] || res.linkedTargets[localID] {
+		return false
+	}
+	for _, e := range r.Adjacency.Incoming(localID) {
+		if strings.EqualFold(e.kind, kindFETCHES) {
+			return false
+		}
+	}
+	return true
+}
+
+// ---------------------------------------------------------------------------
+// #2315: respondPaginated — generic paged response helper used by both
+// handleEndpointDefinitions and handleEndpointCalls. Avoids ~80 lines of
+// copy-paste (token budget, pageSlice, sort callback, response envelope).
+// ---------------------------------------------------------------------------
+
+// paginatedResponse is the wire shape returned by respondPaginated. The
+// handler fills in the mode-specific payload keys (definitions / calls / lines)
+// before serialising.
+type paginatedResponse struct {
+	Count        int    `json:"count"`
+	Total        int    `json:"total"`
+	Offset       int    `json:"offset"`
+	Truncated    bool   `json:"truncated"`
+	Format       string `json:"format"`
+	PathContains string `json:"path_contains"`
+	Method       string `json:"method"`
+	TokenBudget  int    `json:"token_budget"`
+}
+
+// respondPaginated applies the standard token-budget + page-slice pipeline to
+// items, returning the trimmed slice and a populated paginatedResponse envelope.
+// The caller is responsible for marshalling the slice into the appropriate
+// response key ("definitions", "calls", or "lines").
+//
+// Parameters mirror the query args available in all three endpoint handlers.
+func respondPaginated[T any](
+	req mcpapi.CallToolRequest,
+	items []T,
+	total int,
+	verbose bool,
+	pathContains, method string,
+) ([]T, paginatedResponse, string) {
+	offset := argInt(req, "offset", 0)
+	limit := argInt(req, "limit", 20)
+	tokenBudget := argInt(req, "token_budget", 800)
+	if tokenBudget < 100 {
+		tokenBudget = 100
+	}
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+
+	paged := pageSlice(items, offset, limit)
+	preCapLen := len(paged)
+	paged = capByRenderedBytes(paged, budgetBytes, !verbose)
+
+	env := paginatedResponse{
+		Count:        len(paged),
+		Total:        total,
+		Offset:       offset,
+		Truncated:    offset+len(paged) < total,
+		Format:       formatLabel(verbose),
+		PathContains: pathContains,
+		Method:       method,
+		TokenBudget:  tokenBudget,
+	}
+
+	truncationNote := ""
+	if preCapLen > len(paged) {
+		truncationNote = fmt.Sprintf(
+			"response capped at token_budget=%d (~%d bytes); %d items omitted — use path_contains/method to narrow or pass a larger token_budget",
+			tokenBudget, budgetBytes, preCapLen-len(paged),
+		)
+	}
+	return paged, env, truncationNote
 }
 
 // ---------------------------------------------------------------------------
@@ -197,32 +395,6 @@ func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest
 // archigraph_endpoint_definitions
 // ---------------------------------------------------------------------------
 
-// isOrphanDefinition reports whether the endpoint-definition entity with the
-// given local ID (within repo r) has no inbound client-call edges. An endpoint
-// is orphan when:
-//
-//   - it has no inbound FETCHES edge in its own repo (the semantic
-//     "client → endpoint" edge in this graph; see handleEndpointCalls), AND
-//   - it is not the target of any cross-repo Link in lg.Links.
-//
-// Other inbound edge kinds (CONTAINS, DECLARES, …) are intentionally ignored —
-// they describe structure, not API consumption. (#2292)
-//
-// linkedTargets must be the precomputed set of lg.Links[*].Target values;
-// passing nil is allowed and treated as "no cross-repo callers".
-func isOrphanDefinition(r *LoadedRepo, localID string, linkedTargets map[string]bool) bool {
-	prefixed := prefixedID(r.Repo, localID)
-	if linkedTargets[prefixed] || linkedTargets[localID] {
-		return false
-	}
-	for _, e := range r.Adjacency.Incoming(localID) {
-		if strings.EqualFold(e.kind, "FETCHES") {
-			return false
-		}
-	}
-	return true
-}
-
 // handleEndpointDefinitions lists http_endpoint_definition entities (and the
 // legacy http_endpoint kind when Sub-A has not yet landed). This tool returns
 // ONLY definition-side entries — no call-sites.
@@ -234,6 +406,7 @@ func isOrphanDefinition(r *LoadedRepo, localID string, linkedTargets map[string]
 //   - hard byte budget so a single call cannot overflow the harness token cap
 //
 // #1745: format="terse"|"full" explicit param; triple-path dedupe.
+// #2288: terse mode emits lines only (no definitions struct array duplication).
 //
 // Tool name: archigraph_endpoint_definitions
 func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -242,7 +415,6 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	limit := argInt(req, "limit", 20)
 	pathContains := strings.ToLower(argString(req, "path_contains", ""))
 	method := strings.ToUpper(argString(req, "method", ""))
 	orphanOnly := argBool(req, "orphan_only", false)
@@ -267,15 +439,10 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 	// Cross-repo callers: if the definition is the target of an entry in
 	// lg.Links (which records cross-repo HTTP link resolutions), it is also
 	// NOT orphan, matching the accounting in handleEndpointStats.
-	var linkedTargets map[string]bool
-	if orphanOnly {
-		linkedTargets = make(map[string]bool, len(lg.Links))
-		for _, l := range lg.Links {
-			if l.Target != "" {
-				linkedTargets[l.Target] = true
-			}
-		}
-	}
+	//
+	// #2336: use shared endpointResolution helper (orphanOnly=true populates
+	// linkedTargets; false skips the allocation).
+	res := newEndpointResolution(repos, lg, orphanOnly)
 
 	var out []endpointDefItem
 	for _, r := range repos {
@@ -287,7 +454,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 			if !isDefinitionKind(e.Kind) {
 				continue
 			}
-			if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+			if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
 				continue
 			}
 			p := e.Properties["path"]
@@ -298,7 +465,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 			if method != "" && !strings.EqualFold(m, method) {
 				continue
 			}
-			if orphanOnly && !isOrphanDefinition(r, e.ID, linkedTargets) {
+			if orphanOnly && !isOrphanDefinition(r, e.ID, res) {
 				continue
 			}
 			it := endpointDefItem{
@@ -333,49 +500,30 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		return out[i].Method < out[j].Method
 	})
 	total := len(out)
-	offset := argInt(req, "offset", 0)
-	out = pageSlice(out, offset, limit)
 
-	// Token-budget guard: shed entries from the tail until under budget.
-	// default 800 tokens ≈ 3,200 bytes; hard ceiling 64 KB.
-	tokenBudget := argInt(req, "token_budget", 800)
-	if tokenBudget < 100 {
-		tokenBudget = 100
-	}
-	budgetBytes := tokenBudget * 4
-	if budgetBytes > 64*1024 {
-		budgetBytes = 64 * 1024
-	}
-	preCapLen := len(out)
-	out = capByRenderedBytes(out, budgetBytes, !verbose)
+	// #2315: use respondPaginated helper (token budget + page + cap).
+	out, env, truncationNote := respondPaginated(req, out, total, verbose, pathContains, method)
 
-	// #2288: in terse mode (default), the full `definitions` struct array is
-	// dropped — `lines` is sufficient for the LLM consumer and avoids ~22 KB
-	// of payload duplication on large responses (e.g. bench Q10's 473 rows).
-	// Callers that need the full struct shape opt in via format=full or
-	// verbose=true (matches the existing arg convention in this file).
 	resp := map[string]any{
-		"count":         len(out),
-		"total":         total,
-		"offset":        offset,
-		"truncated":     offset+len(out) < total,
-		"format":        formatLabel(verbose),
-		"path_contains": pathContains,
-		"method":        method,
+		"count":         env.Count,
+		"total":         env.Total,
+		"offset":        env.Offset,
+		"truncated":     env.Truncated,
+		"format":        env.Format,
+		"path_contains": env.PathContains,
+		"method":        env.Method,
 		"orphan_only":   orphanOnly,
-		"token_budget":  tokenBudget,
-		"note":          "format=terse (default) returns one-line 'lines' entries only. Pass format=full (or verbose=true) to also receive the full `definitions` struct array.",
+		"token_budget":  env.TokenBudget,
+		// #2317: "note" field removed — schema lives in the tool description,
+		// not in runtime responses (reduces wire bytes on every call).
 	}
 	if verbose {
 		resp["definitions"] = out
 	} else {
 		resp["lines"] = renderTerseDefinitions(out)
 	}
-	if preCapLen > len(out) {
-		resp["truncation_note"] = fmt.Sprintf(
-			"response capped at token_budget=%d (~%d bytes); %d definitions omitted — use path_contains/method to narrow or pass a larger token_budget",
-			tokenBudget, budgetBytes, preCapLen-len(out),
-		)
+	if truncationNote != "" {
+		resp["truncation_note"] = truncationNote
 	}
 	return jsonResult(resp), nil
 }
@@ -540,6 +688,9 @@ func formatLabel(verbose bool) string {
 // hint is included.
 //
 // #1745: format="terse"|"full" explicit param; triple-path dedupe.
+// #2311: terse mode (default) emits lines only — mirrors the #2288/#2309 fix
+// for handleEndpointDefinitions. The `calls` struct array is only present when
+// format=full or verbose=true.
 //
 // Tool name: archigraph_endpoint_calls
 func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -548,7 +699,6 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	limit := argInt(req, "limit", 20)
 	orphanOnly := argBool(req, "orphan_only", false)
 	pathContains := strings.ToLower(argString(req, "path_contains", ""))
 	method := strings.ToUpper(argString(req, "method", ""))
@@ -560,21 +710,9 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		verbose = false
 	}
 
-	// Build a set of all definition-side entity IDs so we can detect
-	// call-sites with no matching definition (orphan callers).
-	definitionIDs := map[string]bool{}
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			if isDefinitionKind(e.Kind) && e.Properties["pattern_type"] != "http_endpoint_client_synthesis" {
-				definitionIDs[prefixedID(r.Repo, e.ID)] = true
-				definitionIDs[e.ID] = true // bare form for same-repo lookups
-			}
-		}
-	}
+	// #2336: use shared endpointResolution helper.
+	// orphanOnly=false → linkedTargets not populated (not needed for call handler).
+	res := newEndpointResolution(repos, lg, false)
 
 	// Build FETCHES edge map: callerID → toID (definition target).
 	type fetchesEdge struct {
@@ -588,7 +726,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		}
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
-			if rel.Kind != "FETCHES" {
+			if rel.Kind != kindFETCHES {
 				continue
 			}
 			key := prefixedID(r.Repo, rel.FromID)
@@ -602,15 +740,6 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		}
 	}
 
-	// Cross-repo link resolution (#1650 follow-up to iter2 #1615): a call may
-	// be matched by a cross-repo link entry (lg.Links) instead of an in-repo
-	// FETCHES target. Build a quick set of sources covered by links so we
-	// don't flag them as orphans.
-	linkedSources := map[string]bool{}
-	for _, l := range lg.Links {
-		linkedSources[l.Source] = true
-	}
-
 	var out []endpointCallItem
 	for _, r := range repos {
 		if r.Doc == nil {
@@ -620,7 +749,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			e := &r.Doc.Entities[i]
 			// Accept explicit call kind OR client-synthesis http_endpoint.
 			isCall := isCallKind(e.Kind) ||
-				(isDefinitionKind(e.Kind) && e.Properties["pattern_type"] == "http_endpoint_client_synthesis")
+				(isDefinitionKind(e.Kind) && e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis)
 			if !isCall {
 				continue
 			}
@@ -639,9 +768,9 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			matched := ""
 			orphanHint := ""
 			if fe, ok := callerToTarget[eid]; ok {
-				if definitionIDs[fe.toID] || definitionIDs[prefixedID(r.Repo, fe.toID)] {
+				if res.definitionIDs[fe.toID] || res.definitionIDs[prefixedID(r.Repo, fe.toID)] {
 					matched = fe.toID
-				} else if linkedSources[eid] {
+				} else if res.linkedSources[eid] {
 					// Resolved via cross-repo links pass.
 					matched = "cross_repo_link"
 				} else {
@@ -655,7 +784,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 						orphanHint = "this call has no matching definition — see orphan_callers"
 					}
 				}
-			} else if linkedSources[eid] {
+			} else if res.linkedSources[eid] {
 				matched = "cross_repo_link"
 			} else {
 				if p != "" {
@@ -703,38 +832,26 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 	})
 
 	total := len(out)
-	offset := argInt(req, "offset", 0)
-	out = pageSlice(out, offset, limit)
-	// Token-budget guard: shed entries from the tail until under budget.
-	tokenBudget := argInt(req, "token_budget", 800)
-	if tokenBudget < 100 {
-		tokenBudget = 100
-	}
-	budgetBytes := tokenBudget * 4
-	if budgetBytes > 64*1024 {
-		budgetBytes = 64 * 1024
-	}
-	preCapLen := len(out)
-	out = capByRenderedBytes(out, budgetBytes, !verbose)
+
+	// #2315: use respondPaginated helper (token budget + page + cap).
+	out, env, truncationNote := respondPaginated(req, out, total, verbose, pathContains, method)
+
+	// #2311: mirror the #2288/#2309 fix — terse mode (default) emits lines
+	// only. The `calls` struct array is only present in format=full / verbose=true.
+	// #2317: "note" field dropped from runtime response.
 	resp := map[string]any{
-		"calls":         out,
-		"count":         len(out),
-		"total":         total,
-		"offset":        offset,
-		"truncated":     offset+len(out) < total,
-		"format":        formatLabel(verbose),
-		"path_contains": pathContains,
-		"method":        method,
-		"token_budget":  tokenBudget,
-		"note":          "format=terse (default) returns one-line 'lines' entries. path_contains/method narrow server-side; cross-repo link matches surface as matched_definition=\"cross_repo_link\".",
+		"count":         env.Count,
+		"total":         env.Total,
+		"offset":        env.Offset,
+		"truncated":     env.Truncated,
+		"format":        env.Format,
+		"path_contains": env.PathContains,
+		"method":        env.Method,
+		"token_budget":  env.TokenBudget,
 	}
-	if preCapLen > len(out) {
-		resp["truncation_note"] = fmt.Sprintf(
-			"response capped at token_budget=%d (~%d bytes); %d calls omitted — use path_contains/method to narrow or pass a larger token_budget",
-			tokenBudget, budgetBytes, preCapLen-len(out),
-		)
-	}
-	if !verbose {
+	if verbose {
+		resp["calls"] = out
+	} else {
 		lines := make([]terseLine, 0, len(out))
 		for _, it := range out {
 			lines = append(lines, terseLine{
@@ -746,6 +863,9 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			})
 		}
 		resp["lines"] = renderTerseLines(lines)
+	}
+	if truncationNote != "" {
+		resp["truncation_note"] = truncationNote
 	}
 	return jsonResult(resp), nil
 }
@@ -791,29 +911,8 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		CrossRepoResolved int    `json:"cross_repo_resolved"`
 	}
 
-	// Build definition-ID set first (needed for orphan detection below).
-	definitionIDs := map[string]bool{}
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			if isDefinitionKind(e.Kind) && e.Properties["pattern_type"] != "http_endpoint_client_synthesis" {
-				definitionIDs[e.ID] = true
-				definitionIDs[prefixedID(r.Repo, e.ID)] = true
-			}
-		}
-	}
-
-	// #1650: fold cross-repo link resolutions into orphan accounting. The
-	// link pass writes <repo>::<localId> on the source side; collect those so
-	// a FETCHES whose ToID is unresolved intra-repo but whose FromID is
-	// covered by a cross-repo link is NOT counted as orphan.
-	linkedSources := map[string]bool{}
-	for _, l := range lg.Links {
-		linkedSources[l.Source] = true
-	}
+	// #2336: use shared endpointResolution helper.
+	res := newEndpointResolution(repos, lg, false)
 
 	var perRepo []repoStats
 	totalDefs, totalCalls, totalLegacy, totalOrphans, totalCross := 0, 0, 0, 0, 0
@@ -826,16 +925,15 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			k := strings.ToLower(stripScopePrefix(e.Kind))
-			switch {
-			case k == "http_endpoint_definition":
+			switch classifyEndpointKind(e.Kind) {
+			case endpointKindDefinition:
 				rs.Definitions++
-			case k == "http_endpoint_call":
+			case endpointKindCall:
 				rs.Calls++
-			case k == "http_endpoint":
+			case endpointKindLegacy:
 				// Pre-Sub-A entity; count separately.
 				rs.LegacyKind++
-				if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
 					rs.Calls++ // treat client-synthesis as a call
 				} else {
 					rs.Definitions++ // treat producer as a definition
@@ -847,15 +945,15 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		// AND whose FromID isn't covered by a cross-repo link entry.
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
-			if rel.Kind != "FETCHES" {
+			if rel.Kind != kindFETCHES {
 				continue
 			}
-			resolvedIntra := definitionIDs[rel.ToID] || definitionIDs[prefixedID(r.Repo, rel.ToID)]
+			resolvedIntra := res.definitionIDs[rel.ToID] || res.definitionIDs[prefixedID(r.Repo, rel.ToID)]
 			if resolvedIntra {
 				continue
 			}
 			srcPrefixed := prefixedID(r.Repo, rel.FromID)
-			if linkedSources[srcPrefixed] {
+			if res.linkedSources[srcPrefixed] {
 				rs.CrossRepoResolved++
 				continue
 			}

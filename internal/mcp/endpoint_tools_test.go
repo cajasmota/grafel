@@ -128,6 +128,23 @@ func getFloat(t *testing.T, m map[string]any, key string) float64 {
 }
 
 // ---------------------------------------------------------------------------
+// #2316: assertEndpointCount — unified count assertion helper.
+//
+// Consolidates three divergent assertion styles previously used across the
+// test file into a single call: assertEndpointCount(t, res, wantCount).
+// The helper inspects the "count" key in the response envelope, which is
+// present in all three endpoint handler responses.
+// ---------------------------------------------------------------------------
+
+func assertEndpointCount(t *testing.T, res map[string]any, want int) {
+	t.Helper()
+	got := getFloat(t, res, "count")
+	if int(got) != want {
+		t.Errorf("count: want %d, got %v", want, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // expandKindAlias tests
 // ---------------------------------------------------------------------------
 
@@ -221,6 +238,33 @@ func TestMatchesKindFilter_NonHTTPKindNotAffected(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// #2314: classifyEndpointKind tests
+// ---------------------------------------------------------------------------
+
+func TestClassifyEndpointKind_AllVariants(t *testing.T) {
+	cases := []struct {
+		kind string
+		want endpointKindCategory
+	}{
+		{"http_endpoint_definition", endpointKindDefinition},
+		{"HTTP_ENDPOINT_DEFINITION", endpointKindDefinition},
+		{"http_endpoint_call", endpointKindCall},
+		{"HTTP_ENDPOINT_CALL", endpointKindCall},
+		{"http_endpoint", endpointKindLegacy},
+		{"HTTP_ENDPOINT", endpointKindLegacy},
+		{"Function", endpointKindNone},
+		{"", endpointKindNone},
+		{"topic", endpointKindNone},
+	}
+	for _, tc := range cases {
+		got := classifyEndpointKind(tc.kind)
+		if got != tc.want {
+			t.Errorf("classifyEndpointKind(%q) = %v, want %v", tc.kind, got, tc.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // archigraph_endpoint_definitions tests
 // ---------------------------------------------------------------------------
 
@@ -260,11 +304,14 @@ func TestEndpointDefinitions_ExcludesClientSynthesis(t *testing.T) {
 	}
 }
 
-func TestEndpointDefinitions_NoteFieldPresent(t *testing.T) {
+// TestEndpointDefinitions_NoteFieldAbsent verifies that the runtime response
+// does NOT contain a "note" field (#2317 — schema lives in tool description,
+// not in every wire response).
+func TestEndpointDefinitions_NoteFieldAbsent(t *testing.T) {
 	srv := newEndpointServer(t)
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test"})
-	if _, ok := res["note"]; !ok {
-		t.Error("response should contain deprecation note field")
+	if _, ok := res["note"]; ok {
+		t.Error("response must NOT contain 'note' field (#2317 — schema lives in tool description)")
 	}
 }
 
@@ -305,6 +352,7 @@ func TestEndpointDefinitions_OrphanOnly_FalseReturnsAll(t *testing.T) {
 		"orphan_only": false,
 		"verbose":     true,
 	})
+	assertEndpointCount(t, res, 2)
 	if got := len(getSlice(t, res, "definitions")); got != 2 {
 		t.Errorf("orphan_only=false: expected 2 definitions, got %d", got)
 	}
@@ -313,6 +361,7 @@ func TestEndpointDefinitions_OrphanOnly_FalseReturnsAll(t *testing.T) {
 		"group":   "test",
 		"verbose": true,
 	})
+	assertEndpointCount(t, resUnset, 2)
 	if got := len(getSlice(t, resUnset, "definitions")); got != 2 {
 		t.Errorf("orphan_only unset: expected 2 definitions, got %d", got)
 	}
@@ -334,9 +383,7 @@ func TestEndpointDefinitions_OrphanOnly_NoOrphansReturnsEmpty(t *testing.T) {
 		"orphan_only": true,
 	})
 
-	if got := getFloat(t, res, "count"); got != 0 {
-		t.Errorf("expected count=0 when no orphans, got %v", got)
-	}
+	assertEndpointCount(t, res, 0)
 	if got := getFloat(t, res, "total"); got != 0 {
 		t.Errorf("expected total=0 when no orphans, got %v", got)
 	}
@@ -398,7 +445,8 @@ func hasSuffixKey(m map[string]bool, suffix string) bool {
 
 func TestEndpointCalls_ReturnsCallsOnly(t *testing.T) {
 	srv := newEndpointServer(t)
-	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test"})
+	// #2311: terse (default) → lines only; use format=full to get `calls` struct.
+	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test", "format": "full"})
 
 	calls := getSlice(t, res, "calls")
 	// Expect: ep_call (http_endpoint_call) + ep_client_synth (client-synthesis http_endpoint)
@@ -409,7 +457,8 @@ func TestEndpointCalls_ReturnsCallsOnly(t *testing.T) {
 
 func TestEndpointCalls_OrphanHintPresent(t *testing.T) {
 	srv := newEndpointServer(t)
-	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test"})
+	// #2311: terse → lines only; need format=full for per-item orphan_hint inspection.
+	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test", "format": "full"})
 	calls := getSlice(t, res, "calls")
 
 	orphanFound := false
@@ -427,9 +476,11 @@ func TestEndpointCalls_OrphanHintPresent(t *testing.T) {
 
 func TestEndpointCalls_OrphanOnly(t *testing.T) {
 	srv := newEndpointServer(t)
+	// #2311: terse default → lines. Use format=full so orphan_hint is in the struct.
 	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{
 		"group":       "test",
 		"orphan_only": true,
+		"format":      "full",
 	})
 	calls := getSlice(t, res, "calls")
 	for _, c := range calls {
@@ -451,6 +502,53 @@ func TestEndpointCalls_ExcludesNonCallEntities(t *testing.T) {
 		if kind == "Function" || kind == "http_endpoint_definition" {
 			t.Errorf("unexpected kind %q in calls list", kind)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #2311: handleEndpointCalls terse-mode dedup tests
+//
+// Mirror of the #2288/#2309 fix applied to handleEndpointDefinitions.
+// Terse (default): only "lines" key present, no "calls" struct array.
+// Full: only "calls" struct array present, no "lines" key.
+// ---------------------------------------------------------------------------
+
+// TestEndpointCalls_TerseDefault verifies #2311: terse mode (default) emits
+// only "lines", NOT "calls". Mirrors TestEndpointDefinitions_TerseDefault.
+func TestEndpointCalls_TerseDefault(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test"})
+	if _, ok := res["lines"]; !ok {
+		t.Error("terse (default) calls response must have 'lines' key (#2311)")
+	}
+	if _, ok := res["calls"]; ok {
+		t.Error("terse (default) calls response must NOT have 'calls' key (#2311 — lines-only in terse mode)")
+	}
+}
+
+// TestEndpointCalls_FullModeIncludesCalls verifies that format=full restores
+// the `calls` struct array (and does NOT emit `lines`).
+func TestEndpointCalls_FullModeIncludesCalls(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{
+		"group":  "test",
+		"format": "full",
+	})
+	if _, ok := res["calls"]; !ok {
+		t.Error("format=full should include 'calls' key")
+	}
+	if _, ok := res["lines"]; ok {
+		t.Error("format=full should NOT include 'lines' key")
+	}
+	assertEndpointCount(t, res, 2)
+}
+
+// TestEndpointCalls_NoteFieldAbsent verifies #2317 for the calls handler.
+func TestEndpointCalls_NoteFieldAbsent(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test"})
+	if _, ok := res["note"]; ok {
+		t.Error("calls response must NOT contain 'note' field (#2317)")
 	}
 }
 
@@ -601,14 +699,17 @@ func TestHandleEndpoints_Definitions(t *testing.T) {
 
 func TestHandleEndpoints_Calls(t *testing.T) {
 	srv := newEndpointServer(t)
+	// #2311: terse default → lines only; use format=full for `calls` struct.
 	res := callEndpointTool(t, srv.handleEndpoints, map[string]any{
 		"group":  "test",
 		"action": "calls",
+		"format": "full",
 	})
 	if _, ok := res["calls"]; !ok {
-		t.Error("expected calls key in response for action=calls")
+		t.Error("expected calls key in response for action=calls (format=full)")
 	}
 	calls := getSlice(t, res, "calls")
+	assertEndpointCount(t, res, 2)
 	if len(calls) != 2 {
 		t.Errorf("action=calls: expected 2 calls, got %d", len(calls))
 	}
@@ -620,6 +721,7 @@ func TestHandleEndpoints_CallsOrphanOnly(t *testing.T) {
 		"group":       "test",
 		"action":      "calls",
 		"orphan_only": true,
+		"format":      "full", // #2311: need full to inspect orphan_hint per item
 	})
 	calls := getSlice(t, res, "calls")
 	for _, c := range calls {
@@ -1040,5 +1142,61 @@ func TestDedupeEndpointProperties_NilAndEmpty(t *testing.T) {
 	onlyRedundant := map[string]string{"path": "/x", "verb": "GET"}
 	if got := dedupeEndpointProperties(onlyRedundant); got != nil {
 		t.Errorf("all-redundant props should return nil, got %v", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #2336: endpointResolution helper unit tests
+// ---------------------------------------------------------------------------
+
+// TestEndpointResolution_DefinitionIDs verifies that newEndpointResolution
+// correctly builds the definition ID set, excluding client-synthesis entities.
+func TestEndpointResolution_DefinitionIDs(t *testing.T) {
+	doc := buildEndpointDoc()
+	// Use a minimal LoadedGroup with no links.
+	lg := &LoadedGroup{}
+	repos := []*LoadedRepo{
+		{Repo: "test", Doc: doc, Adjacency: buildAdjacency(doc, "test")},
+	}
+
+	res := newEndpointResolution(repos, lg, false)
+
+	// ep_legacy (http_endpoint, producer) and ep_def (http_endpoint_definition)
+	// must appear as definition IDs.
+	if !res.definitionIDs["test::ep_legacy"] && !res.definitionIDs["ep_legacy"] {
+		t.Error("ep_legacy should be in definitionIDs")
+	}
+	if !res.definitionIDs["test::ep_def"] && !res.definitionIDs["ep_def"] {
+		t.Error("ep_def should be in definitionIDs")
+	}
+
+	// ep_client_synth must NOT be in definitionIDs (it's a call, not a definition).
+	if res.definitionIDs["test::ep_client_synth"] || res.definitionIDs["ep_client_synth"] {
+		t.Error("ep_client_synth (client-synthesis) must NOT be in definitionIDs")
+	}
+
+	// ep_call must NOT be in definitionIDs.
+	if res.definitionIDs["test::ep_call"] || res.definitionIDs["ep_call"] {
+		t.Error("ep_call must NOT be in definitionIDs")
+	}
+}
+
+// TestEndpointResolution_OrphanOnlyPopulatesLinkedTargets verifies that
+// linkedTargets is populated only when orphanOnly=true.
+func TestEndpointResolution_OrphanOnlyPopulatesLinkedTargets(t *testing.T) {
+	lg := &LoadedGroup{Links: []CrossRepoLink{{Source: "a::src", Target: "b::tgt"}}}
+	repos := []*LoadedRepo{{Repo: "test", Doc: &graph.Document{}}}
+
+	resNo := newEndpointResolution(repos, lg, false)
+	if resNo.linkedTargets != nil {
+		t.Error("orphanOnly=false: linkedTargets must be nil (skip allocation)")
+	}
+
+	resYes := newEndpointResolution(repos, lg, true)
+	if resYes.linkedTargets == nil {
+		t.Error("orphanOnly=true: linkedTargets must not be nil")
+	}
+	if !resYes.linkedTargets["b::tgt"] {
+		t.Error("orphanOnly=true: linkedTargets must contain the link target")
 	}
 }
