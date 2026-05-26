@@ -267,6 +267,91 @@ func TestRoundtripCoverageStatus(t *testing.T) {
 	}
 }
 
+// TestRoundtripLanguage verifies that Entity.Language survives a write→read
+// cycle through graph.fb (issue #2341). Before the fix, Language was never
+// serialized into the FlatBuffer so every entity read back with Language="".
+func TestRoundtripLanguage(t *testing.T) {
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Date(2026, 5, 27, 0, 0, 0, 0, time.UTC),
+		Repo:        "fixture-language",
+		Entities: []graph.Entity{
+			// Entity with Language set but NOT in Properties — the common case
+			// produced by extractors that set entity.Language directly.
+			{ID: "ent0000000000000a", Name: "MyView", Kind: "class",
+				SourceFile: "views.py", Language: "python"},
+			// Entity with Language already mirrored in Properties (extractor
+			// overrides must be preserved, not doubled).
+			{ID: "ent0000000000000b", Name: "handler", Kind: "function",
+				SourceFile: "main.go", Language: "go",
+				Properties: map[string]string{"language": "go", "module": "cmd/main"}},
+			// Entity with no Language and no recognized extension (synthetic).
+			// Must round-trip with Language="" (no spurious tag injected).
+			{ID: "ent0000000000000c", Name: "ext:requests", Kind: "external",
+				SourceFile: ""},
+		},
+	}
+	doc.Stats.Entities = len(doc.Entities)
+
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	byID := make(map[string]*graph.Entity, len(got.Entities))
+	for i := range got.Entities {
+		e := &got.Entities[i]
+		byID[e.ID] = e
+	}
+
+	// entity a: Language="python" must survive the roundtrip.
+	ea := byID["ent0000000000000a"]
+	if ea == nil {
+		t.Fatal("entity a not found after roundtrip")
+	}
+	if ea.Language != "python" {
+		t.Errorf("entity a Language: got %q want %q", ea.Language, "python")
+	}
+	// Properties["language"] must also be set so MCP query handlers that read
+	// props directly (not the top-level field) see the value.
+	if ea.Properties["language"] != "python" {
+		t.Errorf("entity a Properties[language]: got %q want %q",
+			ea.Properties["language"], "python")
+	}
+
+	// entity b: Language="go" already in Properties — must not be duplicated
+	// or overwritten.
+	eb := byID["ent0000000000000b"]
+	if eb == nil {
+		t.Fatal("entity b not found after roundtrip")
+	}
+	if eb.Language != "go" {
+		t.Errorf("entity b Language: got %q want %q", eb.Language, "go")
+	}
+	if eb.Properties["language"] != "go" {
+		t.Errorf("entity b Properties[language]: got %q want %q",
+			eb.Properties["language"], "go")
+	}
+	// Other properties must be preserved.
+	if eb.Properties["module"] != "cmd/main" {
+		t.Errorf("entity b Properties[module]: got %q want %q",
+			eb.Properties["module"], "cmd/main")
+	}
+
+	// entity c: no Language, no source file — must read back with Language="".
+	ec := byID["ent0000000000000c"]
+	if ec == nil {
+		t.Fatal("entity c not found after roundtrip")
+	}
+	if ec.Language != "" {
+		t.Errorf("entity c Language: got %q want empty", ec.Language)
+	}
+}
+
 // TestRoundtripNoAlgoData verifies a graph written with NO community data
 // (the --skip-pass=graph-algo case) reads back with zero communities, nil
 // AlgorithmStats, and un-annotated entities (#1620 — old-file compatibility).

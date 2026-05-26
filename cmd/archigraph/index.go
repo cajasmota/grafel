@@ -1321,7 +1321,77 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		}
 	}
 
+	// Issue #2341 — sanity-check: warn when entities with a recognized source
+	// extension have an empty Language tag. A non-zero count here means the
+	// indexer pipeline dropped or never set the Language field for these files,
+	// which would cause language-filtered queries (archigraph_find --language)
+	// to silently skip them. This is non-fatal; the graph is still usable.
+	warnEmptyLanguageEntities(doc)
+
 	return doc, nil
+}
+
+// knownLanguageExtensions maps source-file suffixes (including the dot) to the
+// language tag they imply. Used by warnEmptyLanguageEntities to distinguish
+// entities whose Language should be known from truly extension-less ones
+// (e.g. synthetic ext:* placeholders).
+var knownLanguageExtensions = map[string]string{
+	".go":    "go",
+	".py":    "python",
+	".ts":    "typescript",
+	".tsx":   "typescript",
+	".js":    "javascript",
+	".jsx":   "javascript",
+	".java":  "java",
+	".rb":    "ruby",
+	".rs":    "rust",
+	".php":   "php",
+	".cs":    "csharp",
+	".cpp":   "cpp",
+	".cc":    "cpp",
+	".cxx":   "cpp",
+	".c":     "c",
+	".h":     "c",
+	".hpp":   "cpp",
+	".kt":    "kotlin",
+	".swift": "swift",
+	".scala": "scala",
+	".tf":    "hcl",
+	".hcl":   "hcl",
+	".yaml":  "yaml",
+	".yml":   "yaml",
+}
+
+// warnEmptyLanguageEntities logs a warning to stderr when entities with a
+// recognized source-file extension have an empty Language tag. Issue #2341 —
+// prevents the bug from silently recurring after a future regression.
+func warnEmptyLanguageEntities(doc *graph.Document) {
+	type bad struct{ kind, name, src string }
+	var bads []bad
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		if e.Language != "" || e.SourceFile == "" {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.SourceFile))
+		if _, known := knownLanguageExtensions[ext]; known {
+			bads = append(bads, bad{e.Kind, e.Name, e.SourceFile})
+		}
+	}
+	if len(bads) == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr,
+		"archigraph: WARNING: %d entities have a recognized source extension but Language=\"\" "+
+			"— language-filtered queries will silently skip them (issue #2341). "+
+			"First 5 examples:\n", len(bads))
+	limit := 5
+	if len(bads) < limit {
+		limit = len(bads)
+	}
+	for _, b := range bads[:limit] {
+		fmt.Fprintf(os.Stderr, "  kind=%s name=%s src=%s\n", b.kind, b.name, b.src)
+	}
 }
 
 // verbose reports whether the indexer should emit the per-extractor
