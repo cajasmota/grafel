@@ -59,14 +59,10 @@ func (e *errorHandlingDetector) Detect(filePath, language, src string) []types.E
 		}
 
 	case "python":
-		// Per-line entities for each `try:` occurrence — matches Python's format.
-		for _, m := range ehPyTryStatementRE.FindAllStringIndex(src, -1) {
-			line := lineOf(src, m[0])
-			name := fmt.Sprintf("error_handling:try_catch:%d", line)
-			results = append(results, makeEntity(filePath,
-				name, "SCOPE.Pattern", "error_handling", language, line,
-				map[string]string{"kind": "error_handling", "pattern": "try_catch"}))
-		}
+		// Issue #2282 — per-line try_catch entities were dropped (no
+		// consumer; ~5.5% of UpVate graph). Python falls through with
+		// no pattern emit here; the language still surfaces real
+		// SCOPE.Component / SCOPE.Operation nodes from the primary pass.
 
 	case "rust":
 		if ehRustMatchRE.MatchString(src) && ehRustOkArmRE.MatchString(src) && ehRustErrArmRE.MatchString(src) {
@@ -104,14 +100,11 @@ func (e *errorHandlingDetector) Detect(filePath, language, src string) []types.E
 		// error_handling pattern entities for them. Suppress to maintain parity.
 
 	default:
-		// Curly-brace try { } — per-line for JS/Java/etc.
-		for _, m := range ehTryStatementRE.FindAllStringIndex(src, -1) {
-			line := lineOf(src, m[0])
-			name := fmt.Sprintf("error_handling:try_catch:%d", line)
-			results = append(results, makeEntity(filePath,
-				name, "SCOPE.Pattern", "error_handling", language, line,
-				map[string]string{"kind": "error_handling", "pattern": "try_catch"}))
-		}
+		// Issue #2282 — per-line `try { ... } catch { ... }` entities
+		// (Java/JS/TS/etc.) were dropped. No graph consumer queries them
+		// at this granularity. The ehTryStatementRE regex is preserved
+		// for AppliesTo() so non-try_catch languages (rust, elixir) keep
+		// flowing through this detector unchanged.
 	}
 
 	return results
