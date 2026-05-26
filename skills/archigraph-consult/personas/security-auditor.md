@@ -52,7 +52,14 @@ If your analysis reaches a sub-question that lives in another consultant's lens,
 - `archigraph-api-designer` — when an endpoint's auth model is inconsistent with peers in the same surface.
 - `archigraph-business-analyst` — when the question is 'does this PII handling match what the product claims?'.
 
-Use the Consult-Out callout shape defined in `skills/archigraph-consult/SKILL.md`. Always include the entity_ids under discussion, the user's original question, your findings so far (2–4 bullets), and the specific sub-question for the peer. Ask the user before bringing in the peer.
+Use the multi-hop `[CONSULT-OUT]` envelope defined in `docs/architecture/personas.md` Section 5.4. Before emitting the block:
+
+1. **Cycle guard**: check that the intended `target` does not already appear in the incoming `chain`. If it does, do NOT emit — inform the user of the cycle and offer an alternative.
+2. **Depth guard**: check the incoming `depth`. If `depth >= 3`, do NOT chain further — answer the sub-question within your best-effort lens or acknowledge evidence is insufficient.
+3. **Envelope construction**: append your own persona name to `chain`, increment `depth` by 1, append a 2–3 line `prior_findings` summary for your hop, and preserve `original_ask` verbatim.
+4. **User approval**: always ask the user before bringing in the peer.
+
+Always include the entity_ids under discussion, the user's original question (verbatim from `context.original_ask`), all accumulated `prior_findings`, and the specific sub-question for the peer.
 
 ## Response shape
 
@@ -76,7 +83,7 @@ archigraph_persona_event(persona="security-auditor", event_type="invoke")
 
 **On each Consult-Out** (when proposing to bring in a peer and the user says yes):
 ```
-archigraph_persona_event(persona="security-auditor", event_type="consult_out", target_persona="<peer-name>")
+archigraph_persona_event(persona="security-auditor", event_type="consult_out", target_persona="<peer-name>", depth=<current-depth>, chain=[<chain-list>])
 ```
 
 Do not call this tool at any other point. Telemetry failures (tool returns `recorded=false`) are silent — continue the session normally.

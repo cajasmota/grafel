@@ -200,18 +200,22 @@ A consultant working on a problem may realise they need a peer's lens. Example: 
 
 ### 5.1 Mechanic
 
-The active consultant signals the need with a structured callout in their response:
+The active consultant signals the need with a structured callout in their response. The callout now carries the full multi-hop envelope (see Section 5.4 for the schema):
 
 ```
-> [CONSULT-OUT] I want to bring in archigraph-performance-reviewer because:
-> - The handler at entity_id `auth.LoginHandler` does a synchronous DB scan
->   (see archigraph_expand result above)
-> - Latency optimisation is outside my (security) lens
->
-> Context to carry over:
-> - Entity under discussion: auth.LoginHandler (entity_id: 4abf…)
-> - The user's original question: "is this login flow safe?"
-> - What I've found so far: <3-bullet summary>
+> [CONSULT-OUT]
+> target: archigraph-performance-reviewer
+> reason: Latency optimisation is outside my (security) lens
+> depth: 1
+> chain: [security-auditor]
+> context:
+>   original_ask: "is this login flow safe?"
+>   prior_findings:
+>     - persona: security-auditor
+>       summary: |
+>         - auth.LoginHandler (entity_id: 4abf…) passes OWASP auth checks
+>         - handler issues a synchronous DB scan per request (~200 ms)
+>         - no injection vectors found in query construction
 >
 > Shall I bring them in?
 ```
@@ -227,17 +231,128 @@ The user replies yes/no. If yes, the orchestrator:
 Every Consult-Out call MUST include:
 
 - The entity_ids under discussion.
-- The user's original question.
+- The user's original question (preserved verbatim from the first hop — do not paraphrase).
 - A 2–4 bullet summary of what the original consultant has found so far.
 - The specific sub-question the peer is being asked to answer.
+- The accumulated `prior_findings` from every prior hop (see Section 5.4).
 
-This avoids the peer re-doing the original consultant's READ phase.
+This avoids the peer re-doing any previous hop's READ phase.
 
 ### 5.3 When NOT to Consult-Out
 
 - The peer's lens overlaps trivially with the active consultant's — handle it inline.
 - The user has not yet engaged deeply with the active consultant's answer.
+- The current depth is already 3 (hard cap — see Section 5.5).
+- The target persona already appears in `chain` (cycle — see Section 5.6).
 - More than 2 Consult-Outs have already happened in this conversation (panel sprawl).
+
+### 5.4 Multi-hop [CONSULT-OUT] schema
+
+Starting with this release (issue #2473), the `[CONSULT-OUT]` block is a structured YAML-in-blockquote envelope. All fields are required when depth > 1; `depth` and `chain` are required at all depths for forward compatibility.
+
+```yaml
+# [CONSULT-OUT] envelope (YAML fields, blockquote-formatted in persona output)
+target: archigraph-<persona-name>       # the peer being recruited
+reason: <one-line justification>        # why this peer's lens is needed
+depth: <integer, 1-indexed>             # current hop number (1 = first Consult-Out)
+chain: [<persona-a>, <persona-b>, ...]  # personas already in the chain (NOT including target)
+context:
+  original_ask: "<verbatim user question from hop 0>"
+  prior_findings:
+    - persona: <name>                   # one entry per prior hop
+      summary: |
+        - <2-3 line takeaway from that hop>
+```
+
+**Rules:**
+
+| Field | Rule |
+|---|---|
+| `depth` | Incremented by 1 at each hop. Personas receiving a Consult-Out at depth ≥ 3 MUST refuse to chain further. |
+| `chain` | The invoking persona appends its own name before sending. The target checks that its own name is NOT in `chain`. |
+| `prior_findings` | Each hop appends its own summary entry before handing off. The deepest expert receives all prior findings. |
+| `original_ask` | Copied verbatim from the first hop's `context.original_ask`. Never overwritten or paraphrased by intermediate hops. |
+
+### 5.5 Depth cap
+
+The maximum chain depth is **3 hops** (depth values 1, 2, 3). A persona receiving a Consult-Out at `depth: 3` MUST answer the sub-question itself (within its best-effort lens) rather than chaining further. If the question is genuinely outside its lens, it answers with "evidence insufficient in my lens — consider releasing and switching consultants directly."
+
+The depth cap may be raised by the user via an explicit instruction in the conversation (e.g. "allow up to 5 hops for this investigation"). The persona acknowledges the override and records the new cap in the envelope. Default cap: 3.
+
+### 5.6 Cycle detection
+
+Before emitting a `[CONSULT-OUT]` block, the persona MUST check whether the intended `target` already appears in `chain`. If it does:
+
+- Do NOT emit the `[CONSULT-OUT]` block.
+- Inform the user: "`archigraph-<target>` is already in the consultation chain (<chain>). Consulting them again would create a loop. Would you like me to answer within my own lens instead, or switch to a different expert?"
+
+Cycles are prevented at the persona level; the orchestrator does not need a separate guard (defence-in-depth, not primary enforcement).
+
+### 5.7 Worked example: 2-hop chain (architect → security-auditor → data-engineer)
+
+**Scenario:** The user asks the `architect` persona: *"Is our persistence layer correctly isolated from the HTTP handlers?"*
+
+**Hop 0 — architect is the active consultant**
+
+Architect traces the call graph and finds `api.OrderHandler` calls `db.RawQueryRunner` directly, bypassing the service layer. This is a layering violation. While examining the raw queries, architect spots parameterisation patterns that look suspect — but injection risk assessment is outside the architect's lens.
+
+Architect emits:
+
+```
+> [CONSULT-OUT]
+> target: archigraph-security-auditor
+> reason: Raw query patterns at the layering violation boundary may carry injection risk — security lens needed
+> depth: 1
+> chain: [architect]
+> context:
+>   original_ask: "Is our persistence layer correctly isolated from the HTTP handlers?"
+>   prior_findings:
+>     - persona: architect
+>       summary: |
+>         - api.OrderHandler (entity_id: 7c3a…) calls db.RawQueryRunner directly (CALLS edge, no service hop)
+>         - Layering violation: presentation → persistence bypass confirmed
+>         - 3 other handlers share this pattern (entity_ids: 8b1f…, 9d44…, 2e7c…)
+>
+> Shall I bring them in?
+```
+
+**Hop 1 — security-auditor is consulted**
+
+Security-auditor receives the envelope (`depth: 1`, `chain: [architect]`). They inspect `db.RawQueryRunner` and confirm parameterised queries are used — no injection. But they spot that `db.RawQueryRunner` reads a raw schema column named `user_pii_raw` without any field-level encryption annotation. Data handling is outside the security-auditor's lens (that's schema design territory).
+
+Security-auditor appends their findings and emits:
+
+```
+> [CONSULT-OUT]
+> target: archigraph-data-engineer
+> reason: Unencrypted PII column accessed via raw query — schema and migration hygiene lens needed
+> depth: 2
+> chain: [architect, security-auditor]
+> context:
+>   original_ask: "Is our persistence layer correctly isolated from the HTTP handlers?"
+>   prior_findings:
+>     - persona: architect
+>       summary: |
+>         - api.OrderHandler calls db.RawQueryRunner directly (layering violation)
+>         - 3 additional handlers share the pattern
+>     - persona: security-auditor
+>       summary: |
+>         - Parameterised queries confirmed — no SQL injection risk
+>         - db.RawQueryRunner reads column `user_pii_raw` (entity_id: 1fa9…) without encryption annotation
+>         - No auth check on the column access path
+>
+> Shall I bring them in?
+```
+
+**Hop 2 — data-engineer is consulted**
+
+Data-engineer receives the envelope (`depth: 2`, `chain: [architect, security-auditor]`). They inspect `user_pii_raw`, find no migration that added encryption, and flag it as a schema hygiene issue. Depth cap is not yet reached, but data-engineer has no further peer to bring in for this sub-question — they answer directly.
+
+Data-engineer returns `[CONSULT-IN: data-engineer]` to the conversation with:
+- `user_pii_raw` has no encryption-at-rest annotation in any migration (entity search: 0 results).
+- Recommend adding a column-level encryption migration and updating `db.RawQueryRunner` to decrypt in the service layer.
+
+**Return path:** Each `[CONSULT-IN]` reply bubbles back up. The user sees three tagged responses in sequence. The original `architect` persona remains active for the parent conversation.
 
 ---
 
@@ -344,7 +459,7 @@ Each persona calls `archigraph_persona_event` at two lifecycle points:
 | Lifecycle point | `event_type` | Required fields | Optional fields |
 |---|---|---|---|
 | Session start (user hires the persona) | `invoke` | `persona` | `metadata` |
-| Consult-Out (user confirms peer engagement) | `consult_out` | `persona`, `target_persona` | `metadata` |
+| Consult-Out (user confirms peer engagement) | `consult_out` | `persona`, `target_persona` | `depth`, `chain`, `metadata` |
 | Finding persisted via save_finding | `save_finding` | `persona` | `metadata` |
 
 The `save_finding` event_type is available for future use by the `archigraph-graph-write` shared skill; persona bodies currently only emit `invoke` and `consult_out`.
@@ -412,7 +527,7 @@ The four deferred personas (`solutions-architect`, `devops-reviewer`, `complianc
 | Persistent active-persona sidecar for Windsurf | Needs design work; conversation-marker workaround ships in this PR |
 | Codex / generic-markdown wrappers | Low user demand; defer until requested |
 | Persona-emitted findings → graph (opt-in) | **Shipped in #2472** — "When the user asks to save this analysis" section added to all 8 persona bodies; Section 2.4 defines the contract |
-| Consult-Out depth > 1 (peer of peer) | Single hop only in v3 |
+| Consult-Out depth > 1 (peer of peer) | **Shipped in #2473** — multi-hop with depth cap (3), cycle detection, and context carry-over. Section 5.4–5.7 define the full protocol. |
 | Telemetry on persona usage / Consult-Out frequency | **Shipped in #2474** — `archigraph_persona_event` MCP tool; Section 10 defines the contract and privacy promise |
 | Per-persona model selection strategy | **Shipped in #2475** — `model:` frontmatter on all 8 personas with opinionated recommendations; Section 2.3 defines the mapping and override contract |
 | Cross-platform renderer CLI | Defer until 3+ platforms stable |
