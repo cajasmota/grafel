@@ -284,6 +284,146 @@ func TestDetector_FileConvention_PatternType(t *testing.T) {
 // Integration: django.yaml embedded rules load and contain Migration convention
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Integration: bridge #2383 — file_convention property on source-pattern entities
+// ---------------------------------------------------------------------------
+
+// bridgeConventionYAML defines a rule set with BOTH a file_convention (class_name)
+// and source_patterns — the combination that #2383 targets.
+const bridgeConventionYAML = `
+file_conventions:
+  - glob: "*/migrations/0*.py"
+    entity_type: Migration
+    name_from: class_name
+source_patterns:
+  - pattern: "class (\\w+Migration)\\b"
+    entity_type: Migration
+    name_group: 1
+relationship_rules: []
+`
+
+// bridgeTwoConventionsYAML exercises the multi-convention comma-join path.
+const bridgeTwoConventionsYAML = `
+file_conventions:
+  - glob: "*/migrations/0*.py"
+    entity_type: Migration
+    name_from: class_name
+  - glob: "*/migrations/*.py"
+    entity_type: Migration
+    name_from: class_name
+source_patterns:
+  - pattern: "class (\\w+Migration)\\b"
+    entity_type: Migration
+    name_group: 1
+relationship_rules: []
+`
+
+// TestDetector_Bridge_FileConvention_AnnotatesSourcePatternEntities verifies that
+// a source-pattern entity emitted for a file that ALSO matches a file_convention
+// glob (name_from=class_name) carries Properties["file_convention"] = <glob>.
+func TestDetector_Bridge_FileConvention_AnnotatesSourcePatternEntities(t *testing.T) {
+	fsys := fstest.MapFS{
+		"rules/python/frameworks/test_bridge.yaml": &fstest.MapFile{
+			Data: []byte(bridgeConventionYAML),
+		},
+	}
+	rules, err := LoadAllRulesFromFS(fsys, "rules")
+	if err != nil {
+		t.Fatalf("LoadAllRulesFromFS: %v", err)
+	}
+
+	det := New(rules)
+	ctx := context.Background()
+
+	t.Run("matching file: source-pattern entity carries file_convention property", func(t *testing.T) {
+		result, err := det.Detect(ctx, extractor.FileInput{
+			Path:     "core/migrations/0042_add_device.py",
+			Language: "python",
+			Content:  []byte("class AddDeviceMigration(Migration):\n    pass\n"),
+		})
+		if err != nil {
+			t.Fatalf("Detect: %v", err)
+		}
+
+		found := false
+		for _, e := range result.Entities {
+			if e.Kind == "Migration" && e.Properties["pattern_type"] == "yaml_driven" {
+				found = true
+				got := e.Properties["file_convention"]
+				if got != "*/migrations/0*.py" {
+					t.Errorf("file_convention property: want %q, got %q", "*/migrations/0*.py", got)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("no yaml_driven Migration entity found; entities: %+v", result.Entities)
+		}
+	})
+
+	t.Run("non-matching file: source-pattern entities have no file_convention property", func(t *testing.T) {
+		result, err := det.Detect(ctx, extractor.FileInput{
+			Path:     "core/models.py",
+			Language: "python",
+			Content:  []byte("class UserMigration(Migration):\n    pass\n"),
+		})
+		if err != nil {
+			t.Fatalf("Detect: %v", err)
+		}
+
+		for _, e := range result.Entities {
+			if e.Properties["pattern_type"] == "yaml_driven" {
+				if v, ok := e.Properties["file_convention"]; ok {
+					t.Errorf("unexpected file_convention=%q on entity from non-matching file: %+v", v, e)
+				}
+			}
+		}
+	})
+}
+
+// TestDetector_Bridge_MultipleConventions_CommaJoined verifies that when a file
+// matches multiple file_convention globs, the file_convention property on source-
+// pattern entities is a comma-joined string of all matched globs.
+func TestDetector_Bridge_MultipleConventions_CommaJoined(t *testing.T) {
+	fsys := fstest.MapFS{
+		"rules/python/frameworks/test_bridge_multi.yaml": &fstest.MapFile{
+			Data: []byte(bridgeTwoConventionsYAML),
+		},
+	}
+	rules, err := LoadAllRulesFromFS(fsys, "rules")
+	if err != nil {
+		t.Fatalf("LoadAllRulesFromFS: %v", err)
+	}
+
+	det := New(rules)
+	ctx := context.Background()
+
+	result, err := det.Detect(ctx, extractor.FileInput{
+		Path:     "app/migrations/0001_initial.py",
+		Language: "python",
+		Content:  []byte("class InitialMigration(Migration):\n    pass\n"),
+	})
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+
+	for _, e := range result.Entities {
+		if e.Kind == "Migration" && e.Properties["pattern_type"] == "yaml_driven" {
+			got := e.Properties["file_convention"]
+			// Both globs match; expect comma-joined in definition order.
+			want := "*/migrations/0*.py,*/migrations/*.py"
+			if got != want {
+				t.Errorf("file_convention (multi): want %q, got %q", want, got)
+			}
+			return
+		}
+	}
+	t.Fatalf("no yaml_driven Migration entity found; entities: %+v", result.Entities)
+}
+
+// ---------------------------------------------------------------------------
+// Integration: django.yaml embedded rules load and contain Migration convention
+// ---------------------------------------------------------------------------
+
 // TestDjangoYAML_HasMigrationConvention verifies that the embedded
 // django.yaml actually contains the Migration file_convention with the
 // correct glob/entity_type/name_from — confirming the YAML fields are

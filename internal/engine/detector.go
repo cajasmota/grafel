@@ -203,6 +203,19 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	seenEntities := make(map[string]bool)
 
 	for _, cs := range sets {
+		// Precompute all file_convention globs that match this file (for this
+		// ruleset). This is evaluated once per (ruleset, file) pair — O(conventions)
+		// — and reused for every source-pattern entity emitted below, so there is
+		// no per-entity re-scan. The result is the comma-joined glob string used to
+		// annotate source-pattern entities (bridge for issue #2383).
+		var matchedConventionGlobs []string
+		for _, fc := range cs.fileConventions {
+			if fc.matchesFile(file.Path) {
+				matchedConventionGlobs = append(matchedConventionGlobs, fc.glob)
+			}
+		}
+		conventionAnnotation := strings.Join(matchedConventionGlobs, ",")
+
 		// Extract entities from source patterns.
 		// Issue #1413 — use FindAllStringSubmatchIndex so we have byte offsets
 		// for computing StartLine. Also derives QualifiedName for Python entities.
@@ -245,6 +258,19 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 					}
 				}
 
+				props := map[string]string{
+					"framework":    sp.framework,
+					"pattern_type": "yaml_driven",
+				}
+				// Bridge #2383: when a file_convention glob also matches this file,
+				// annotate the source-pattern entity so queries can find "all entities
+				// from convention Y" or "entities identified by both rule X and convention Y".
+				// Convention-derived entities (pattern_type=file_convention) already
+				// encode their origin; this annotation is for source-pattern entities only.
+				if conventionAnnotation != "" {
+					props["file_convention"] = conventionAnnotation
+				}
+
 				entity := types.EntityRecord{
 					Name:          name,
 					QualifiedName: qn,
@@ -252,10 +278,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 					SourceFile:    file.Path,
 					Language:      file.Language,
 					StartLine:     startLine,
-					Properties: map[string]string{
-						"framework":    sp.framework,
-						"pattern_type": "yaml_driven",
-					},
+					Properties:    props,
 					EnrichmentRequired: isComplexEntity(sp.entityType),
 					EnrichmentStatus:   types.StatusPending,
 					QualityScore:       0.5,
