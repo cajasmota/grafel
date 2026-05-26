@@ -993,9 +993,11 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 		})
 	}
 	// include cross-repo overlay edges from this node.
-	for _, l := range lg.Links {
-		sr, sl := splitPrefixed(l.Source)
-		if sr == startRepo.Repo && sl == start.ID {
+	// linksForSourceRepo consults the CrossLinkCache (issue #2224) so that
+	// post-ref-switch queries see fresh data rather than stale cached results.
+	for _, l := range linksForSourceRepo(s.State, lg, startRepo) {
+		_, sl := splitPrefixed(l.Source)
+		if sl == start.ID {
 			out = append(out, map[string]any{
 				"id":         l.Target,
 				"label":      l.Target,
@@ -1082,9 +1084,13 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 				})
 			}
 		}
-		// cross-repo overlay
-		for _, l := range lg.Links {
-			if l.Source == node {
+		// cross-repo overlay — use cache-backed linksForSourceRepo (#2224)
+		// to avoid stale results after a ref switch.
+		if lr, ok2 := lg.Repos[repo]; ok2 {
+			for _, l := range linksForSourceRepo(s.State, lg, lr) {
+				if l.Source != node {
+					continue
+				}
 				conf := l.Confidence
 				if conf <= 0 {
 					conf = 0.7
