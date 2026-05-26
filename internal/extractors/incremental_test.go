@@ -1109,7 +1109,7 @@ func TestIncrementalConfig_EffectiveMaxFiles_EnvOnly(t *testing.T) {
 
 // TestIncrementalConfig_EffectiveMaxFiles_ConfigWins verifies Config beats env.
 func TestIncrementalConfig_EffectiveMaxFiles_ConfigWins(t *testing.T) {
-	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "7") // env says 7
+	t.Setenv("ARCHIGRAPH_INCREMENTAL_MAX_FILES", "7")         // env says 7
 	cfg := extractor.ExtractorConfig{IncrementalMaxFiles: 30} // Config says 30
 	if got := cfg.EffectiveIncrementalMaxFiles(); got != 30 {
 		t.Errorf("Config-wins maxFiles: got %d, want 30 (Config should win over env=7)", got)

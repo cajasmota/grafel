@@ -37,9 +37,9 @@ func newBenchCaptureCmd() *cobra.Command {
 // newBenchCaptureRPCCmd returns the cobra command for `archigraph bench-capture rpc`.
 func newBenchCaptureRPCCmd() *cobra.Command {
 	var (
-		logPath   string
-		startOff  int64
-		endOff    int64
+		logPath  string
+		startOff int64
+		endOff   int64
 	)
 
 	cmd := &cobra.Command{

@@ -230,10 +230,10 @@ func sessionMeta(lr *LoadedRepo, cwdRes *CWDResolution) map[string]any {
 		}
 	}
 	return map[string]any{
-		"indexed_ref":  ref,
-		"indexed_sha":  sha,
-		"is_worktree":  isWorktree,
-		"parent_repo":  parentRepo,
+		"indexed_ref": ref,
+		"indexed_sha": sha,
+		"is_worktree": isWorktree,
+		"parent_repo": parentRepo,
 	}
 }
 

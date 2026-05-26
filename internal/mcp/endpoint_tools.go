@@ -77,9 +77,9 @@ type endpointKindCategory int
 
 const (
 	endpointKindNone       endpointKindCategory = iota // not an HTTP endpoint kind
-	endpointKindDefinition                              // server-side handler / route
-	endpointKindCall                                    // call-site / FETCHES-edge source
-	endpointKindLegacy                                  // plain "http_endpoint" (pre-Sub-A)
+	endpointKindDefinition                             // server-side handler / route
+	endpointKindCall                                   // call-site / FETCHES-edge source
+	endpointKindLegacy                                 // plain "http_endpoint" (pre-Sub-A)
 )
 
 // classifyEndpointKind returns the category for the given raw kind string.
@@ -1024,8 +1024,8 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			"cross_repo_resolved": totalCross,
 			"cross_repo_links":    len(lg.Links),
 		},
-		"per_repo":        perRepo,
-		"migrated":        migrated,
-		"migration_note":  migrationNote,
+		"per_repo":       perRepo,
+		"migrated":       migrated,
+		"migration_note": migrationNote,
 	}), nil
 }

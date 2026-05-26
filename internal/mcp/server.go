@@ -363,8 +363,8 @@ func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_clusters",
 		mcpapi.WithDescription("List Louvain communities across loaded graphs."),
 		mcpapi.WithArray("repo_filter"),
-		mcpapi.WithNumber("top_entities_limit", mcpapi.DefaultNumber(3)),  // #2318: added by PR #2310, was missing from schema
-		mcpapi.WithNumber("min_size", mcpapi.DefaultNumber(20)),            // #2318: added by PR #2310, was missing from schema
+		mcpapi.WithNumber("top_entities_limit", mcpapi.DefaultNumber(3)), // #2318: added by PR #2310, was missing from schema
+		mcpapi.WithNumber("min_size", mcpapi.DefaultNumber(20)),          // #2318: added by PR #2310, was missing from schema
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref

@@ -217,22 +217,22 @@ func (l CrossRepoLink) EffectiveKind() string {
 // transient field-decode wrapper. Reader is nil when graph.fb is not
 // present (JSON-only fallback or old index format).
 type LoadedRepo struct {
-	Repo       string
-	Path       string
-	GraphFile  string
-	Doc        *graph.Document
-	Reader     *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
-	LabelIndex *LabelIndex
-	BM25       *BM25Index
-	Adjacency     *adjacency               // in/out neighbor lists (#1656)
-	CallsAdj      map[string][]string      // CALLS-only forward adjacency (#1656)
-	ByID          map[string]*graph.Entity // entity ID -> entity (#1656)
-	TopKPageRank  []string                 // entity IDs sorted descending by PageRank (#2304)
-	Semantic   *embed.Store             // per-repo vector index (nil when no embeddings.bin)
-	semMtime   time.Time
-	byID       map[string]*graph.Entity // deprecated alias for ByID — kept for back-compat during #1656 rollout
-	mtime      time.Time
-	loadErr    string // populated when last reload failed; doc may be stale
+	Repo         string
+	Path         string
+	GraphFile    string
+	Doc          *graph.Document
+	Reader       *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	LabelIndex   *LabelIndex
+	BM25         *BM25Index
+	Adjacency    *adjacency               // in/out neighbor lists (#1656)
+	CallsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
+	ByID         map[string]*graph.Entity // entity ID -> entity (#1656)
+	TopKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
+	Semantic     *embed.Store             // per-repo vector index (nil when no embeddings.bin)
+	semMtime     time.Time
+	byID         map[string]*graph.Entity // deprecated alias for ByID — kept for back-compat during #1656 rollout
+	mtime        time.Time
+	loadErr      string // populated when last reload failed; doc may be stale
 }
 
 // LoadedGroup holds all loaded repos for a group plus cross-repo links.

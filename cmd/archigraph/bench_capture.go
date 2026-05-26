@@ -40,8 +40,8 @@ var rpcLineRe = regexp.MustCompile(`\[mcp-rpc\] tool=(\S+) elapsed=(\d+)ms repo=
 // ToolRPCStats aggregates daemon-side handler durations for one tool.
 // Matches the ToolRPCStats definition in with-mcp-artifact.schema.json.
 type ToolRPCStats struct {
-	Count  int `json:"count"`
-	SumMs  int `json:"sum_ms"`
+	Count int `json:"count"`
+	SumMs int `json:"sum_ms"`
 }
 
 // BenchCaptureOutput is the top-level JSON emitted to stdout.
@@ -50,8 +50,8 @@ type ToolRPCStats struct {
 // QuestionMetrics, so the output can be merged directly into a question's
 // metrics block without renaming.
 type BenchCaptureOutput struct {
-	McpRPCCount        int                      `json:"mcp_rpc_count"`
-	McpRPCHandlerMsSum int                      `json:"mcp_rpc_handler_ms_sum"`
+	McpRPCCount        int `json:"mcp_rpc_count"`
+	McpRPCHandlerMsSum int `json:"mcp_rpc_handler_ms_sum"`
 	// p50 and p99 are null (nil pointer → JSON null) when count == 0.
 	McpRPCHandlerMsP50 *float64                 `json:"mcp_rpc_handler_ms_p50"`
 	McpRPCHandlerMsP99 *float64                 `json:"mcp_rpc_handler_ms_p99"`

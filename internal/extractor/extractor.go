@@ -37,7 +37,7 @@ type ExtractorConfig struct {
 	// Incremental reindex toggles (ARCHIGRAPH_INCREMENTAL_REINDEX,
 	// ARCHIGRAPH_INCREMENTAL_MAX_FILES). Non-pointer so the zero value
 	// is the documented default (disabled / auto-limit).
-	IncrementalReindex bool
+	IncrementalReindex  bool
 	IncrementalMaxFiles int // 0 means "auto" (gitmeta-based heuristic)
 
 	// MarkdownEmitHeadings controls SCOPE.Heading entity emission.

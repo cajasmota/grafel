@@ -133,8 +133,8 @@ func Test_handleListCommunities_SortBySize_2319(t *testing.T) {
 	srv := newTestServer(t, doc)
 	text := callEndpointToolText(t, srv.handleListCommunities, map[string]any{
 		"group":              "test",
-		"min_size":           20,  // filters out id=1 (size 10)
-		"top_entities_limit": 3,   // default; not a limit on count but per-community
+		"min_size":           20, // filters out id=1 (size 10)
+		"top_entities_limit": 3,  // default; not a limit on count but per-community
 	})
 	var got []map[string]any
 	if err := json.Unmarshal([]byte(text), &got); err != nil {

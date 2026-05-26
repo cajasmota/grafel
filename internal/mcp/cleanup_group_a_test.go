@@ -1,10 +1,10 @@
 // cleanup_group_a_test.go — tests for the three tech-debt issues landed in
 // cleanup/tools-group-a:
 //
-//   #2304 – TopKPageRank cache (regression guard vs linear scan)
-//   #2305 – synthetic-edge relIdx defensive default (-1)
-//   #2337 – sessionMeta helper + lint that non-whoami handlers never embed
-//            indexed_sha / indexed_ref / cwd_ref
+//	#2304 – TopKPageRank cache (regression guard vs linear scan)
+//	#2305 – synthetic-edge relIdx defensive default (-1)
+//	#2337 – sessionMeta helper + lint that non-whoami handlers never embed
+//	         indexed_sha / indexed_ref / cwd_ref
 package mcp
 
 import (

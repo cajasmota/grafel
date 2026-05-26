@@ -31,8 +31,8 @@ var djangoClassDeclRe = regexp.MustCompile(
 
 // djangoFieldDeclRe locates field declarations inside a model body:
 //
-//	    <name> = models.<SomethingField>(...)
-//	    <name> = <CustomField>(...)
+//	<name> = models.<SomethingField>(...)
+//	<name> = <CustomField>(...)
 //
 // We accept either the `models.` namespace (stdlib Django fields) or a
 // bare `<Capitalised>Field(` call (project-local custom field classes,
