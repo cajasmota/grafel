@@ -91,14 +91,15 @@ func applyORMFieldEdges(
 	// detector (Pass 2.5) — the entities slice handed to this pass
 	// contains only Pass 2.5 output, so the field entities are NOT
 	// visible here. We therefore reconstruct the field index from the
-	// source content directly using a coarse `class … :` + indented
-	// `<name> = models.<Type>(` scan that matches the extractor's
-	// convention closely enough for Phase A (Django ORM).
+	// source content directly using BuildFieldIndex (field_index.go),
+	// which uses a coarse `class … :` + indented `<name> = models.<Type>(`
+	// scan that matches the extractor's convention closely enough for
+	// Phase A (Django ORM).
 	//
 	// The resulting key `<Model>.<field>` is byte-identical to the Name
 	// the Python extractor emits, so consumers that DO see both can
 	// match by name without further normalisation.
-	fieldIdx := indexDjangoModelFields(string(content))
+	fieldIdx := BuildFieldIndex(string(content))
 	if len(fieldIdx) == 0 {
 		// Defensive fallback: some files may have field entities visible
 		// in `entities` (e.g. when a future pass forwards them). Honour
@@ -315,73 +316,6 @@ func ormFieldEdgeKindForVerb(verb string) string {
 		return ormWritesFieldKind
 	}
 	return ""
-}
-
-// djangoClassDeclRe locates Django model class declarations:
-//
-//	class <Name>(... models.Model ...):
-//
-// The base class list is matched loosely (any parenthesised group that
-// contains "Model") so subclasses of project-local abstract bases
-// (e.g. `class User(TimestampedModel):` where TimestampedModel itself
-// inherits from models.Model) are still recognised. False positives
-// (a plain class whose parens contain the word "Model" but is not
-// actually a Django model) are inert: their fields just won't be the
-// target of any ORM filter_keys so no spurious edges are emitted.
-var djangoClassDeclRe = regexp.MustCompile(
-	`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\(([^)]*Model[^)]*)\)\s*:`,
-)
-
-// djangoFieldDeclRe locates field declarations inside a model body:
-//
-//	    <name> = models.<SomethingField>(...)
-//	    <name> = <CustomField>(...)
-//
-// We accept either the `models.` namespace (stdlib Django fields) or a
-// bare `<Capitalised>Field(` call (project-local custom field classes,
-// django-money MoneyField, etc.). The leading indentation is required
-// so top-level assignments at module scope (e.g. `User = get_user_model()`)
-// are NOT treated as field declarations.
-var djangoFieldDeclRe = regexp.MustCompile(
-	`(?m)^[ \t]+([a-z_][a-zA-Z0-9_]*)\s*=\s*(?:models\.[A-Z]\w*|[A-Z]\w*?Field)\s*\(`,
-)
-
-// indexDjangoModelFields scans `src` for Django model class bodies and
-// returns the set of `<Model>.<field>` names discovered, mirroring the
-// Name convention the Python extractor uses at python/extractor.go:1411.
-//
-// Strategy: locate each `class X(... Model ...):` header, then scan
-// forward to the next class declaration (or EOF) and harvest every
-// indented `<name> = models.…Field(…)` or `<name> = <Custom>Field(…)`
-// assignment as a field of the enclosing class.
-func indexDjangoModelFields(src string) map[string]bool {
-	out := map[string]bool{}
-	classMatches := djangoClassDeclRe.FindAllStringSubmatchIndex(src, -1)
-	if len(classMatches) == 0 {
-		return out
-	}
-	for i, m := range classMatches {
-		className := src[m[2]:m[3]]
-		// Body extends from the end of the matched header to the start
-		// of the next class declaration (or EOF for the last class).
-		bodyStart := m[1]
-		bodyEnd := len(src)
-		if i+1 < len(classMatches) {
-			bodyEnd = classMatches[i+1][0]
-		}
-		body := src[bodyStart:bodyEnd]
-		for _, fm := range djangoFieldDeclRe.FindAllStringSubmatch(body, -1) {
-			if len(fm) < 2 {
-				continue
-			}
-			fieldName := fm[1]
-			if fieldName == "" {
-				continue
-			}
-			out[className+"."+fieldName] = true
-		}
-	}
-	return out
 }
 
 // stripDjangoLookup strips Django lookup suffixes and relation
