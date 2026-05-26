@@ -12,8 +12,6 @@ import (
 type errorHandlingDetector struct{}
 
 var (
-	ehTryStatementRE     = regexp.MustCompile(`\btry\s*\{`)
-	ehPyTryStatementRE   = regexp.MustCompile(`(?m)^\s*try\s*:`)
 	ehGoErrNilRE         = regexp.MustCompile(`if\s+err\s*!=\s*nil`)
 	ehRustMatchRE        = regexp.MustCompile(`\bmatch\b`)
 	ehRustOkArmRE        = regexp.MustCompile(`\bOk\s*\(`)
@@ -28,9 +26,7 @@ var (
 func (e *errorHandlingDetector) Category() string { return "error_handling" }
 
 func (e *errorHandlingDetector) AppliesTo(src string) bool {
-	return ehTryStatementRE.MatchString(src) ||
-		ehPyTryStatementRE.MatchString(src) ||
-		ehGoErrNilRE.MatchString(src) ||
+	return ehGoErrNilRE.MatchString(src) ||
 		ehRustMatchRE.MatchString(src) ||
 		ehElixirOkArmRE.MatchString(src)
 }

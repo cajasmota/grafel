@@ -29,6 +29,26 @@ func parse(t *testing.T, src []byte) *sitter.Tree {
 	return tree
 }
 
+// extractPy is a typed helper that parses src and runs the extractor.
+func extractPy(t *testing.T, src, path string) []types.EntityRecord {
+	t.Helper()
+	tree := parse(t, []byte(src))
+	ext, ok := extractor.Get("python")
+	if !ok {
+		t.Fatal("python extractor not registered")
+	}
+	recs, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  []byte(src),
+		Language: "python",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	return recs
+}
+
 // makeFile builds a FileInput for tests.
 func makeFile(src string, tree *sitter.Tree) extractor.FileInput {
 	return extractor.FileInput{

@@ -261,13 +261,6 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// stays cheap.
 	x.emitTestsEdgesForTestFile()
 
-	// Secondary pass: error-handling patterns.
-	// Runs after the primary extraction so a detection failure here
-	// cannot abort the primary entity output — extractErrorHandlingPatterns
-	// recovers panics internally and returns partial results.
-	errorPatterns := extractErrorHandlingPatterns(root, file.Path, file.Language)
-	x.entities = append(x.entities, errorPatterns...)
-
 	if extractErr != nil {
 		span.RecordError(extractErr)
 		span.SetStatus(codes.Error, extractErr.Error())
@@ -278,7 +271,6 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	span.SetAttributes(
 		attribute.Int("entity_count", len(x.entities)),
 		attribute.Int("relationship_count", len(x.relationships)),
-		attribute.Int("error_pattern_count", len(errorPatterns)),
 	)
 
 	// Issue #90 — stamp Properties["language"] (e.g. "javascript" or

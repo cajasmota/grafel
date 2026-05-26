@@ -94,10 +94,6 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// entities[0] is always the file entity (appended first above).
 	attachImportRelationships(root, file, &entities[0])
 
-	// Secondary pass: error-handling patterns.
-	errorPatterns := extractErrorHandlingPatterns(root, file.Path)
-	entities = append(entities, errorPatterns...)
-
 	// Issue #818 — PanacheQuery / PanacheUpdate DSL builder method synthesis.
 	// Emit synthetic interface + method entities for every DSL method on the
 	// PanacheQuery / PanacheUpdate / ReactivePanacheQuery interfaces so that
@@ -152,7 +148,6 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
-		attribute.Int("error_pattern_count", len(errorPatterns)),
 	)
 	// Issue #90 — tag every embedded relationship with language="java" so
 	// the resolver routes to the JVM dynamic-pattern catalog.

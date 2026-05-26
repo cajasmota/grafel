@@ -211,13 +211,6 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		}
 	}
 
-	// Secondary pass: error-handling patterns.
-	// Runs after the base walker so a failure here cannot abort the
-	// primary entity output — extractErrorHandlingPatterns recovers
-	// panics internally and returns partial results.
-	errorPatterns := extractErrorHandlingPatterns(root, file.Path)
-	entities = append(entities, errorPatterns...)
-
 	// Imports — Issue #693: instead of emitting standalone SCOPE.Component/module
 	// placeholder entities (one per import), attach IMPORTS relationships directly
 	// to the file entity (entities[0]). Placeholder entities had zero inbound
@@ -448,7 +441,6 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("function_count", functionCount),
 		attribute.Int("class_count", classCount),
-		attribute.Int("error_pattern_count", len(errorPatterns)),
 		attribute.Int("import_count", importCount),
 		attribute.Bool("config_module_emitted", configModuleEmitted),
 		attribute.Int("package_module_count", packageModuleCount),
