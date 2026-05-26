@@ -574,17 +574,29 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 					add(sc.repo.Repo, e, sc.hit.Score/float64(d+1))
 				}
 			}
-			// Carry edges between visible nodes.
-			for _, rel := range sc.repo.Doc.Relationships {
-				if !seen[prefixedID(sc.repo.Repo, rel.FromID)] || !seen[prefixedID(sc.repo.Repo, rel.ToID)] {
+			// Carry edges between visible nodes. Adjacency-indexed (#2285):
+			// iterate out-edges from each visited node instead of scanning the
+			// full Doc.Relationships list. Every edge naturally appears exactly
+			// once (as an out-edge of its source) so direction semantics match
+			// the prior linear scan.
+			for nid := range vis {
+				from := sc.repo.LabelIndex.ByID[nid]
+				if from == nil {
 					continue
 				}
-				from := sc.repo.LabelIndex.ByID[rel.FromID]
-				to := sc.repo.LabelIndex.ByID[rel.ToID]
-				if from == nil || to == nil {
+				if !seen[prefixedID(sc.repo.Repo, nid)] {
 					continue
 				}
-				visibleEdges = append(visibleEdges, renderEdge{From: from.Name, To: to.Name, Kind: rel.Kind})
+				for _, e := range sc.repo.Adjacency.Outgoing(nid) {
+					if !seen[prefixedID(sc.repo.Repo, e.target)] {
+						continue
+					}
+					to := sc.repo.LabelIndex.ByID[e.target]
+					if to == nil {
+						continue
+					}
+					visibleEdges = append(visibleEdges, renderEdge{From: from.Name, To: to.Name, Kind: e.kind})
+				}
 			}
 		}
 	}
@@ -748,7 +760,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				scopeIsOne := len(repos) == 1
 				out := serializeEntity(r.Repo, e, scopeIsOne, verbose)
 				out["findings"] = findingsToJSON(findingsForEntity(allFindings, e.ID, prefixedID(r.Repo, e.ID)), 0)
-				if agentEdges := agentResolvedEdgesForEntity(r.Doc, r.Repo, e.ID, scopeIsOne); len(agentEdges) > 0 {
+				if agentEdges := agentResolvedEdgesForEntity(r, e.ID, scopeIsOne); len(agentEdges) > 0 {
 					out["agent_resolved_edges"] = agentEdges
 				}
 				// Phase 0 git metadata (#2088) + PH1c ref context.
@@ -802,7 +814,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	scopeIsOne := len(repos) == 1
 	out := serializeEntity(m.repo.Repo, m.ent, scopeIsOne, verbose)
 	out["findings"] = findingsToJSON(findingsForEntity(allFindings, m.ent.ID, prefixedID(m.repo.Repo, m.ent.ID)), 0)
-	if agentEdges := agentResolvedEdgesForEntity(m.repo.Doc, m.repo.Repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
+	if agentEdges := agentResolvedEdgesForEntity(m.repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
 		out["agent_resolved_edges"] = agentEdges
 	}
 	// Phase 0 git metadata (#2088) + PH1c ref context.
@@ -859,22 +871,27 @@ func cwdRefMetaForInspect(res CWDResolution) map[string]any {
 // Each entry carries the edge kind, target ID, source attribution, and
 // the verbatim repair_reasoning so downstream consumers can audit the decision
 // without re-reading repair.json. (ADR-0015 #547)
-func agentResolvedEdgesForEntity(doc *graph.Document, repo string, entityID string, scopeIsOne bool) []map[string]any {
-	if doc == nil {
+func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne bool) []map[string]any {
+	if lr == nil || lr.Doc == nil {
 		return nil
 	}
-	var out []map[string]any
-	for i := range doc.Relationships {
-		r := &doc.Relationships[i]
-		if r.FromID != entityID {
+	// Adjacency-indexed lookup (#2285): O(deg(v)) over out-edges instead of
+	// O(|Relationships|). The adjacency stores relIdx so we can fetch the
+	// underlying Relationship to read Properties (kind/target alone would not
+	// suffice for the agent-repair filter).
+	out := []map[string]any(nil)
+	rels := lr.Doc.Relationships
+	for _, e := range lr.Adjacency.Outgoing(entityID) {
+		if e.relIdx < 0 || e.relIdx >= len(rels) {
 			continue
 		}
+		r := &rels[e.relIdx]
 		if r.Properties["resolved_by"] != "agent-repair" {
 			continue
 		}
 		toID := r.ToID
 		if !scopeIsOne {
-			toID = prefixedID(repo, toID)
+			toID = prefixedID(lr.Repo, toID)
 		}
 		entry := map[string]any{
 			"kind":        r.Kind,

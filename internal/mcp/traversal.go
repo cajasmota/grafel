@@ -14,11 +14,37 @@ type adjacency struct {
 }
 
 // edge is a typed neighbor reference; weight is for shortest-path scoring.
+//
+// relIdx is the index back into the source Doc.Relationships slice; -1 when
+// the edge is synthetic (e.g. reversed/cross-repo edges constructed at query
+// time in dashboard_tools.go / tools.go). Handlers that need Relationship
+// Properties (e.g. agent-repair audit) use it to fetch the full record
+// without re-scanning Relationships. (#2285)
 type edge struct {
 	target string
 	kind   string
 	weight float64
 	repo   string
+	relIdx int
+}
+
+// Outgoing returns the out-edges from id (empty when id has none). Safe on a
+// nil receiver to simplify handler call sites that may run before reload. The
+// returned slice is owned by the adjacency index — callers must not mutate it.
+// (#2285)
+func (a *adjacency) Outgoing(id string) []edge {
+	if a == nil {
+		return nil
+	}
+	return a.out[id]
+}
+
+// Incoming mirrors Outgoing for in-edges. (#2285)
+func (a *adjacency) Incoming(id string) []edge {
+	if a == nil {
+		return nil
+	}
+	return a.in[id]
 }
 
 // buildAdjacency constructs in/out neighbor lists for one repo.
@@ -34,8 +60,8 @@ func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
 		w := 1.0
-		a.out[r.FromID] = append(a.out[r.FromID], edge{target: r.ToID, kind: r.Kind, weight: w, repo: repo})
-		a.in[r.ToID] = append(a.in[r.ToID], edge{target: r.FromID, kind: r.Kind, weight: w, repo: repo})
+		a.out[r.FromID] = append(a.out[r.FromID], edge{target: r.ToID, kind: r.Kind, weight: w, repo: repo, relIdx: i})
+		a.in[r.ToID] = append(a.in[r.ToID], edge{target: r.FromID, kind: r.Kind, weight: w, repo: repo, relIdx: i})
 	}
 	return a
 }
