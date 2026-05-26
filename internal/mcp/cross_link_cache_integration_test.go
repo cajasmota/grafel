@@ -322,3 +322,163 @@ func TestCrossLinkCache_StateNotifyRefSwitch(t *testing.T) {
 	t.Logf("TestCrossLinkCache_StateNotifyRefSwitch: PASS — evicted=%d, remaining=%d",
 		evicted, st.CrossLinkCache.Len())
 }
+
+// TestCrossLinkCache_QueryPathWireIn verifies that the cache is actually
+// consulted by the live cross-repo query path (linksForSourceRepo), not
+// just by tests that call GetOrCompute directly.
+//
+// Scenario:
+//
+//  1. Build a two-repo group with a cross-repo link repoA→repoB.
+//  2. Call linksForSourceRepo twice for repoA → verify the second call is a
+//     cache hit (fn called exactly once).
+//  3. Switch repoA's ref via State.NotifyRefSwitch(repoA, "main") → cache
+//     entry for (repoA, main, _all_, _all_) is evicted.
+//  4. Call linksForSourceRepo again with a new LoadedRepo whose Doc.IndexedRef
+//     is "feature/bar" → fresh computation; verify result contains the link.
+//  5. Single-ref scenario: a second call with ref="feature/bar" is a cache hit.
+//  6. repoB-sourced links are NOT in repoA's cache entry (separate caching).
+func TestCrossLinkCache_QueryPathWireIn(t *testing.T) {
+	repoAPath, repoBPath := buildTwoRepoFixture(t)
+	home := os.Getenv("ARCHIGRAPH_HOME")
+
+	regPath := buildGroupRegistryForCacheTest(t, home, "wire-in-test-group", repoAPath, repoBPath)
+
+	// Write minimal graphs so Reload() can discover them.
+	writeRepoGraph(t, repoAPath, "main", []string{"SvcA", "HandlerA"})
+	writeRepoGraph(t, repoAPath, "feature/bar", []string{"SvcA", "HandlerA", "NewHandlerA"})
+	writeRepoGraph(t, repoBPath, "main", []string{"SvcB", "HandlerB"})
+
+	reg, err := LoadRegistry(regPath)
+	if err != nil {
+		t.Fatalf("LoadRegistry: %v", err)
+	}
+	st := NewState(reg)
+
+	if _, err := st.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+
+	// Build a synthetic LoadedGroup with a cross-repo link repoA::SvcA → repoB::SvcB.
+	// We use the real group name but inject lg.Links directly so we don't need
+	// the links file on disk.
+	const groupName = "wire-in-test-group"
+	lg := st.Group(groupName)
+	if lg == nil {
+		t.Fatalf("group %q not found after Reload", groupName)
+	}
+
+	// Inject a cross-repo link and a LoadedRepo with the right IndexedRef.
+	lg.Links = []CrossRepoLink{
+		{Source: "repo-a::SvcA", Target: "repo-b::SvcB", Kind: "call", Confidence: 0.9},
+		{Source: "repo-b::SvcB", Target: "repo-a::HandlerA", Kind: "import", Confidence: 0.8},
+	}
+
+	// Synthetic LoadedRepo for repoA@main.
+	lrAMain := &LoadedRepo{
+		Repo: "repo-a",
+		Path: repoAPath,
+		Doc:  &graph.Document{Version: 1, IndexedRef: "main"},
+	}
+
+	// ── Step 2: first call is a cache miss ────────────────────────────────────
+	got1 := linksForSourceRepo(st, lg, lrAMain)
+	if len(got1) != 1 {
+		t.Fatalf("step 2: want 1 link (repoA→repoB), got %d", len(got1))
+	}
+	if got1[0].Target != "repo-b::SvcB" {
+		t.Errorf("step 2: unexpected link target %q", got1[0].Target)
+	}
+	if st.CrossLinkCache.Len() != 1 {
+		t.Errorf("step 2: want 1 cache entry, got %d", st.CrossLinkCache.Len())
+	}
+
+	// ── Step 2b: second call is a cache hit ──────────────────────────────────
+	got2 := linksForSourceRepo(st, lg, lrAMain)
+	if len(got2) != 1 {
+		t.Errorf("step 2b: cache hit should return 1 link, got %d", len(got2))
+	}
+	if st.CrossLinkCache.Len() != 1 {
+		t.Errorf("step 2b: cache entry count must not grow on hit; got %d", st.CrossLinkCache.Len())
+	}
+
+	// Verify the entry is keyed (repoAPath, main, _all_, _all_) — paths are
+	// used as the A-side key so NotifyRefSwitch(repoPath, ref) evicts correctly.
+	cached, hit := st.CrossLinkCache.Get(repoAPath, "main", "_all_", "_all_")
+	if !hit {
+		t.Error("step 2b: expected cache hit for (repoAPath, main, _all_, _all_)")
+	}
+	if len(cached) != 1 {
+		t.Errorf("step 2b: cached slice should have 1 link, got %d", len(cached))
+	}
+
+	// ── Step 3: ref switch evicts (repo-a, main) entry ───────────────────────
+	evicted := st.NotifyRefSwitch(repoAPath, "main")
+	if evicted != 1 {
+		t.Errorf("step 3: NotifyRefSwitch(repoA, main): want evicted=1, got %d", evicted)
+	}
+	if st.CrossLinkCache.Len() != 0 {
+		t.Errorf("step 3: cache must be empty after invalidation, got %d", st.CrossLinkCache.Len())
+	}
+
+	// ── Step 4: query with new ref forces fresh compute ───────────────────────
+	// Use repoAPath as the cache key — the cache key for repoPath was used
+	// in Set/Get above; now switch to the actual repo path-derived key.
+	lrAFoo := &LoadedRepo{
+		Repo: "repo-a",
+		Path: repoAPath,
+		Doc:  &graph.Document{Version: 1, IndexedRef: "feature/bar"},
+	}
+	got3 := linksForSourceRepo(st, lg, lrAFoo)
+	if len(got3) != 1 {
+		t.Errorf("step 4: want 1 link for feature/bar, got %d", len(got3))
+	}
+	if st.CrossLinkCache.Len() != 1 {
+		t.Errorf("step 4: want 1 cache entry for (repo-a, feature/bar, ...), got %d", st.CrossLinkCache.Len())
+	}
+	_, hitFoo := st.CrossLinkCache.Get(repoAPath, "feature/bar", "_all_", "_all_")
+	if !hitFoo {
+		t.Error("step 4: expected cache entry (repoAPath, feature/bar, _all_, _all_)")
+	}
+
+	// ── Step 5: single-ref repeat is a cache hit ─────────────────────────────
+	got4 := linksForSourceRepo(st, lg, lrAFoo)
+	if len(got4) != 1 {
+		t.Errorf("step 5: repeat call should be a cache hit; got %d links", len(got4))
+	}
+	if st.CrossLinkCache.Len() != 1 {
+		t.Errorf("step 5: cache entry count must stay 1; got %d", st.CrossLinkCache.Len())
+	}
+
+	// ── Step 6: repoB-sourced links have a separate cache entry ──────────────
+	lrBMain := &LoadedRepo{
+		Repo: "repo-b",
+		Path: repoBPath,
+		Doc:  &graph.Document{Version: 1, IndexedRef: "main"},
+	}
+	gotB := linksForSourceRepo(st, lg, lrBMain)
+	if len(gotB) != 1 {
+		t.Errorf("step 6: want 1 link sourced from repo-b (→ repo-a), got %d", len(gotB))
+	}
+	// There should now be 2 cache entries: (repo-a, feature/bar) + (repo-b, main).
+	if st.CrossLinkCache.Len() != 2 {
+		t.Errorf("step 6: want 2 cache entries (repoA+repoB), got %d", st.CrossLinkCache.Len())
+	}
+
+	// Invalidating repoA@feature/bar must NOT evict repoB's entry.
+	evictedFoo := st.NotifyRefSwitch(repoAPath, "feature/bar")
+	if evictedFoo != 1 {
+		t.Errorf("step 6: NotifyRefSwitch(repoA, feature/bar): want evicted=1, got %d", evictedFoo)
+	}
+	if st.CrossLinkCache.Len() != 1 {
+		t.Errorf("step 6: repoB entry must survive repoA invalidation; got %d", st.CrossLinkCache.Len())
+	}
+	_, hitB := st.CrossLinkCache.Get(repoBPath, "main", "_all_", "_all_")
+	if !hitB {
+		t.Error("step 6: (repoBPath, main, _all_, _all_) entry must survive repoA invalidation")
+	}
+
+	t.Logf("TestCrossLinkCache_QueryPathWireIn: PASS")
+	t.Logf("  repoA@main links: %d, repoA@feature/bar links: %d, repoB@main links: %d",
+		len(got1), len(got3), len(gotB))
+}

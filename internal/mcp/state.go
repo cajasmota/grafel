@@ -611,6 +611,62 @@ func readLinks(path string) ([]CrossRepoLink, error) {
 	return asObj.Links, nil
 }
 
+// repoIndexedRef returns the git ref that was active when lr was last indexed.
+// Falls back to "_unknown" for graphs produced before PH1a (#2088).
+func repoIndexedRef(lr *LoadedRepo) string {
+	if lr != nil && lr.Doc != nil && lr.Doc.IndexedRef != "" {
+		return lr.Doc.IndexedRef
+	}
+	return "_unknown"
+}
+
+// linksForSourceRepo returns every cross-repo link in lg where the source
+// side belongs to lr. Results are cached in state.CrossLinkCache keyed by
+// (lr.Path, ref, "_all_", "_all_") so that a ref switch on lr triggers fresh
+// computation on the next query (issue #2224).
+//
+// The repo dimension of the cache key uses lr.Path (the absolute on-disk repo
+// path) rather than lr.Repo (the registry slug). This matches the key used by
+// State.NotifyRefSwitch, which receives the repoPath from BranchSwitchEvent —
+// the same path the daemon watcher monitors.
+//
+// The sentinel values "_all_" for repoB/refB signal "all target repos" —
+// this lets InvalidateRepo(repo, oldRef) correctly evict per-source caches
+// because the secondary index tracks the A-side (repo, ref) key regardless
+// of the B-side sentinel. The B-side is stable ("_all_" never switches ref),
+// so the entry is only ever evicted via the A-side hook.
+func linksForSourceRepo(st *State, lg *LoadedGroup, lr *LoadedRepo) []CrossRepoLink {
+	if lr == nil {
+		return nil
+	}
+	repo := lr.Path // use path so NotifyRefSwitch(repoPath, ref) invalidates correctly
+	if repo == "" {
+		repo = lr.Repo // fallback for tests that set only Repo
+	}
+	slug := lr.Repo
+	ref := repoIndexedRef(lr)
+
+	if st != nil && st.CrossLinkCache != nil {
+		return st.CrossLinkCache.GetOrCompute(repo, ref, "_all_", "_all_", func() []CrossRepoLink {
+			return filterLinksBySource(lg.Links, slug)
+		})
+	}
+	return filterLinksBySource(lg.Links, slug)
+}
+
+// filterLinksBySource returns the subset of links whose source side belongs
+// to the given repo slug.
+func filterLinksBySource(links []CrossRepoLink, repo string) []CrossRepoLink {
+	var out []CrossRepoLink
+	for _, l := range links {
+		sr, _ := splitPrefixed(l.Source)
+		if sr == repo {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // defaultLinksFile is the conventional path for cross-repo links.
 func defaultLinksFile(group string) string {
 	home, err := os.UserHomeDir()

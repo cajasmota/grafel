@@ -136,6 +136,17 @@ type Config struct {
 	// Set to nil (default) to disable. Disabled via --no-auto-cleanup on
 	// `archigraph start`.
 	DocgenSweep *DocgenSweeperConfig
+
+	// BranchSwitchSink, when non-nil, is called by the daemon's .git/HEAD
+	// poller whenever a branch switch is detected for a watched repo. The
+	// arguments are (repoPath, oldRef) — the same values carried by
+	// watch.BranchSwitchEvent. The hook is called synchronously inside the
+	// poller callback, before the scheduler enqueues the new ref.
+	//
+	// Injected from cmd/archigraph to call mcp.State.NotifyRefSwitch, which
+	// invalidates stale CrossLinkCache entries keyed to (repo, oldRef) — this
+	// closes the stale-cache bug tracked in issue #2224.
+	BranchSwitchSink func(repoPath, oldRef string)
 }
 
 // Run starts the daemon. It blocks until either:
@@ -282,6 +293,11 @@ func Run(ctx context.Context, cfg Config) error {
 			headPoller := watch.NewGitHeadPoller(0, func(ev watch.BranchSwitchEvent) {
 				logger.Printf("branch-switch detected: %s %s@%s -> %s@%s",
 					ev.RepoPath, ev.OldRef, ev.OldSHA, ev.NewRef, ev.NewSHA)
+				// Notify the MCP cross-link cache so stale (repo, oldRef)
+				// entries are evicted before the new-ref graph lands (#2224).
+				if cfg.BranchSwitchSink != nil {
+					cfg.BranchSwitchSink(ev.RepoPath, ev.OldRef)
+				}
 				scheduler.EnqueueRef(ev.RepoPath, ev.NewRef)
 			}, logger)
 			headPoller.Start()

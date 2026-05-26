@@ -316,6 +316,16 @@ func runDaemon(argv []string) error {
 		MCPListTools: daemonMCPListTools,
 		MCPCallTool:  daemonMCPCallTool,
 
+		// #2224: on every branch switch, invalidate stale CrossLinkCache
+		// entries in the MCP server so the next cross-repo query recomputes
+		// fresh candidates for the new ref rather than returning stale ones.
+		BranchSwitchSink: func(repoPath, oldRef string) {
+			if srv, err := mcpServerInstance(); err == nil {
+				n := srv.State.NotifyRefSwitch(repoPath, oldRef)
+				_ = n // eviction count; non-zero only on multi-ref installations
+			}
+		},
+
 		// Dashboard HTTP server (#929/#931): fold the SPA + REST API
 		// into the daemon process so a single launchd unit serves both.
 		// Capture startedAt so /api/info can report daemon uptime (#991).
