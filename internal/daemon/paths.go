@@ -66,6 +66,15 @@ func layoutFromRoot(root, socketPath string) Layout {
 		socketDir = filepath.Dir(socketPath)
 	}
 	logDir := filepath.Join(root, "logs")
+	// No-rotation contract (issue #2300):
+	// daemon.log grows monotonically by design. The bench harness
+	// (skills/archigraph-graph-quality/prompts/03-with-mcp-run.md) uses
+	// byte offsets into daemon.log and assumes the file is append-only and
+	// never truncated or renamed. If log rotation is ever added, the bench
+	// skill will need a sidecar offset-translation strategy to remain
+	// correct. Operators who need bounded log sizes should use an external
+	// tool (logrotate, newsyslog) with copytruncate semantics, and must
+	// update the bench skill accordingly.
 	return Layout{
 		Root:       root,
 		SocketDir:  socketDir,

@@ -41,6 +41,7 @@ func DefaultLayout() (Layout, error) {
 	}
 
 	logDir := filepath.Join(root, "logs")
+	// See no-rotation contract in layoutFromRoot (paths.go).
 	return Layout{
 		Root:       root,
 		SocketDir:  "", // named pipes have no filesystem directory
