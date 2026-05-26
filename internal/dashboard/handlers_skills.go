@@ -165,6 +165,16 @@ var marketplaceCatalog = []CatalogSkill{
 		},
 	},
 	{
+		Slug:   "archigraph-security-audit",
+		Source: "archigraph-bundled",
+		SkillMeta: SkillMeta{
+			Name:        "archigraph-security-audit",
+			Description: "Two-phase security audit: deterministic static analysis (Phase 1, free) followed by LLM semantic confirmation and ranking (Phase 2, interactive). Adds SecurityFinding entities to the graph and writes a security/ doc tier.",
+			Type:        "action",
+			WhenToUse:   "Before a release, after adding new endpoints, or any time you want to check auth coverage and PII exposure. Run after /archigraph-resolve for best results.",
+		},
+	},
+	{
 		Slug:   "archigraph-tech-docs",
 		Source: "archigraph-bundled",
 		SkillMeta: SkillMeta{
