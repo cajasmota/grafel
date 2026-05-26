@@ -18,6 +18,7 @@ import (
 //	ARCHIGRAPH_VERIFY_REPO=/path/to/upvate_core go test ./cmd/archigraph/ \
 //	  -run TestVerify1620Pipeline -v -count=1 -timeout=20m
 func TestVerify1620Pipeline(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	repo := os.Getenv("ARCHIGRAPH_VERIFY_REPO")
 	if repo == "" {
 		t.Skip("set ARCHIGRAPH_VERIFY_REPO to a real repo to run the #1620 e2e verification")

@@ -14,6 +14,7 @@ import (
 // TestIndex_FBOnlyByDefault verifies that Index() writes graph.fb by default
 // without graph.json (ADR-0016 flip-day, issue #808).
 func TestIndex_FBOnlyByDefault(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	tmp := t.TempDir()
 	outPath := filepath.Join(tmp, "graph.json")
 
@@ -50,6 +51,7 @@ func TestIndex_FBOnlyByDefault(t *testing.T) {
 // TestIndex_ExportJSON verifies that Index() with WithExportJSON(true)
 // writes both graph.fb and graph.json.
 func TestIndex_ExportJSON(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	tmp := t.TempDir()
 	outPath := filepath.Join(tmp, "graph.json")
 
@@ -74,6 +76,7 @@ func TestIndex_ExportJSON(t *testing.T) {
 // still results in a valid graph.fb being written (the no-op doesn't break
 // the existing write path).
 func TestIndex_ExportFBDeprecatedNoOp(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	tmp := t.TempDir()
 	outPath := filepath.Join(tmp, "graph.json")
 
@@ -92,6 +95,7 @@ func TestIndex_ExportFBDeprecatedNoOp(t *testing.T) {
 // TestFBRoundTrip_LoadGraphFromDir verifies that a graph written by Index()
 // can be loaded back via graph.LoadGraphFromDir and has matching entity count.
 func TestFBRoundTrip_LoadGraphFromDir(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", t.TempDir())
 	tmp := t.TempDir()
 	outPath := filepath.Join(tmp, "graph.json")
 
