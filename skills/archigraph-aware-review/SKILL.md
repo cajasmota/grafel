@@ -629,4 +629,9 @@ immediately via `archigraph_inspect` without re-running the trace.
 - ADR-0009 — Cross-repo ID namespacing.
 - ADR-0015 — Residual-edge repair flow.
 - ADR-0018 — Agent-learned pattern store.
+- ADR-0020 — Multi-branch + worktree graph snapshots. When reviewing a PR that
+  is not yet merged, the branch's graph may already be indexed; use
+  `archigraph_diff(ref_a="main", ref_b="feature/...")` to get a structural
+  summary before examining the line-level diff. See also
+  [docs/user-guide/multi-branch.md](../../docs/user-guide/multi-branch.md).
 - Issue #1269 — tracking issue for this skill.

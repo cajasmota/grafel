@@ -660,3 +660,6 @@ group — provide `group=` explicitly or navigate to a registered repo.
 - ADR-0009 — Cross-repo ID namespacing (`<repo>::<localId>`)
 - ADR-0015 — Residual-edge repair flow
 - ADR-0018 — Agent-learned pattern store
+- ADR-0020 — Multi-branch + worktree support. The MCP server automatically
+  resolves the ref from the agent's CWD; pass `ref=` explicitly to target a
+  specific branch. See [docs/user-guide/multi-branch.md](../../docs/user-guide/multi-branch.md).

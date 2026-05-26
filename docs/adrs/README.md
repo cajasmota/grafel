@@ -21,6 +21,11 @@ decision itself, and the consequences we accepted.
 | [0013](0013-cross-file-import-aware-resolution.md) | Accepted | Cross-file import-aware resolution |
 | [0014](0014-corpus-expansion-strategy.md) | Accepted | Corpus expansion strategy — sample apps, not framework internals |
 | [0015](0015-residual-repair-agent-enrichment.md) | Proposed | Residual repair via agent-side enrichment |
+| [0016](0016-binary-graph-format.md) | Accepted | Binary graph format — FlatBuffers v2 |
+| [0017](0017-single-binary-daemon-architecture.md) | Accepted | Single-binary daemon architecture |
+| [0018](0018-agent-learned-patterns.md) | Accepted | Agent-learned patterns |
+| [0019](0019-semantic-embedding-search.md) | Accepted | Semantic embedding search via configurable backend + RRF fusion |
+| [0020](0020-multi-branch-worktree.md) | Accepted | Multi-branch and worktree graph snapshots |
 
 Numbers are append-only.
 

@@ -32,6 +32,11 @@ and [milestones](https://github.com/cajasmota/archigraph/milestones).
 - **13 new MCP tools** — Topology v2, Flows v2, Quality, and graph
   traversal surfaces exposed to agents. See
   [`internal/mcp/SCHEMA.md`](internal/mcp/SCHEMA.md).
+- **Multi-branch + worktree support** — one graph snapshot per `(repo, ref)`;
+  branch switches are detected automatically via `.git/HEAD` watch and optional
+  git hooks; HOT/WARM/COLD tier management keeps RAM bounded; `--ref` flag on
+  all read commands; `?ref=` on dashboard APIs; graph diff view between any two
+  indexed refs. See [Multi-branch guide](docs/user-guide/multi-branch.md).
 
 ## Run it locally (testing build)
 
@@ -224,13 +229,17 @@ Other useful commands:
 
 ```sh
 archigraph index <repo>              # one-shot indexer (writes graph.fb, optionally graph.json)
+archigraph index <repo> --ref <ref>  # index a specific git ref
 archigraph reset <group> [slug]      # wipe .archigraph/ and rebuild
 archigraph remove <group> <slug>     # remove a repo from a group
 archigraph delete <group>            # delete entire group + state
 archigraph monorepo add <group> <p>  # opt a path inside a monorepo into indexing
 archigraph doctor                    # smoke-check install + tools (rich health report)
 archigraph status <group>            # show group health + stats (rich output)
+archigraph status <group> --all-refs # show per-ref tier + stats for every indexed branch
+archigraph branches                  # list all indexed refs with HOT/WARM/COLD tier + sizes
 archigraph uninstall <group>         # remove hooks/watchers from a group
+archigraph install-hooks             # install post-checkout/merge/rewrite git hooks (multi-branch)
 archigraph patterns list             # inspect agent-learned patterns (ADR-0018)
 archigraph patterns export --repo X  # write the CLAUDE.md marker block
 archigraph patterns config           # show / set pattern thresholds
