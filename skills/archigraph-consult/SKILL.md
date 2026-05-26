@@ -42,10 +42,12 @@ The active persona MUST use archigraph MCP tools for ALL graph navigation. Pre-f
 - `--list` / `--catalog` — print the catalog and exit.
 - `--release` — release the currently active consultant.
 - `--switch <name>` — release the current consultant and hire `<name>`.
+- `--resume <session-id>` — resume a specific saved session by ID (skips the session picker).
+- `--new` — force a new session, skipping the active-session list.
 
 ## Shipped catalog
 
-Eight consultants ship as persona files in `skills/archigraph-consult/personas/`. Users may add their own under `~/.claude/agents/archigraph-<persona>.md`.
+Twelve consultants ship as persona files in `skills/archigraph-consult/personas/`. Users may add their own under `~/.claude/agents/archigraph-<persona>.md`.
 
 | Consultant | File | Lens |
 |---|---|---|
@@ -57,6 +59,85 @@ Eight consultants ship as persona files in `skills/archigraph-consult/personas/`
 | api-designer | `personas/api-designer.md` | Endpoint naming, REST/RPC convention consistency, versioning, error-shape uniformity |
 | data-engineer | `personas/data-engineer.md` | Schema quality, migration hygiene, ORM query patterns, index candidates, FK integrity |
 | qa-reviewer | `personas/qa-reviewer.md` | TESTS-edge coverage by module, untested critical paths, fixture hygiene |
+| solutions-architect | `personas/solutions-architect.md` | Cross-service boundaries, inter-repo contracts, coupling, blast-radius (limited: cross_links coverage) |
+| devops-reviewer | `personas/devops-reviewer.md` | CI/CD config, GitHub Actions pinning, build hygiene, graph-visible infra config (limited: no IaC indexer) |
+| compliance-officer | `personas/compliance-officer.md` | PII field detection, audit-trail gaps, sensitive data flow surface scan (limited: name-match heuristics only) |
+| dx-engineer | `personas/dx-engineer.md` | Test deserts, circular imports, god entry-points, module size outliers (limited: test/import-graph signals only) |
+
+## Session state
+
+Session state is persisted to `~/.archigraph/sessions/<session-id>.yaml` using the host agent's `Read` and `Write` tools. No new MCP tools are required — all personas inherit `Read` and `Write` from the host agent.
+
+### Schema
+
+```yaml
+session_id: <uuid-or-timestamp-slug>        # e.g. "20260527-143022-architect"
+created: <iso8601>                           # e.g. "2026-05-27T14:30:22Z"
+last_active: <iso8601>                       # updated on every save
+active_persona: <name>                       # e.g. "architect"
+consult_chain: [persona-a, persona-b]        # active Consult-Out chain at save time
+context:
+  original_ask: "<verbatim user question>"
+  prior_findings:
+    - persona: <name>
+      summary: "<2-4 line text summary of that hop's findings>"
+notes: |
+  <free-form scratch — any persona may append mid-conversation>
+```
+
+### First-invocation flow (session picker)
+
+On every invocation (unless `--new` or `--resume <id>` is passed):
+
+1. Scan `~/.archigraph/sessions/*.yaml` for files whose `last_active` is within the past 30 days.
+2. If any active sessions exist, present them:
+   ```
+   Active sessions:
+     [1] 20260527-143022-architect    last active: 2026-05-27  persona: architect
+     [2] 20260525-091500-security     last active: 2026-05-25  persona: security-auditor
+     [N] Start new session
+   ```
+   Ask: "Resume a session, or start new?"
+3. If no active sessions exist (or the user picks "Start new session"), proceed to Persona selection below.
+
+### Resume flow
+
+When the user picks an existing session (or passes `--resume <session-id>`):
+
+1. Read `~/.archigraph/sessions/<session-id>.yaml`.
+2. Re-prime the host agent:
+   - Set `active_persona` to the saved value.
+   - Inject the saved `context.original_ask`, `prior_findings`, `consult_chain`, and `notes` into the conversation as a system reminder block:
+     ```
+     [archigraph-consult] RESUMING SESSION <session-id>
+     Active persona: archigraph-<name>
+     Original ask: <original_ask>
+     Prior findings: <prior_findings as bullet list>
+     Consult chain: <consult_chain>
+     Notes: <notes>
+     ```
+3. Activate the persona (load its body inline, same as a new hire).
+4. Announce to the user:
+   > Resumed session `<session-id>` with consultant `archigraph-<name>`. Context restored. Pick up where you left off.
+
+### Save flow
+
+Session state is written under two conditions:
+
+1. **Explicit user request** — user says "save session", "checkpoint this", "save my place", or equivalent.
+2. **On Consult-Out** — when the active persona emits a `[CONSULT-OUT]` block and the user approves, the skill writes current state before spawning the peer (so the carry-over context is recoverable if the peer chain is interrupted).
+
+To save, the persona uses the host agent's `Write` tool:
+- Path: `~/.archigraph/sessions/<session-id>.yaml`
+- Content: full YAML schema above, with `last_active` updated to the current UTC time.
+
+The session directory `~/.archigraph/sessions/` is created if it does not exist (use `Bash` with `mkdir -p`).
+
+### End / archive policy
+
+- **Explicit end**: user says `[END SESSION]` or runs `/archigraph-consult --release` and confirms archiving. The YAML is moved to `~/.archigraph/sessions/archive/<session-id>.yaml`.
+- **Staleness auto-archive**: sessions whose `last_active` is more than 30 days ago are shown in the session picker with a `[stale]` label. Selecting a stale session prompts: "This session is >30 days old. Resume anyway, or archive it?" Archiving moves it to `~/.archigraph/sessions/archive/`.
+- The `archive/` directory is never auto-deleted. The user is responsible for cleanup.
 
 ## Procedure
 
@@ -66,6 +147,7 @@ Eight consultants ship as persona files in `skills/archigraph-consult/personas/`
 2. Verify tech docs exist at `~/.archigraph/docs/<group>/modules/`. If not, abort with the message above.
 3. Scan `skills/archigraph-consult/personas/*.md` + `~/.claude/agents/archigraph-*.md` to build the catalog.
 4. If `--list` / `--catalog`: print the catalog (name + one-line description from frontmatter) and exit.
+5. **Session picker**: unless `--new` or `--resume <id>` was passed, scan `~/.archigraph/sessions/` and present active sessions (see Session state above). If the user resumes, skip Persona selection and go straight to Activation.
 
 ### Persona selection
 
@@ -119,6 +201,7 @@ The active persona may, at any time, request a peer's input via a structured cal
 
 When the user approves:
 
+- **Save session first**: before spawning the peer, write the current session state to `~/.archigraph/sessions/<session-id>.yaml` (see Session state → Save flow). This ensures the Consult-Out carry-over context is recoverable if the chain is interrupted.
 - **Claude Code:** spawn the peer as a subagent via the Task tool, with the carry-over context as the opening message and the peer's persona body as system prompt. The peer answers the sub-question and returns. Summarise back to the user prefixed `[CONSULT-IN: <peer>]`. The original consultant remains active in the parent conversation.
 - **Windsurf:** for the current turn only, layer the peer's lens onto Cascade by inlining the peer's body alongside the original. After the turn, the peer's marker expires; the original consultant remains.
 - **Cursor:** open a new Agents Window tab with the peer, passing carry-over context. Bring the answer back to the original tab manually or via paste.

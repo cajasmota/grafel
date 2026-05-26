@@ -510,7 +510,58 @@ The four deferred personas (`solutions-architect`, `devops-reviewer`, `complianc
 
 ---
 
-## 11. Phasing
+## 11. Session State
+
+### 11.1 Motivation
+
+The `archigraph-consult` skill is interactive and stateless by default: each invocation starts fresh. Issue #2459 adds optional persistence so a user can resume a mid-conversation consultation across sessions — same active persona, same Consult-Out chain, same accumulated context and notes.
+
+### 11.2 Storage
+
+Session state persists to `~/.archigraph/sessions/<session-id>.yaml`. The directory is created on first save. No new MCP tools are introduced — personas use the host agent's `Read` and `Write` tools (inherited via the tool-inheritance contract in Section 2.1).
+
+### 11.3 Schema
+
+```yaml
+session_id: <uuid-or-timestamp-slug>        # e.g. "20260527-143022-architect"
+created: <iso8601>
+last_active: <iso8601>
+active_persona: <name>                       # e.g. "architect"
+consult_chain: [persona-a, persona-b]        # active chain at save time
+context:
+  original_ask: "<verbatim user question>"
+  prior_findings:
+    - persona: <name>
+      summary: "<2-4 line text summary>"
+notes: |
+  <free-form scratch — any persona may append>
+```
+
+### 11.4 Lifecycle
+
+| Event | Action |
+|---|---|
+| First invocation (no `--new`/`--resume`) | Skill scans `~/.archigraph/sessions/*.yaml`, presents active sessions + "Start new session" |
+| User picks existing session | Skill reads YAML, re-primes agent with active persona + context, announces resume |
+| User picks "Start new session" | Normal hire flow; a new session file is created on first save |
+| Explicit save ("save session", "checkpoint") | Persona uses `Write` to write/overwrite `<session-id>.yaml` with current state |
+| Approved Consult-Out | Skill saves session before spawning the peer |
+| `[END SESSION]` / `--release` with confirmation | Session YAML moved to `~/.archigraph/sessions/archive/<session-id>.yaml` |
+| `last_active` > 30 days | Session shown as `[stale]` in picker; user must confirm resume or archive |
+
+### 11.5 Cross-persona notes field
+
+The `notes` field in the session YAML is a free-form string any persona may append to during a conversation. This is the intended mechanism for mid-conversation scratch notes that don't yet warrant a formal finding (which would go through `archigraph_save_finding`). Notes are preserved across resumes.
+
+### 11.6 Anti-patterns
+
+- **Do not auto-save on every turn.** Save on explicit request or Consult-Out only. Constant writes create noise and inflate the session file unnecessarily.
+- **Do not store PII or sensitive findings in `notes`.** The session file is plaintext on the local filesystem. Sensitive findings should go through `archigraph_save_finding` or the user's own secure note-taking.
+- **Do not read another session's YAML without user approval.** Each session file belongs to one conversation context. Cross-session reading would conflate unrelated consultation threads.
+
+---
+
+## 12. Phasing
 
 ### v3 (PR #2449 / this doc)
 
@@ -524,7 +575,8 @@ The four deferred personas (`solutions-architect`, `devops-reviewer`, `complianc
 | Item | Reason |
 |---|---|
 | True multi-persona panel mode | v1/v2 attempted this; postponed until interactive model is validated |
-| Persistent active-persona sidecar for Windsurf | Needs design work; conversation-marker workaround ships in this PR |
+| Persistent active-persona sidecar for Windsurf | Needs design work; conversation-marker workaround ships in this PR. Session file (Section 11) partially mitigates by preserving context across invocations. |
+| Interactive resume session for archigraph-consult | **Shipped in #2459** — session state persisted to `~/.archigraph/sessions/<id>.yaml`; session picker on first invocation; resume, save, end/archive flows. Section 11 defines the full contract. |
 | Codex / generic-markdown wrappers | Low user demand; defer until requested |
 | Persona-emitted findings → graph (opt-in) | **Shipped in #2472** — "When the user asks to save this analysis" section added to all 8 persona bodies; Section 2.4 defines the contract |
 | Consult-Out depth > 1 (peer of peer) | **Shipped in #2473** — multi-hop with depth cap (3), cycle detection, and context carry-over. Section 5.4–5.7 define the full protocol. |

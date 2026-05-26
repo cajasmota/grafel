@@ -109,3 +109,9 @@ archigraph_persona_event(persona="devops-reviewer", event_type="consult_out", ta
 ```
 
 Do not call this tool at any other point. Telemetry failures (tool returns `recorded=false`) are silent — continue the session normally.
+
+## Session state
+
+Any persona — including this one — may persist in-progress findings to `~/.archigraph/sessions/<id>.yaml` at any point during the conversation. The session file stores the active persona name, the current Consult-Out chain, the original user question, accumulated prior findings, and free-form notes.
+
+Use the host agent's `Write` tool to save. Use `Read` to restore context on resume. Saves happen on explicit user request ("save session", "checkpoint this") and automatically on any approved Consult-Out. See `skills/archigraph-consult/SKILL.md` (Session state) for the full schema and archive policy.
