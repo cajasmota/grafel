@@ -77,4 +77,15 @@ type BatchStats struct {
 	ByLang     map[string]int `json:"by_lang,omitempty"`
 	ByCrossExt map[string]int `json:"by_cross_ext,omitempty"`
 	RSSBytes   uint64         `json:"rss_bytes"`
+
+	// Pass1Plumbed counters (issue #2447): track how many files had
+	// FileInput.Pass1Entities non-empty (True) vs empty (False) when
+	// Detector.Detect was called for Pass 2.5.
+	//
+	// A non-zero False count in production signals the Pass1Entities
+	// side-channel is being bypassed. Future engine passes that rely
+	// exclusively on Pass1Entities (with no regex fallback) would
+	// silently produce zero edges when False > 0.
+	Pass1PlumbedTrueCount  int `json:"pass1_plumbed_true"`
+	Pass1PlumbedFalseCount int `json:"pass1_plumbed_false"`
 }

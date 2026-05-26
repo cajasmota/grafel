@@ -275,6 +275,12 @@ type indexerStats struct {
 
 	// PORT-EXT: external-entity synthesis counters (Pass 4.5).
 	extSynth external.Stats
+
+	// Pass1Plumbed counters (issue #2447): files where FileInput.Pass1Entities
+	// was non-empty (True) vs empty (False) when Detector.Detect was called.
+	// Non-zero False count signals the side-channel is being bypassed.
+	pass1PlumbedTrue  int
+	pass1PlumbedFalse int
 }
 
 // Index walks repoPath, runs the orchestrated passes, and writes the
@@ -539,6 +545,13 @@ type JSONStats struct {
 	ExternalSynthesized  int                 `json:"external_synthesized"`
 	ExternalUniqueCount  int                 `json:"external_unique_count"`
 	ExternalRelsResolved int                 `json:"external_rels_resolved"`
+
+	// Pass1PlumbedTrue / Pass1PlumbedFalse (issue #2447): files where
+	// FileInput.Pass1Entities was non-empty (True) vs empty (False) when
+	// Detector.Detect was called for Pass 2.5. A non-zero False count
+	// signals the Pass1Entities side-channel is being bypassed.
+	Pass1PlumbedTrue  int `json:"pass1_plumbed_true"`
+	Pass1PlumbedFalse int `json:"pass1_plumbed_false"`
 }
 
 // emitJSONStats writes a JSONStats record to w. Used by `archigraph index
@@ -580,6 +593,8 @@ func emitJSONStats(w io.Writer, idx *Indexer, doc *graph.Document) error {
 		ExternalSynthesized:  idx.stats.extSynth.Synthesized,
 		ExternalUniqueCount:  idx.stats.extSynth.UniqueExternals,
 		ExternalRelsResolved: idx.stats.extSynth.RelationshipsResolved,
+		Pass1PlumbedTrue:     idx.stats.pass1PlumbedTrue,
+		Pass1PlumbedFalse:    idx.stats.pass1PlumbedFalse,
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -777,6 +792,9 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		for k, v := range res.ByCrossExt {
 			i.stats.pass3RelsByExt[k] += v
 		}
+		// Issue #2447: propagate Pass1Plumbed counters from subprocess path.
+		i.stats.pass1PlumbedTrue += res.Pass1PlumbedTrueCount
+		i.stats.pass1PlumbedFalse += res.Pass1PlumbedFalseCount
 		fmt.Fprintf(os.Stderr,
 			"archigraph: subproc-extract subprocs=%d peak_rss=%.1fMB entities=%d rels=%d\n",
 			res.Subprocesses,
@@ -2241,6 +2259,11 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, absRepo string, c
 		rels     []types.RelationshipRecord
 	)
 
+	// Issue #2447: atomic counters for Pass1Entities plumbing observability.
+	// Incremented per-file before Detect() so a non-zero False count in
+	// production signals the side-channel is being bypassed.
+	var plumbedTrue, plumbedFalse atomic.Int64
+
 	work := make(chan classifiedFile, len(classified))
 	for _, cf := range classified {
 		work <- cf
@@ -2260,6 +2283,12 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, absRepo string, c
 					RepoRoot:      absRepo,
 					Pass1Entities: pass1ByFile[cf.relPath],
 				}
+				// Issue #2447: count plumbed vs unplumbed before Detect.
+				if len(input.Pass1Entities) > 0 {
+					plumbedTrue.Add(1)
+				} else {
+					plumbedFalse.Add(1)
+				}
 				res, err := i.detector.Detect(ctx, input)
 				if err != nil || res == nil {
 					continue
@@ -2275,6 +2304,10 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, absRepo string, c
 		}()
 	}
 	wg.Wait()
+
+	// Fold atomic counters into indexer stats (issue #2447).
+	i.stats.pass1PlumbedTrue += int(plumbedTrue.Load())
+	i.stats.pass1PlumbedFalse += int(plumbedFalse.Load())
 	// Issue #481 — deterministic ordering across runs.
 	sortEntityRecords(entities)
 	sortRelationshipRecords(rels)

@@ -315,6 +315,15 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 			file.Pass1Entities = fieldEnts
 		}
 		if runFramework {
+			// Issue #2447: count how many files enter Detect() with
+			// Pass1Entities plumbed (True) vs empty (False). A non-zero
+			// False count post-PR #2445 signals the side-channel is being
+			// bypassed somewhere new.
+			if len(file.Pass1Entities) > 0 {
+				stats.Pass1PlumbedTrueCount++
+			} else {
+				stats.Pass1PlumbedFalseCount++
+			}
 			if res, derr := detector.Detect(ctx, file); derr == nil && res != nil {
 				for k := range res.Entities {
 					e := res.Entities[k]
