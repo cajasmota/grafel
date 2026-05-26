@@ -3,7 +3,7 @@ package clone
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -110,7 +110,7 @@ func TestTryClone_NilCallbackAborts(t *testing.T) {
 	repoPath := t.TempDir()
 
 	res, err := TryClone(repoPath, "feat/x", Config{
-		Logger:         log.New(os.Stderr, "test: ", 0),
+		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone-test"),
 		ReExtractFiles: nil,
 	})
 	if err != nil {
@@ -138,7 +138,7 @@ func TestTryClone_ExistingGraphSkipped(t *testing.T) {
 	}
 
 	res, err := TryClone(repoPath, "feat/already-indexed", Config{
-		Logger:         log.New(os.Stderr, "test: ", 0),
+		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone-test"),
 		ReExtractFiles: noopReExtract,
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func TestTryClone_NoParentCandidateAborts(t *testing.T) {
 	repoPath := t.TempDir()
 
 	res, err := TryClone(repoPath, "feat/no-parent", Config{
-		Logger:         log.New(os.Stderr, "test: ", 0),
+		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone-test"),
 		ReExtractFiles: noopReExtract,
 	})
 	if err != nil {
@@ -187,7 +187,7 @@ func TestTryClone_CorruptParentGraphAborts(t *testing.T) {
 	}
 
 	res, err := TryClone(repoPath, "feat/from-corrupt", Config{
-		Logger:         log.New(os.Stderr, "test: ", 0),
+		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone-test"),
 		ReExtractFiles: noopReExtract,
 	})
 	if err != nil {
@@ -224,7 +224,7 @@ func TestTryClone_ZeroDiff_MetadataUpdated(t *testing.T) {
 
 	var reExtractFiles []string
 	res, err := TryClone(repoPath, "feat/zero-diff", Config{
-		Logger: log.New(os.Stderr, "test: ", 0),
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone-test"),
 		ReExtractFiles: func(_ string, files []string, base *graph.Document) (*graph.Document, error) {
 			reExtractFiles = files
 			return base, nil
@@ -301,7 +301,7 @@ func TestTryClone_ReExtractCalled(t *testing.T) {
 
 	var gotFiles []string
 	res, err := TryClone(repoPath, "feat/with-change", Config{
-		Logger: log.New(os.Stderr, "test: ", 0),
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone-test"),
 		ReExtractFiles: func(_ string, files []string, base *graph.Document) (*graph.Document, error) {
 			gotFiles = append(gotFiles, files...)
 			return base, nil
@@ -401,7 +401,7 @@ func TestDiffOverLimitAborts(t *testing.T) {
 	buildFakeGraph(t, mainDir, 50, 5, "main", "abc123")
 
 	res, err := TryClone(repoPath, "feat/big-diff", Config{
-		Logger:         log.New(os.Stderr, "test: ", 0),
+		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone-test"),
 		ReExtractFiles: noopReExtract,
 	})
 	if err != nil {

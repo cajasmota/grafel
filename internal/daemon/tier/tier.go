@@ -45,7 +45,7 @@ package tier
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"runtime"
 	"sort"
@@ -293,7 +293,7 @@ type Manager struct {
 	onEvict     EvictionCallback
 	reload      ReloadCallback
 	onDiskEvict DiskEvictCallback // PH6: nil = no disk deletion
-	logger      *log.Logger
+	logger      *slog.Logger
 	clock       func() time.Time
 	// watcher is optional (PH2a #2096). When non-nil, Pause is called on
 	// WARM→COLD and Resume is called on COLD→HOT.
@@ -314,9 +314,9 @@ const defaultScanInterval = 30 * time.Second
 // NewManager creates and starts a Manager. The scanner runs until ctx is
 // cancelled. onEvict and reload must not be nil. onDiskEvict may be nil
 // (disables disk deletion).
-func NewManager(ctx context.Context, ttl TTLConfig, onEvict EvictionCallback, reload ReloadCallback, onDiskEvict DiskEvictCallback, logger *log.Logger) *Manager {
+func NewManager(ctx context.Context, ttl TTLConfig, onEvict EvictionCallback, reload ReloadCallback, onDiskEvict DiskEvictCallback, logger *slog.Logger) *Manager {
 	if logger == nil {
-		logger = log.Default()
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier")
 	}
 	m := &Manager{
 		slots:       make(map[SlotKey]*slot),
@@ -342,7 +342,7 @@ func NewManagerForTest(ttl TTLConfig, clock func() time.Time, onEvict EvictionCa
 		ttl:      ttl,
 		onEvict:  onEvict,
 		reload:   reload,
-		logger:   log.Default(),
+		logger:   slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier"),
 		clock:    clock,
 		sysMemFn: readSysMemBytes,
 		heapFn:   readHeapInuse,
@@ -358,7 +358,7 @@ func NewManagerForTestWithDiskEvict(ttl TTLConfig, clock func() time.Time, onEvi
 		onEvict:     onEvict,
 		reload:      reload,
 		onDiskEvict: onDiskEvict,
-		logger:      log.Default(),
+		logger:      slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier"),
 		clock:       clock,
 		sysMemFn:    readSysMemBytes,
 		heapFn:      readHeapInuse,
@@ -373,7 +373,7 @@ func NewManagerForTestWithHeap(ttl TTLConfig, clock func() time.Time, onEvict Ev
 		ttl:      ttl,
 		onEvict:  onEvict,
 		reload:   reload,
-		logger:   log.Default(),
+		logger:   slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier"),
 		clock:    clock,
 		sysMemFn: sysMemFn,
 		heapFn:   heapFn,
@@ -454,11 +454,11 @@ func (m *Manager) Touch(key SlotKey) error {
 		m.mu.Unlock()
 		if wh != nil {
 			resumeElapsed := wh.Resume(key.RepoPath, key.Ref)
-			m.logger.Printf("tier: cold-wake watcher resumed %s@%s (took %s)", key.RepoPath, key.Ref, resumeElapsed.Round(time.Millisecond))
+			m.logger.Info("tier: cold-wake watcher resumed", "repo", key.RepoPath, "ref", key.Ref, "took", resumeElapsed.Round(time.Millisecond))
 		}
 
 		if err := m.reload(key); err != nil {
-			m.logger.Printf("tier: cold-load failed %s@%s: %v", key.RepoPath, key.Ref, err)
+			m.logger.Error("tier: cold-load failed", "repo", key.RepoPath, "ref", key.Ref, "err", err)
 			return err
 		}
 		m.mu.Lock()
@@ -467,7 +467,7 @@ func (m *Manager) Touch(key SlotKey) error {
 			s2.lastAccessedAt = m.clock()
 		}
 		m.mu.Unlock()
-		m.logger.Printf("tier: cold-load OK %s@%s → HOT", key.RepoPath, key.Ref)
+		m.logger.Info("tier: cold-load OK → HOT", "repo", key.RepoPath, "ref", key.Ref)
 	}
 	return nil
 }
@@ -554,20 +554,20 @@ func (m *Manager) scan() {
 		case TierHot:
 			if idle >= m.ttl.HotWindow {
 				s.tier = TierWarm
-				m.logger.Printf("tier: %s@%s HOT→WARM (idle %s, kind=%s)", k.RepoPath, k.Ref, idle.Round(time.Second), s.kind)
+				m.logger.Info("tier: HOT→WARM", "repo", k.RepoPath, "ref", k.Ref, "idle", idle.Round(time.Second), "kind", s.kind)
 			}
 		case TierWarm:
 			if idle >= coldWindow {
 				s.tier = TierCold
 				toEvict = append(toEvict, k)
-				m.logger.Printf("tier: %s@%s WARM→COLD (idle %s, kind=%s)", k.RepoPath, k.Ref, idle.Round(time.Second), s.kind)
+				m.logger.Info("tier: WARM→COLD", "repo", k.RepoPath, "ref", k.Ref, "idle", idle.Round(time.Second), "kind", s.kind)
 			}
 		case TierCold:
 			// PH6 (#2094): COLD→EXPIRED — delete disk artifacts when not pinned.
 			if !s.isPinnedMain && idle >= expiredWindow {
 				s.tier = TierExpired
 				toExpire = append(toExpire, k)
-				m.logger.Printf("tier: %s@%s COLD→EXPIRED (idle %s, kind=%s)", k.RepoPath, k.Ref, idle.Round(time.Hour), s.kind)
+				m.logger.Info("tier: COLD→EXPIRED", "repo", k.RepoPath, "ref", k.Ref, "idle", idle.Round(time.Hour), "kind", s.kind)
 			}
 		}
 	}
@@ -594,9 +594,9 @@ func (m *Manager) scan() {
 		for _, k := range toExpire {
 			freed, err := m.onDiskEvict(k)
 			if err != nil {
-				m.logger.Printf("tier: expired-evict %s@%s FAILED: %v", k.RepoPath, k.Ref, err)
+				m.logger.Error("tier: expired-evict FAILED", "repo", k.RepoPath, "ref", k.Ref, "err", err)
 			} else {
-				m.logger.Printf("tier: expired-evict %s@%s freed=%.1fMB", k.RepoPath, k.Ref, float64(freed)/(1024*1024))
+				m.logger.Info("tier: expired-evict freed", "repo", k.RepoPath, "ref", k.Ref, "freed_mb", float64(freed)/(1024*1024))
 			}
 		}
 	}
@@ -625,8 +625,7 @@ func (m *Manager) scanPressureEvict() int {
 		return 0
 	}
 	heapMB := float64(heapBytes) / (1024 * 1024)
-	m.logger.Printf("tier: pressure-evict triggered heap=%.1fMB threshold=%d%% sys=%.0fMB",
-		heapMB, m.ttl.HeapMaxPct, float64(sysBytes)/(1024*1024))
+	m.logger.Info("tier: pressure-evict triggered", "heap_mb", heapMB, "threshold_pct", m.ttl.HeapMaxPct, "sys_mb", float64(sysBytes)/(1024*1024))
 
 	// Collect all evictable HOT/WARM slots sorted oldest-accessed first.
 	// Pinned-main slots are excluded.
@@ -663,8 +662,7 @@ func (m *Manager) scanPressureEvict() int {
 		oldTier := s.tier.String()
 		s.tier = TierCold
 		toEvict = append(toEvict, k)
-		m.logger.Printf("tier: pressure-evict %s@%s %s→COLD reason=heap_threshold heap_now=%.0fMB",
-			k.RepoPath, k.Ref, oldTier, heapMB)
+		m.logger.Info("tier: pressure-evict →COLD", "repo", k.RepoPath, "ref", k.Ref, "from", oldTier, "reason", "heap_threshold", "heap_mb", heapMB)
 	}
 	m.mu.Unlock()
 

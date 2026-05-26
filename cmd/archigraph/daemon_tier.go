@@ -91,9 +91,7 @@ func startDaemonTierManager(ctx context.Context, logger *slog.Logger) {
 		ttl.SystemMemoryBytes = uint64(sysMB) * 1024 * 1024
 	}
 
-	// tier.NewManager still accepts *log.Logger; bridge via slog.NewLogLogger.
-	tierLog := slog.NewLogLogger(logger.Handler(), slog.LevelInfo)
-	daemonTierMgr = tier.NewManager(ctx, ttl, tierEvictCallback, tierReloadCallback, tierDiskEvictCallback, tierLog)
+	daemonTierMgr = tier.NewManager(ctx, ttl, tierEvictCallback, tierReloadCallback, tierDiskEvictCallback, logger)
 
 	// Wire the MCP graph-cache access hook so every GetForRepoRef call
 	// updates lastAccessedAt in the tier manager without extra call-sites.

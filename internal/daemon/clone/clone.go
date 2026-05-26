@@ -29,7 +29,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,7 +82,7 @@ type Result struct {
 // Config wires TryClone. ReExtractFiles is required for a useful clone.
 type Config struct {
 	// Logger receives structured log lines. nil → os.Stderr.
-	Logger *log.Logger
+	Logger *slog.Logger
 
 	// ReExtractFiles re-indexes a list of files within a repo and returns
 	// the updated graph document. The passed document is the cloned base;
@@ -109,13 +109,12 @@ type Config struct {
 func TryClone(repoPath, newRef string, cfg Config) (Result, error) {
 	logger := cfg.Logger
 	if logger == nil {
-		logger = log.New(os.Stderr, "clone: ", log.LstdFlags)
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "clone")
 	}
 
 	slug := filepath.Base(repoPath)
 	abort := func(reason string) (Result, error) {
-		logger.Printf("clone-from-parent: %s/refs/%s ABORTED reason=%q → full reindex",
-			slug, newRef, reason)
+		logger.Info("clone-from-parent: ABORTED → full reindex", "repo", slug, "ref", newRef, "reason", reason)
 		return Result{Done: false}, nil
 	}
 
@@ -238,8 +237,7 @@ func TryClone(repoPath, newRef string, cfg Config) (Result, error) {
 	}
 
 	took := time.Since(t0)
-	logger.Printf("clone-from-parent: %s/refs/%s from=%s changed_files=%d took=%s (skip_full_reindex=true)",
-		slug, newRef, parentRef, len(changedFiles), took.Truncate(time.Millisecond))
+	logger.Info("clone-from-parent: OK skip_full_reindex=true", "repo", slug, "ref", newRef, "from", parentRef, "changed_files", len(changedFiles), "took", took.Truncate(time.Millisecond))
 
 	return Result{
 		Done:         true,

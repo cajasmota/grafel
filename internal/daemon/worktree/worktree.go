@@ -44,7 +44,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -449,7 +449,7 @@ type Watcher struct {
 	store    *Store
 	parents  func() []ParentRepo // called on every tick to get the current set
 	interval time.Duration
-	logger   *log.Logger
+	logger   *slog.Logger
 }
 
 // defaultPollInterval is the default discovery interval.
@@ -467,9 +467,9 @@ func pollInterval() time.Duration {
 
 // NewWatcher creates a Watcher.  parents is called on each poll tick to get
 // the current set of parent repos; it must be safe for concurrent use.
-func NewWatcher(store *Store, parents func() []ParentRepo, logger *log.Logger) *Watcher {
+func NewWatcher(store *Store, parents func() []ParentRepo, logger *slog.Logger) *Watcher {
 	if logger == nil {
-		logger = log.Default()
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "worktree")
 	}
 	return &Watcher{
 		store:    store,
@@ -509,15 +509,13 @@ func (w *Watcher) poll() {
 	for _, p := range parents {
 		linked, err := runWorktreeList(p.Path)
 		if err != nil {
-			w.logger.Printf("worktree: git worktree list failed for %s (%s/%s): %v",
-				p.Path, p.GroupName, p.Slug, err)
+			w.logger.Error("worktree: git worktree list failed", "path", p.Path, "group", p.GroupName, "slug", p.Slug, "err", err)
 			continue
 		}
 
 		kept, skipped := enforceCap(linked, cap)
 		if skipped > 0 {
-			w.logger.Printf("worktree: %s/%s has %d linked worktrees; keeping %d most-recent, skipping %d (cap=%d, override ARCHIGRAPH_MAX_WORKTREES_PER_REPO)",
-				p.GroupName, p.Slug, len(linked), cap, skipped, cap)
+			w.logger.Warn("worktree: per-parent cap enforced", "group", p.GroupName, "slug", p.Slug, "total", len(linked), "kept", cap, "skipped", skipped, "cap", cap, "override_env", "ARCHIGRAPH_MAX_WORKTREES_PER_REPO")
 		}
 
 		w.store.mu.Lock()
@@ -536,8 +534,7 @@ func (w *Watcher) poll() {
 					Status:       StatusActive,
 				}
 				w.store.upsert(child)
-				w.logger.Printf("worktree: registered %s/%s worktree %s @ %s",
-					p.GroupName, p.Slug, raw.Path, raw.Branch)
+				w.logger.Info("worktree: registered", "group", p.GroupName, "slug", p.Slug, "path", raw.Path, "branch", raw.Branch)
 			} else {
 				// Refresh.
 				existing.LastSeenAt = now
@@ -546,8 +543,7 @@ func (w *Watcher) poll() {
 				if existing.Status == StatusExpired {
 					existing.Status = StatusActive
 					existing.StaleAt = nil
-					w.logger.Printf("worktree: re-activated %s/%s worktree %s",
-						p.GroupName, p.Slug, raw.Path)
+					w.logger.Info("worktree: re-activated", "group", p.GroupName, "slug", p.Slug, "path", raw.Path)
 				}
 			}
 		}
@@ -559,12 +555,11 @@ func (w *Watcher) poll() {
 	for _, c := range w.store.children {
 		if c.Status == StatusActive && !seenPaths[normPath(c.Path)] {
 			w.store.markExpired(c.Path)
-			w.logger.Printf("worktree: expired %s/%s worktree %s (no longer listed by git)",
-				c.GroupName, c.ParentSlug, c.Path)
+			w.logger.Info("worktree: expired", "group", c.GroupName, "slug", c.ParentSlug, "path", c.Path, "reason", "no longer listed by git")
 		}
 	}
 	if err := w.store.save(); err != nil {
-		w.logger.Printf("worktree: failed to persist store: %v", err)
+		w.logger.Error("worktree: failed to persist store", "err", err)
 	}
 	w.store.mu.Unlock()
 }
