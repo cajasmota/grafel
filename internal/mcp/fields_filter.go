@@ -11,7 +11,6 @@
 package mcp
 
 import (
-	"encoding/json"
 	"reflect"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -62,45 +61,6 @@ func fieldsArg(req mcpapi.CallToolRequest) []string {
 		return nil
 	}
 	return out
-}
-
-// applyFieldsToResult walks a CallToolResult's JSON text payload and strips
-// per-record fields not present in `fields`. Envelope keys (envelopeFields)
-// are preserved. Records nested under known list keys (items/results/callers/
-// callees/neighbors/affected/matches/nodes) are filtered.
-//
-// Best-effort: any parse failure returns the input unchanged.
-func applyFieldsToResult(res *mcpapi.CallToolResult, fields []string) *mcpapi.CallToolResult {
-	if res == nil || len(fields) == 0 || len(res.Content) == 0 {
-		return res
-	}
-	keep := make(map[string]bool, len(fields))
-	for _, f := range fields {
-		keep[f] = true
-	}
-	for i, c := range res.Content {
-		tc, ok := c.(mcpapi.TextContent)
-		if !ok || tc.Text == "" {
-			continue
-		}
-		// Try object then array.
-		var obj map[string]any
-		if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
-			filtered := filterObject(obj, keep)
-			if data, err := json.Marshal(filtered); err == nil {
-				res.Content[i] = mcpapi.NewTextContent(string(data))
-			}
-			continue
-		}
-		var arr []any
-		if err := json.Unmarshal([]byte(tc.Text), &arr); err == nil {
-			filtered := filterArray(arr, keep)
-			if data, err := json.Marshal(filtered); err == nil {
-				res.Content[i] = mcpapi.NewTextContent(string(data))
-			}
-		}
-	}
-	return res
 }
 
 // filterObject filters a JSON object: envelope keys + listed fields are kept.

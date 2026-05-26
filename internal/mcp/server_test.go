@@ -2502,13 +2502,17 @@ func TestPatterns_ConcurrentRefineApply(t *testing.T) {
 func TestTOONWire_HomogeneousArrayGetsTOON(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "toon")
 
-	// injectElapsedMS is the last step in wrap; exercise it directly with a
-	// synthetic homogeneous-record array payload.
-	arr := `[{"id":"e1","name":"POST /api/orders","repo":"svc"},{"id":"e2","name":"GET /api/orders","repo":"svc"}]`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(arr)},
+	// finalizeDeferred is the deferred fast path exercised by wrap for all
+	// JSON-shaped results; call it directly with a synthetic array payload.
+	var payload []any
+	if err := json.Unmarshal([]byte(`[{"id":"e1","name":"POST /api/orders","repo":"svc"},{"id":"e2","name":"GET /api/orders","repo":"svc"}]`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 42)
+	wireText, err := finalizeDeferred(payload, 42, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	// Envelope must be valid JSON.
@@ -2544,11 +2548,15 @@ func TestTOONWire_HomogeneousArrayGetsTOON(t *testing.T) {
 func TestTOONWire_JSONOptOutKeepsArrayInItems(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "json")
 
-	arr := `[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2"}]`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(arr)},
+	var payload []any
+	if err := json.Unmarshal([]byte(`[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2"}]`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 7)
+	wireText, err := finalizeDeferred(payload, 7, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	var env map[string]any
@@ -2571,11 +2579,15 @@ func TestTOONWire_HeterogeneousArrayFallsBackToJSON(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "toon")
 
 	// Second record has an extra key "extra" that the first doesn't.
-	arr := `[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2","extra":"oops"}]`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(arr)},
+	var payload []any
+	if err := json.Unmarshal([]byte(`[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2","extra":"oops"}]`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 0)
+	wireText, err := finalizeDeferred(payload, 0, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	var env map[string]any
@@ -2592,11 +2604,15 @@ func TestTOONWire_HeterogeneousArrayFallsBackToJSON(t *testing.T) {
 func TestTOONWire_SingleEntityObjectUnchanged(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "toon")
 
-	obj := `{"id":"e1","name":"OrderViewSet","kind":"Component"}`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(obj)},
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(`{"id":"e1","name":"OrderViewSet","kind":"Component"}`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 5)
+	wireText, err := finalizeDeferred(payload, 5, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	var env map[string]any
@@ -2673,18 +2689,22 @@ func TestTOONWire_LiveEndpointsTool(t *testing.T) {
 // #1686 — TOON conversion for {items:[...], count, elapsed_ms} envelope shape
 // ---------------------------------------------------------------------------
 
-// TestTOONWire_EnvelopeItemsGetsTOON verifies that when injectElapsedMS
+// TestTOONWire_EnvelopeItemsGetsTOON verifies that when finalizeDeferred
 // receives a pre-built {items:[...], count:N} envelope (the shape most list
 // tools already emit via #1661), the items array is TOON-encoded just like the
 // top-level array path.
 func TestTOONWire_EnvelopeItemsGetsTOON(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "toon")
 
-	raw := `{"items":[{"id":"ep1","method":"POST","path":"/api/orders"},{"id":"ep2","method":"GET","path":"/api/orders"}],"count":2}`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(raw)},
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(`{"items":[{"id":"ep1","method":"POST","path":"/api/orders"},{"id":"ep2","method":"GET","path":"/api/orders"}],"count":2}`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 99)
+	wireText, err := finalizeDeferred(payload, 99, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	var env map[string]any
@@ -2718,11 +2738,15 @@ func TestTOONWire_EnvelopeItemsGetsTOON(t *testing.T) {
 func TestTOONWire_EnvelopeJSONOptOutKeepsArray(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "json")
 
-	raw := `{"items":[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2"}],"count":2}`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(raw)},
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(`{"items":[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2"}],"count":2}`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 7)
+	wireText, err := finalizeDeferred(payload, 7, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	var env map[string]any
@@ -2744,11 +2768,15 @@ func TestTOONWire_EnvelopeHeterogeneousFallsBack(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "toon")
 
 	// Second record has an extra key "extra" that the first doesn't.
-	raw := `{"items":[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2","extra":"oops"}],"count":2}`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(raw)},
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(`{"items":[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2","extra":"oops"}],"count":2}`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 0)
+	wireText, err := finalizeDeferred(payload, 0, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	var env map[string]any
@@ -2768,11 +2796,15 @@ func TestTOONWire_EnvelopeHeterogeneousFallsBack(t *testing.T) {
 func TestTOONWire_EnvelopeEmptyItemsUnchanged(t *testing.T) {
 	t.Setenv("MCP_WIRE_FORMAT", "toon")
 
-	raw := `{"items":[],"count":0}`
-	res := &mcpapi.CallToolResult{
-		Content: []mcpapi.Content{mcpapi.NewTextContent(raw)},
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(`{"items":[],"count":0}`), &payload); err != nil {
+		t.Fatalf("parse test payload: %v", err)
 	}
-	out := injectElapsedMS(res, 1)
+	wireText, err := finalizeDeferred(payload, 1, nil)
+	if err != nil {
+		t.Fatalf("finalizeDeferred: %v", err)
+	}
+	out := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(wireText)}}
 	text := resultText(out)
 
 	var env map[string]any

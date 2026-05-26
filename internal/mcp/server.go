@@ -789,7 +789,7 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 		res, err = fn(ctx, req)
 		// #1650/#1687: stamp every tool payload with elapsed_ms — including error
 		// responses — so callers can benchmark latency regardless of outcome.
-		// Success responses: JSON object/array or non-JSON text (see injectElapsedMS).
+		// Success responses: JSON object/array or non-JSON text (see appendElapsedTrailer).
 		// Error responses: plain-text content; we append the trailing comment so
 		// the same regex parser works for both paths.
 		elapsed := time.Since(start).Milliseconds()
@@ -820,17 +820,12 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 				}
 			} else {
 				// Non-deferred fallback (markdown handlers, error
-				// results, hand-built TextContent). #2326: the JSON
-				// branches of injectElapsedMS have been retired — the
-				// only remaining responsibility is appending an
-				// elapsed_ms trailer to plain-text bodies (errors and
-				// markdown). fields= filtering is still applied here
-				// for non-JSON shapes that might carry structured
-				// content via TextContent (rare; preserved for parity).
-				if fl != nil {
-					res = applyFieldsToResult(res, fl)
-				}
-				res = injectElapsedMS(res, elapsed)
+				// results, hand-built TextContent). The only remaining
+				// responsibility is appending an elapsed_ms trailer to
+				// plain-text bodies (errors and markdown). JSON-shaped
+				// results ride the deferred fast path (above) and never
+				// reach here in production.
+				res = appendElapsedTrailer(res, elapsed)
 			}
 			// #1740: intern repeated entity IDs to short handles (@1, @2, …).
 			// Runs after elapsed-ms injection so the _id_table lands in the
@@ -843,21 +838,12 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 	}
 }
 
-// injectElapsedMS is the FALLBACK path for results that did not flow through
-// jsonResult — markdown handlers, hand-built TextContent in tests, and
-// occasionally results whose body happens to be JSON but was constructed
-// without going through jsonResult.
-//
-// #2326: the JSON object/array branches used to duplicate the TOON
-// conversion + envelope-build logic now centralised in finalizeDeferred.
-// To eliminate the duplication this function now parses (once) and
-// delegates to finalizeDeferred for the JSON paths, so the wire shape
-// stays byte-identical to the deferred fast path. Non-JSON payloads
-// (markdown, plain text, errors) get a trailing `# elapsed_ms=N` comment
-// — the cheap, no-parse path. The post-#2287 deferred path covers the
-// hot path; this fallback exists for legacy text-mode handlers and never
-// runs on the production JSON list-tools.
-func injectElapsedMS(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResult {
+// appendElapsedTrailer appends a `# elapsed_ms=N` trailing comment line to the
+// first TextContent item in res. Used for non-deferred results (markdown
+// handlers, error responses) where the payload is plain text, not JSON.
+// JSON-shaped results always ride the deferred fast path (finalizeDeferred)
+// and never reach this function in production.
+func appendElapsedTrailer(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResult {
 	if res == nil || len(res.Content) == 0 {
 		return res
 	}
@@ -866,35 +852,6 @@ func injectElapsedMS(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResul
 		if !ok || tc.Text == "" {
 			continue
 		}
-		trimmed := tc.Text
-		// Cheap check for JSON object/array first byte.
-		for len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\n' || trimmed[0] == '\t' || trimmed[0] == '\r') {
-			trimmed = trimmed[1:]
-		}
-		if len(trimmed) == 0 {
-			continue
-		}
-		switch trimmed[0] {
-		case '{':
-			var obj map[string]any
-			if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
-				// #2326: delegate to finalizeDeferred so TOON conversion
-				// + elapsed_ms injection live in ONE place.
-				if text, ferr := finalizeDeferred(obj, ms, nil); ferr == nil {
-					res.Content[i] = mcpapi.NewTextContent(text)
-					return res
-				}
-			}
-		case '[':
-			var arr []any
-			if err := json.Unmarshal([]byte(tc.Text), &arr); err == nil {
-				if text, ferr := finalizeDeferred(arr, ms, nil); ferr == nil {
-					res.Content[i] = mcpapi.NewTextContent(text)
-					return res
-				}
-			}
-		}
-		// Non-JSON payload: append a trailing comment line. Cheap, no parse.
 		res.Content[i] = mcpapi.NewTextContent(tc.Text + fmt.Sprintf("\n# elapsed_ms=%d\n", ms))
 		return res
 	}

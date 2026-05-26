@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestDeferredPayload_ElapsedMSExactlyOnce verifies the on-the-wire bytes
@@ -346,18 +344,25 @@ func TestInjectElapsedMSIntoBytes_ArrayHasCount(t *testing.T) {
 	}
 }
 
-// BenchmarkResponsePath_Legacy measures the legacy marshal → parse →
-// re-marshal cost on a representative endpoints-like payload.
+// BenchmarkResponsePath_Legacy measures the marshal → parse → re-marshal cost
+// on a representative endpoints-like payload. This path is retained as a
+// baseline comparison for BenchmarkResponsePath_Deferred even though
+// injectElapsedMS no longer exists: we simulate the old behaviour by
+// marshaling, then calling finalizeDeferred (which parses + re-marshals via
+// the map[string]any branch), matching the old round-trip cost profile.
 func BenchmarkResponsePath_Legacy(b *testing.B) {
 	payload := buildBenchPayload()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Step 1: marshal the handler value (jsonResult).
+		// Step 1: marshal the handler value.
 		data, _ := json.Marshal(payload)
-		res := &mcpapi.CallToolResult{Content: []mcpapi.Content{mcpapi.NewTextContent(string(data))}}
-		// Step 2: legacy injectElapsedMS does parse + re-marshal.
-		_ = injectElapsedMS(res, int64(i))
+		// Step 2: unmarshal back into map[string]any (simulates the old parse
+		// step inside injectElapsedMS), then call finalizeDeferred for the
+		// re-marshal — same round-trip cost as the retired function.
+		var obj map[string]any
+		_ = json.Unmarshal(data, &obj)
+		_, _ = finalizeDeferred(obj, int64(i), nil)
 	}
 }
 
