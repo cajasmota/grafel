@@ -1,0 +1,417 @@
+// Django ORM field-access edge synthesis (issue #2279).
+//
+// Phase A: lift the `filter_keys` property bag that applyORMQueries already
+// records on every Django ORM call site (internal/engine/orm_queries.go)
+// into first-class graph edges between the call site and the targeted
+// SCOPE.Schema(subtype=field) entity emitted by the Python extractor
+// (internal/extractors/python/extractor.go:1411-1421).
+//
+// Architecture mirrors the peer engine passes (orm_queries.go,
+// django_drf_actions.go): a single function called from detector.go that
+// walks pre-existing detector output and APPENDS new edges. Append-only —
+// never modifies or removes existing entities/edges, so it cannot regress
+// the surrounding pipeline's bug-rate on files that contain no ORM calls.
+//
+// Edge selection (verb → kind), derived from the orm_queries `operation`
+// canonicalisation:
+//
+//   - find / aggregate (filter, get, exclude, values, values_list,
+//     order_by, annotate, select_related, prefetch_related, all)
+//     → READS_FIELD
+//   - create / update (update, create, save, update_or_create,
+//     bulk_create, bulk_update)
+//     → WRITES_FIELD
+//   - delete → skipped (filter_keys on `.filter().delete()` were really
+//     filter intent; the brief explicitly excludes delete from this pass)
+//
+// Field resolution is strictly intra-file in Phase A: we look for a
+// SCOPE.Schema(subtype=field) entity whose Name is `<Model>.<field>`
+// (the convention set at extractor.go:1411-1412). If the model can't be
+// resolved or the field can't be found on that model, the edge is
+// SKIPPED silently — no dangling edges, no panics. Phase B will extend
+// to cross-file lookups + a full obj.attr attribute-access scanner.
+//
+// Django lookup-suffix stripping handles the field traversal grammar
+// documented at https://docs.djangoproject.com/en/stable/ref/models/querysets/#field-lookups
+// (`__icontains`, `__in`, `__gte`, `__lt`, `__isnull`, etc.) AND
+// relation traversals (`author__name` — the FIRST segment is the local
+// field; the remainder crosses relations and is out of scope here).
+//
+// Refs #2279. Closes the orphan class on ORM-only field references:
+// bench Q08 (User.cognito_id usage) was unanswerable structurally with
+// 60+ grep hits and 0 graph nodes/edges before this PR.
+package engine
+
+import (
+	"regexp"
+	"strings"
+
+	"github.com/cajasmota/archigraph/internal/types"
+)
+
+// ormReadsFieldKind / ormWritesFieldKind are the directed-edge Kinds
+// emitted by this pass. Aliased through the types package so the typed
+// enum stays canonical (see kinds.go:RelationshipKindReadsField).
+var (
+	ormReadsFieldKind  = string(types.RelationshipKindReadsField)
+	ormWritesFieldKind = string(types.RelationshipKindWritesField)
+)
+
+// ormFieldEdgesPatternType is the pattern_type property attached to
+// every emitted READS_FIELD / WRITES_FIELD edge; matches the existing
+// pattern_type convention used by orm_queries.go.
+const ormFieldEdgesPatternType = "orm_field_edges"
+
+// applyORMFieldEdges runs after applyORMQueries (which emits the QUERIES
+// edges this pass pivots off of) and APPENDS one READS_FIELD or
+// WRITES_FIELD edge per (call site, resolved field) pair.
+//
+// `lang` is currently honoured only for "python" — Django ORM is the
+// Phase A scope. Other languages no-op cleanly; Phase B will extend
+// the pass to JS/TS Prisma, Java JPA, etc.
+func applyORMFieldEdges(
+	lang string,
+	path string,
+	content []byte,
+	entities []types.EntityRecord,
+	relationships []types.RelationshipRecord,
+) ([]types.EntityRecord, []types.RelationshipRecord) {
+	if lang != "python" {
+		return entities, relationships
+	}
+	if len(content) == 0 {
+		return entities, relationships
+	}
+
+	// Build a per-(model,field) index for THIS file.
+	//
+	// The Python extractor emits SCOPE.Schema(subtype=field) entities for
+	// each class-body assignment (python/extractor.go:1411-1421), but
+	// those run in a SEPARATE pipeline stage (Pass 1) from the YAML
+	// detector (Pass 2.5) — the entities slice handed to this pass
+	// contains only Pass 2.5 output, so the field entities are NOT
+	// visible here. We therefore reconstruct the field index from the
+	// source content directly using a coarse `class … :` + indented
+	// `<name> = models.<Type>(` scan that matches the extractor's
+	// convention closely enough for Phase A (Django ORM).
+	//
+	// The resulting key `<Model>.<field>` is byte-identical to the Name
+	// the Python extractor emits, so consumers that DO see both can
+	// match by name without further normalisation.
+	fieldIdx := indexDjangoModelFields(string(content))
+	if len(fieldIdx) == 0 {
+		// Defensive fallback: some files may have field entities visible
+		// in `entities` (e.g. when a future pass forwards them). Honour
+		// those too so we degrade gracefully if the extraction order
+		// changes.
+		for _, e := range entities {
+			if e.SourceFile != "" && e.SourceFile != path {
+				continue
+			}
+			if e.Kind != "SCOPE.Schema" || e.Subtype != "field" {
+				continue
+			}
+			if !strings.Contains(e.Name, ".") {
+				continue
+			}
+			fieldIdx[e.Name] = true
+		}
+	}
+	if len(fieldIdx) == 0 {
+		return entities, relationships
+	}
+
+	// Scan the source directly for Django ORM call chains. We can't
+	// rely on the QUERIES edges' filter_keys alone because orm_queries
+	// records kwargs from the FIRST call in a chain (`.filter(id=…)`)
+	// — chain-terminal writes (`.filter(id=…).update(cognito_id=…)`)
+	// would otherwise lose the write kwargs.
+	//
+	// Pivot: locate every `<Model>.objects` anchor in the source, then
+	// walk forward through the chain extracting each `.<verb>(<args>)`
+	// link. The model name is fixed from the anchor; per-link we
+	// classify the verb and emit one edge per resolved kwarg.
+	src := string(content)
+	funcs := indexEnclosingFunctions("python", src)
+	for _, m := range djangoChainAnchorRe.FindAllStringSubmatchIndex(src, -1) {
+		modelName := src[m[2]:m[3]]
+		// `m[1]` is the offset just past `<Model>.objects`. The chain
+		// continues with one or more `.<verb>(...)` calls.
+		caller := enclosingFuncAt(funcs, m[0])
+		fromID := buildCallerID("python", caller, path)
+		for _, link := range walkChainLinks(src, m[1]) {
+			edgeKind := ormFieldEdgeKindForVerb(link.verb)
+			if edgeKind == "" {
+				continue
+			}
+			for _, key := range extractKwargKeys(link.args) {
+				field := stripDjangoLookup(key)
+				if field == "" {
+					continue
+				}
+				fqName := modelName + "." + field
+				if !fieldIdx[fqName] {
+					continue
+				}
+				relationships = append(relationships, types.RelationshipRecord{
+					FromID: fromID,
+					ToID:   "Class:" + fqName,
+					Kind:   edgeKind,
+					Properties: map[string]string{
+						"orm":          "django",
+						"verb":         link.verb,
+						"field":        field,
+						"model":        modelName,
+						"pattern_type": ormFieldEdgesPatternType,
+					},
+				})
+			}
+		}
+	}
+
+	return entities, relationships
+}
+
+// djangoChainAnchorRe matches the start of every Django ORM queryset
+// chain: `<Model>.objects`. The chain that follows is consumed by
+// walkChainLinks.
+var djangoChainAnchorRe = regexp.MustCompile(
+	`\b([A-Z][A-Za-z0-9_]*)\.objects\b`,
+)
+
+// chainLink is one `.verb(args)` segment of a Django ORM queryset chain.
+type chainLink struct {
+	verb string
+	args string
+}
+
+// walkChainLinks parses the QuerySet method chain starting at `pos` and
+// returns every `.<verb>(<args>)` segment until the chain ends (newline
+// not followed by a continuation, semicolon, or non-chain character).
+//
+// Defensive: bounded at 8 KB of source to avoid runaway scans on
+// pathological inputs. Args strings are returned WITHOUT the wrapping
+// parens; callers should pass them to extractKwargKeys.
+func walkChainLinks(src string, pos int) []chainLink {
+	var out []chainLink
+	end := pos + 8192
+	if end > len(src) {
+		end = len(src)
+	}
+	for pos < end {
+		// Skip whitespace + newlines + line-continuation backslashes so
+		// chains broken across lines (`.filter(\n    id=1\n).update(...)`)
+		// are still walked.
+		for pos < end {
+			c := src[pos]
+			if c == ' ' || c == '\t' || c == '\n' || c == '\\' || c == '\r' {
+				pos++
+				continue
+			}
+			break
+		}
+		if pos >= end || src[pos] != '.' {
+			break
+		}
+		pos++ // consume '.'
+		// Verb identifier.
+		vs := pos
+		for pos < end {
+			c := src[pos]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9') || c == '_' {
+				pos++
+				continue
+			}
+			break
+		}
+		if pos == vs {
+			break
+		}
+		verb := src[vs:pos]
+		// Optional whitespace before the opening paren.
+		for pos < end && (src[pos] == ' ' || src[pos] == '\t') {
+			pos++
+		}
+		if pos >= end || src[pos] != '(' {
+			// Property access without a call (e.g. `.objects` itself):
+			// not a chain link we can act on. Stop — anything further
+			// without parens is unlikely to be a verb invocation.
+			break
+		}
+		args := matchCall(src, pos, 4096)
+		// Advance past the matched call. matchCall returns the inner
+		// args; we need to find the matching `)` ourselves to continue.
+		closeIdx := pos + 1 + len(args)
+		if closeIdx >= end || src[closeIdx] != ')' {
+			// Unbalanced — bail out, keep what we have.
+			out = append(out, chainLink{verb: verb, args: args})
+			break
+		}
+		pos = closeIdx + 1
+		out = append(out, chainLink{verb: verb, args: args})
+	}
+	return out
+}
+
+// extractKwargKeys parses a raw call-args blob like `cognito_id="x", name="y"`
+// and returns the kwarg identifiers (LHS of each `=`). Returns nil for
+// empty / non-kwarg args (e.g. positional-only).
+//
+// Note: deliberately simpler than orm_queries.parseFilterKeys — that
+// helper drops ORM-internal keys like `where` / `select` (Prisma /
+// Sequelize). Django ORM does not use those names, and stripping them
+// here would also accept `__hidden=True` (an underscore-prefixed
+// kwarg) as a "key" — we want every kwarg LHS through, the lookup-suffix
+// step below normalises traversals.
+var kwargKeyRe = regexp.MustCompile(`(?:^|[,(\s])([a-zA-Z_][a-zA-Z0-9_]*)\s*=`)
+
+func extractKwargKeys(args string) []string {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return nil
+	}
+	matches := kwargKeyRe.FindAllStringSubmatch(args, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range matches {
+		k := m[1]
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	return out
+}
+
+// ormFieldEdgeKindForVerb maps a Django ORM queryset verb to the
+// field-access edge kind. Returns "" for verbs that should not emit
+// a field edge in Phase A (delete; non-ORM methods).
+//
+// Read verbs come straight from the brief:
+//
+//	filter, get, exclude, values, values_list, order_by, annotate,
+//	select_related, prefetch_related
+//
+// Write verbs likewise:
+//
+//	update, create, save, update_or_create, bulk_create, bulk_update
+//
+// `delete` is intentionally excluded: the brief does not list it under
+// either category, and its kwargs (when present) are normally chained
+// filters that already match a separate `.filter()` link in the
+// queryset chain — so we'd double-count.
+func ormFieldEdgeKindForVerb(verb string) string {
+	switch verb {
+	case "filter", "get", "exclude", "values", "values_list",
+		"order_by", "annotate", "select_related", "prefetch_related":
+		return ormReadsFieldKind
+	case "update", "create", "save", "update_or_create",
+		"bulk_create", "bulk_update":
+		return ormWritesFieldKind
+	}
+	return ""
+}
+
+// djangoClassDeclRe locates Django model class declarations:
+//
+//	class <Name>(... models.Model ...):
+//
+// The base class list is matched loosely (any parenthesised group that
+// contains "Model") so subclasses of project-local abstract bases
+// (e.g. `class User(TimestampedModel):` where TimestampedModel itself
+// inherits from models.Model) are still recognised. False positives
+// (a plain class whose parens contain the word "Model" but is not
+// actually a Django model) are inert: their fields just won't be the
+// target of any ORM filter_keys so no spurious edges are emitted.
+var djangoClassDeclRe = regexp.MustCompile(
+	`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\(([^)]*Model[^)]*)\)\s*:`,
+)
+
+// djangoFieldDeclRe locates field declarations inside a model body:
+//
+//	    <name> = models.<SomethingField>(...)
+//	    <name> = <CustomField>(...)
+//
+// We accept either the `models.` namespace (stdlib Django fields) or a
+// bare `<Capitalised>Field(` call (project-local custom field classes,
+// django-money MoneyField, etc.). The leading indentation is required
+// so top-level assignments at module scope (e.g. `User = get_user_model()`)
+// are NOT treated as field declarations.
+var djangoFieldDeclRe = regexp.MustCompile(
+	`(?m)^[ \t]+([a-z_][a-zA-Z0-9_]*)\s*=\s*(?:models\.[A-Z]\w*|[A-Z]\w*?Field)\s*\(`,
+)
+
+// indexDjangoModelFields scans `src` for Django model class bodies and
+// returns the set of `<Model>.<field>` names discovered, mirroring the
+// Name convention the Python extractor uses at python/extractor.go:1411.
+//
+// Strategy: locate each `class X(... Model ...):` header, then scan
+// forward to the next class declaration (or EOF) and harvest every
+// indented `<name> = models.…Field(…)` or `<name> = <Custom>Field(…)`
+// assignment as a field of the enclosing class.
+func indexDjangoModelFields(src string) map[string]bool {
+	out := map[string]bool{}
+	classMatches := djangoClassDeclRe.FindAllStringSubmatchIndex(src, -1)
+	if len(classMatches) == 0 {
+		return out
+	}
+	for i, m := range classMatches {
+		className := src[m[2]:m[3]]
+		// Body extends from the end of the matched header to the start
+		// of the next class declaration (or EOF for the last class).
+		bodyStart := m[1]
+		bodyEnd := len(src)
+		if i+1 < len(classMatches) {
+			bodyEnd = classMatches[i+1][0]
+		}
+		body := src[bodyStart:bodyEnd]
+		for _, fm := range djangoFieldDeclRe.FindAllStringSubmatch(body, -1) {
+			if len(fm) < 2 {
+				continue
+			}
+			fieldName := fm[1]
+			if fieldName == "" {
+				continue
+			}
+			out[className+"."+fieldName] = true
+		}
+	}
+	return out
+}
+
+// stripDjangoLookup strips Django lookup suffixes and relation
+// traversals from a filter-keys token and returns the LOCAL field name.
+//
+// Examples:
+//
+//	cognito_id              → cognito_id
+//	cognito_id__isnull      → cognito_id
+//	name__icontains         → name
+//	author__name            → author       (FIRST segment; remainder
+//	                                        crosses relations — Phase B)
+//	created_at__date__gte   → created_at
+//	__hidden                → ""           (defensive: empty / malformed)
+//
+// We split on the first `__` separator and keep the head, matching the
+// Django field-lookup grammar at
+// https://docs.djangoproject.com/en/stable/ref/models/querysets/#field-lookups
+func stripDjangoLookup(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	if idx := strings.Index(key, "__"); idx >= 0 {
+		key = key[:idx]
+	}
+	// Defensive: trailing single underscores are legal in Python ids;
+	// only an entirely empty head (e.g. raw "__foo" → "") is rejected.
+	if key == "" {
+		return ""
+	}
+	return key
+}
