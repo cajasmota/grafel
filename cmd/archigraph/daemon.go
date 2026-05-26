@@ -86,24 +86,31 @@ func systemTotalMemoryMB() int64 {
 
 // computeRebuildConcurrency applies the auto-tune formula to an explicit
 // memory size (in MB). This is the pure, testable core of defaultRebuildConcurrency.
-// Formula: min(8, sysMB/4096), floored at 2.
+//
+// Phase 1 formula (post-#2141 P0.2, streaming FB writes — ~800MB peak per rebuild):
+// min(16, sysMB/2048), floored at 2.
 //
 //   - sysMB ≤ 0 → 2 (sysinfo unavailable)
-//   - < 8 GB    → 2 (floor)
-//   - 8 GB     → 2
-//   - 16 GB     → 4
-//   - 32 GB     → 8
-//   - ≥ 32 GB   → 8 (ceiling; above this, file-I/O contention outweighs the gain)
+//   - < 4 GB    → 2 (floor)
+//   - 8 GB      → 4
+//   - 16 GB     → 8
+//   - 32 GB     → 16
+//   - ≥ 32 GB   → 16 (ceiling)
+//
+// Previous formula was min(8, sysMB/4096). The raise is safe because #2141 P0.2
+// (streaming FB writes) reduced per-rebuild peak RSS from ~2 GB to ~800 MB,
+// so 16 concurrent jobs on 32 GB = ~12.8 GB worst-case — well within headroom.
+// See issue #2147 for the full phased evolution plan.
 func computeRebuildConcurrency(sysMB int64) int {
 	if sysMB <= 0 {
 		return 2
 	}
-	n := int(sysMB / 4096)
+	n := int(sysMB / 2048)
 	if n < 2 {
 		n = 2
 	}
-	if n > 8 {
-		n = 8
+	if n > 16 {
+		n = 16
 	}
 	return n
 }
@@ -179,7 +186,7 @@ func runDaemon(argv []string) error {
 	// Priority: ARCHIGRAPH_REBUILD_CONCURRENCY > ARCHIGRAPH_MAX_CONCURRENT_GROUPS > auto-tune.
 	envConcGroups := resolveEnvRebuildConcurrency()
 	fs.IntVar(&maxConcurrentGroups, "max-concurrent-groups", envConcGroups,
-		"max repos indexed in parallel during rebuild (auto-tuned from memory; floor=2 cap=8)")
+		"max repos indexed in parallel during rebuild (auto-tuned from memory; floor=2 cap=16)")
 
 	// --no-auto-cleanup disables the background docgen cleanup sweeper (#2216).
 	var noAutoCleanup bool
