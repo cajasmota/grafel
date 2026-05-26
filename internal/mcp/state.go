@@ -272,6 +272,13 @@ type State struct {
 	// ResolveCWD checks it before falling through to the parent-repo logic so
 	// that a cwd inside a linked worktree returns the worktree-specific entry.
 	worktreeLookup WorktreeLookup
+
+	// CrossLinkCache is the ref-keyed in-memory cache for cross-repo link
+	// candidates (issue #2224). Keyed by (repoA, refA, repoB, refB); the
+	// secondary index allows O(affected-entries) invalidation on ref-switch.
+	// Exported so that the daemon server can call NotifyRefSwitch on receipt
+	// of a BranchSwitchEvent and integration tests can inspect cache state.
+	CrossLinkCache *CrossLinkCache
 }
 
 // SetWorktreeLookup wires the PH3 ephemeral worktree registry.  Call from
@@ -285,10 +292,25 @@ func (s *State) SetWorktreeLookup(wl WorktreeLookup) {
 // NewState constructs an empty state for the given registry.
 func NewState(reg *Registry) *State {
 	return &State{
-		registry: reg,
-		groups:   map[string]*LoadedGroup{},
-		created:  time.Now(),
+		registry:       reg,
+		groups:         map[string]*LoadedGroup{},
+		created:        time.Now(),
+		CrossLinkCache: NewCrossLinkCache(),
 	}
+}
+
+// NotifyRefSwitch is called by the daemon when a BranchSwitchEvent arrives for
+// a participating repo. It synchronously invalidates every CrossLinkCache entry
+// whose key references (repo, oldRef), ensuring the next cross-repo query
+// produces fresh data for the repo's new ref.
+//
+// Returns the number of cache entries evicted (0 when none were cached for
+// this repo+ref pair, which is the common case on single-ref installations).
+//
+// This is the hook wired from cmd/archigraph's BranchSwitchSink into the MCP
+// server to close the stale-cache bug tracked in issue #2224.
+func (s *State) NotifyRefSwitch(repo, oldRef string) int {
+	return s.CrossLinkCache.InvalidateRepo(repo, oldRef)
 }
 
 // Registry returns the loaded registry.
