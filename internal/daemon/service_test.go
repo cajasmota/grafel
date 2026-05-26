@@ -1,12 +1,104 @@
 package daemon
 
 import (
+	"bytes"
+	"log"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 )
+
+// TestNewService_JSONMode_WarnsFlaggedLogger verifies that newService emits a
+// warning to stderr when ARCHIGRAPH_DAEMON_LOG_JSON=1 is active and the
+// supplied log.Logger has non-zero flags (issue #2353). A flagged logger
+// prepends a timestamp prefix, making JSON output invalid.
+func TestNewService_JSONMode_WarnsFlaggedLogger(t *testing.T) {
+	t.Setenv(EnvDaemonLogJSON, "1")
+
+	var buf bytes.Buffer
+	// log.LstdFlags = Ldate | Ltime — the default flags that break JSON output.
+	logger := log.New(&buf, "", log.LstdFlags)
+
+	newService(
+		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
+		func(proto.RebuildArgs) ([]string, string, error) { return []string{}, "", nil },
+		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+			return proto.QualityAuditReply{}, nil
+		},
+		"/tmp/test.sock",
+		make(chan struct{}),
+		logger,
+		1,
+	)
+
+	out := buf.String()
+	if !strings.Contains(out, "WARN:") {
+		t.Errorf("expected WARN in log output when logger has flags under JSON mode, got: %q", out)
+	}
+	if !strings.Contains(out, EnvDaemonLogJSON) {
+		t.Errorf("expected env var name %q in warning, got: %q", EnvDaemonLogJSON, out)
+	}
+	if !strings.Contains(out, "flags=") {
+		t.Errorf("expected flags= value in warning, got: %q", out)
+	}
+}
+
+// TestNewService_JSONMode_NoWarnZeroFlags verifies that newService does NOT
+// emit a warning when JSON mode is active and the logger has flags=0 (the
+// correct configuration for JSON-lines output).
+func TestNewService_JSONMode_NoWarnZeroFlags(t *testing.T) {
+	t.Setenv(EnvDaemonLogJSON, "1")
+
+	var buf bytes.Buffer
+	logger := log.New(&buf, "", 0) // flags=0: safe for JSON output
+
+	newService(
+		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
+		func(proto.RebuildArgs) ([]string, string, error) { return []string{}, "", nil },
+		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+			return proto.QualityAuditReply{}, nil
+		},
+		"/tmp/test.sock",
+		make(chan struct{}),
+		logger,
+		1,
+	)
+
+	out := buf.String()
+	if strings.Contains(out, "WARN:") {
+		t.Errorf("unexpected WARN in log output when logger has flags=0 under JSON mode, got: %q", out)
+	}
+}
+
+// TestNewService_TextMode_NoWarnFlaggedLogger verifies that the flagged-logger
+// warning is NOT emitted when JSON mode is disabled, even if the logger has
+// non-zero flags (flags only corrupt output in JSON-lines mode).
+func TestNewService_TextMode_NoWarnFlaggedLogger(t *testing.T) {
+	t.Setenv(EnvDaemonLogJSON, "") // JSON mode off
+
+	var buf bytes.Buffer
+	logger := log.New(&buf, "", log.LstdFlags)
+
+	newService(
+		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
+		func(proto.RebuildArgs) ([]string, string, error) { return []string{}, "", nil },
+		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+			return proto.QualityAuditReply{}, nil
+		},
+		"/tmp/test.sock",
+		make(chan struct{}),
+		logger,
+		1,
+	)
+
+	out := buf.String()
+	if strings.Contains(out, "WARN:") {
+		t.Errorf("unexpected WARN in log output in text mode with flagged logger, got: %q", out)
+	}
+}
 
 // TestStatusRSSReportsActualMemory verifies that Status.RSSUsedMB
 // reports the actual daemon memory (in MB) from runtime.MemStats,
