@@ -461,6 +461,23 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 // migration files and the package `__init__.py`. Hand-written modules never
 // live directly inside a `migrations/` directory in idiomatic Django.
 //
+// # YAML-driven vs code-driven hybrid (issue #2348)
+//
+// The engine/rules/python/frameworks/django.yaml file_convention
+//
+//	glob: "*/migrations/0*.py"
+//	entity_type: Migration
+//	name_from: filename
+//
+// identifies migration files and emits a lightweight Migration entity via
+// the YAML-driven detector pass. This predicate is intentionally kept as a
+// post-YAML hook that gates the RICHER extraction performed by
+// extractMigrationEntity (operation JSON, dep graph, op_count). The YAML
+// pass identifies the file; this code does the semantic extraction. Both
+// coexist without conflict: the YAML entity carries pattern_type=file_convention
+// and the extractor entity carries Subtype="django" + Properties["operations"].
+// The extractor's entity is authoritative for graph consumers.
+//
 // Issue #1731 — extension catalogue for other migration frameworks (not yet
 // implemented; add a corresponding isXxxMigrationFile predicate and wire it
 // into the pruning gate above when needed):
