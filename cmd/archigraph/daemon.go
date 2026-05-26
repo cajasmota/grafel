@@ -48,13 +48,6 @@ import (
 // created once in runDaemon before the RPC + dashboard servers start.
 var daemonProgressBroker = progress.NewBroker()
 
-// daemonExtractorCfg is the ExtractorConfig built once at daemon startup from
-// the process environment (issue #2397). It is the single source of truth for
-// feature toggles such as ARCHIGRAPH_INCREMENTAL_REINDEX so that the scheduler
-// and TryIncremental consult IsIncrementalEnabled() instead of re-reading env
-// vars directly. Populated by runDaemon before the scheduler is wired.
-var daemonExtractorCfg extractor.ExtractorConfig
-
 // defaultDashboardPort is the default TCP port for the embedded dashboard.
 const defaultDashboardPort = 47274
 
@@ -290,7 +283,8 @@ func runDaemon(argv []string) error {
 	// Issue #2397: build the ExtractorConfig once at daemon startup from the
 	// process environment so downstream paths (scheduler, TryIncremental) can
 	// consult IsIncrementalEnabled() rather than re-reading env vars directly.
-	daemonExtractorCfg = extractor.ConfigFromEnv()
+	// Captured by value here; the pointer below is the sole owner (issue #2406).
+	extractorCfg := extractor.ConfigFromEnv()
 
 	cfg := daemon.Config{
 		Layout:       layout,
@@ -303,14 +297,31 @@ func runDaemon(argv []string) error {
 		// reindex skips Pass 4 (graph algorithms) so a freshly-saved
 		// file becomes queryable as soon as the basic graph lands;
 		// the algorithm pass is run separately on a 30s debounce.
-		ReposToWatch:         daemonReposToWatch,
-		GroupsForRepo:        daemonGroupsForRepo,
-		SchedulerIndex:       daemonSchedulerIndex,
-		SchedulerLinks:       daemonSchedulerLinks,
-		SchedulerAlgo:        daemonSchedulerAlgo,
-		SchedulerIncremental: daemonSchedulerIncremental,
+		ReposToWatch:   daemonReposToWatch,
+		GroupsForRepo:  daemonGroupsForRepo,
+		SchedulerIndex: daemonSchedulerIndex,
+		SchedulerLinks: daemonSchedulerLinks,
+		SchedulerAlgo:  daemonSchedulerAlgo,
+		// Issue #2406: capture extractorCfg at construction time so the closure
+		// owns an immutable pointer — no package-level singleton needed.
+		SchedulerIncremental: func(ctx context.Context, repoPath string, ref string) sched.IncrementalResult {
+			stateDir := daemon.StateDirForRepoRef(repoPath, ref)
+			if stateDir == "" {
+				stateDir = daemon.StateDirForRepo(repoPath)
+			}
+			res := extractors.TryIncremental(context.Background(), repoPath, stateDir, nil, &extractorCfg)
+			if res.Done {
+				invalidateAfterIndex(repoPath)
+				tierAfterIndex(repoPath, ref)
+			}
+			return sched.IncrementalResult{
+				Done:           res.Done,
+				FallbackReason: res.FallbackReason,
+				ChangedFiles:   res.ChangedFiles,
+			}
+		},
 		// Single source of truth for the incremental toggle (issue #2397).
-		ExtractorConfig: &daemonExtractorCfg,
+		ExtractorConfig: &extractorCfg,
 
 		MaxRSSBudgetMB:      maxRSSBudget,
 		RSSHistoryPath:      filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
@@ -508,31 +519,6 @@ func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) erro
 	// PH2 (#2090): register / re-activate the tier slot as HOT after index.
 	tierAfterIndex(repoPath, ref)
 	return err
-}
-
-// daemonSchedulerIncremental is the S3 incremental file-level reindex hook
-// wired into the scheduler (issue #2153 of epic #2149). It is only called when
-// ARCHIGRAPH_INCREMENTAL_REINDEX=1 is set; the scheduler gates on that env var
-// before dispatching.
-//
-// The function attempts to patch graph.fb in-place rather than re-running the
-// full index pipeline. It falls back (done=false) when more than 5 files changed,
-// the graph is absent, or the scoped resolver detects an unresolvable relationship.
-func daemonSchedulerIncremental(_ context.Context, repoPath string, ref string) sched.IncrementalResult {
-	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
-	if stateDir == "" {
-		stateDir = daemon.StateDirForRepo(repoPath)
-	}
-	res := extractors.TryIncremental(context.Background(), repoPath, stateDir, nil, &daemonExtractorCfg)
-	if res.Done {
-		invalidateAfterIndex(repoPath)
-		tierAfterIndex(repoPath, ref)
-	}
-	return sched.IncrementalResult{
-		Done:           res.Done,
-		FallbackReason: res.FallbackReason,
-		ChangedFiles:   res.ChangedFiles,
-	}
 }
 
 // daemonSchedulerLinks re-runs the cross-repo link passes for a group.
