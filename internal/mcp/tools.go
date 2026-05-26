@@ -1189,18 +1189,30 @@ func (s *Server) handleListCommunities(ctx context.Context, req mcpapi.CallToolR
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	// Defaults sized to keep an overview response cheap; both are overridable
+	// via the same arg map the rest of the tool surface uses (issue #2289).
+	// Pass top_entities_limit=-1 / min_size=0 to disable either cap.
+	topLimit := argInt(req, "top_entities_limit", 3)
+	minSize := argInt(req, "min_size", 20)
 	out := []map[string]any{}
 	for _, r := range repos {
 		if r.Doc == nil {
 			continue
 		}
 		for _, c := range r.Doc.Communities {
+			if c.Size < minSize {
+				continue
+			}
+			top := c.TopEntities
+			if topLimit >= 0 && len(top) > topLimit {
+				top = top[:topLimit]
+			}
 			out = append(out, map[string]any{
 				"repo":         r.Repo,
 				"id":           c.ID,
 				"size":         c.Size,
 				"modularity":   c.Modularity,
-				"top_entities": c.TopEntities,
+				"top_entities": top,
 			})
 		}
 	}
