@@ -316,9 +316,12 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 		}
 		if runFramework {
 			// Issue #2447: count how many files enter Detect() with
-			// Pass1Entities plumbed (True) vs empty (False). A non-zero
-			// False count post-PR #2445 signals the side-channel is being
-			// bypassed somewhere new.
+			// Pass1Entities plumbed (True) vs empty (False).
+			// Note (issue #2464): FalseCount > 0 is EXPECTED on heterogeneous
+			// repos — Pass 2.5 runs against all classified files regardless of
+			// language, so non-Django files (Go, JS, etc.) always contribute to
+			// FalseCount. Use the True/(True+False) ratio as the health signal,
+			// not the raw FalseCount. See BatchStats for full diagnostic guidance.
 			if len(file.Pass1Entities) > 0 {
 				stats.Pass1PlumbedTrueCount++
 			} else {

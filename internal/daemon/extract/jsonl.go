@@ -82,10 +82,27 @@ type BatchStats struct {
 	// FileInput.Pass1Entities non-empty (True) vs empty (False) when
 	// Detector.Detect was called for Pass 2.5.
 	//
-	// A non-zero False count in production signals the Pass1Entities
-	// side-channel is being bypassed. Future engine passes that rely
-	// exclusively on Pass1Entities (with no regex fallback) would
-	// silently produce zero edges when False > 0.
+	// Heterogeneous-repo semantics (issue #2464): runPass25FrameworkRules
+	// runs Pass 2.5 against ALL classified files regardless of language.
+	// Non-Django files (Go, JS, TypeScript, etc.) never produce
+	// SCOPE.Schema(subtype=field) entities in Pass 1, so they legitimately
+	// contribute to FalseCount. A non-zero FalseCount is therefore EXPECTED
+	// on any multi-language repository and does NOT indicate a plumbing bug.
+	//
+	// Correct production diagnostic:
+	//   ratio = TrueCount / (TrueCount + FalseCount)
+	// For Django-only repos this ratio should be near 1.0. For heterogeneous
+	// repos it will be proportional to the fraction of files that are Django
+	// models. A ratio near 0.0 on a known-Django repo is the signal worth
+	// alerting on.
+	//
+	// The naive check "FalseCount == 0" is only valid on Django-only test
+	// fixtures (e.g. the unit-test fixture from PR #2463). Do NOT use it
+	// as a production health gate.
+	//
+	// Pre-Pass-2.5 language filtering (run Detect only on Python files) is
+	// the deeper fix that would eliminate FalseCount noise entirely; tracked
+	// as a follow-up to issue #2464.
 	Pass1PlumbedTrueCount  int `json:"pass1_plumbed_true"`
 	Pass1PlumbedFalseCount int `json:"pass1_plumbed_false"`
 }

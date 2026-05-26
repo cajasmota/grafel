@@ -102,7 +102,9 @@ type Result struct {
 	NonFatalErrors []string
 
 	// Pass1Plumbed counters (issue #2447): aggregated from every subprocess.
-	// See BatchStats for semantics.
+	// See BatchStats for full semantics, including heterogeneous-repo
+	// expectations (issue #2464): FalseCount > 0 is normal on multi-language
+	// repos. Use TrueCount / (TrueCount + FalseCount) as the health ratio.
 	Pass1PlumbedTrueCount  int
 	Pass1PlumbedFalseCount int
 }
