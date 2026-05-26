@@ -215,7 +215,7 @@ func TestHandleFindPathsSyntheticEdgesRelIdx(t *testing.T) {
 			{FromID: "src", ToID: "dst", Kind: "CALLS"},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"group": "test",
@@ -302,7 +302,7 @@ func TestNoSessionMetaInNonWhoamiHandlers(t *testing.T) {
 			{FromID: "fn_a", ToID: "fn_b", Kind: "CALLS"},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// Each entry: handler func + args to call it with.
 	type tc struct {

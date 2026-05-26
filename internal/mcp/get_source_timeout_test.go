@@ -66,7 +66,7 @@ func TestGetSource_ReturnsWindowedSnippet(t *testing.T) {
 			{ID: "foo", Name: "Foo", Kind: "Function", SourceFile: "sample.go", StartLine: 3, EndLine: 5},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	// Repoint the test repo at our temp dir.
 	srv.State.groups["test"].Repos["repo1"].Path = dir
 
@@ -120,7 +120,7 @@ func TestGetSource_TimesOutOnStuckOpen(t *testing.T) {
 			{ID: "stuck", Name: "Stuck", Kind: "Function", SourceFile: "stuck.fifo", StartLine: 1, EndLine: 1},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	srv.State.groups["test"].Repos["repo1"].Path = dir
 
 	// 500ms ceiling — the handler must return well within this budget.

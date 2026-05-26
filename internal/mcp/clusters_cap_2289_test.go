@@ -28,7 +28,7 @@ func Test_handleListCommunities_DefaultCaps_2289(t *testing.T) {
 			{ID: 4, Size: 20, Modularity: 0.6, TopEntities: []string{"p", "q", "r", "s"}},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{"r": doc})
+	srv := newTestServer(t, doc)
 	text := callEndpointToolText(t, srv.handleListCommunities, map[string]any{
 		"group": "test",
 	})
@@ -69,7 +69,7 @@ func Test_handleListCommunities_OverrideCaps_2289(t *testing.T) {
 			{ID: 2, Size: 5, Modularity: 0.3, TopEntities: []string{"x", "y"}},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{"r": doc})
+	srv := newTestServer(t, doc)
 	text := callEndpointToolText(t, srv.handleListCommunities, map[string]any{
 		"group":              "test",
 		"top_entities_limit": -1,
@@ -99,7 +99,7 @@ func Test_handleListCommunities_ExplicitLimitHigherThanLen_2289(t *testing.T) {
 			{ID: 1, Size: 100, Modularity: 0.5, TopEntities: []string{"a", "b"}},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{"r": doc})
+	srv := newTestServer(t, doc)
 	text := callEndpointToolText(t, srv.handleListCommunities, map[string]any{
 		"group":              "test",
 		"top_entities_limit": 10,
@@ -130,7 +130,7 @@ func Test_handleListCommunities_SortBySize_2319(t *testing.T) {
 			{ID: 3, Size: 30, Modularity: 0.4, TopEntities: []string{"d", "e", "f"}},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{"r": doc})
+	srv := newTestServer(t, doc)
 	text := callEndpointToolText(t, srv.handleListCommunities, map[string]any{
 		"group":              "test",
 		"min_size":           20,  // filters out id=1 (size 10)

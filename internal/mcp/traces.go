@@ -202,7 +202,7 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 			// name/file/line/repo from the correct companion repo instead of being
 			// emitted as bare {id, node_id, step_index} stubs.
 			xrLookup := buildGroupCrossRepoLookup(lg, r.Repo)
-			steps := buildProcessStepsWithCrossRepo(r.Doc, e, r.ByID, r.Repo, xrLookup, verbose)
+			steps := buildProcessStepsWithCrossRepo(r, e, xrLookup, verbose)
 			return jsonResult(map[string]any{
 				"process_id":  prefixedID(r.Repo, e.ID),
 				"repo":        r.Repo,
@@ -367,19 +367,25 @@ func buildGroupCrossRepoLookup(lg *LoadedGroup, seedRepo string) crossRepoLookup
 // archigraph_inspect round-trip (#1744). node_id (local ID) is preserved for
 // backward compatibility.
 //
-// crossRepo, when non-nil, is consulted for step entity IDs not found in byID.
+// crossRepo, when non-nil, is consulted for step entity IDs not found in r.ByID.
 // This is the cross-repo companion lookup needed to enrich bridge steps in
 // flows that extend across repo boundaries (#1905). When crossRepo is nil the
 // function behaves identically to the single-repo path.
-func buildProcessSteps(doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity, repo string, verbose ...bool) []map[string]any {
-	return buildProcessStepsWithCrossRepo(doc, proc, byID, repo, nil, verbose...)
+//
+// Migrated from (doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity,
+// repo string) to *LoadedRepo in #2307 — all callers already hold a *LoadedRepo.
+func buildProcessSteps(r *LoadedRepo, proc *graph.Entity, verbose ...bool) []map[string]any {
+	return buildProcessStepsWithCrossRepo(r, proc, nil, verbose...)
 }
 
 // buildProcessStepsWithCrossRepo is the cross-repo-aware variant of
 // buildProcessSteps (#1905). Pass a non-nil crossRepo to resolve bridge step
 // entities that live in companion repos.
-func buildProcessStepsWithCrossRepo(doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity, repo string, crossRepo crossRepoLookup, verbose ...bool) []map[string]any {
+func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo crossRepoLookup, verbose ...bool) []map[string]any {
 	wantVerbose := len(verbose) > 0 && verbose[0]
+	doc := r.Doc
+	repo := r.Repo
+	byID := r.ByID
 	if byID == nil {
 		// Defensive fallback: callers should always pass a cached map (#1656),
 		// but synthesize on the fly if absent so tests that pass nil still work.
@@ -391,16 +397,16 @@ func buildProcessStepsWithCrossRepo(doc *graph.Document, proc *graph.Entity, byI
 	}
 	var ordered []indexed
 	for i := range doc.Relationships {
-		r := &doc.Relationships[i]
-		if r.Kind != stepInProcessEdge || r.FromID != proc.ID {
+		rel := &doc.Relationships[i]
+		if rel.Kind != stepInProcessEdge || rel.FromID != proc.ID {
 			continue
 		}
 		idxStr := ""
-		if r.Properties != nil {
-			idxStr = r.Properties["step_index"]
+		if rel.Properties != nil {
+			idxStr = rel.Properties["step_index"]
 		}
 		n, _ := strconv.Atoi(idxStr)
-		ordered = append(ordered, indexed{n, r.ToID})
+		ordered = append(ordered, indexed{n, rel.ToID})
 	}
 	if len(ordered) == 0 {
 		// Fallback to the chain property if the edges weren't emitted.

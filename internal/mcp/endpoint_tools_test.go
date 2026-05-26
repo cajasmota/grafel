@@ -70,7 +70,7 @@ func buildEndpointDoc() *graph.Document {
 
 func newEndpointServer(t *testing.T) *Server {
 	t.Helper()
-	return newTestServerWithDoc(t, buildEndpointDoc())
+	return newTestServer(t, buildEndpointDoc())
 }
 
 func callEndpointTool(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), args map[string]any) map[string]any {
@@ -365,7 +365,7 @@ func TestEndpointDefinitions_OrphanOnly_NoOrphansReturnsEmpty(t *testing.T) {
 	doc.Relationships = append(doc.Relationships, graph.Relationship{
 		FromID: "fn_other", ToID: "ep_legacy", Kind: "FETCHES",
 	})
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":       "test",
@@ -395,7 +395,7 @@ func TestEndpointDefinitions_OrphanOnly_IgnoresNonFetchesInbound(t *testing.T) {
 	doc.Relationships = []graph.Relationship{
 		{FromID: "fn_other", ToID: "ep_def", Kind: "CONTAINS"},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":       "test",
@@ -600,7 +600,7 @@ func TestEndpointStats_MigratedTrueWhenNoLegacy(t *testing.T) {
 			{ID: "c1", Kind: "http_endpoint_call", Name: "fetchA"},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
 	migrated, ok := res["migrated"].(bool)
 	if !ok {
@@ -645,7 +645,7 @@ func TestQualityOrphans_LegacyKindFilterExpands(t *testing.T) {
 			{ID: "isolated_call", Kind: "http_endpoint_call", Name: "fetchIsolated"},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	res := callDashboardTool(t, srv.handleQualityOrphans, map[string]any{
 		"group":       "test",
 		"kind_filter": "http_endpoint",
@@ -834,7 +834,7 @@ func buildLargeEndpointDoc(n int) *graph.Document {
 // TestEndpointDefaultLimit_Definitions verifies that without an explicit
 // limit=N, handleEndpointDefinitions returns at most 20 items (#1738).
 func TestEndpointDefaultLimit_Definitions(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLargeEndpointDoc(30))
+	srv := newTestServer(t, buildLargeEndpointDoc(30))
 	// #2288: terse-default response omits `definitions`; use `lines` for the
 	// rendered count assertion, plus a parallel full-mode call to assert the
 	// struct-array slice is also capped.
@@ -853,7 +853,7 @@ func TestEndpointDefaultLimit_Definitions(t *testing.T) {
 // TestEndpointTokenBudget_Definitions verifies that a tight token_budget caps
 // the definitions slice and adds a truncation_note (#1738).
 func TestEndpointTokenBudget_Definitions(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLargeEndpointDoc(30))
+	srv := newTestServer(t, buildLargeEndpointDoc(30))
 	// Pass a very tight budget (50 tokens = 200 bytes) — forces truncation.
 	out := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":        "test",
@@ -957,7 +957,7 @@ func TestEndpointDefinitions_TriplePathDedupe(t *testing.T) {
 			},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":  "test",
 		"format": "full",
@@ -1019,7 +1019,7 @@ func TestEndpointDefinitions_PathContainsFilterBeforeLimit(t *testing.T) {
 		ID: "ep_prop_2", Kind: "http_endpoint_definition",
 		Properties: map[string]string{"verb": "POST", "path": "/api/v1/proposals/create"},
 	})
-	srv := newTestServerWithDoc(t, &graph.Document{Entities: entities})
+	srv := newTestServer(t, &graph.Document{Entities: entities})
 
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":         "test",
@@ -1049,7 +1049,7 @@ func TestEndpointDefinitions_MethodFilterBeforeLimit(t *testing.T) {
 		{ID: "ep3", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "GET", "path": "/c"}},
 		{ID: "ep4", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "DELETE", "path": "/d"}},
 	}
-	srv := newTestServerWithDoc(t, &graph.Document{Entities: entities})
+	srv := newTestServer(t, &graph.Document{Entities: entities})
 
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":  "test",

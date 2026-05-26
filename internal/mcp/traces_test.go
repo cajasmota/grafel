@@ -202,7 +202,7 @@ func build20ProcessDoc() *graph.Document {
 // TestTracesList_DefaultLimit10 verifies that without an explicit limit,
 // the list returns at most 10 items (#1738 default reduction from 25).
 func TestTracesList_DefaultLimit10(t *testing.T) {
-	srv := newTestServerWithDoc(t, build20ProcessDoc())
+	srv := newTestServer(t, build20ProcessDoc())
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"action":    "list",
@@ -226,7 +226,7 @@ func TestTracesList_DefaultLimit10(t *testing.T) {
 // TestTracesList_TokenBudgetEnforced verifies that a tight token_budget
 // caps the list and adds a truncation_note (#1738).
 func TestTracesList_TokenBudgetEnforced(t *testing.T) {
-	srv := newTestServerWithDoc(t, build20ProcessDoc())
+	srv := newTestServer(t, build20ProcessDoc())
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"action":       "list",
@@ -310,10 +310,7 @@ func buildCrossRepoFlowFixture() (frontend, backend *graph.Document) {
 // and its id carries the companion repo prefix — not the seed repo prefix.
 func TestTracesGet_BridgeStepMetadata_1905(t *testing.T) {
 	frontend, backend := buildCrossRepoFlowFixture()
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{
-		"frontend": frontend,
-		"backend":  backend,
-	})
+	srv := newTestServer(t, frontend, backend)
 
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{

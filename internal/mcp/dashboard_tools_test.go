@@ -9,47 +9,6 @@ import (
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
-// newTestServerWithDoc builds a minimal Server with one group ("test") and
-// one repo ("repo1") loaded from the supplied Document.
-func newTestServerWithDoc(t *testing.T, doc *graph.Document) *Server {
-	t.Helper()
-	reg := &Registry{Groups: map[string]RegistryGroup{
-		"test": {
-			Repos: map[string]RegistryRepo{
-				"repo1": {Path: t.TempDir()},
-			},
-		},
-	}}
-	st := NewState(reg)
-	// Inject the document directly rather than loading from disk.
-	st.mu.Lock()
-	byID := make(map[string]*graph.Entity, len(doc.Entities))
-	for i := range doc.Entities {
-		byID[doc.Entities[i].ID] = &doc.Entities[i]
-	}
-	st.groups["test"] = &LoadedGroup{
-		Name: "test",
-		Repos: map[string]*LoadedRepo{
-			"repo1": {
-				Repo:       "repo1",
-				Doc:        doc,
-				LabelIndex: BuildLabelIndex(doc),
-				BM25:       BuildBM25(doc),
-				Adjacency:  buildAdjacency(doc, "repo1"),
-				CallsAdj:   buildCallsAdjacency(doc),
-				ByID:       byID,
-			},
-		},
-	}
-	st.mu.Unlock()
-	srv := &Server{State: st, Tel: NewTelemetry(0)}
-	return srv
-}
-
 // callDashboardTool invokes a handler directly and decodes the JSON result.
 func callDashboardTool(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), args map[string]any) map[string]any {
 	t.Helper()
@@ -95,7 +54,7 @@ func TestHandleTopologyOrphanPublishers(t *testing.T) {
 		{ID: "r2", FromID: "svc", ToID: "t2", Kind: "PUBLISHES_TO"},
 		{ID: "r3", FromID: "svc", ToID: "t2", Kind: "SUBSCRIBES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleTopologyOrphanPublishers, map[string]any{"group": "test"})
 
 	count := int(out["count"].(float64))
@@ -124,7 +83,7 @@ func TestHandleTopologyOrphanSubscribers(t *testing.T) {
 		{ID: "r2", FromID: "svc", ToID: "t1", Kind: "SUBSCRIBES_TO"},
 		{ID: "r3", FromID: "svc", ToID: "t2", Kind: "SUBSCRIBES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleTopologyOrphanSubscribers, map[string]any{"group": "test"})
 	count := int(out["count"].(float64))
 	if count != 1 {
@@ -151,7 +110,7 @@ func TestHandleTopologyTopicDetail(t *testing.T) {
 		{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
 		{ID: "r2", FromID: "sub", ToID: "t1", Kind: "SUBSCRIBES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleTopologyTopicDetail, map[string]any{
 		"group":    "test",
 		"topic_id": "t1",
@@ -170,7 +129,7 @@ func TestHandleTopologyTopicDetail(t *testing.T) {
 }
 
 func TestHandleTopologyTopicDetail_NotFound(t *testing.T) {
-	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	srv := newTestServer(t, minDoc(nil, nil))
 	out := callDashboardTool(t, srv.handleTopologyTopicDetail, map[string]any{
 		"group":    "test",
 		"topic_id": "nonexistent",
@@ -197,7 +156,7 @@ func TestTopicDetail_PrefixedIDRoundtrip(t *testing.T) {
 		{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
 		{ID: "r2", FromID: "sub", ToID: "t1", Kind: "SUBSCRIBES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 
 	// Simulate what search_entities returns: prefixedID(r.Repo, e.ID) = "repo1::t1".
 	prefixedTopicID := prefixedID("repo1", "t1")
@@ -234,7 +193,7 @@ func TestTopicDetail_NameLookupRoundtrip(t *testing.T) {
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 
 	// Pass the topic name directly — LabelIndex.Lookup must bridge the gap.
 	out := callDashboardTool(t, srv.handleTopologyTopicDetail, map[string]any{
@@ -265,9 +224,7 @@ func TestTopicDetail_RepoAliasRoundtrip(t *testing.T) {
 	}
 	// Register under the slug key — repo1 path-basename is "payments_service"
 	// (underscore variant).  buildRepoAliasMap must alias both forms.
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{
-		"payments-service": docA,
-	})
+	srv := newTestServer(t, docA)
 
 	// search_entities would emit "payments-service::t1" (canonical slug prefix).
 	// topic_detail must resolve this even if an internal alias is involved.
@@ -334,7 +291,7 @@ func TestSearchEntities_SchemaFieldFold(t *testing.T) {
 			StartLine: 40,
 		},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 
 	// Default: only the parent class + the operation should appear; fields suppressed.
 	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
@@ -375,7 +332,7 @@ func TestSearchEntities_TopicKindAlias(t *testing.T) {
 		{ID: "q3", Name: "order.placed", Kind: "Topic"},
 		{ID: "x1", Name: "PaymentService", Kind: "Class"}, // must not match
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 
 	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
 		"group":       "test",
@@ -412,7 +369,7 @@ func TestHandleFlowDeadEnds(t *testing.T) {
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "fn1", ToID: "fn2", Kind: "CALLS"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleFlowDeadEnds, map[string]any{"group": "test"})
 	count := int(out["count"].(float64))
 	if count != 1 {
@@ -435,7 +392,7 @@ func TestHandleFlowTruncated(t *testing.T) {
 			"step_count": "5",
 		}},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleFlowTruncated, map[string]any{"group": "test"})
 	count := int(out["count"].(float64))
 	if count != 1 {
@@ -468,7 +425,7 @@ func TestHandleFlowDetail(t *testing.T) {
 		{ID: "r2", FromID: "p1", ToID: "fn2", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "1"}},
 		{ID: "r3", FromID: "fx1", ToID: "fn2", Kind: "SIDE_EFFECT_OF"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleFlowDetail, map[string]any{
 		"group":      "test",
 		"process_id": "p1",
@@ -492,7 +449,7 @@ func TestHandleFlowDetail(t *testing.T) {
 
 func TestHandleDiagnostics(t *testing.T) {
 	entities := []graph.Entity{{ID: "e1", Name: "Foo", Kind: "Function"}}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleDiagnostics, map[string]any{"group": "test"})
 	if out["group"] != "test" {
 		t.Errorf("expected group=test, got %v", out["group"])
@@ -522,7 +479,7 @@ func TestHandleQualityOrphans(t *testing.T) {
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "e1", ToID: "e1", Kind: "CALLS"}, // self loop — e1 is connected
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleQualityOrphans, map[string]any{"group": "test"})
 	count := int(out["count"].(float64))
 	if count != 1 {
@@ -545,7 +502,7 @@ func TestHandleSearchEntities(t *testing.T) {
 		{ID: "e2", Name: "PaymentRepository", Kind: "Class", SourceFile: "repo.go"},
 		{ID: "e3", Name: "UserService", Kind: "Class", SourceFile: "user.go"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
 		"group": "test",
 		"query": "Payment",
@@ -561,7 +518,7 @@ func TestHandleSearchEntities_KindFilter(t *testing.T) {
 		{ID: "e1", Name: "processPayment", Kind: "Function"},
 		{ID: "e2", Name: "PaymentService", Kind: "Class"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
 		"group":       "test",
 		"query":       "payment",
@@ -587,7 +544,7 @@ func TestHandleFindPaths(t *testing.T) {
 		{ID: "r1", FromID: "a", ToID: "b", Kind: "CALLS"},
 		{ID: "r2", FromID: "b", ToID: "c", Kind: "CALLS"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleFindPaths, map[string]any{
 		"group": "test",
 		"from":  "a",
@@ -607,7 +564,7 @@ func TestHandleFindPaths_NoPath(t *testing.T) {
 		{ID: "a", Name: "A", Kind: "Function"},
 		{ID: "b", Name: "B", Kind: "Function"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleFindPaths, map[string]any{
 		"group": "test",
 		"from":  "a",
@@ -652,7 +609,7 @@ func TestHandleTopology_OrphanPublishers(t *testing.T) {
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "svc", ToID: "t1", Kind: "PUBLISHES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleTopology, map[string]any{
 		"group":  "test",
 		"action": "orphan_publishers",
@@ -670,7 +627,7 @@ func TestHandleTopology_OrphanSubscribers(t *testing.T) {
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "svc", ToID: "t2", Kind: "SUBSCRIBES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleTopology, map[string]any{
 		"group":  "test",
 		"action": "orphan_subscribers",
@@ -688,7 +645,7 @@ func TestHandleTopology_TopicDetail(t *testing.T) {
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 	out := callDashboardTool(t, srv.handleTopology, map[string]any{
 		"group":    "test",
 		"action":   "topic_detail",
@@ -700,7 +657,7 @@ func TestHandleTopology_TopicDetail(t *testing.T) {
 }
 
 func TestHandleTopology_UnknownAction(t *testing.T) {
-	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	srv := newTestServer(t, minDoc(nil, nil))
 	req := newReq(map[string]any{"group": "test", "action": "bogus"})
 	res, err := srv.handleTopology(ctxBg(), req)
 	if err != nil {
@@ -716,7 +673,7 @@ func TestHandleTopology_UnknownAction(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleFlows_DeadEnds(t *testing.T) {
-	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	srv := newTestServer(t, minDoc(nil, nil))
 	out := callDashboardTool(t, srv.handleFlows, map[string]any{
 		"group":  "test",
 		"action": "dead_ends",
@@ -727,7 +684,7 @@ func TestHandleFlows_DeadEnds(t *testing.T) {
 }
 
 func TestHandleFlows_Truncated(t *testing.T) {
-	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	srv := newTestServer(t, minDoc(nil, nil))
 	out := callDashboardTool(t, srv.handleFlows, map[string]any{
 		"group":  "test",
 		"action": "truncated",
@@ -738,7 +695,7 @@ func TestHandleFlows_Truncated(t *testing.T) {
 }
 
 func TestHandleFlows_Detail_NotFound(t *testing.T) {
-	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	srv := newTestServer(t, minDoc(nil, nil))
 	out := callDashboardTool(t, srv.handleFlows, map[string]any{
 		"group":      "test",
 		"action":     "detail",
@@ -750,7 +707,7 @@ func TestHandleFlows_Detail_NotFound(t *testing.T) {
 }
 
 func TestHandleFlows_UnknownAction(t *testing.T) {
-	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	srv := newTestServer(t, minDoc(nil, nil))
 	req := newReq(map[string]any{"group": "test", "action": "bogus"})
 	res, err := srv.handleFlows(ctxBg(), req)
 	if err != nil {
@@ -770,7 +727,7 @@ func TestHandleGraphPatterns_List(t *testing.T) {
 		{ID: "p1", Name: "RepositoryPattern", Kind: "SCOPE.Pattern",
 			Properties: map[string]string{"status": "active", "confidence": "0.9"}},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleGraphPatterns, map[string]any{
 		"group":  "test",
 		"action": "list",
@@ -788,7 +745,7 @@ func TestHandleGraphPatterns_Get(t *testing.T) {
 	entities := []graph.Entity{
 		{ID: "p1", Name: "RepositoryPattern", Kind: "SCOPE.Pattern"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleGraphPatterns, map[string]any{
 		"group":      "test",
 		"action":     "get",
@@ -800,7 +757,7 @@ func TestHandleGraphPatterns_Get(t *testing.T) {
 }
 
 func TestHandleGraphPatterns_UnknownAction(t *testing.T) {
-	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	srv := newTestServer(t, minDoc(nil, nil))
 	req := newReq(map[string]any{"group": "test", "action": "bogus"})
 	res, err := srv.handleGraphPatterns(ctxBg(), req)
 	if err != nil {

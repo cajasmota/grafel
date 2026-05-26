@@ -39,7 +39,7 @@ func TestPerf2285_FindCompactEmitsEdgesBetweenVisibleNodes(t *testing.T) {
 			{FromID: "b", ToID: "orphan", Kind: "CALLS"},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"group":   "test",
@@ -96,7 +96,7 @@ func TestPerf2285_AgentResolvedEdgesUsesAdjacency(t *testing.T) {
 			}},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"group": "test", "entity_id": "src"}
 	res, err := srv.handleGetNode(context.Background(), req)
@@ -150,7 +150,7 @@ func TestPerf2285_AgentResolvedEdgesEmptyWhenNoAgentEdges(t *testing.T) {
 			{FromID: "src", ToID: "dst", Kind: "CALLS"}, // no Properties
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"group": "test", "entity_id": "src"}
 	res, _ := srv.handleGetNode(context.Background(), req)

@@ -24,7 +24,7 @@ import (
 )
 
 // buildLocateDoc returns a minimal document suitable for testing all locate
-// tools. The repo name used by newTestServerWithDoc is "repo1".
+// tools. The repo name used by newTestServer is "repo1" (doc.Repo is unset).
 func buildLocateDoc() *graph.Document {
 	return &graph.Document{
 		Entities: []graph.Entity{
@@ -177,7 +177,7 @@ func TestIDsInLocate_Find_TOONRowContainsID(t *testing.T) {
 // TestIDsInLocate_Find_JSONPathIncludesID verifies that the JSON-mode
 // archigraph_find response (full=true) includes "id" in each match row.
 func TestIDsInLocate_Find_JSONPathIncludesID(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLocateDoc())
+	srv := newTestServer(t, buildLocateDoc())
 	res := callToolArgs(t, srv.handleQueryGraph, map[string]any{
 		"group":    "test",
 		"question": "AlphaFunc",
@@ -207,7 +207,7 @@ func TestIDsInLocate_Find_JSONPathIncludesID(t *testing.T) {
 // TestIDsInLocate_Expand_NeighborRowsIncludeID verifies that each neighbor
 // row in the expand result carries a prefixed ADR-0009 "id".
 func TestIDsInLocate_Expand_NeighborRowsIncludeID(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLocateDoc())
+	srv := newTestServer(t, buildLocateDoc())
 	// fn_beta has an outbound edge to fn_alpha so we'll get neighbors.
 	raw := callHandlerText(t, srv.handleGetNeighbors, map[string]any{
 		"group": "test",
@@ -243,7 +243,7 @@ func TestIDsInLocate_Expand_NeighborRowsIncludeID(t *testing.T) {
 // archigraph_traces action=get carries a prefixed "id" field alongside the
 // existing "node_id" (kept for backward compatibility).
 func TestIDsInLocate_TracesGet_StepsIncludeID(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLocateDoc())
+	srv := newTestServer(t, buildLocateDoc())
 	res := callToolArgs(t, srv.handleTracesGet, map[string]any{
 		"group":      "test",
 		"process_id": "proc_locate",
@@ -278,7 +278,7 @@ func TestIDsInLocate_TracesGet_StepsIncludeID(t *testing.T) {
 // TestIDsInLocate_TracesFollow_StepsIncludeID verifies that each step in
 // archigraph_traces action=follow carries a prefixed "id" field.
 func TestIDsInLocate_TracesFollow_StepsIncludeID(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLocateDoc())
+	srv := newTestServer(t, buildLocateDoc())
 	res := callToolArgs(t, srv.handleTracesFollow, map[string]any{
 		"group":          "test",
 		"entry_point_id": "fn_beta",
@@ -314,7 +314,7 @@ func TestIDsInLocate_TracesFollow_StepsIncludeID(t *testing.T) {
 // TestIDsInLocate_FindCallers_NarrowIncludesID verifies that each caller row
 // includes a prefixed "id" in the narrow (verbose=false) default mode.
 func TestIDsInLocate_FindCallers_NarrowIncludesID(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLocateDoc())
+	srv := newTestServer(t, buildLocateDoc())
 	res := callToolArgs(t, srv.handleFindCallers, map[string]any{
 		"group":     "test",
 		"entity_id": "fn_alpha",
@@ -342,7 +342,7 @@ func TestIDsInLocate_FindCallers_NarrowIncludesID(t *testing.T) {
 // TestIDsInLocate_FindCallees_NarrowIncludesID verifies that each callee row
 // includes a prefixed "id" in the narrow (verbose=false) default mode.
 func TestIDsInLocate_FindCallees_NarrowIncludesID(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLocateDoc())
+	srv := newTestServer(t, buildLocateDoc())
 	res := callToolArgs(t, srv.handleFindCallees, map[string]any{
 		"group":     "test",
 		"entity_id": "fn_alpha",
@@ -392,21 +392,20 @@ func TestIDsInLocate_Find_MultiRepo_TOONHasIDs(t *testing.T) {
 
 	// Two repos, each with a uniquely named entity so BM25 can score them.
 	docA := &graph.Document{
+		Repo: "repo-a",
 		Entities: []graph.Entity{
 			{ID: "fn_widget", Name: "WidgetHandler", Kind: "SCOPE.Function",
 				QualifiedName: "pkg.WidgetHandler", SourceFile: "src/widget.go", StartLine: 10},
 		},
 	}
 	docB := &graph.Document{
+		Repo: "repo-b",
 		Entities: []graph.Entity{
 			{ID: "fn_widget_b", Name: "WidgetProcessor", Kind: "SCOPE.Function",
 				QualifiedName: "pkg.WidgetProcessor", SourceFile: "src/proc.go", StartLine: 20},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{
-		"repo-a": docA,
-		"repo-b": docB,
-	})
+	srv := newTestServer(t, docA, docB)
 
 	raw := callHandlerText(t, srv.handleQueryGraph, map[string]any{
 		"group":    "test",
@@ -446,21 +445,20 @@ func TestIDsInLocate_Find_MultiRepo_MarkdownFallback(t *testing.T) {
 	t.Setenv("MCP_FIND_FORMAT", "markdown")
 
 	docA := &graph.Document{
+		Repo: "repo-c",
 		Entities: []graph.Entity{
 			{ID: "fn_gadget", Name: "GadgetHandler", Kind: "SCOPE.Function",
 				QualifiedName: "pkg.GadgetHandler", SourceFile: "src/gadget.go", StartLine: 5},
 		},
 	}
 	docB := &graph.Document{
+		Repo: "repo-d",
 		Entities: []graph.Entity{
 			{ID: "fn_gadget_b", Name: "GadgetProcessor", Kind: "SCOPE.Function",
 				QualifiedName: "pkg.GadgetProcessor", SourceFile: "src/gp.go", StartLine: 7},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{
-		"repo-c": docA,
-		"repo-d": docB,
-	})
+	srv := newTestServer(t, docA, docB)
 
 	raw := callHandlerText(t, srv.handleQueryGraph, map[string]any{
 		"group":    "test",
@@ -479,7 +477,7 @@ func TestIDsInLocate_Find_MultiRepo_MarkdownFallback(t *testing.T) {
 // TestIDsInLocate_VerboseModePreservesID verifies that verbose=true does not
 // remove the id field — it only adds extra fields on top of the narrow set.
 func TestIDsInLocate_VerboseModePreservesID(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildLocateDoc())
+	srv := newTestServer(t, buildLocateDoc())
 
 	// find_callers verbose.
 	res := callToolArgs(t, srv.handleFindCallers, map[string]any{

@@ -167,7 +167,7 @@ func endpointsByID(t *testing.T, out map[string]any) map[string]map[string]any {
 // ---------------------------------------------------------------------------
 
 func TestAuthCoverage_CallSitesExcluded(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps := endpointsByID(t, out)
 	if _, found := eps["ep_call_site"]; found {
@@ -176,7 +176,7 @@ func TestAuthCoverage_CallSitesExcluded(t *testing.T) {
 }
 
 func TestAuthCoverage_FileLevel_HasAuth(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps := endpointsByID(t, out)
 
@@ -193,7 +193,7 @@ func TestAuthCoverage_FileLevel_HasAuth(t *testing.T) {
 }
 
 func TestAuthCoverage_PropertyLevel_HasAuth(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps := endpointsByID(t, out)
 
@@ -210,7 +210,7 @@ func TestAuthCoverage_PropertyLevel_HasAuth(t *testing.T) {
 }
 
 func TestAuthCoverage_Public_SeverityWarn(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps := endpointsByID(t, out)
 
@@ -227,7 +227,7 @@ func TestAuthCoverage_Public_SeverityWarn(t *testing.T) {
 }
 
 func TestAuthCoverage_DeleteWithIDOR_SeverityError(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps := endpointsByID(t, out)
 
@@ -250,7 +250,7 @@ func TestAuthCoverage_DeleteWithIDOR_SeverityError(t *testing.T) {
 }
 
 func TestAuthCoverage_PaymentEndpoint_SeverityError(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps := endpointsByID(t, out)
 
@@ -267,7 +267,7 @@ func TestAuthCoverage_PaymentEndpoint_SeverityError(t *testing.T) {
 }
 
 func TestAuthCoverage_OnlyMissing(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{
 		"group":        "test",
 		"only_missing": true,
@@ -289,7 +289,7 @@ func TestAuthCoverage_OnlyMissing(t *testing.T) {
 }
 
 func TestAuthCoverage_RepoSummary(t *testing.T) {
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 
 	summaries, ok := out["repo_summaries"].([]any)
@@ -367,7 +367,7 @@ func TestAuthCoverage_DefaultDeny(t *testing.T) {
 			},
 		},
 	}
-	s := newTestServerWithDoc(t, doc)
+	s := newTestServer(t, doc)
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 
 	summaries, _ := out["repo_summaries"].([]any)
@@ -399,7 +399,7 @@ func TestAuthCoverage_TaggedAS(t *testing.T) {
 			{ID: "rel1", FromID: "ep1", ToID: "auth1", Kind: "TAGGED_AS"},
 		},
 	}
-	s := newTestServerWithDoc(t, doc)
+	s := newTestServer(t, doc)
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps := endpointsByID(t, out)
 	ep, ok := eps["ep1"]
@@ -458,7 +458,7 @@ func TestAuthCoverage_IDORRiskDetection(t *testing.T) {
 
 func TestAuthCoverage_SeverityOrdering(t *testing.T) {
 	// Errors must appear before warns, warns before infos.
-	s := newTestServerWithDoc(t, buildAuthCoverageDoc())
+	s := newTestServer(t, buildAuthCoverageDoc())
 	out := callAuthCoverageTool(t, s, map[string]any{"group": "test"})
 	eps, _ := out["endpoints"].([]any)
 

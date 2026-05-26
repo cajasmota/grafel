@@ -469,7 +469,7 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 		if procEnt == nil {
 			continue
 		}
-		steps := buildProcessSteps(r.Doc, procEnt, r.ByID, r.Repo)
+		steps := buildProcessSteps(r, procEnt)
 		// Collect SIDE_EFFECT_OF edges attached to any step in this process.
 		stepSet := map[string]bool{}
 		for _, st := range steps {

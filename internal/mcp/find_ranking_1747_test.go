@@ -43,7 +43,7 @@ func buildNoisyFindDoc() *graph.Document {
 // count with the default cutoff is strictly fewer than with min_score=0.
 func TestMinScore_DefaultCutsNoiseTail(t *testing.T) {
 	doc := buildNoisyFindDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// With default min_score (0.15): expect fewer hits than unfiltered.
 	resFiltered := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
@@ -84,7 +84,7 @@ func TestMinScore_DefaultCutsNoiseTail(t *testing.T) {
 // cutoff and returns every matched entity, including the noisy tail.
 func TestMinScore_ZeroDisablesCutoff(t *testing.T) {
 	doc := buildNoisyFindDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	res := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
 		"group":     "test",

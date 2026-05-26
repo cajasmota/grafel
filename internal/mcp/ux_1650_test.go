@@ -32,7 +32,7 @@ func TestUX1650_FlowToolsReturnIDs(t *testing.T) {
 			{FromID: "b", ToID: "c", Kind: "CALLS"},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	res := callEndpointTool(t, srv.handleFindCallers, map[string]any{"group": "test", "entity_id": "b"})
 	callers := getSlice(t, res, "callers")
 	if len(callers) == 0 {
@@ -65,7 +65,7 @@ func TestUX1650_GetSourceAcceptsLabelWithClarifier(t *testing.T) {
 			{ID: "h2", Name: "handler", QualifiedName: "b.handler", Kind: "Function", SourceFile: "b.go", StartLine: 20, EndLine: 22},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// label is ambiguous → clarifier.
 	res := callEndpointTool(t, srv.handleGetNodeSource, map[string]any{"group": "test", "node_id": "handler"})
@@ -119,7 +119,7 @@ func TestUX1650_EndpointsFilterAndTerse(t *testing.T) {
 		Properties: map[string]string{"verb": "GET", "path": "/api/v1/proposals/get_counts"},
 	})
 	doc := &graph.Document{Entities: ents}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// path_contains="proposal" → 1 line, not 5,780.
 	// #2288: terse default omits `definitions` — assert `count` and `lines`
@@ -167,7 +167,7 @@ func TestUX1650_EndpointStatsCrossRepoLinks(t *testing.T) {
 			{FromID: "caller", ToID: "ext_unknown", Kind: "FETCHES"},
 		},
 	}
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	// Inject a cross-repo link covering the caller.
 	lg := srv.State.Group("test")
 	if lg == nil {
@@ -192,19 +192,18 @@ func TestUX1650_EndpointStatsCrossRepoLinks(t *testing.T) {
 func TestUX1650_FindPathsCrossRepo(t *testing.T) {
 	// Build a multi-repo group: repoA (mobile) and repoB (backend).
 	docA := &graph.Document{
+		Repo: "repoA",
 		Entities: []graph.Entity{
 			{ID: "mobile_call", Name: "useProposalCounts", Kind: "Function", SourceFile: "App.jsx"},
 		},
 	}
 	docB := &graph.Document{
+		Repo: "repoB",
 		Entities: []graph.Entity{
 			{ID: "backend_handler", Name: "get_counts", Kind: "Function", SourceFile: "views.py"},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{
-		"repoA": docA,
-		"repoB": docB,
-	})
+	srv := newTestServer(t, docA, docB)
 	lg := srv.State.Group("test")
 	lg.Links = []CrossRepoLink{
 		{
@@ -234,7 +233,7 @@ func TestUX1650_FindPathsCrossRepo(t *testing.T) {
 // We exercise wrap directly because the handler-level tests in this file
 // call the handlers without the wrap middleware.
 func TestUX1650_WrapInjectsElapsedMS(t *testing.T) {
-	srv := newTestServerWithDoc(t, &graph.Document{
+	srv := newTestServer(t, &graph.Document{
 		Entities: []graph.Entity{{ID: "x", Name: "x", Kind: "Function"}},
 	})
 	wrapped := srv.wrap("test_tool", srv.handleWhoami)
@@ -256,7 +255,7 @@ func TestUX1650_WrapInjectsElapsedMS(t *testing.T) {
 // scenario_h — #1687: error responses also carry elapsed_ms so callers can
 // measure latency even when the tool returns a validation or lookup error.
 func TestUX1687_WrapInjectsElapsedMSOnError(t *testing.T) {
-	srv := newTestServerWithDoc(t, &graph.Document{
+	srv := newTestServer(t, &graph.Document{
 		Entities: []graph.Entity{{ID: "x", Name: "x", Kind: "Function"}},
 	})
 	// handleFindCallers requires entity_id; call with the wrong key so it
@@ -281,37 +280,6 @@ func TestUX1687_WrapInjectsElapsedMSOnError(t *testing.T) {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
-
-func newTestServerWithDocs(t *testing.T, docs map[string]*graph.Document) *Server {
-	t.Helper()
-	reg := &Registry{Groups: map[string]RegistryGroup{
-		"test": {Repos: map[string]RegistryRepo{}},
-	}}
-	for name := range docs {
-		reg.Groups["test"].Repos[name] = RegistryRepo{Path: t.TempDir()}
-	}
-	st := NewState(reg)
-	st.mu.Lock()
-	lg := &LoadedGroup{Name: "test", Repos: map[string]*LoadedRepo{}}
-	for name, doc := range docs {
-		byID := make(map[string]*graph.Entity, len(doc.Entities))
-		for i := range doc.Entities {
-			byID[doc.Entities[i].ID] = &doc.Entities[i]
-		}
-		lg.Repos[name] = &LoadedRepo{
-			Repo:       name,
-			Doc:        doc,
-			LabelIndex: BuildLabelIndex(doc),
-			BM25:       BuildBM25(doc),
-			Adjacency:  buildAdjacency(doc, name),
-			CallsAdj:   buildCallsAdjacency(doc),
-			ByID:       byID,
-		}
-	}
-	st.groups["test"] = lg
-	st.mu.Unlock()
-	return &Server{State: st, Tel: NewTelemetry(0)}
-}
 
 func callEndpointToolText(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), args map[string]any) string {
 	t.Helper()

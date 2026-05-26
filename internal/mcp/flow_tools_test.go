@@ -112,7 +112,7 @@ func buildDeadCodeDoc() *graph.Document {
 // (mergeNeighbors) consumes this without ever parsing wire bytes.
 func TestFindCallersStructured_NoWireBytes(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"entity_id": "ent-b"}
@@ -177,7 +177,7 @@ func TestMergeNeighbors_NoParse(t *testing.T) {
 
 func TestFindCallers_DirectCaller(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncB has 1 direct caller: FuncA.
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
@@ -203,7 +203,7 @@ func TestFindCallers_DirectCaller(t *testing.T) {
 
 func TestFindCallers_Transitive(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncC has 1 direct caller (FuncB) and 1 transitive caller (FuncA at depth 2).
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
@@ -222,7 +222,7 @@ func TestFindCallers_Transitive(t *testing.T) {
 
 func TestFindCallers_NotFound(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	errMsg := callFlowToolError(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "no-such-entity",
 	})
@@ -233,7 +233,7 @@ func TestFindCallers_NotFound(t *testing.T) {
 
 func TestFindCallers_NoCallers(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncA has no callers.
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
@@ -250,7 +250,7 @@ func TestFindCallers_NoCallers(t *testing.T) {
 // callers, the response carries the explicit no-edge signal (#1618).
 func TestFindCallers_NoEdgeSignal(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "ent-a",
@@ -275,7 +275,7 @@ func TestFindCallers_NoEdgeSignal(t *testing.T) {
 // present when callers are found (#1618 regression guard).
 func TestFindCallers_WithCallersNoSignal(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncB has 1 caller (FuncA) — result field must NOT be set.
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
@@ -307,7 +307,7 @@ func TestFindCallers_ExcludesContainsEdges(t *testing.T) {
 			{FromID: "caller-fn", ToID: "hook-fn", Kind: "CALLS"},
 		},
 	)
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "hook-fn",
@@ -358,7 +358,7 @@ func TestFindCallers_FileEntityReferencesSource(t *testing.T) {
 			{FromID: "admin-file", ToID: "contract-model", Kind: "REFERENCES"},
 		},
 	)
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "contract-model",
@@ -399,7 +399,7 @@ func TestFindCallers_FileEntityImportsSource(t *testing.T) {
 			{FromID: "viewset-file", ToID: "has-permission", Kind: "IMPORTS"},
 		},
 	)
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "has-permission",
@@ -446,7 +446,7 @@ func TestFindCallers_ModuleInitReExports(t *testing.T) {
 			{FromID: "init-module", ToID: "celery-module", Kind: "IMPORTS"},
 		},
 	)
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "celery-module",
@@ -514,7 +514,7 @@ func TestFindCallers_ChecklistAdminPyPostFinalize(t *testing.T) {
 			{FromID: "register-call", ToID: "checklist-model", Kind: "CALLS"},
 		},
 	)
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "checklist-model",
@@ -558,7 +558,7 @@ func TestFindCallers_NilByIDSyntheticFileCaller(t *testing.T) {
 			{FromID: "raw/path/admin.py", ToID: "target-model", Kind: "REFERENCES"},
 		},
 	)
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id": "target-model",
 		"depth":     float64(1),
@@ -580,7 +580,7 @@ func TestFindCallers_NilByIDSyntheticFileCaller(t *testing.T) {
 
 func TestFindCallees_Direct(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncA calls FuncB directly.
 	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
@@ -602,7 +602,7 @@ func TestFindCallees_Direct(t *testing.T) {
 
 func TestFindCallees_Transitive(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncA calls FuncB (hop 1) and transitively FuncC (hop 2).
 	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
@@ -617,7 +617,7 @@ func TestFindCallees_Transitive(t *testing.T) {
 
 func TestFindCallees_LeafReturnsEmpty(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncC is a leaf — no outbound edges.
 	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
@@ -634,7 +634,7 @@ func TestFindCallees_LeafReturnsEmpty(t *testing.T) {
 // callees, the response carries the explicit no-edge signal (#1618).
 func TestFindCallees_NoEdgeSignal(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncC is a leaf — no outbound edges.
 	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
@@ -660,7 +660,7 @@ func TestFindCallees_NoEdgeSignal(t *testing.T) {
 // present when callees are found (#1618 regression guard).
 func TestFindCallees_WithCalleesNoSignal(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncA calls FuncB — result field must NOT be set.
 	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
@@ -678,7 +678,7 @@ func TestFindCallees_WithCalleesNoSignal(t *testing.T) {
 
 func TestImpactRadius_RootChanges(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// Changing FuncB affects FuncA (its caller).
 	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
@@ -709,7 +709,7 @@ func TestImpactRadius_RootChanges(t *testing.T) {
 
 func TestImpactRadius_RootHasNoUpstreamImpact(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncA is the root of the chain (no inbound callers), so changing it
 	// affects nobody above it. impact_radius walks inbound, so count = 0.
@@ -729,7 +729,7 @@ func TestImpactRadius_RootHasNoUpstreamImpact(t *testing.T) {
 
 func TestSubgraph_FormatMarkdown_ContainsStructure(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	text := callFlowToolText(t, srv.handleSubgraph, map[string]any{
 		"entity_id": "ent-b",
@@ -750,7 +750,7 @@ func TestSubgraph_FormatMarkdown_ContainsStructure(t *testing.T) {
 
 func TestSubgraph_FormatMarkdown_RootNoCallers(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	text := callFlowToolText(t, srv.handleSubgraph, map[string]any{
 		"entity_id": "ent-a",
@@ -776,7 +776,7 @@ func TestSubgraph_FormatRaw_DefaultsToRaw(t *testing.T) {
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "root", ToID: "child", Kind: "CALLS"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 
 	// No format= → default is "raw".
 	out := callFlowTool(t, srv.handleSubgraph, map[string]any{
@@ -808,7 +808,7 @@ func TestSubgraph_FormatRaw_GraphCounts(t *testing.T) {
 		{ID: "r1", FromID: "root", ToID: "child", Kind: "CALLS"},
 		{ID: "r2", FromID: "child", ToID: "grandchild", Kind: "CALLS"},
 	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	srv := newTestServer(t, minDoc(entities, rels))
 
 	// depth=2 from root should reach root+child+grandchild (3 nodes, 2 edges).
 	unified := callFlowTool(t, srv.handleSubgraph, map[string]any{
@@ -832,7 +832,7 @@ func TestSubgraph_FormatRaw_GraphCounts(t *testing.T) {
 // returns a summary containing the target entity name.
 func TestSubgraph_FormatMarkdown_ContainsEntityName(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	text := callFlowToolText(t, srv.handleSubgraph, map[string]any{
 		"entity_id": "ent-b",
@@ -847,7 +847,7 @@ func TestSubgraph_FormatMarkdown_ContainsEntityName(t *testing.T) {
 // TestSubgraph_InvalidFormat verifies a helpful error is returned for unknown format.
 func TestSubgraph_InvalidFormat(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
@@ -870,7 +870,7 @@ func TestSubgraph_InvalidFormat(t *testing.T) {
 
 func TestFindDeadCode_IsolatedEntity(t *testing.T) {
 	doc := buildDeadCodeDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindDeadCode, map[string]any{})
 	dead, ok := out["dead_code"].([]any)
@@ -900,7 +900,7 @@ func TestFindDeadCode_IsolatedEntity(t *testing.T) {
 
 func TestFindDeadCode_KindFilter(t *testing.T) {
 	doc := buildDeadCodeDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// Filter to "Class" — no entities match, expect empty.
 	out := callFlowTool(t, srv.handleFindDeadCode, map[string]any{
@@ -914,7 +914,7 @@ func TestFindDeadCode_KindFilter(t *testing.T) {
 
 func TestFindDeadCode_StdlibExcluded(t *testing.T) {
 	doc := buildDeadCodeDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleFindDeadCode, map[string]any{})
 	dead := out["dead_code"].([]any)
@@ -972,7 +972,7 @@ func buildPublicAPIDeadCodeDoc() *graph.Document {
 }
 
 func TestFindDeadCode_PrecisionOnPublicAPI(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildPublicAPIDeadCodeDoc())
+	srv := newTestServer(t, buildPublicAPIDeadCodeDoc())
 	out := callFlowTool(t, srv.handleFindDeadCode, map[string]any{})
 	dead := out["dead_code"].([]any)
 
@@ -1000,7 +1000,7 @@ func TestFindDeadCode_PrecisionOnPublicAPI(t *testing.T) {
 }
 
 func TestFindDeadCode_ImportedNotFlagged(t *testing.T) {
-	srv := newTestServerWithDoc(t, buildPublicAPIDeadCodeDoc())
+	srv := newTestServer(t, buildPublicAPIDeadCodeDoc())
 	out := callFlowTool(t, srv.handleFindDeadCode, map[string]any{})
 	for _, item := range out["dead_code"].([]any) {
 		if item.(map[string]any)["name"] == "verifyToken" {
@@ -1057,7 +1057,7 @@ func buildIsolatedDoc() *graph.Document {
 // no-edge signal when the entity is found but has zero neighbours (#1618).
 func TestExpand_NoEdgeSignal(t *testing.T) {
 	doc := buildIsolatedDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	out := callFlowTool(t, srv.handleGetNeighbors, map[string]any{
 		"node": "iso-1",
@@ -1086,7 +1086,7 @@ func TestExpand_NoEdgeSignal(t *testing.T) {
 // when the entity has neighbours (#1618 regression guard).
 func TestExpand_WithEdgesNoSignal(t *testing.T) {
 	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	// FuncA has an outbound edge to FuncB — no no-edge signal expected.
 	// handleGetNeighbors returns a flat array for the non-empty case, which
@@ -1150,7 +1150,7 @@ func build25CalleeDoc() *graph.Document {
 // TestFindCallers_TokenBudgetEnforced verifies that a very tight token_budget
 // caps the callers slice and produces a truncation_note (#1738).
 func TestFindCallers_TokenBudgetEnforced(t *testing.T) {
-	srv := newTestServerWithDoc(t, build25CallerDoc())
+	srv := newTestServer(t, build25CallerDoc())
 	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
 		"entity_id":    "target",
 		"depth":        float64(1),
@@ -1169,7 +1169,7 @@ func TestFindCallers_TokenBudgetEnforced(t *testing.T) {
 
 // TestFindCallees_TokenBudgetEnforced verifies the same for callees.
 func TestFindCallees_TokenBudgetEnforced(t *testing.T) {
-	srv := newTestServerWithDoc(t, build25CalleeDoc())
+	srv := newTestServer(t, build25CalleeDoc())
 	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
 		"entity_id":    "root",
 		"depth":        float64(1),
@@ -1204,7 +1204,7 @@ func TestExpand_TokenBudgetEnforced(t *testing.T) {
 		rels = append(rels, graph.Relationship{FromID: "root", ToID: lid, Kind: "CALLS"})
 	}
 	doc := minDoc(entities, rels)
-	srv := newTestServerWithDoc(t, doc)
+	srv := newTestServer(t, doc)
 
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{

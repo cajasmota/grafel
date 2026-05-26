@@ -95,7 +95,7 @@ func buildElisionDoc() *graph.Document {
 
 func newElisionServer(t *testing.T) *Server {
 	t.Helper()
-	return newTestServerWithDoc(t, buildElisionDoc())
+	return newTestServer(t, buildElisionDoc())
 }
 
 func callToolArgs(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), args map[string]any) map[string]any {

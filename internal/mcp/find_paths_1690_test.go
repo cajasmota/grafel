@@ -43,10 +43,7 @@ func TestFindPaths_1690_RepoPrefixAlias(t *testing.T) {
 			{ID: "handler_fn", Name: "InspectionViewSet.create_deficiency", Kind: "Function", SourceFile: "views.py"},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{
-		"core-mobile": docMobile,
-		"upvate-core": docCore,
-	})
+	srv := newTestServer(t, docMobile, docCore)
 	lg := srv.State.Group("test")
 	// The links emitter wrote the upvate-core side as `upvate_core::handler_fn`
 	// (path-basename with underscores) — this MUST still resolve.
@@ -107,10 +104,7 @@ func TestFindPaths_1690_ReverseImplementsAcrossRepo(t *testing.T) {
 			{ID: "r2", FromID: "handler_fn", ToID: "ep_def", Kind: "IMPLEMENTS"},
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{
-		"core-mobile": docMobile,
-		"upvate-core": docCore,
-	})
+	srv := newTestServer(t, docMobile, docCore)
 	lg := srv.State.Group("test")
 	lg.Links = []CrossRepoLink{
 		{
@@ -152,7 +146,7 @@ func TestFindPaths_1690_NoPathStillNoPath(t *testing.T) {
 			{ID: "b", Name: "B", Kind: "Function"}, // unconnected
 		},
 	}
-	srv := newTestServerWithDocs(t, map[string]*graph.Document{"solo": doc})
+	srv := newTestServer(t, doc)
 	res := callEndpointTool(t, srv.handleFindPaths, map[string]any{
 		"group": "test",
 		"from":  "solo::a",
