@@ -49,29 +49,26 @@ func setupTestGroup(t *testing.T, groupName string, slugs []string) string {
 	return groupName
 }
 
+// noopLinksFn is a stub links hook used across tests.
+var noopLinksFn = func(_ string) error { return nil }
+
 // TestRebuildPanicRecoveryReleasesSemaphore verifies that a panic inside
-// rebuildIndexFunc does not leak the semaphore slot. With concurrency=1 and
+// the index function does not leak the semaphore slot. With concurrency=1 and
 // 3 repos where the first panics, all three should produce a result (the
 // first an error, the remaining two success).
 func TestRebuildPanicRecoveryReleasesSemaphore(t *testing.T) {
 	group := setupTestGroup(t, "panic-group", []string{"first", "second", "third"})
 
-	origIndexFn := rebuildIndexFunc
 	var callCount int32
-	rebuildIndexFunc = func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
+	mockIndexFn := func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		n := atomic.AddInt32(&callCount, 1)
 		if n == 1 {
 			panic("simulated extractor panic")
 		}
 		return nil
 	}
-	defer func() { rebuildIndexFunc = origIndexFn }()
 
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
-
-	_, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group})
+	_, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn)
 	// Expect an error because one repo panicked.
 	if err == nil {
 		t.Error("expected error from panicking repo, got nil")
@@ -87,10 +84,9 @@ func TestRebuildPanicRecoveryReleasesSemaphore(t *testing.T) {
 func TestRebuildPanicParallelReleasesSemaphore(t *testing.T) {
 	group := setupTestGroup(t, "panic-parallel-group", []string{"a", "b", "c", "d"})
 
-	origIndexFn := rebuildIndexFunc
 	var callCount int32
 	var panicked int32
-	rebuildIndexFunc = func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
+	mockIndexFn := func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		n := atomic.AddInt32(&callCount, 1)
 		if n == 2 && atomic.CompareAndSwapInt32(&panicked, 0, 1) {
 			panic("parallel extractor panic")
@@ -98,13 +94,8 @@ func TestRebuildPanicParallelReleasesSemaphore(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	}
-	defer func() { rebuildIndexFunc = origIndexFn }()
 
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
-
-	_, _, _ = daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group})
+	_, _, _ = daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn)
 
 	if got := atomic.LoadInt32(&callCount); got != 4 {
 		t.Errorf("callCount = %d, want 4 (panic in one goroutine must not starve others)", got)
@@ -117,26 +108,20 @@ func TestRebuildPanicParallelReleasesSemaphore(t *testing.T) {
 func TestRebuildFiveSequentialAlwaysComplete(t *testing.T) {
 	group := setupTestGroup(t, "five-seq-group", []string{"r1", "r2"})
 
-	origIndexFn := rebuildIndexFunc
 	var totalCalls int32
-	rebuildIndexFunc = func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
+	mockIndexFn := func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		atomic.AddInt32(&totalCalls, 1)
 		if atomic.LoadInt32(&totalCalls)%4 == 0 {
 			return errors.New("injected error")
 		}
 		return nil
 	}
-	defer func() { rebuildIndexFunc = origIndexFn }()
-
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
 
 	for i := 0; i < 5; i++ {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}) //nolint:errcheck
+			daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn) //nolint:errcheck
 		}()
 		select {
 		case <-done:
@@ -147,24 +132,22 @@ func TestRebuildFiveSequentialAlwaysComplete(t *testing.T) {
 	}
 }
 
-// TestConcurrentRebuildSameGroupIsSerialised verifies that two concurrent
-// Rebuild RPCs for the same group do NOT overlap execution. Because
-// daemonRebuildFunc itself doesn't hold the per-group mutex (that lives
-// in Service.Rebuild), this test verifies the per-group mutex at the
-// daemonRebuildFunc level is NOT present — and instead validates the
-// semaphore behaviour within a single call.
+// TestRebuildConcurrentGroupsMutex verifies that two concurrent goroutines
+// both calling daemonRebuildFunc for the same group do not execute
+// the indexer simultaneously. Because daemonRebuildFunc itself doesn't hold
+// the per-group mutex (that lives in Service.Rebuild), this test verifies the
+// per-group mutex at the daemonRebuildFunc level is NOT present — and instead
+// validates the semaphore behaviour within a single call.
 //
-// The actual group-mutex serialisation is tested in
-// internal/daemon/service_test.go (TestServiceRebuildGroupSerialisedUnderLoad).
+// (Full per-group serialisation is covered by TestServiceRebuildGroupSerialisedUnderLoad.)
 func TestRebuildSemaphoreCapRespected(t *testing.T) {
 	if testing.Short() {
 		t.Skip("semaphore cap timing test skipped in short mode")
 	}
 	group := setupTestGroup(t, "sem-cap-group", []string{"x1", "x2", "x3", "x4"})
 
-	origIndexFn := rebuildIndexFunc
 	var peakConc, current int64
-	rebuildIndexFunc = func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
+	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		cur := atomic.AddInt64(&current, 1)
 		defer atomic.AddInt64(&current, -1)
 		for {
@@ -176,13 +159,8 @@ func TestRebuildSemaphoreCapRespected(t *testing.T) {
 		time.Sleep(30 * time.Millisecond)
 		return nil
 	}
-	defer func() { rebuildIndexFunc = origIndexFn }()
 
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
-
-	_, _, err := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group})
+	_, _, err := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -208,23 +186,17 @@ func TestRebuildResultsSliceNotRacedOnConcurrentCalls(t *testing.T) {
 	// Each should complete with 2 rebuilt repos or a consistent error.
 	group := setupTestGroup(t, "results-race-group", []string{"p", "q"})
 
-	origIndexFn := rebuildIndexFunc
-	rebuildIndexFunc = func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
+	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		time.Sleep(5 * time.Millisecond)
 		return nil
 	}
-	defer func() { rebuildIndexFunc = origIndexFn }()
-
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group})
+			rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn)
 			if err != nil {
 				return // errors are acceptable
 			}

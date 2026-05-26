@@ -137,20 +137,6 @@ func resolveEnvRebuildConcurrency() int {
 	return defaultRebuildConcurrency()
 }
 
-// rebuildIndexFunc is the per-repo index entrypoint used by makeDaemonRebuildFunc.
-// It defaults to the package-level Index function but can be replaced in tests
-// to validate parallelism semantics without running a real extractor pass.
-// Must be set before the daemon accepts connections (write-once, then read-only).
-var rebuildIndexFunc = func(repoPath, outPath, repoTag string, skipPasses []string, pretty, jsonStats bool, opts ...IndexOption) error {
-	return Index(repoPath, outPath, repoTag, skipPasses, pretty, jsonStats, opts...)
-}
-
-// rebuildLinksFunc is the cross-repo link hook used by daemonRebuildFunc.
-// Defaults to runLinksHook but can be swapped in tests.
-var rebuildLinksFunc = func(group string) error {
-	return runLinksHook(group)
-}
-
 // runDaemon is the long-running mode of the archigraph binary. It is
 // wired into the CLI as a hidden `archigraph daemon` subcommand —
 // users normally reach it via `archigraph start`, which forks this
@@ -594,6 +580,8 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 // makeDaemonRebuildFunc returns the RebuildFunc injected into daemon.Config.
 // concurrency is captured at construction time from runDaemon's maxConcurrentGroups
 // so no package-level singleton is needed (issue #2411).
+// indexFn and linksFn are captured at construction time so no package-level
+// singleton is needed (issue #2414).
 //
 // The returned func force-indexes every repo in a group. We deliberately
 // re-implement the iteration here rather than calling into internal/cli
@@ -605,15 +593,30 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 // to stderr for diagnostics. The cross-repo link pass runs only once all
 // per-repo indexes complete.
 func makeDaemonRebuildFunc(concurrency int) daemon.RebuildFunc {
+	indexFn := func(repoPath, outPath, repoTag string, skipPasses []string, pretty, jsonStats bool, opts ...IndexOption) error {
+		return Index(repoPath, outPath, repoTag, skipPasses, pretty, jsonStats, opts...)
+	}
+	linksFn := func(group string) error {
+		return runLinksHook(group)
+	}
 	return func(args proto.RebuildArgs) ([]string, string, error) {
-		return daemonRebuildFuncCore(concurrency, args)
+		return daemonRebuildFuncCore(concurrency, args, indexFn, linksFn)
 	}
 }
 
 // daemonRebuildFuncCore is the testable inner implementation of the rebuild
 // logic. concurrency is supplied by the caller (captured in the closure
-// returned by makeDaemonRebuildFunc, or set directly in tests).
-func daemonRebuildFuncCore(concurrency int, args proto.RebuildArgs) ([]string, string, error) {
+// returned by makeDaemonRebuildFunc, or set directly in tests). indexFn and
+// linksFn are the per-repo index and cross-repo link hooks; production callers
+// pass the real implementations (captured at construction time in
+// makeDaemonRebuildFunc); tests pass mocks directly — no package-level
+// singleton mutation required (issue #2414).
+func daemonRebuildFuncCore(
+	concurrency int,
+	args proto.RebuildArgs,
+	indexFn func(repoPath, outPath, repoTag string, skipPasses []string, pretty, jsonStats bool, opts ...IndexOption) error,
+	linksFn func(group string) error,
+) ([]string, string, error) {
 	rebuildStart := time.Now()
 	fmt.Fprintf(os.Stderr, "archigraph: rebuild start group=%s slug=%q wipe=%v incremental=%v\n",
 		args.Group, args.Slug, args.Wipe, args.Incremental)
@@ -707,7 +710,7 @@ func daemonRebuildFuncCore(concurrency int, args proto.RebuildArgs) ([]string, s
 				// link endpoint prefix. When the wizard slugifies a repo name
 				// (e.g. upvate_core → upvate-core) an empty repoTag would fall back
 				// to the dir basename and diverge, dropping every cross-repo edge.
-				indexErr = rebuildIndexFunc(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
+				indexErr = indexFn(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
 			}(w, i)
 			results[i] = repoResult{
 				path: w.r.Path,
@@ -719,7 +722,7 @@ func daemonRebuildFuncCore(concurrency int, args proto.RebuildArgs) ([]string, s
 	} else {
 		// --- Parallel path: semaphore-bounded worker pool ---
 		//
-		// Panic recovery (#2097): a panic inside rebuildIndexFunc would
+		// Panic recovery (#2097): a panic inside indexFn would
 		// propagate out of the goroutine and crash the daemon. We recover,
 		// convert the panic to an error stored in results[idx], and release
 		// the semaphore slot via defer so subsequent goroutines are not
@@ -767,7 +770,7 @@ func daemonRebuildFuncCore(concurrency int, args proto.RebuildArgs) ([]string, s
 						WithPublisher(daemonProgressBroker),
 						WithProgressSlugs(args.Group, rw.r.Slug))
 					// #1576: tag with the CONFIG slug — see serial path above.
-					indexErr = rebuildIndexFunc(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
+					indexErr = indexFn(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
 				}()
 
 				results[idx] = repoResult{
@@ -820,7 +823,7 @@ func daemonRebuildFuncCore(concurrency int, args proto.RebuildArgs) ([]string, s
 
 	// Cross-repo link passes run after every member is indexed.
 	warning := ""
-	if err := rebuildLinksFunc(args.Group); err != nil {
+	if err := linksFn(args.Group); err != nil {
 		// Best-effort — surface as a warning, not a hard failure.
 		warning = fmt.Sprintf("link passes failed: %v", err)
 	}

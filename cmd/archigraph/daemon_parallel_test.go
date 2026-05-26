@@ -48,9 +48,8 @@ func TestDaemonRebuildParallel(t *testing.T) {
 	// Track peak concurrency across all stub Index calls.
 	var currentConc, peakConc int64
 
-	// Swap in a stub that sleeps and records concurrency.
-	origIndexFn := rebuildIndexFunc
-	rebuildIndexFunc = func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
+	// mockIndexFn sleeps and records concurrency.
+	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		cur := atomic.AddInt64(&currentConc, 1)
 		defer atomic.AddInt64(&currentConc, -1)
 		for {
@@ -62,16 +61,11 @@ func TestDaemonRebuildParallel(t *testing.T) {
 		time.Sleep(60 * time.Millisecond)
 		return nil
 	}
-	defer func() { rebuildIndexFunc = origIndexFn }()
-
-	// Stub out the links pass so it doesn't try real registry lookups.
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
+	mockLinksFn := func(_ string) error { return nil }
 
 	// --- Serial run (concurrency=1) ---
 	t0 := time.Now()
-	rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "test-group"})
+	rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "test-group"}, mockIndexFn, mockLinksFn)
 	serialDur := time.Since(t0)
 	if err != nil {
 		t.Fatalf("serial rebuild: %v", err)
@@ -86,7 +80,7 @@ func TestDaemonRebuildParallel(t *testing.T) {
 
 	// --- Parallel run (concurrency=2) ---
 	t1 := time.Now()
-	rebuilt2, _, err2 := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: "test-group"})
+	rebuilt2, _, err2 := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: "test-group"}, mockIndexFn, mockLinksFn)
 	parallelDur := time.Since(t1)
 	if err2 != nil {
 		t.Fatalf("parallel rebuild: %v", err2)
@@ -133,15 +127,10 @@ func TestDaemonRebuildSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	origIndexFn := rebuildIndexFunc
-	rebuildIndexFunc = func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error { return nil }
-	defer func() { rebuildIndexFunc = origIndexFn }()
+	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error { return nil }
+	mockLinksFn := func(_ string) error { return nil }
 
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
-
-	rebuilt, warning, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "serial-group"})
+	rebuilt, warning, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "serial-group"}, mockIndexFn, mockLinksFn)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,22 +165,17 @@ func TestDaemonRebuildFailureIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	origIndexFn := rebuildIndexFunc
-	rebuildIndexFunc = func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
+	mockIndexFn := func(repoPath, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		if repoPath == repoBase+"/bad-repo" {
 			return os.ErrPermission
 		}
 		return nil
 	}
-	defer func() { rebuildIndexFunc = origIndexFn }()
-
-	origLinksFn := rebuildLinksFunc
-	rebuildLinksFunc = func(_ string) error { return nil }
-	defer func() { rebuildLinksFunc = origLinksFn }()
+	mockLinksFn := func(_ string) error { return nil }
 
 	// Both serial and parallel should return partial results + an error.
 	for _, conc := range []int{1, 2} {
-		rebuilt, _, err := daemonRebuildFuncCore(conc, proto.RebuildArgs{Group: "mixed-group"})
+		rebuilt, _, err := daemonRebuildFuncCore(conc, proto.RebuildArgs{Group: "mixed-group"}, mockIndexFn, mockLinksFn)
 		if err == nil {
 			t.Errorf("conc=%d: expected error for bad-repo, got nil", conc)
 		}
