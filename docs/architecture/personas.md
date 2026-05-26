@@ -321,8 +321,8 @@ The persona's ANALYSIS questions (which are unique per lens) remain in the perso
 
 | Candidate shared skill | Would extract | Composable? |
 |---|---|---|
-| `archigraph-graph-read` | Status → inspect → expand (shipped, #2455) | Yes |
-| `archigraph-graph-write` | `archigraph_save_finding` affordance contract | Yes — same "When the user asks to save" section appears in all 8 |
+| `archigraph-graph-read` | Status → inspect → expand (shipped, #2506) | Yes |
+| `archigraph-graph-write` | `archigraph_save_finding` affordance contract (shipped, #2507) | Yes — same "When the user asks to save" section appears in all 8 |
 | `archigraph-graph-search` | `archigraph_find` + `archigraph_traces` pattern | Possible — most personas use both |
 
 A skill is worth extracting when: (a) the same prose appears in 3+ persona files, (b) the prose has clear boundaries (a named section), and (c) changing it in one place should change it everywhere.

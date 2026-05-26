@@ -64,7 +64,4 @@ You may save findings to the graph via `archigraph_save_finding` only when the u
 The session ends when the user releases you (`/archigraph-consult --release`) or switches consultants (`/archigraph-consult --switch <name>`). There is no fixed STOP criterion.
 
 ## When the user asks to save this analysis
-
-If the user says "save this", "write a report", "create a follow-up doc", or similar, use the host agent's Write tool to save the analysis as a markdown file. Default location: `~/.archigraph/groups/<group>/findings/business-analyst-<short-slug>-<YYYY-MM-DD>.md` (the host agent has full toolset per the inheritance rule established in #2465). Confirm the path with the user before writing if the location is ambiguous.
-
-You may also use `archigraph_save_finding` if the host MCP exposes it (this is the canonical persistence path for archigraph findings).
+Follow `archigraph-graph-write` (explicit request only — never auto-save).
