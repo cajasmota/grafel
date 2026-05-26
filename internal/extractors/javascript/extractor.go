@@ -29,6 +29,7 @@ package javascript
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -40,6 +41,30 @@ import (
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// emitDestructureDetailEnv is the env var that opts const_destructure /
+// const_destructure_call subtype emission back on.
+//
+// Issue #2338: on the UpVate bench corpus the JS/TS extractor produced
+// ~2,633 SCOPE.Component/const_destructure entities and ~1,294
+// SCOPE.Operation/const_destructure_call entities (~4,000 total, ~20% of
+// the graph) whose consumer landscape was not fully verified. Binding
+// entities are still emitted in default-off mode with subtype "const" or
+// "function" (same as other const declarations) so per-binding resolution
+// continues to work. What is lost is the specific destructure-pattern
+// label; set this flag to "1" or "true" to restore it.
+//
+// Accepted truthy values: "1", "true" (case-sensitive). Anything else,
+// including unset, leaves destructure-detail emission disabled.
+const emitDestructureDetailEnv = "ARCHIGRAPH_EMIT_DESTRUCTURE_DETAIL"
+
+// emitDestructureDetailEnabled reports whether const_destructure /
+// const_destructure_call subtypes should be emitted. Reads the env var on
+// every call — cheap, and lets tests toggle via t.Setenv without restarting.
+func emitDestructureDetailEnabled() bool {
+	v := os.Getenv(emitDestructureDetailEnv)
+	return v == "1" || v == "true"
+}
 
 // New returns a new JSExtractor. Use this in tests or explicit registrations.
 func New() *JSExtractor {
@@ -1384,6 +1409,16 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 		kind = "SCOPE.Operation"
 		subtype = "const_destructure_call"
 		sigPrefix = "const"
+	}
+	// Issue #2338 — gate destructure-detail subtypes behind the env var.
+	// Default-off: use the plain "const" subtype (same as other const
+	// declarations) so the binding entities are still emitted and the
+	// resolver can bind same-file REFERENCES / CALLS edges, but the
+	// const_destructure / const_destructure_call label is not stamped
+	// and the entity count stays low. The kind (Component vs Operation)
+	// is preserved so mutation-hook callables remain SCOPE.Operation.
+	if !emitDestructureDetailEnabled() {
+		subtype = "const"
 	}
 
 	var walk func(p *sitter.Node, arrayIdx int)
