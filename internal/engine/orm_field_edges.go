@@ -74,14 +74,13 @@ func applyORMFieldEdges(
 	path string,
 	content []byte,
 	pass1Entities []types.EntityRecord,
-	entities []types.EntityRecord,
 	relationships []types.RelationshipRecord,
-) ([]types.EntityRecord, []types.RelationshipRecord) {
+) []types.RelationshipRecord {
 	if lang != "python" {
-		return entities, relationships
+		return relationships
 	}
 	if len(content) == 0 {
-		return entities, relationships
+		return relationships
 	}
 
 	// Build a per-(model,field) index for THIS file.
@@ -102,7 +101,7 @@ func applyORMFieldEdges(
 		fieldIdx = BuildFieldIndex(string(content))
 	}
 	if len(fieldIdx) == 0 {
-		return entities, relationships
+		return relationships
 	}
 	_ = plumbed // reserved for future telemetry / debug hooks
 
@@ -154,7 +153,7 @@ func applyORMFieldEdges(
 		}
 	}
 
-	return entities, relationships
+	return relationships
 }
 
 // djangoChainAnchorRe matches the start of every Django ORM queryset
