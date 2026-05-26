@@ -81,7 +81,26 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	nameOff := b.CreateString(e.Name)
 	srcOff := b.CreateString(e.SourceFile)
 
-	propsVec := buildPropertyVector(b, e.Properties)
+	// Issue #2341 — persist Language via Properties["language"] so that the
+	// load.go reader's workaround (fbEntityToGraphEntity restores Language from
+	// props["language"]) can recover it on read. The FlatBuffers schema has no
+	// top-level language slot, so we inject the value into the props map before
+	// building the property vector. We work on a shallow copy of the map to
+	// avoid mutating the caller's entity struct.
+	props := e.Properties
+	if e.Language != "" {
+		if _, alreadySet := props["language"]; !alreadySet {
+			// Shallow-copy only when we need to add the key so the common
+			// "extractor already stamped it" path stays zero-alloc.
+			copied := make(map[string]string, len(props)+1)
+			for k, v := range props {
+				copied[k] = v
+			}
+			copied["language"] = e.Language
+			props = copied
+		}
+	}
+	propsVec := buildPropertyVector(b, props)
 
 	// PH8 (#2100): embedding_ref — only create string offset when non-empty
 	// to preserve bytewise identity for pre-PH8 graphs.

@@ -11,6 +11,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/classifier"
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	"github.com/cajasmota/archigraph/internal/resolve"
 	"github.com/cajasmota/archigraph/internal/treesitter"
 	"github.com/cajasmota/archigraph/internal/types"
@@ -881,5 +882,135 @@ func TestModuleCoverage_AllEntitiesTagged(t *testing.T) {
 					tc.name, len(modules), total)
 			}
 		})
+	}
+}
+
+// TestLanguageTagPersistsAfterFBRoundtrip is the integration-level regression
+// for issue #2341. It indexes a Python fixture, writes graph.fb, reads it back,
+// and asserts that every entity sourced from a .py file has Language="python".
+//
+// Before the fix, buildEntity in fbwriter never serialized Language and the
+// load.go workaround (restore from Properties["language"]) had nothing to read,
+// so all entities came back with Language="" and archigraph_find --language
+// python silently returned nothing.
+func TestLanguageTagPersistsAfterFBRoundtrip(t *testing.T) {
+	doc := runIndexerOn(t, "testdata/crossfile_python", "crossfile_python", nil)
+
+	// Quick sanity: the fixture must produce at least one Python entity.
+	totalPy := 0
+	for _, e := range doc.Entities {
+		if strings.HasSuffix(e.SourceFile, ".py") {
+			totalPy++
+		}
+	}
+	if totalPy == 0 {
+		t.Fatal("fixture produced no .py entities at all — nothing to verify")
+	}
+
+	// Write to graph.fb via the fbwriter, then reload via LoadGraphFromDir
+	// (the FB path). We import fbwriter transitively through the main package
+	// so use the graph-package shim: WriteAtomic (JSON) is NOT sufficient here
+	// because the bug only manifests on the FB path. Instead sort the doc and
+	// call fbwriter.WriteAtomic to write graph.fb, then LoadGraphFromDir which
+	// prefers graph.fb over graph.json when both are present.
+	dir := t.TempDir()
+	fbPath := filepath.Join(dir, "graph.fb")
+	sortDocumentForEmission(doc)
+	if err := fbwriter.WriteAtomic(fbPath, doc); err != nil {
+		t.Fatalf("fbwriter.WriteAtomic: %v", err)
+	}
+	reloaded, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+
+	// Assert: every entity with a .py source file must have Language="python"
+	// after the roundtrip.
+	missing := 0
+	for _, e := range reloaded.Entities {
+		if strings.HasSuffix(e.SourceFile, ".py") && e.Language != "python" {
+			missing++
+			t.Logf("entity missing Language: id=%s name=%s kind=%s src=%s lang=%q",
+				e.ID, e.Name, e.Kind, e.SourceFile, e.Language)
+		}
+	}
+	if missing > 0 {
+		t.Errorf("%d/%d .py entities have Language=\"\" after graph.fb roundtrip (issue #2341)",
+			missing, totalPy)
+	}
+}
+
+// TestWarnEmptyLanguageEntities verifies that warnEmptyLanguageEntities emits
+// a warning to stderr when entities with a recognized source extension have
+// Language="". This is the buildDocument sanity-check required by issue #2341.
+func TestWarnEmptyLanguageEntities(t *testing.T) {
+	// Build a tiny document: one .py entity without Language (should warn),
+	// one .py entity WITH Language (no warn), one synthetic entity with no
+	// SourceFile (no warn).
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "a", Name: "bad_view", Kind: "class", SourceFile: "views.py", Language: ""},
+			{ID: "b", Name: "good_view", Kind: "class", SourceFile: "models.py", Language: "python"},
+			{ID: "c", Name: "ext:requests", Kind: "external", SourceFile: ""},
+		},
+	}
+
+	// Redirect stderr to capture the warning.
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stderr = w
+
+	warnEmptyLanguageEntities(doc)
+
+	w.Close()
+	os.Stderr = origStderr
+
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if !strings.Contains(output, "#2341") {
+		t.Errorf("expected warning mentioning #2341, got: %q", output)
+	}
+	if !strings.Contains(output, "bad_view") || !strings.Contains(output, "views.py") {
+		t.Errorf("expected warning to name the offending entity, got: %q", output)
+	}
+	// The good entity (Language="python") must NOT appear in the warning.
+	if strings.Contains(output, "good_view") {
+		t.Errorf("warning should not mention entity with Language set, got: %q", output)
+	}
+}
+
+// TestWarnEmptyLanguageEntities_NoBadEntities verifies that no warning is
+// emitted when all entities with recognized extensions already have Language set.
+func TestWarnEmptyLanguageEntities_NoBadEntities(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "a", Name: "views", Kind: "class", SourceFile: "views.py", Language: "python"},
+			{ID: "b", Name: "handler", Kind: "function", SourceFile: "main.go", Language: "go"},
+		},
+	}
+
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stderr = w
+
+	warnEmptyLanguageEntities(doc)
+
+	w.Close()
+	os.Stderr = origStderr
+
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if output != "" {
+		t.Errorf("expected no warning when all Language fields set, got: %q", output)
 	}
 }
