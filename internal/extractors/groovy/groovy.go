@@ -64,6 +64,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	walkGroovy(root, file, imports, &entities)
 	// Issue #90 — tag every relationship with language="groovy".
 	extractor.TagRelationshipsLanguage(entities, "groovy")
+	extractor.TagEntitiesLanguage(entities, "groovy")
 	return entities, nil
 }
 

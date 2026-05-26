@@ -112,6 +112,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractClojure(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "clojure")
+	extractor.TagEntitiesLanguage(out, "clojure")
 	return out, nil
 }
 

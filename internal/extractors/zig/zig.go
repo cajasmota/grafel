@@ -106,6 +106,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	out := extractZig(string(file.Content), file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(out, "zig")
+	extractor.TagEntitiesLanguage(out, "zig")
 	return out, nil
 }
 

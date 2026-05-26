@@ -131,6 +131,41 @@ func FileEntity(file FileInput) types.EntityRecord {
 	}
 }
 
+// TagEntitiesLanguage stamps Language = lang and Properties["language"] = lang
+// on every entity in records. It is the symmetric counterpart of
+// TagRelationshipsLanguage for entities (issue #2371).
+//
+// Both fields are set so that consumers that read EntityRecord.Language and
+// consumers that consult Properties["language"] (e.g. the resolver's
+// per-language dynamic-pattern dispatch — the tunnel introduced in PR #2365)
+// see a consistent value.
+//
+// Entities that already carry a non-empty Language are left untouched so that
+// explicit per-extractor overrides (e.g. a dialect variant) are preserved.
+// Properties maps are allocated lazily. No-op when lang is empty.
+func TagEntitiesLanguage(records []types.EntityRecord, lang string) {
+	if lang == "" {
+		return
+	}
+	for i := range records {
+		e := &records[i]
+		// If the entity already carries an explicit language assignment, leave
+		// both Language and Properties["language"] untouched so per-extractor
+		// dialect overrides are preserved.
+		if e.Language != "" {
+			continue
+		}
+		e.Language = lang
+		if e.Properties == nil {
+			e.Properties = map[string]string{"language": lang}
+			continue
+		}
+		if _, ok := e.Properties["language"]; !ok {
+			e.Properties["language"] = lang
+		}
+	}
+}
+
 // TagStandaloneRelationshipsLanguage is TagRelationshipsLanguage for a slice
 // of standalone (pass-2) relationships rather than entity-embedded ones.
 func TagStandaloneRelationshipsLanguage(rels []types.RelationshipRecord, lang string) {

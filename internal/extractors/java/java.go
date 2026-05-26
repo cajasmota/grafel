@@ -152,6 +152,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// Issue #90 — tag every embedded relationship with language="java" so
 	// the resolver routes to the JVM dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "java")
+	extractor.TagEntitiesLanguage(entities, "java")
 	return entities, nil
 }
 

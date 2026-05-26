@@ -125,6 +125,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractIdris(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "idris")
+	extractor.TagEntitiesLanguage(out, "idris")
 	return out, nil
 }
 

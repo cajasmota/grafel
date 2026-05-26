@@ -121,6 +121,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractFSharp(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "fsharp")
+	extractor.TagEntitiesLanguage(out, "fsharp")
 	return out, nil
 }
 

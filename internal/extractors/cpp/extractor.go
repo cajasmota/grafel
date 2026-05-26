@@ -138,6 +138,7 @@ func (e *CppExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 	)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(records, lang)
+	extractor.TagEntitiesLanguage(records, lang)
 	return records, nil
 }
 

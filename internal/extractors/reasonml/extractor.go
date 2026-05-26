@@ -102,6 +102,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractReasonML(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "reasonml")
+	extractor.TagEntitiesLanguage(out, "reasonml")
 	return out, nil
 }
 

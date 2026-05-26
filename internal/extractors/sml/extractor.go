@@ -136,6 +136,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractSML(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "sml")
+	extractor.TagEntitiesLanguage(out, "sml")
 	return out, nil
 }
 

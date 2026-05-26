@@ -71,6 +71,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	walk(root, file, "", nil, imports, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "csharp")
+	extractor.TagEntitiesLanguage(entities, "csharp")
 	return entities, nil
 }
 

@@ -190,6 +190,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "fish")
+	extractor.TagEntitiesLanguage(entities, "fish")
 	return entities, nil
 }
 

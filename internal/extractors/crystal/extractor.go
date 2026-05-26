@@ -120,6 +120,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractCrystal(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "crystal")
+	extractor.TagEntitiesLanguage(out, "crystal")
 	return out, nil
 }
 

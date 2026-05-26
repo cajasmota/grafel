@@ -114,6 +114,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	out := extractDart(string(file.Content), file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(out, "dart")
+	extractor.TagEntitiesLanguage(out, "dart")
 	return out, nil
 }
 

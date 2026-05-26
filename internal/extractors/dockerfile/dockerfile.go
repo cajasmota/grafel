@@ -75,7 +75,12 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	entity, stageCount := buildDockerfileEntity(tree.RootNode(), file)
 
 	// Issue #384 — language tag for resolver dynamic-pattern dispatch.
-	extractor.TagRelationshipsLanguage([]types.EntityRecord{entity}, "dockerfile")
+	// Issue #2371 — entity language tag via named slice so both entity and
+	// relationship language fields are stamped on the actual entity value.
+	entities := []types.EntityRecord{entity}
+	extractor.TagRelationshipsLanguage(entities, "dockerfile")
+	extractor.TagEntitiesLanguage(entities, "dockerfile")
+	entity = entities[0]
 
 	span.SetAttributes(
 		attribute.Int("file_line_count", lineCount),

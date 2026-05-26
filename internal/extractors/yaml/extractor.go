@@ -277,6 +277,7 @@ func extractByFlavor(flavor string, root *sitter.Node, file extractor.FileInput)
 	// Issue #386 / #90: stamp Properties["language"]="yaml" on every embedded
 	// relationship so the resolver dispatches the YAML dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "yaml")
+	extractor.TagEntitiesLanguage(entities, "yaml")
 	return entities
 }
 

@@ -117,6 +117,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractOCaml(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "ocaml")
+	extractor.TagEntitiesLanguage(out, "ocaml")
 	return out, nil
 }
 

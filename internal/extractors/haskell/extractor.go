@@ -134,6 +134,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractHaskell(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "haskell")
+	extractor.TagEntitiesLanguage(out, "haskell")
 	return out, nil
 }
 

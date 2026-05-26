@@ -196,6 +196,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractVerilog(string(file.Content), file.Path, lang)
 	extractor.TagRelationshipsLanguage(out, lang)
+	extractor.TagEntitiesLanguage(out, lang)
 	return out, nil
 }
 

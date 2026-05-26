@@ -118,6 +118,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractElm(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "elm")
+	extractor.TagEntitiesLanguage(out, "elm")
 	return out, nil
 }
 

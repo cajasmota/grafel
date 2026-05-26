@@ -143,6 +143,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 			attribute.Bool("django_migration_pruned", true),
 		)
 		extractor.TagRelationshipsLanguage(entities, "python")
+		extractor.TagEntitiesLanguage(entities, "python")
 		return entities, nil
 	}
 
@@ -450,6 +451,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// picks the python catalog instead of falling back to the cross-language
 	// one. Existing tags are preserved.
 	extractor.TagRelationshipsLanguage(entities, "python")
+	extractor.TagEntitiesLanguage(entities, "python")
 	return entities, nil
 }
 

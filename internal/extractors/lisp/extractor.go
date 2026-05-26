@@ -202,6 +202,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	dialect := dialectFromPath(file.Path)
 	out := extractLisp(string(file.Content), file.Path, dialect)
 	extractor.TagRelationshipsLanguage(out, dialect)
+	extractor.TagEntitiesLanguage(out, dialect)
 	return out, nil
 }
 

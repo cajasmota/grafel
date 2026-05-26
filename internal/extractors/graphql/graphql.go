@@ -96,6 +96,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	entities := extractGraphQL(string(file.Content), file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "graphql")
+	extractor.TagEntitiesLanguage(entities, "graphql")
 	return entities, nil
 }
 

@@ -255,6 +255,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 
 	// --- 5. Tag relationships with language ----------------------------------
 	extractor.TagRelationshipsLanguage(entities, "vue")
+	extractor.TagEntitiesLanguage(entities, "vue")
 
 	return entities, nil
 }

@@ -67,6 +67,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	walkNode(file.Tree.RootNode(), file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "elixir")
+	extractor.TagEntitiesLanguage(entities, "elixir")
 	return entities, nil
 }
 

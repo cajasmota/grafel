@@ -111,6 +111,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractSolidity(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "solidity")
+	extractor.TagEntitiesLanguage(out, "solidity")
 	return out, nil
 }
 

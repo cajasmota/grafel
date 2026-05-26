@@ -122,6 +122,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractErlang(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "erlang")
+	extractor.TagEntitiesLanguage(out, "erlang")
 	return out, nil
 }
 

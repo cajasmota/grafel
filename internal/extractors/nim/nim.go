@@ -109,6 +109,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractNim(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "nim")
+	extractor.TagEntitiesLanguage(out, "nim")
 	return out, nil
 }
 

@@ -46,6 +46,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")
+	extractor.TagEntitiesLanguage(entities, "ruby")
 	return entities, nil
 }
 

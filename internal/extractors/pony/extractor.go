@@ -128,6 +128,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractPony(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "pony")
+	extractor.TagEntitiesLanguage(out, "pony")
 	return out, nil
 }
 

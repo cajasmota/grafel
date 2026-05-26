@@ -277,6 +277,7 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// "typescript") on every embedded relationship so the resolver routes
 	// to the right per-language dynamic-pattern catalog.
 	extreg.TagRelationshipsLanguage(x.entities, file.Language)
+	extreg.TagEntitiesLanguage(x.entities, file.Language)
 
 	return x.entities, nil
 }

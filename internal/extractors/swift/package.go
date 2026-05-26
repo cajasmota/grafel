@@ -58,6 +58,7 @@ func (p *PackageExtractor) Extract(_ context.Context, file extractor.FileInput) 
 	src := string(file.Content)
 	targets := extractTargets(src, file.Path)
 	extractor.TagRelationshipsLanguage(targets, "swift_package")
+	extractor.TagEntitiesLanguage(targets, "swift_package")
 	return targets, nil
 }
 

@@ -76,11 +76,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 			lang = "sass"
 		}
 		extractor.TagRelationshipsLanguage(entities, lang)
+		extractor.TagEntitiesLanguage(entities, lang)
 		return entities, nil
 	case ".less":
 		var entities []types.EntityRecord
 		ExtractLess(ctx, file, &entities)
 		extractor.TagRelationshipsLanguage(entities, "less")
+		extractor.TagEntitiesLanguage(entities, "less")
 		return entities, nil
 	default:
 		// Plain CSS: tree-sitter parse required.
@@ -91,6 +93,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		root := file.Tree.RootNode()
 		extractCSS(root, file, &entities)
 		extractor.TagRelationshipsLanguage(entities, "css")
+		extractor.TagEntitiesLanguage(entities, "css")
 		return entities, nil
 	}
 }

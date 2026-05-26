@@ -54,6 +54,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	walk(file.Tree.RootNode(), file, "", &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
+	extractor.TagEntitiesLanguage(entities, "php")
 	return entities, nil
 }
 

@@ -125,6 +125,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	out := extractReScript(string(file.Content), file.Path)
 	extractor.TagRelationshipsLanguage(out, "rescript")
+	extractor.TagEntitiesLanguage(out, "rescript")
 	return out, nil
 }
 
