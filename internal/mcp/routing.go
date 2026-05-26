@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -138,15 +139,77 @@ func groupFromRegistryWithCandidates(s *State, cwd string) (string, []string) {
 
 // pathContains reports whether ancestor is an ancestor (or equal to) child.
 // Both paths must already be absolute + clean.
+// On macOS and Windows, the comparison is case-insensitive to handle
+// case-insensitive filesystems (APFS, HFS+, NTFS). On other systems,
+// the comparison is case-sensitive.
 func pathContains(ancestor, child string) bool {
-	if ancestor == child {
-		return true
+	// Normalize both paths: realpath to resolve symlinks and make them comparable.
+	// On macOS, /var -> /private/var, so we must resolve both sides consistently.
+	// If EvalSymlinks succeeds for at least one, use the resolved path; otherwise
+	// fall back to the original. This ensures both sides use the same symlink
+	// canonicalization (or neither do).
+	ancestorNorm := ancestor
+	childNorm := child
+	ancestorResolved := true
+	childResolved := true
+
+	if resolved, err := filepath.EvalSymlinks(ancestor); err == nil {
+		ancestorNorm = resolved
+	} else {
+		ancestorResolved = false
 	}
+	if resolved, err := filepath.EvalSymlinks(child); err == nil {
+		childNorm = resolved
+	} else {
+		childResolved = false
+	}
+
+	// If only one resolved, try to normalize the unresolved one to the same symlink base.
+	// This handles cases where ancestor exists but child doesn't (yet) — we can still
+	// do string comparison once we strip common symlinks.
+	if ancestorResolved && !childResolved {
+		// Try to resolve the parent of child iteratively until we get a resolved path
+		// or run out of parents. This works around "directory doesn't exist yet" cases.
+		cur := child
+		for {
+			parent := filepath.Dir(cur)
+			if parent == cur {
+				break
+			}
+			if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+				childNorm = filepath.Join(resolved, filepath.Base(cur))
+				break
+			}
+			cur = parent
+		}
+	}
+
+	// On case-insensitive filesystems (macOS, Windows), use EqualFold.
+	// On case-sensitive filesystems (Linux, etc.), use exact equality.
+	caseInsensitive := runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+
+	// Check exact equality.
+	if caseInsensitive {
+		if strings.EqualFold(ancestorNorm, childNorm) {
+			return true
+		}
+	} else {
+		if ancestorNorm == childNorm {
+			return true
+		}
+	}
+
+	// Check prefix: ancestor + separator is a prefix of child + separator.
 	sep := string(os.PathSeparator)
-	if !strings.HasSuffix(ancestor, sep) {
-		ancestor += sep
+	if !strings.HasSuffix(ancestorNorm, sep) {
+		ancestorNorm += sep
 	}
-	return strings.HasPrefix(child+sep, ancestor)
+	childWithSep := childNorm + sep
+
+	if caseInsensitive {
+		return strings.HasPrefix(strings.ToLower(childWithSep), strings.ToLower(ancestorNorm))
+	}
+	return strings.HasPrefix(childWithSep, ancestorNorm)
 }
 
 // groupFromCWD walks dir upward looking for .archigraph/group.json which

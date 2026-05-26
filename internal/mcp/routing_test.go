@@ -3,6 +3,7 @@ package mcp
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -227,4 +228,113 @@ func TestResolveGroup_AmbiguousCWDIncludesCandidates(t *testing.T) {
 
 func mkdirp(p string) error {
 	return osMkdirAll(p, 0o755)
+}
+
+// TestPathContains_CaseInsensitiveOnMacOSWindows verifies that pathContains
+// performs case-insensitive matching on macOS (darwin) and Windows, and
+// case-sensitive matching on Linux and other systems. This addresses issue #2543:
+// shell-reported cwd may differ in casing from the indexed manifest path on
+// case-insensitive filesystems (APFS, HFS+, NTFS).
+func TestPathContains_CaseInsensitiveOnMacOSWindows(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
+		t.Skipf("case-insensitive test only applies on darwin/windows; skipping on %s", runtime.GOOS)
+	}
+
+	cases := []struct {
+		name     string
+		ancestor string
+		child    string
+		want     bool
+	}{
+		{
+			name:     "exact match same casing",
+			ancestor: "/Users/test/UpVate/upvate_core",
+			child:    "/Users/test/UpVate/upvate_core/src",
+			want:     true,
+		},
+		{
+			name:     "lowercase child cwd vs uppercase ancestor manifest",
+			ancestor: "/Users/test/UpVate/upvate_core",
+			child:    "/Users/test/upvate/upvate_core/src",
+			want:     true,
+		},
+		{
+			name:     "exact equality with different casing",
+			ancestor: "/Users/test/UpVate/upvate_core",
+			child:    "/Users/test/upvate/upvate_core",
+			want:     true,
+		},
+		{
+			name:     "nested path with different casing",
+			ancestor: "/Users/test/MyRepo",
+			child:    "/Users/test/MYREPO/src/pkg",
+			want:     true,
+		},
+		{
+			name:     "unrelated path even with overlapping string",
+			ancestor: "/Users/test/repo",
+			child:    "/Users/test/repository",
+			want:     false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := pathContains(tc.ancestor, tc.child)
+			if got != tc.want {
+				t.Errorf("pathContains(%q, %q): want %v, got %v", tc.ancestor, tc.child, tc.want, got)
+			}
+		})
+	}
+}
+
+// TestGroupFromRegistryWithCandidates_CaseInsensitive verifies that the registry
+// cwd-to-group matcher handles case-insensitive paths on macOS/Windows (issue #2543).
+// It tests that when the registered repo path differs in casing from the cwd,
+// the match still succeeds on case-insensitive filesystems.
+func TestGroupFromRegistryWithCandidates_CaseInsensitive(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
+		t.Skipf("case-insensitive test only applies on darwin/windows; skipping on %s", runtime.GOOS)
+	}
+
+	tmp := t.TempDir()
+
+	// Register repo with uppercase path.
+	upperRepoPath := filepath.Join(tmp, "UpVate", "upvate_core")
+	if err := mkdirp(upperRepoPath); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Register a second repo in a different group to force groupFromRegistryWithCandidates
+	// to make a real decision (not singleton fallback).
+	otherRepoPath := filepath.Join(tmp, "other")
+	if err := mkdirp(otherRepoPath); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	reg := &Registry{
+		Groups: map[string]RegistryGroup{
+			"upvate": {
+				Repos: map[string]RegistryRepo{
+					"upvate-core": {Path: upperRepoPath},
+				},
+			},
+			"other-group": {
+				Repos: map[string]RegistryRepo{
+					"other": {Path: otherRepoPath},
+				},
+			},
+		},
+	}
+	st := NewState(reg)
+
+	// Use cwd with lowercase path — on a case-insensitive filesystem, this is the
+	// same directory as the registered upperRepoPath, so the match should succeed.
+	lowerRepoPath := filepath.Join(tmp, "upvate", "upvate_core")
+	cwd := filepath.Join(lowerRepoPath, "src", "views")
+
+	g, candidates := groupFromRegistryWithCandidates(st, cwd)
+	if g != "upvate" {
+		t.Errorf("groupFromRegistryWithCandidates: want group=upvate, got %s (candidates: %v)", g, candidates)
+	}
 }
