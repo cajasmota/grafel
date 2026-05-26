@@ -68,6 +68,10 @@ The `model:` frontmatter field is an **opinionated suggestion** to the host agen
 | `api-designer` | `sonnet` | API review is primarily inventory and spec comparison work |
 | `data-engineer` | `sonnet` | Schema and query analysis follows clear structural patterns |
 | `qa-reviewer` | `sonnet` | Test inventory and TESTS-edge coverage analysis is structured enumeration |
+| `solutions-architect` | `opus` | Cross-service architectural reasoning requires multi-hop inference across repo boundaries |
+| `devops-reviewer` | `sonnet` | Config review follows structured enumeration; deep inference not required |
+| `compliance-officer` | `opus` | High false-positive risk requires careful multi-hop reasoning to avoid erroneous findings |
+| `dx-engineer` | `sonnet` | DX signals follow structured test-edge and import-graph enumeration |
 
 **Override contract:** The host agent MUST honour an explicit `--model` flag from the user (e.g. `/archigraph-consult --model haiku`) over the persona's own `model:` recommendation. The recommendation is a default, not a lock.
 
@@ -260,7 +264,7 @@ Each persona's body lists the subset of styles relevant to its domain (e.g. arch
 
 ## 7. Persona catalog
 
-Eight personas ship. The catalog count must match across this doc, `SKILL.md`, and the filesystem at `skills/archigraph-consult/personas/`.
+Twelve personas ship. The catalog count must match across this doc, `SKILL.md`, and the filesystem at `skills/archigraph-consult/personas/`.
 
 | # | Name | Lens | Primary graph queries | Status |
 |---|---|---|---|---|
@@ -272,8 +276,10 @@ Eight personas ship. The catalog count must match across this doc, `SKILL.md`, a
 | 6 | `api-designer` | Endpoint naming, REST/RPC convention consistency, versioning, OpenAPI gaps | `archigraph_find` (http_endpoint), `archigraph_inspect`, `archigraph_cross_links` | Shipped |
 | 7 | `data-engineer` | Schema quality, migration hygiene, ORM patterns, missing indexes, FK integrity | `archigraph_find` (schema/model), `archigraph_expand`, `archigraph_traces` | Shipped |
 | 8 | `qa-reviewer` | Test coverage by module, missing test types, untested critical paths | `archigraph_expand` (TESTS edges), `archigraph_find`, `archigraph_traces` | Shipped |
-
-**Deferred** (documented but not shipped): `solutions-architect`, `devops-reviewer`, `compliance-officer`, `dx-engineer`. Rationale unchanged from PR #2449.
+| 9 | `solutions-architect` | Cross-service boundaries, inter-repo contracts, coupling, blast-radius | `archigraph_cross_links`, `archigraph_expand`, `archigraph_traces` | Shipped (with limitations) — signal requires cross_links data populated; limited for single-repo groups |
+| 10 | `devops-reviewer` | CI/CD config, GitHub Actions pinning, build hygiene, graph-visible infra config | `archigraph_status`, `archigraph_find`, `archigraph_subgraph` | Shipped (with limitations) — does NOT index Terraform/k8s; CI/YAML slice only |
+| 11 | `compliance-officer` | PII field detection, audit-trail gaps, sensitive data flow surface scan | `archigraph_find` (field names), `archigraph_inspect`, `archigraph_expand` (READS_FIELD/WRITES_FIELD) | Shipped (with limitations) — name-match heuristics only; no data-classification layer; high false-positive rate |
+| 12 | `dx-engineer` | Test desert modules, circular imports, god entry-points, module size outliers | `archigraph_clusters`, `archigraph_expand` (TESTS/IMPORTS), `archigraph_stats` | Shipped (with limitations) — test/import-graph signals only; no docs/README or build-time review |
 
 ---
 
@@ -315,4 +321,19 @@ This section is non-negotiable. Any implementation that violates these invariant
 | Telemetry on persona usage / Consult-Out frequency | Needs privacy review |
 | Per-persona model selection strategy | **Shipped in #2475** — `model:` frontmatter on all 8 personas with opinionated recommendations; Section 2.3 defines the mapping and override contract |
 | Cross-platform renderer CLI | Defer until 3+ platforms stable |
-| Solutions-architect / devops / compliance / dx personas | As per PR #2449 deferral reasons |
+| Solutions-architect / devops / compliance / dx personas | **Shipped in this PR** (feature/personas-2451-2454) — built without original gates met, per user directive. Each documents signal-quality limitations in its persona body. Closing the gate gaps is tracked separately in the personas issue queue. |
+
+---
+
+## 10. Limitations + honesty contract
+
+When a persona has a known signal-quality limitation, it MUST document it in the persona body via a "## Current-state limitations" section. This is a HARD invariant — users must know when a persona's findings are bounded.
+
+The 4 personas in the 'Phase 1.5 deferred' batch were built without their original gates met (cross_links coverage validation, IaC indexer, data-classification layer, DX hypothesis testing). Each documents this clearly in its body. Closing this gap is tracked as separate work in the personas issue queue.
+
+| Persona | Gate not yet met | Impact on signal quality |
+|---|---|---|
+| `solutions-architect` | cross_links coverage validation | Limited for single-repo groups; sparse cross-links = incomplete service topology |
+| `devops-reviewer` | IaC indexer integration | Cannot review Terraform, Helm, or full k8s manifests; CI/YAML slice only |
+| `compliance-officer` | data-classification layer | Name-match heuristics only; no regulatory categorisation; high false-positive rate |
+| `dx-engineer` | DX hypothesis testing | Test/import-graph signals only; no docs quality, README, or onboarding-flow review |
