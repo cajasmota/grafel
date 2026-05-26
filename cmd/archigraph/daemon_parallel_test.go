@@ -10,8 +10,8 @@ import (
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
-// TestDaemonRebuildParallel verifies that daemonRebuildFunc respects
-// rebuildConcurrency: with concurrency=2 and 4 repos that each sleep
+// TestDaemonRebuildParallel verifies that daemonRebuildFuncCore respects
+// the concurrency parameter: with concurrency=2 and 4 repos that each sleep
 // briefly, the parallel run should complete in meaningfully less wall
 // time than the serial run, and peak observed concurrency should be ≥2.
 func TestDaemonRebuildParallel(t *testing.T) {
@@ -70,9 +70,8 @@ func TestDaemonRebuildParallel(t *testing.T) {
 	defer func() { rebuildLinksFunc = origLinksFn }()
 
 	// --- Serial run (concurrency=1) ---
-	rebuildConcurrency = 1
 	t0 := time.Now()
-	rebuilt, _, err := daemonRebuildFunc(proto.RebuildArgs{Group: "test-group"})
+	rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "test-group"})
 	serialDur := time.Since(t0)
 	if err != nil {
 		t.Fatalf("serial rebuild: %v", err)
@@ -86,9 +85,8 @@ func TestDaemonRebuildParallel(t *testing.T) {
 	atomic.StoreInt64(&currentConc, 0)
 
 	// --- Parallel run (concurrency=2) ---
-	rebuildConcurrency = 2
 	t1 := time.Now()
-	rebuilt2, _, err2 := daemonRebuildFunc(proto.RebuildArgs{Group: "test-group"})
+	rebuilt2, _, err2 := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: "test-group"})
 	parallelDur := time.Since(t1)
 	if err2 != nil {
 		t.Fatalf("parallel rebuild: %v", err2)
@@ -143,8 +141,7 @@ func TestDaemonRebuildSerial(t *testing.T) {
 	rebuildLinksFunc = func(_ string) error { return nil }
 	defer func() { rebuildLinksFunc = origLinksFn }()
 
-	rebuildConcurrency = 1
-	rebuilt, warning, err := daemonRebuildFunc(proto.RebuildArgs{Group: "serial-group"})
+	rebuilt, warning, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "serial-group"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,8 +191,7 @@ func TestDaemonRebuildFailureIsolation(t *testing.T) {
 
 	// Both serial and parallel should return partial results + an error.
 	for _, conc := range []int{1, 2} {
-		rebuildConcurrency = conc
-		rebuilt, _, err := daemonRebuildFunc(proto.RebuildArgs{Group: "mixed-group"})
+		rebuilt, _, err := daemonRebuildFuncCore(conc, proto.RebuildArgs{Group: "mixed-group"})
 		if err == nil {
 			t.Errorf("conc=%d: expected error for bad-repo, got nil", conc)
 		}

@@ -71,9 +71,7 @@ func TestRebuildPanicRecoveryReleasesSemaphore(t *testing.T) {
 	rebuildLinksFunc = func(_ string) error { return nil }
 	defer func() { rebuildLinksFunc = origLinksFn }()
 
-	rebuildConcurrency = 1
-
-	_, _, err := daemonRebuildFunc(proto.RebuildArgs{Group: group})
+	_, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group})
 	// Expect an error because one repo panicked.
 	if err == nil {
 		t.Error("expected error from panicking repo, got nil")
@@ -106,8 +104,7 @@ func TestRebuildPanicParallelReleasesSemaphore(t *testing.T) {
 	rebuildLinksFunc = func(_ string) error { return nil }
 	defer func() { rebuildLinksFunc = origLinksFn }()
 
-	rebuildConcurrency = 2
-	_, _, _ = daemonRebuildFunc(proto.RebuildArgs{Group: group})
+	_, _, _ = daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group})
 
 	if got := atomic.LoadInt32(&callCount); got != 4 {
 		t.Errorf("callCount = %d, want 4 (panic in one goroutine must not starve others)", got)
@@ -135,12 +132,11 @@ func TestRebuildFiveSequentialAlwaysComplete(t *testing.T) {
 	rebuildLinksFunc = func(_ string) error { return nil }
 	defer func() { rebuildLinksFunc = origLinksFn }()
 
-	rebuildConcurrency = 1
 	for i := 0; i < 5; i++ {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			daemonRebuildFunc(proto.RebuildArgs{Group: group}) //nolint:errcheck
+			daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}) //nolint:errcheck
 		}()
 		select {
 		case <-done:
@@ -186,8 +182,7 @@ func TestRebuildSemaphoreCapRespected(t *testing.T) {
 	rebuildLinksFunc = func(_ string) error { return nil }
 	defer func() { rebuildLinksFunc = origLinksFn }()
 
-	rebuildConcurrency = 2
-	_, _, err := daemonRebuildFunc(proto.RebuildArgs{Group: group})
+	_, _, err := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -224,14 +219,12 @@ func TestRebuildResultsSliceNotRacedOnConcurrentCalls(t *testing.T) {
 	rebuildLinksFunc = func(_ string) error { return nil }
 	defer func() { rebuildLinksFunc = origLinksFn }()
 
-	rebuildConcurrency = 1
-
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rebuilt, _, err := daemonRebuildFunc(proto.RebuildArgs{Group: group})
+			rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group})
 			if err != nil {
 				return // errors are acceptable
 			}
