@@ -611,8 +611,8 @@ func TestToolNameSurface(t *testing.T) {
 	// find_callers + find_callees behind direction=) + archigraph_status
 	// sentinel registered as a real callable tool (#1769). find_callers /
 	// find_callees stay registered as deprecated aliases for one release.
-	if got := len(srv.MCP.ListTools()); got != 38 {
-		t.Errorf("expected 38 registered tools, got %d — update this count if tools are added/removed (added archigraph_docgen_* #2214)", got)
+	if got := len(srv.MCP.ListTools()); got != 42 {
+		t.Errorf("expected 42 registered tools, got %d — update this count if tools are added/removed (added archigraph_docgen_* #2214)", got)
 	}
 }
 
@@ -3095,6 +3095,11 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_docgen_promote":   {"run_id": "2026-05-26-testid01", "group": "g", "no_git": true},
 		"archigraph_docgen_abort":     {"run_id": "2026-05-26-testid01", "group": "g", "no_git": true},
 		"archigraph_docgen_list":      {"group": "g"},
+		// #2442 re-wires: 4 tools re-enabled for API surface
+		"archigraph_save_finding":  {"group": "g", "question": "test", "answer": "test"},
+		"archigraph_list_findings": {"group": "g"},
+		"archigraph_cross_links":   {"group": "g", "action": "list"},
+		"archigraph_license_audit": {"group": "g"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3139,8 +3144,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 38 {
-		t.Errorf("expected 38 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_docgen_* #2214)", len(tools))
+	if len(tools) != 42 {
+		t.Errorf("expected 42 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_docgen_* #2214)", len(tools))
 	}
 
 	for _, st := range tools {
