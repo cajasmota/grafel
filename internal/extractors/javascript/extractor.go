@@ -1682,6 +1682,23 @@ func isStateHookName(leaf string) bool {
 
 // isMutationStyleHookName encodes the name-shape rule documented on
 // isMutationStyleHookCall. Pure function, exported via test seam.
+//
+// Issue #2346 — IMPORTANT: State hook value bindings are classified as
+// SCOPE.Operation, not SCOPE.Component. This is intentional: useState /
+// useReducer / useTransition / etc. return [value, setter] tuples where
+// the setter (e.g. setCount) is mutation-style and must be lifted as
+// SCOPE.Operation. However, the value binding (e.g. count from
+// `const [count, setCount] = useState(0)`) is also delegated to this
+// function via isDestructuredStateHookSetter, which asks "is the RHS a
+// state hook?", not "is this binding a setter?". As a result, both
+// bindings inherit the mutation-style classification.
+//
+// Consequences for queries: SCOPE.Component queries for state values
+// (e.g. "find all Component bindings from useState") will not match the
+// value binding itself; only setter bindings are returned. To find state
+// values, query for SCOPE.Operation with subtype="const" or "const_destructure"
+// instead. This bias is documented here to clarify for future readers and
+// to prevent accidental over-queries on SCOPE.Component from React codebases.
 func isMutationStyleHookName(leaf string) bool {
 	// State hooks are a subset of mutation-style — they return callables.
 	if isStateHookName(leaf) {
