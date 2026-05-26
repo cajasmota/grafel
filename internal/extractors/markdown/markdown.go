@@ -47,6 +47,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -60,6 +61,26 @@ import (
 )
 
 const langName = "markdown"
+
+// emitHeadingsEnv is the env var that opts SCOPE.Heading emission back on.
+// Issue #2284: heading entities (one per ATX heading in every README, CHANGELOG,
+// and docs file) polluted the default code graph — on the UpVate bench corpus
+// they accounted for ~240 entities, dominating `find` results and clustering.
+// They remain useful for docs-search workflows, so we keep the code path but
+// gate it behind an opt-in flag. Default: OFF.
+//
+// Accepted truthy values: "1", "true" (case-sensitive). Anything else,
+// including unset, leaves heading emission disabled.
+const emitHeadingsEnv = "ARCHIGRAPH_MARKDOWN_EMIT_HEADINGS"
+
+// emitHeadingsEnabled reports whether SCOPE.Heading entities (and their
+// associated CONTAINS / REFERENCES relationships) should be emitted. Reads
+// the env var on every call — cheap, and lets tests toggle behavior via
+// t.Setenv without restarting the process.
+func emitHeadingsEnabled() bool {
+	v := os.Getenv(emitHeadingsEnv)
+	return v == "1" || v == "true"
+}
 
 func init() {
 	extractor.Register(langName, &Extractor{})
@@ -96,6 +117,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	}
 
 	headings, codeBlocks, links := scan(lines)
+
+	// Issue #2284: heading emission is opt-in. When disabled we drop the
+	// scanned heading slice so the downstream loops (entity build, hierarchy
+	// edges, code-block parent attachment) produce no heading entities and
+	// code blocks fall back to a Document parent. We never materialise
+	// heading entities or their CONTAINS / REFERENCES edges in this mode.
+	if !emitHeadingsEnabled() {
+		headings = nil
+	}
 
 	totalLines := len(lines)
 	docName := basename(file.Path)
@@ -239,7 +269,10 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		}
 		codeEntities = append(codeEntities, ent)
 
-		// Attach to most recent heading whose start_line < cb.start.
+		// Attach to most recent heading whose start_line < cb.start. When
+		// heading emission is disabled (issue #2284), or when no heading
+		// precedes the code block, attach directly to the Document so the
+		// code block is not orphaned.
 		parentIdx := -1
 		for i := range headings {
 			if headings[i].line < cb.start {
@@ -251,6 +284,12 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		if parentIdx >= 0 {
 			headingEntities[parentIdx].Relationships = append(headingEntities[parentIdx].Relationships, types.RelationshipRecord{
 				FromID: headingEntities[parentIdx].QualifiedName,
+				ToID:   qname,
+				Kind:   "CONTAINS",
+			})
+		} else {
+			doc.Relationships = append(doc.Relationships, types.RelationshipRecord{
+				FromID: docQName,
 				ToID:   qname,
 				Kind:   "CONTAINS",
 			})

@@ -10,6 +10,17 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+// TestMain opts the suite into heading emission. Issue #2284 made heading
+// emission opt-in (default off); existing tests assert on the legacy
+// behaviour, so we flip the gate on for the whole package by default and
+// let individual tests (TestHeadings_DisabledByDefault) override it.
+func TestMain(m *testing.M) {
+	if err := os.Setenv(emitHeadingsEnv, "1"); err != nil {
+		panic(err)
+	}
+	os.Exit(m.Run())
+}
+
 func loadFixture(t *testing.T, name string) extractor.FileInput {
 	t.Helper()
 	p := filepath.Join("testdata", name)
@@ -387,5 +398,73 @@ func TestRegistration(t *testing.T) {
 		t.Errorf("markdown extractor not registered")
 	} else if e.Language() != "markdown" {
 		t.Errorf("extractor.Language() = %q, want markdown", e.Language())
+	}
+}
+
+// TestHeadings_DisabledByDefault verifies the issue #2284 fix: when the
+// ARCHIGRAPH_MARKDOWN_EMIT_HEADINGS gate is unset (the default), the
+// extractor emits NO SCOPE.Heading entities and NO Document→Heading
+// CONTAINS edges. Code blocks must still appear, attached to the Document.
+func TestHeadings_DisabledByDefault(t *testing.T) {
+	t.Setenv(emitHeadingsEnv, "")
+
+	ents := extract(t, "simple.md")
+
+	if c := countByKind(ents, "SCOPE.Heading"); c != 0 {
+		t.Errorf("default-off: expected 0 Headings, got %d", c)
+	}
+	if c := countByKind(ents, "SCOPE.Document"); c != 1 {
+		t.Errorf("default-off: expected 1 Document, got %d", c)
+	}
+	// Code block must still be emitted.
+	if c := countByKind(ents, "SCOPE.CodeBlock"); c != 1 {
+		t.Errorf("default-off: expected 1 CodeBlock, got %d", c)
+	}
+
+	// Document must NOT carry CONTAINS edges to any heading slug, and its
+	// CONTAINS edges (if any) should point only at the code block.
+	doc := findByQName(ents, "simple.md")
+	if doc == nil {
+		t.Fatalf("doc not found")
+	}
+	codeQ := "simple.md::block::L9"
+	for _, r := range doc.Relationships {
+		if r.Kind != "CONTAINS" {
+			continue
+		}
+		if r.ToID != codeQ {
+			t.Errorf("default-off: doc has unexpected CONTAINS->%q (expected only ->%q)", r.ToID, codeQ)
+		}
+	}
+	// Document must directly contain the code block as fallback parent.
+	if !hasContains(doc.Relationships, codeQ) {
+		t.Errorf("default-off: doc should contain code block %q as fallback parent; rels=%+v", codeQ, doc.Relationships)
+	}
+}
+
+// TestHeadings_OptInRestoresLegacy verifies that explicitly enabling
+// ARCHIGRAPH_MARKDOWN_EMIT_HEADINGS produces the legacy heading-rich
+// graph: Document→Heading CONTAINS, heading hierarchy, and Heading→CodeBlock
+// parent attachment all return.
+func TestHeadings_OptInRestoresLegacy(t *testing.T) {
+	t.Setenv(emitHeadingsEnv, "1")
+
+	ents := extract(t, "simple.md")
+
+	if c := countByKind(ents, "SCOPE.Heading"); c != 2 {
+		t.Fatalf("opt-in: expected 2 Headings, got %d", c)
+	}
+	doc := findByQName(ents, "simple.md")
+	if doc == nil {
+		t.Fatalf("doc not found")
+	}
+	if !hasContains(doc.Relationships, "simple.md::title") {
+		t.Errorf("opt-in: doc missing CONTAINS->title")
+	}
+	// Code block's parent is now the heading, not the doc.
+	codeQ := "simple.md::block::L9"
+	h2 := findByQName(ents, "simple.md::section")
+	if h2 == nil || !hasContains(h2.Relationships, codeQ) {
+		t.Errorf("opt-in: heading should contain code block %q", codeQ)
 	}
 }
