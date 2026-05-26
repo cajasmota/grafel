@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -46,7 +47,18 @@ func main() {
 // runLinksHook is wired into cli.Hooks so the daemon (Phase B) can re-
 // run cross-repo link passes whenever a registered repo's graph.json
 // changes. It is also used by the daemon's Rebuild RPC handler.
+// This is the non-context version for the CLI hook interface.
 func runLinksHook(group string) error {
+	return cli.RunLinksForGroup(group)
+}
+
+// runLinksHookWithCtx is the context-aware version used by the scheduler's
+// daemonSchedulerLinks callback. The ctx is the scheduler's shutdownCtx and
+// is available for future use in subprocess handling.
+func runLinksHookWithCtx(ctx context.Context, group string) error {
+	// NOTE: ctx is not yet used by RunLinksForGroup, but is threaded through
+	// for future context-aware operations.
+	_ = ctx
 	return cli.RunLinksForGroup(group)
 }
 

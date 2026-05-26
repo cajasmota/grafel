@@ -218,6 +218,8 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 }
 
 // checkCLI compares the running binary SHA against install.json.
+// Skips the check if running from a git worktree (which may have a different
+// binary path), and emits an INFO-level hint instead.
 func checkCLI(state *State) CheckResult {
 	cr := CheckResult{Surface: "cli", OK: true}
 
@@ -225,6 +227,17 @@ func checkCLI(state *State) CheckResult {
 		cr.OK = false
 		cr.Severity = SeverityCritical
 		cr.Drift = []string{"install.json has no CLI record (partial install?)"}
+		return cr
+	}
+
+	// Check if we're running from a git worktree. If so, skip the SHA check
+	// since worktree builds may have a different binary layout.
+	// Detect by checking if .git is a file (worktree marker) in the current dir
+	// or any parent directory. This is a cheap heuristic.
+	if isInGitWorktree() {
+		cr.OK = true
+		cr.Severity = SeverityInfo
+		cr.Drift = []string{"running from git worktree; binary-SHA check skipped. To update: run 'go install ./cmd/archigraph' from the repo root."}
 		return cr
 	}
 
@@ -243,6 +256,24 @@ func checkCLI(state *State) CheckResult {
 		cr.Drift = []string{fmt.Sprintf("sha256 mismatch: binary=%s install=%s", actual[:16], state.CLI.SHA256[:16])}
 	}
 	return cr
+}
+
+// isInGitWorktree reports whether the current process is running from inside
+// a git worktree (not the main checkout). A worktree has .git as a file
+// (not a directory) pointing to the .git/worktrees/<name> directory.
+func isInGitWorktree() bool {
+	return isGitDirAFile(".")
+}
+
+// isGitDirAFile checks if .git in dir is a regular file (worktree marker).
+func isGitDirAFile(dir string) bool {
+	gitPath := filepath.Join(dir, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return false
+	}
+	// In a worktree, .git is a file. In a normal checkout, it's a directory.
+	return !info.IsDir()
 }
 
 // healthzResponse is a minimal struct for parsing the /healthz JSON body.
@@ -642,8 +673,8 @@ func RunQuickDoctor(opts QuickOptions) error {
 
 	var warnings []string
 
-	// Check 1: CLI SHA.
-	if state.CLI.Path != "" && state.CLI.SHA256 != "" {
+	// Check 1: CLI SHA (skip if in a git worktree).
+	if state.CLI.Path != "" && state.CLI.SHA256 != "" && !isInGitWorktree() {
 		actual, shaErr := sha256File(state.CLI.Path)
 		if shaErr == nil && actual != state.CLI.SHA256 {
 			warnings = append(warnings, "binary SHA mismatch (reinstall recommended)")
