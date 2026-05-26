@@ -22,11 +22,39 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractors/javascript"
 )
 
+// findClientFixture searches for a client fixture directory.
+// Checks environment variable ARCHIGRAPH_FIXTURES first, then common developer paths.
+// Returns "" if not found.
+func findClientFixture(fixtureName string) string {
+	// Check environment variable first.
+	if env := os.Getenv("ARCHIGRAPH_FIXTURES"); env != "" {
+		path := filepath.Join(env, fixtureName)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	// Check common developer paths.
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, "private/archigraph-fixtures", fixtureName),
+		filepath.Join(home, "Documents/Projects/archigraph-fixtures", fixtureName),
+		"/tmp/archigraph-fixtures/" + fixtureName,
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	return ""
+}
+
 func TestClassArrow_Measurement(t *testing.T) {
 	if os.Getenv("ARCHIGRAPH_771_MEASURE") != "1" {
 		t.Skip("set ARCHIGRAPH_771_MEASURE=1 to run #771 corpus measurement")
 	}
-	home, _ := os.UserHomeDir()
 	cases := []struct {
 		fixture string
 		root    string
@@ -34,11 +62,11 @@ func TestClassArrow_Measurement(t *testing.T) {
 	}{
 		// fixture-e: AngularJS-style service classes with class-field arrows;
 		// expect at least 5 new SCOPE.Operation entities (actual: 51 found).
-		{"client-fixture-e", filepath.Join(home, "private/archigraph-fixtures/client-fixture-e"), 5},
+		{"client-fixture-e", findClientFixture("client-fixture-e"), 5},
 		// fixture-b and fixture-c: React/functional code — no class-field
 		// arrows in practice; minWant=0 so measurement reports without failing.
-		{"client-fixture-b", filepath.Join(home, "private/archigraph-fixtures/client-fixture-b"), 0},
-		{"client-fixture-c", filepath.Join(home, "private/archigraph-fixtures/client-fixture-c"), 0},
+		{"client-fixture-b", findClientFixture("client-fixture-b"), 0},
+		{"client-fixture-c", findClientFixture("client-fixture-c"), 0},
 	}
 
 	ext := javascript.New()

@@ -1,14 +1,48 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+// findClientFixture searches for a client fixture directory.
+// Checks environment variable ARCHIGRAPH_FIXTURES first, then common developer paths.
+// Returns "" if not found.
+func findClientFixture(fixtureName string) string {
+	// Check environment variable first.
+	if env := os.Getenv("ARCHIGRAPH_FIXTURES"); env != "" {
+		path := filepath.Join(env, fixtureName)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	// Check common developer paths.
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, "private/archigraph-fixtures", fixtureName),
+		filepath.Join(home, "Documents/Projects/archigraph-fixtures", fixtureName),
+		"/tmp/archigraph-fixtures/" + fixtureName,
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	return ""
+}
 
 // TestIssue820_FixtureD_OrphanRate checks that the orphan rate on
 // fixture-d stays at or below the pre-regression baseline (~9.1%).
 // It exercises the CONTAINS-edge fix for Lombok/Panache synthesized entities.
 func TestIssue820_FixtureD_OrphanRate(t *testing.T) {
-	fixtureDir := "/Users/jorgecajas/private/archigraph-fixtures/client-fixture-d"
+	fixtureDir := findClientFixture("client-fixture-d")
+	if fixtureDir == "" {
+		t.Skip("client-fixture-d not found (set ARCHIGRAPH_FIXTURES env var)")
+	}
 	doc := runIndexerOn(t, fixtureDir, "client-fixture-d", nil)
 
 	// Count orphans (entities with zero inbound edges).
@@ -50,7 +84,10 @@ func TestIssue820_FixtureD_OrphanRate(t *testing.T) {
 
 // TestIssue820_FixtureF_OrphanRate checks orphan rate on fixture-f.
 func TestIssue820_FixtureF_OrphanRate(t *testing.T) {
-	fixtureDir := "/Users/jorgecajas/private/archigraph-fixtures/client-fixture-f"
+	fixtureDir := findClientFixture("client-fixture-f")
+	if fixtureDir == "" {
+		t.Skip("client-fixture-f not found (set ARCHIGRAPH_FIXTURES env var)")
+	}
 	doc := runIndexerOn(t, fixtureDir, "client-fixture-f", nil)
 
 	inbound := make(map[string]int, len(doc.Entities))
