@@ -23,8 +23,6 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/perf"
@@ -33,54 +31,40 @@ import (
 
 // ── JSON-lines log constants (issue #2299) ────────────────────────────────────
 //
-// EnvDaemonLogJSON is the environment variable that switches [mcp-rpc] log
-// lines from human-readable text to JSON-lines. Set to "1" or "true" to
+// EnvDaemonLogJSON is the environment variable that switches daemon log output
+// from human-readable text to structured JSON-lines. Set to "1" or "true" to
 // enable; unset or any other value keeps the default human-readable format.
+// Handler selection happens at construction time in newService — no runtime
+// flag check is needed at call sites (slog cannot be misconfigured this way).
 //
-//	ARCHIGRAPH_DAEMON_LOG_JSON=1  →  {"event":"mcp_rpc","tool":"…","elapsed_ms":…,"repo":"…","ts":"…"}
+//	ARCHIGRAPH_DAEMON_LOG_JSON=1  →  {"time":"…","level":"INFO","msg":"mcp_rpc","tool":"…","elapsed_ms":…,"repo":"…"}
 const EnvDaemonLogJSON = "ARCHIGRAPH_DAEMON_LOG_JSON"
 
-// Log event and field-name constants for the mcp_rpc JSON-lines format.
+// Log event and field-name constants for the mcp_rpc structured log lines.
 // Centralised here so future consumers (log shippers, tests, dashboards)
-// do not re-derive the strings independently.
+// do not re-derive the strings independently. These are used as the slog
+// message name (LogEventMCPRPC) and attribute key names (LogField*).
 const (
-	// LogEventMCPRPC is the "event" field value for every mcp_rpc log line.
+	// LogEventMCPRPC is the slog message for every mcp_rpc log line.
 	LogEventMCPRPC = "mcp_rpc"
 
-	// LogFieldPhase is the JSON key for the dispatch phase ("received" or "done").
+	// LogFieldPhase is the slog attribute key for the dispatch phase ("received" or "done").
 	LogFieldPhase = "phase"
 
-	// LogFieldTool is the JSON key for the tool name.
+	// LogFieldTool is the slog attribute key for the tool name.
 	LogFieldTool = "tool"
 
-	// LogFieldElapsedMS is the JSON key for elapsed wall-clock time in ms.
+	// LogFieldElapsedMS is the slog attribute key for elapsed wall-clock time in ms.
 	LogFieldElapsedMS = "elapsed_ms"
 
-	// LogFieldRepo is the JSON key for the caller's repo / CWD label.
+	// LogFieldRepo is the slog attribute key for the caller's repo / CWD label.
 	LogFieldRepo = "repo"
 
-	// LogFieldTS is the JSON key for the RFC3339 timestamp.
+	// LogFieldTS is the slog attribute key for the RFC3339 timestamp.
+	// Note: slog's built-in handler emits its own "time" key; LogFieldTS is
+	// retained for compatibility with log-shipper field expectations.
 	LogFieldTS = "ts"
 )
-
-// mcpRPCLogEntry is the structured payload for a single JSON-lines log line.
-// Phase is "received" on the pre-dispatch line and "done" on the post-dispatch
-// line. ElapsedMS is 0 on the "received" line and the actual wall-clock time
-// on the "done" line.
-type mcpRPCLogEntry struct {
-	Event     string `json:"event"`
-	Phase     string `json:"phase"`
-	Tool      string `json:"tool"`
-	ElapsedMS int64  `json:"elapsed_ms"`
-	Repo      string `json:"repo"`
-	TS        string `json:"ts"`
-}
-
-// daemonLogJSON reports whether the JSON-lines mode is active.
-func daemonLogJSON() bool {
-	v := strings.TrimSpace(os.Getenv(EnvDaemonLogJSON))
-	return v == "1" || strings.EqualFold(v, "true")
-}
 
 // ── Injected function types ───────────────────────────────────────────────────
 
@@ -234,39 +218,29 @@ func (s *Service) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) er
 		repoLabel = "(cwd not provided)"
 	}
 	if s.logger != nil {
-		if daemonLogJSON() {
-			b, _ := json.Marshal(mcpRPCLogEntry{
-				Event: LogEventMCPRPC,
-				Phase: "received",
-				Tool:  args.Name,
-				Repo:  repoLabel,
-				TS:    time.Now().UTC().Format(time.RFC3339),
-			})
-			s.logger.Printf("%s", string(b))
-		} else {
-			s.logger.Printf("[mcp-rpc] tool=%s received repo=%s", args.Name, repoLabel)
-		}
+		s.logger.Info(LogEventMCPRPC,
+			LogFieldPhase, "received",
+			LogFieldTool, args.Name,
+			LogFieldRepo, repoLabel,
+			LogFieldTS, time.Now().UTC().Format(time.RFC3339),
+		)
 	}
 
 	start := time.Now()
 	result, err := s.mcpCallTool(args.Name, args.Arguments, args.CWD)
 	elapsed := time.Since(start)
 
-	// Debug log: tool=name elapsed=Xms repo=Y (from CWD when available)
+	// Debug log: tool=name elapsed_ms=X repo=Y (from CWD when available).
+	// slog emits structured fields in both text and JSON handler modes —
+	// no manual JSON marshalling needed.
 	if s.logger != nil {
-		if daemonLogJSON() {
-			b, _ := json.Marshal(mcpRPCLogEntry{
-				Event:     LogEventMCPRPC,
-				Phase:     "done",
-				Tool:      args.Name,
-				ElapsedMS: elapsed.Milliseconds(),
-				Repo:      repoLabel,
-				TS:        time.Now().UTC().Format(time.RFC3339),
-			})
-			s.logger.Printf("%s", string(b))
-		} else {
-			s.logger.Printf("[mcp-rpc] tool=%s elapsed=%dms repo=%s", args.Name, elapsed.Milliseconds(), repoLabel)
-		}
+		s.logger.Info(LogEventMCPRPC,
+			LogFieldPhase, "done",
+			LogFieldTool, args.Name,
+			LogFieldElapsedMS, elapsed.Milliseconds(),
+			LogFieldRepo, repoLabel,
+			LogFieldTS, time.Now().UTC().Format(time.RFC3339),
+		)
 	}
 
 	if err != nil {

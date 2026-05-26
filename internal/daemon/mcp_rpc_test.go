@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -276,12 +276,22 @@ func TestMCPToolList_SentinelReturned(t *testing.T) {
 	}
 }
 
-// ── JSON-lines log mode tests (issue #2299) ───────────────────────────────────
+// ── JSON-lines log mode tests (issue #2299, updated for slog in #2375) ───────
+//
+// After the log/slog migration the logging shape changes:
+//   - Text mode (ARCHIGRAPH_DAEMON_LOG_JSON unset): slog.NewTextHandler emits
+//     logfmt lines like: time=... level=INFO msg=mcp_rpc tool=... repo=...
+//   - JSON mode (ARCHIGRAPH_DAEMON_LOG_JSON=1|true): slog.NewJSONHandler emits
+//     JSON objects: {"time":"...","level":"INFO","msg":"mcp_rpc","tool":"...","repo":"..."}
+//
+// The mcpRPCLogEntry struct and daemonLogJSON() helper were deleted; handler
+// selection happens at construction time in buildSlogLogger / newService,
+// so call sites never inspect the env var.
 
-// testServiceWithLogger returns a Service wired with a buf-backed logger.
-func testServiceWithLogger(callTool MCPCallToolFunc) (*Service, *bytes.Buffer) {
+// testServiceWithTextLogger returns a Service wired with a text-mode slog logger.
+func testServiceWithTextLogger(callTool MCPCallToolFunc) (*Service, *bytes.Buffer) {
 	var buf bytes.Buffer
-	logger := log.New(&buf, "", 0) // no prefix/flags so output is deterministic
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
 	svc := &Service{
 		mcpCallTool: callTool,
 		progress:    make(map[string]*rebuildSession),
@@ -290,12 +300,23 @@ func testServiceWithLogger(callTool MCPCallToolFunc) (*Service, *bytes.Buffer) {
 	return svc, &buf
 }
 
-// TestMCPToolCall_DefaultLog_TextFormat verifies that with ARCHIGRAPH_DAEMON_LOG_JSON
-// unset the log output is the human-readable "[mcp-rpc] tool=… elapsed=…ms repo=…" text.
-func TestMCPToolCall_DefaultLog_TextFormat(t *testing.T) {
-	t.Setenv(EnvDaemonLogJSON, "") // ensure JSON mode is off
+// testServiceWithJSONLogger returns a Service wired with a JSON-mode slog logger.
+func testServiceWithJSONLogger(callTool MCPCallToolFunc) (*Service, *bytes.Buffer) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	svc := &Service{
+		mcpCallTool: callTool,
+		progress:    make(map[string]*rebuildSession),
+		logger:      logger,
+	}
+	return svc, &buf
+}
 
-	svc, buf := testServiceWithLogger(func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
+// TestMCPToolCall_DefaultLog_TextFormat verifies that in text mode the slog
+// output contains the expected structured fields (logfmt key=value pairs).
+// The old "[mcp-rpc]" prefix is gone; slog emits msg=mcp_rpc instead.
+func TestMCPToolCall_DefaultLog_TextFormat(t *testing.T) {
+	svc, buf := testServiceWithTextLogger(func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
 		return MCPCallResult{Content: []map[string]any{{"type": "text", "text": "ok"}}}, nil
 	})
 
@@ -305,19 +326,20 @@ func TestMCPToolCall_DefaultLog_TextFormat(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "[mcp-rpc]") {
-		t.Errorf("expected [mcp-rpc] prefix in text log, got: %q", out)
+	// slog text handler emits logfmt: msg=mcp_rpc tool=archigraph_find ...
+	if !strings.Contains(out, "msg="+LogEventMCPRPC) {
+		t.Errorf("expected msg=%s in text log, got: %q", LogEventMCPRPC, out)
 	}
-	if !strings.Contains(out, "tool=archigraph_find") {
-		t.Errorf("expected tool= field in text log, got: %q", out)
+	if !strings.Contains(out, LogFieldTool+"=archigraph_find") {
+		t.Errorf("expected %s=archigraph_find in text log, got: %q", LogFieldTool, out)
 	}
-	if !strings.Contains(out, "elapsed=") {
-		t.Errorf("expected elapsed= field in text log, got: %q", out)
+	if !strings.Contains(out, LogFieldElapsedMS+"=") {
+		t.Errorf("expected %s= field in text log, got: %q", LogFieldElapsedMS, out)
 	}
-	// Must NOT be valid JSON on the elapsed line (the received line has no elapsed).
+	// Text mode lines must NOT be valid JSON.
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	for _, line := range lines {
-		if strings.Contains(line, "elapsed=") {
+		if strings.Contains(line, LogFieldElapsedMS+"=") {
 			var m map[string]any
 			if json.Unmarshal([]byte(line), &m) == nil {
 				t.Errorf("text mode line looks like JSON: %q", line)
@@ -326,12 +348,12 @@ func TestMCPToolCall_DefaultLog_TextFormat(t *testing.T) {
 	}
 }
 
-// TestMCPToolCall_JSONLog_ParseableJSON verifies that with ARCHIGRAPH_DAEMON_LOG_JSON=1
-// every log line is valid JSON containing the expected fields.
+// TestMCPToolCall_JSONLog_ParseableJSON verifies that in JSON mode every log
+// line is valid JSON containing the expected structured fields. This replaces
+// the old ARCHIGRAPH_DAEMON_LOG_JSON env-var test: handler selection now
+// happens at construction time so no env var check is needed at call sites.
 func TestMCPToolCall_JSONLog_ParseableJSON(t *testing.T) {
-	t.Setenv(EnvDaemonLogJSON, "1")
-
-	svc, buf := testServiceWithLogger(func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
+	svc, buf := testServiceWithJSONLogger(func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
 		return MCPCallResult{Content: []map[string]any{{"type": "text", "text": "ok"}}}, nil
 	})
 
@@ -359,14 +381,15 @@ func TestMCPToolCall_JSONLog_ParseableJSON(t *testing.T) {
 			t.Errorf("line %d is not valid JSON: %v — raw: %q", i, err, line)
 			continue
 		}
+		// slog JSON handler emits "msg" not "event"; check the msg field.
+		if entry["msg"] != LogEventMCPRPC {
+			t.Errorf("line %d: msg=%q, want %q", i, entry["msg"], LogEventMCPRPC)
+		}
 		if entry[LogFieldTool] != wantTool {
 			t.Errorf("line %d: tool=%q, want %q", i, entry[LogFieldTool], wantTool)
 		}
 		if entry[LogFieldRepo] != wantRepo {
 			t.Errorf("line %d: repo=%q, want %q", i, entry[LogFieldRepo], wantRepo)
-		}
-		if entry["event"] != LogEventMCPRPC {
-			t.Errorf("line %d: event=%q, want %q", i, entry["event"], LogEventMCPRPC)
 		}
 		if _, ok := entry[LogFieldTS]; !ok {
 			t.Errorf("line %d: missing %q field", i, LogFieldTS)
@@ -379,7 +402,7 @@ func TestMCPToolCall_JSONLog_ParseableJSON(t *testing.T) {
 		}
 	}
 
-	// The second (completion) line must have elapsed_ms >= 0.
+	// The second (completion) line must have elapsed_ms field.
 	var lastEntry map[string]any
 	_ = json.Unmarshal([]byte(strings.TrimSpace(lines[len(lines)-1])), &lastEntry)
 	if _, ok := lastEntry[LogFieldElapsedMS]; !ok {
@@ -387,12 +410,11 @@ func TestMCPToolCall_JSONLog_ParseableJSON(t *testing.T) {
 	}
 }
 
-// TestMCPToolCall_JSONLog_TrueVariant verifies ARCHIGRAPH_DAEMON_LOG_JSON=true
-// also activates JSON-lines mode.
+// TestMCPToolCall_JSONLog_TrueVariant verifies that a JSON-handler slog logger
+// produces parseable JSON lines (mirrors the old ARCHIGRAPH_DAEMON_LOG_JSON=true
+// variant; handler selection is now at construction time).
 func TestMCPToolCall_JSONLog_TrueVariant(t *testing.T) {
-	t.Setenv(EnvDaemonLogJSON, "true")
-
-	svc, buf := testServiceWithLogger(func(_ string, _ map[string]any, _ string) (MCPCallResult, error) {
+	svc, buf := testServiceWithJSONLogger(func(_ string, _ map[string]any, _ string) (MCPCallResult, error) {
 		return MCPCallResult{Content: []map[string]any{{"type": "text", "text": "ok"}}}, nil
 	})
 

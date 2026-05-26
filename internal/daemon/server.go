@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -29,7 +31,12 @@ type Config struct {
 	Index        IndexFunc        // injected from cmd/archigraph
 	Rebuild      RebuildFunc      // injected from cmd/archigraph
 	QualityAudit QualityAuditFunc // injected from cmd/archigraph (Phase E)
-	Logger       *log.Logger      // optional; defaults to stderr
+	// Logger is the legacy *log.Logger forwarded to sub-packages (sched,
+	// watch) that still accept *log.Logger. Daemon-internal log output uses
+	// a *slog.Logger constructed from this writer in Run. When nil, Run
+	// constructs a default stderr *log.Logger for the sub-packages and a
+	// corresponding slog.Logger for its own use.
+	Logger *log.Logger
 
 	// Phase B optional wiring. When all four are non-nil the daemon
 	// starts the fsnotify watcher + scheduler and registers every
@@ -158,16 +165,25 @@ type Config struct {
 // daemon's entire public surface — cmd/archigraph just imports daemon
 // and calls Run.
 func Run(ctx context.Context, cfg Config) error {
-	logger := cfg.Logger
-	if logger == nil {
-		logger = log.New(os.Stderr, "archigraph-daemon: ", log.LstdFlags|log.Lmicroseconds)
+	// loggerLegacy is forwarded to sub-packages (sched, watch, selfdefense)
+	// that still accept *log.Logger. It is separate from slogger below.
+	loggerLegacy := cfg.Logger
+	if loggerLegacy == nil {
+		loggerLegacy = log.New(os.Stderr, "archigraph-daemon: ", log.LstdFlags|log.Lmicroseconds)
 	}
+
+	// slogger is the structured logger used by the daemon itself (Run + Service).
+	// Handler selection is based on ARCHIGRAPH_DAEMON_LOG_JSON at startup —
+	// this encodes the choice in the handler so call sites never check the env var.
+	slogger := buildSlogLogger(loggerLegacy.Writer())
+	// Keep a short alias for readability in the long Run body below.
+	logger := slogger
 
 	// Layer 1 self-defense: refuse to start if a canonical (non-/tmp) daemon
 	// is already running and this binary lives under /tmp. This prevents the
 	// hot-loop runaway observed on 2026-05-20 where agent-spawned daemons were
 	// adopted by launchd after the agent exited and spun at ~1000% CPU.
-	if err := SelfDefenseCheck(logger); err != nil {
+	if err := SelfDefenseCheck(loggerLegacy); err != nil {
 		return err
 	}
 
@@ -183,9 +199,9 @@ func Run(ctx context.Context, cfg Config) error {
 		if err := MigrateToRefStore(storeDir); err != nil {
 			// Non-fatal: log and continue; the daemon can still serve the
 			// old layout (callers fall back gracefully).
-			logger.Printf("startup: MigrateToRefStore: %v (non-fatal)", err)
+			logger.Warn("startup: MigrateToRefStore (non-fatal)", "err", err)
 		} else {
-			logger.Printf("startup: MigrateToRefStore complete store=%s", storeDir)
+			logger.Info("startup: MigrateToRefStore complete", "store", storeDir)
 		}
 
 	}
@@ -233,7 +249,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// Layer 2 self-defense: start CPU watchdog for ephemeral /tmp daemons.
 	// The watchdog passes the service's real inFlight counter so it can
 	// distinguish hot-loops (no work) from legitimate sustained indexing.
-	StartCPUWatchdog(&svc.inFlight, logger)
+	StartCPUWatchdog(&svc.inFlight, loggerLegacy)
 
 	// Phase B — bring up the scheduler + watcher when the caller
 	// supplied the four hooks. They are optional so tests can exercise
@@ -245,7 +261,7 @@ func Run(ctx context.Context, cfg Config) error {
 			Links:         cfg.SchedulerLinks,
 			Algorithms:    cfg.SchedulerAlgo,
 			GroupsForRepo: cfg.GroupsForRepo,
-			Logger:        logger,
+			Logger:        loggerLegacy,
 			BudgetMB:      cfg.MaxRSSBudgetMB,
 			Predict:       sched.PredictRSS,
 			History:       history,
@@ -260,8 +276,7 @@ func Run(ctx context.Context, cfg Config) error {
 			Incremental: cfg.SchedulerIncremental,
 		})
 		if cfg.MaxRSSBudgetMB > 0 {
-			logger.Printf("scheduler: RSS-budget admission control enabled budget=%dMB history=%s",
-				cfg.MaxRSSBudgetMB, cfg.RSSHistoryPath)
+			logger.Info("scheduler: RSS-budget admission control enabled", "budget_mb", cfg.MaxRSSBudgetMB, "history", cfg.RSSHistoryPath)
 		}
 		scheduler.Start()
 		svc.scheduler = scheduler
@@ -270,12 +285,12 @@ func Run(ctx context.Context, cfg Config) error {
 		wcfg := cfg.WatcherConfig
 		watcher, werr := watch.NewWatcherConfig(wcfg, func(repo string, bulk bool) {
 			if bulk {
-				logger.Printf("watcher: bulk trigger repo=%s — enqueuing full reindex", repo)
+				logger.Info("watcher: bulk trigger — enqueuing full reindex", "repo", repo)
 			}
 			scheduler.Enqueue(repo)
-		}, logger)
+		}, loggerLegacy)
 		if werr != nil {
-			logger.Printf("watcher: disabled (%v)", werr)
+			logger.Warn("watcher: disabled", "err", werr)
 		} else {
 			svc.watcher = watcher
 			defer watcher.Stop()
@@ -291,15 +306,15 @@ func Run(ctx context.Context, cfg Config) error {
 			//   2. The scheduler writes the new index into refs/<new-ref>/,
 			//      leaving the old ref's graph untouched on disk.
 			headPoller := watch.NewGitHeadPoller(0, func(ev watch.BranchSwitchEvent) {
-				logger.Printf("branch-switch detected: %s %s@%s -> %s@%s",
-					ev.RepoPath, ev.OldRef, ev.OldSHA, ev.NewRef, ev.NewSHA)
+				logger.Info("branch-switch detected",
+					"repo", ev.RepoPath, "old_ref", ev.OldRef, "old_sha", ev.OldSHA, "new_ref", ev.NewRef, "new_sha", ev.NewSHA)
 				// Notify the MCP cross-link cache so stale (repo, oldRef)
 				// entries are evicted before the new-ref graph lands (#2224).
 				if cfg.BranchSwitchSink != nil {
 					cfg.BranchSwitchSink(ev.RepoPath, ev.OldRef)
 				}
 				scheduler.EnqueueRef(ev.RepoPath, ev.NewRef)
-			}, logger)
+			}, loggerLegacy)
 			headPoller.Start()
 			defer headPoller.Stop()
 
@@ -325,15 +340,15 @@ func Run(ctx context.Context, cfg Config) error {
 						// fsnotify watch descriptors consumed).
 						headPoller.AddRepo(r)
 					}
-					logger.Printf("watcher: boot-path repos=%d registered with HEAD poller (fsnotify lazy — 0 AddRepo calls) took=%s",
-						len(repos), time.Since(t0).Truncate(time.Millisecond))
+					logger.Info("watcher: boot-path registered with HEAD poller (fsnotify lazy — 0 AddRepo calls)",
+						"repos", len(repos), "took", time.Since(t0).Truncate(time.Millisecond).String())
 
 					// #2086: case-collision audit — unchanged.
 					if capturedStore != "" {
 						if dups := WarnCaseCollisions(capturedStore, repos); len(dups) > 0 {
 							for _, pair := range dups {
-								logger.Printf("store: detected case-collision dup: stale=%s canonical=%s — remove stale dir to avoid confusion (archigraph cleanup --case-merge)",
-									pair[0], pair[1])
+								logger.Warn("store: detected case-collision dup — remove stale dir to avoid confusion (archigraph cleanup --case-merge)",
+									"stale", pair[0], "canonical", pair[1])
 							}
 						}
 					}
@@ -358,14 +373,14 @@ func Run(ctx context.Context, cfg Config) error {
 		decayCtx, decayCancel := context.WithCancel(ctx)
 		go decaySched.Run(decayCtx)
 		defer decayCancel()
-		logger.Printf("pattern decay scheduler started interval=%s", decayInterval)
+		logger.Info("pattern decay scheduler started", "interval", decayInterval.String())
 	}
 
 	// Docgen background sweeper (issue #2216): removes stale staging runs and
 	// .previous-* backups every 24 h. Opt-in: nil = disabled (--no-auto-cleanup).
 	if cfg.DocgenSweep != nil {
 		sweepCfg := *cfg.DocgenSweep
-		sweepCfg.Logger = logger
+		sweepCfg.Logger = loggerLegacy
 		sweepStop := make(chan struct{})
 		StartDocgenSweeper(sweepCfg, sweepStop)
 		defer close(sweepStop)
@@ -373,7 +388,7 @@ func Run(ctx context.Context, cfg Config) error {
 		if interval <= 0 {
 			interval = 24 * time.Hour
 		}
-		logger.Printf("docgen sweeper started interval=%s", interval)
+		logger.Info("docgen sweeper started", "interval", interval.String())
 	}
 
 	// Dashboard HTTP server — started in a goroutine so it does not
@@ -388,11 +403,11 @@ func Run(ctx context.Context, cfg Config) error {
 		dashCtx, dashCancel := context.WithCancel(ctx)
 		defer dashCancel()
 		go func() {
-			if err := cfg.DashboardServe(dashCtx, bind, cfg.DashboardPort, logger); err != nil {
-				logger.Printf("dashboard: %v", err)
+			if err := cfg.DashboardServe(dashCtx, bind, cfg.DashboardPort, loggerLegacy); err != nil {
+				logger.Error("dashboard", "err", err)
 			}
 		}()
-		logger.Printf("dashboard listening on http://%s:%d/", bind, cfg.DashboardPort)
+		logger.Info("dashboard listening", "url", "http://"+bind+":"+fmt.Sprintf("%d", cfg.DashboardPort)+"/")
 	}
 
 	server := rpc.NewServer()
@@ -406,7 +421,7 @@ func Run(ctx context.Context, cfg Config) error {
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigCh)
 
-	logger.Printf("ready socket=%s pid=%d", cfg.Layout.SocketPath, os.Getpid())
+	logger.Info("ready", "socket", cfg.Layout.SocketPath, "pid", os.Getpid())
 
 	// Track accepted connections so we can wait for them to drain on
 	// shutdown. The waitgroup is decremented when each conn loop returns.
@@ -417,16 +432,16 @@ func Run(ctx context.Context, cfg Config) error {
 	// Wait for any shutdown trigger.
 	select {
 	case <-stopReq:
-		logger.Printf("stop requested via RPC")
+		logger.Info("stop requested via RPC")
 	case sig := <-sigCh:
-		logger.Printf("signal %s received", sig)
+		logger.Info("signal received", "signal", sig.String())
 	case <-ctx.Done():
-		logger.Printf("context cancelled: %v", ctx.Err())
+		logger.Info("context cancelled", "err", ctx.Err())
 	case <-acceptDone:
 		// acceptLoop only returns when the listener closes, which we
 		// don't do until shutdown — but if the listener dies on its
 		// own we should treat that as fatal and exit.
-		logger.Printf("listener closed unexpectedly")
+		logger.Error("listener closed unexpectedly")
 		return errors.New("listener closed")
 	}
 
@@ -434,14 +449,14 @@ func Run(ctx context.Context, cfg Config) error {
 	_ = listener.Close()
 	<-acceptDone
 	connWG.Wait()
-	logger.Printf("graceful shutdown complete")
+	logger.Info("graceful shutdown complete")
 	return nil
 }
 
 // acceptLoop pulls connections off the listener and hands each to
 // jsonrpc.ServeConn under the registered server. The waitgroup tracks
 // each conn so Run can join them on shutdown.
-func acceptLoop(l net.Listener, srv *rpc.Server, wg *sync.WaitGroup, logger *log.Logger, done chan<- struct{}) {
+func acceptLoop(l net.Listener, srv *rpc.Server, wg *sync.WaitGroup, logger *slog.Logger, done chan<- struct{}) {
 	defer close(done)
 	for {
 		conn, err := l.Accept()
@@ -450,7 +465,7 @@ func acceptLoop(l net.Listener, srv *rpc.Server, wg *sync.WaitGroup, logger *log
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			logger.Printf("accept: %v", err)
+			logger.Error("accept", "err", err)
 			return
 		}
 		wg.Add(1)
@@ -467,7 +482,7 @@ func acceptLoop(l net.Listener, srv *rpc.Server, wg *sync.WaitGroup, logger *log
 // no way to confirm clients are actually disconnecting on demand.
 type loggingConn struct {
 	net.Conn
-	log *log.Logger
+	log *slog.Logger
 }
 
 func (c *loggingConn) Read(p []byte) (int, error) {
@@ -476,7 +491,7 @@ func (c *loggingConn) Read(p []byte) (int, error) {
 		// EOF is the normal client disconnect; anything else is worth
 		// noting. We don't return the wrapper here, so jsonrpc still
 		// sees the original error.
-		c.log.Printf("conn read: %v", err)
+		c.log.Error("conn read", "err", err)
 	}
 	return n, err
 }
@@ -496,7 +511,7 @@ func (c *loggingConn) Read(p []byte) (int, error) {
 //
 // The decay step and the candidate-pruning step share a single load+save
 // cycle so the store mutates atomically.
-func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger) agentpatterns.DecayJob {
+func buildPatternDecayJob(groupDirs func() map[string]string, logger *slog.Logger) agentpatterns.DecayJob {
 	return func(nowUnix int64) {
 		dirs := groupDirs()
 		for group, dir := range dirs {
@@ -506,13 +521,13 @@ func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger
 			patterns, err := agentpatterns.Load(dir)
 			if err != nil {
 				if logger != nil {
-					logger.Printf("pattern decay: load %s: %v", group, err)
+					logger.Error("pattern decay: load", "group", group, "err", err)
 				}
 				continue
 			}
 			cfg, cfgErr := agentpatterns.LoadConfig(dir)
 			if cfgErr != nil && logger != nil {
-				logger.Printf("pattern decay: load config %s: %v (using defaults)", group, cfgErr)
+				logger.Warn("pattern decay: load config (using defaults)", "group", group, "err", cfgErr)
 				cfg = agentpatterns.DefaultConfig()
 			}
 			changed := false
@@ -561,7 +576,7 @@ func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger
 					patterns = kept
 					changed = true
 					if logger != nil {
-						logger.Printf("pattern decay: pruned %d stale candidates in %s", pruned, group)
+						logger.Info("pattern decay: pruned stale candidates", "count", pruned, "group", group)
 					}
 				}
 			}
@@ -571,9 +586,27 @@ func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger
 			}
 			if err := agentpatterns.Save(dir, patterns); err != nil {
 				if logger != nil {
-					logger.Printf("pattern decay: save %s: %v", group, err)
+					logger.Error("pattern decay: save", "group", group, "err", err)
 				}
 			}
 		}
 	}
+}
+
+// buildSlogLogger constructs a *slog.Logger whose handler is selected by the
+// ARCHIGRAPH_DAEMON_LOG_JSON env var:
+//   - "1" or "true" → slog.NewJSONHandler (structured JSON lines, compatible
+//     with log shippers)
+//   - anything else → slog.NewTextHandler (human-readable logfmt)
+//
+// The writer w is inherited from the caller's *log.Logger so both the legacy
+// bridge and the slog logger share the same output sink. Handler selection at
+// construction time eliminates the prefix-corruption failure mode that required
+// the startup guard removed in #2375 — slog cannot be misconfigured this way.
+func buildSlogLogger(w io.Writer) *slog.Logger {
+	v := strings.TrimSpace(os.Getenv(EnvDaemonLogJSON))
+	if v == "1" || strings.EqualFold(v, "true") {
+		return slog.New(slog.NewJSONHandler(w, nil))
+	}
+	return slog.New(slog.NewTextHandler(w, nil))
 }

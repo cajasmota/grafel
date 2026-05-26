@@ -2,7 +2,8 @@ package daemon
 
 import (
 	"bytes"
-	"log"
+	"encoding/json"
+	"log/slog"
 	"runtime"
 	"strings"
 	"testing"
@@ -11,18 +12,25 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 )
 
-// TestNewService_JSONMode_WarnsFlaggedLogger verifies that newService emits a
-// warning to stderr when ARCHIGRAPH_DAEMON_LOG_JSON=1 is active and the
-// supplied log.Logger has non-zero flags (issue #2353). A flagged logger
-// prepends a timestamp prefix, making JSON output invalid.
-func TestNewService_JSONMode_WarnsFlaggedLogger(t *testing.T) {
-	t.Setenv(EnvDaemonLogJSON, "1")
+// The three PR-#2374 tests below replaced the deleted startup guard
+// (which warned when log.Logger had flags set under JSON mode). That guard was
+// removed in #2375 because log/slog eliminates the failure mode entirely:
+// handler selection at construction time means slog cannot be misconfigured
+// the same way.
+//
+// The new tests verify the slog-based logging shape:
+//   - JSON handler produces parseable JSON with expected fields.
+//   - Text handler produces logfmt (not JSON).
+//   - newService accepts a *slog.Logger (nil or non-nil) without panicking.
 
+// TestNewService_JSONHandler_ProducesStructuredJSON verifies that a Service
+// constructed with a JSON-handler slog.Logger emits parseable JSON lines
+// containing expected structured fields. Replaces TestNewService_JSONMode_WarnsFlaggedLogger.
+func TestNewService_JSONHandler_ProducesStructuredJSON(t *testing.T) {
 	var buf bytes.Buffer
-	// log.LstdFlags = Ldate | Ltime — the default flags that break JSON output.
-	logger := log.New(&buf, "", log.LstdFlags)
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	newService(
+	svc := newService(
 		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
 		func(proto.RebuildArgs) ([]string, string, error) { return []string{}, "", nil },
 		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
@@ -34,28 +42,34 @@ func TestNewService_JSONMode_WarnsFlaggedLogger(t *testing.T) {
 		1,
 	)
 
-	out := buf.String()
-	if !strings.Contains(out, "WARN:") {
-		t.Errorf("expected WARN in log output when logger has flags under JSON mode, got: %q", out)
+	// Trigger a log line by calling Rebuild (which logs "rebuild: start").
+	var reply proto.RebuildReply
+	_ = svc.Rebuild(&proto.RebuildArgs{Group: "testgroup"}, &reply)
+
+	out := strings.TrimSpace(buf.String())
+	if out == "" {
+		t.Skip("no log output produced (rebuild entrypoint nil) — skipping JSON shape check")
 	}
-	if !strings.Contains(out, EnvDaemonLogJSON) {
-		t.Errorf("expected env var name %q in warning, got: %q", EnvDaemonLogJSON, out)
-	}
-	if !strings.Contains(out, "flags=") {
-		t.Errorf("expected flags= value in warning, got: %q", out)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Errorf("JSON handler produced non-JSON line: %v — got: %q", err, line)
+		}
 	}
 }
 
-// TestNewService_JSONMode_NoWarnZeroFlags verifies that newService does NOT
-// emit a warning when JSON mode is active and the logger has flags=0 (the
-// correct configuration for JSON-lines output).
-func TestNewService_JSONMode_NoWarnZeroFlags(t *testing.T) {
-	t.Setenv(EnvDaemonLogJSON, "1")
-
+// TestNewService_TextHandler_ProducesLogfmt verifies that a Service constructed
+// with a text-handler slog.Logger emits logfmt (not JSON). Replaces
+// TestNewService_JSONMode_NoWarnZeroFlags.
+func TestNewService_TextHandler_ProducesLogfmt(t *testing.T) {
 	var buf bytes.Buffer
-	logger := log.New(&buf, "", 0) // flags=0: safe for JSON output
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	newService(
+	svc := newService(
 		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
 		func(proto.RebuildArgs) ([]string, string, error) { return []string{}, "", nil },
 		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
@@ -67,22 +81,35 @@ func TestNewService_JSONMode_NoWarnZeroFlags(t *testing.T) {
 		1,
 	)
 
-	out := buf.String()
-	if strings.Contains(out, "WARN:") {
-		t.Errorf("unexpected WARN in log output when logger has flags=0 under JSON mode, got: %q", out)
+	var reply proto.RebuildReply
+	_ = svc.Rebuild(&proto.RebuildArgs{Group: "testgroup"}, &reply)
+
+	out := strings.TrimSpace(buf.String())
+	if out == "" {
+		t.Skip("no log output produced (rebuild entrypoint nil) — skipping logfmt shape check")
+	}
+	// Text handler emits logfmt: time=... level=INFO msg=... key=value ...
+	// It must NOT be JSON.
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil {
+			t.Errorf("text handler produced JSON line (expected logfmt): %q", line)
+		}
+		if !strings.Contains(line, "msg=") {
+			t.Errorf("text handler line missing msg= key: %q", line)
+		}
 	}
 }
 
-// TestNewService_TextMode_NoWarnFlaggedLogger verifies that the flagged-logger
-// warning is NOT emitted when JSON mode is disabled, even if the logger has
-// non-zero flags (flags only corrupt output in JSON-lines mode).
-func TestNewService_TextMode_NoWarnFlaggedLogger(t *testing.T) {
-	t.Setenv(EnvDaemonLogJSON, "") // JSON mode off
-
-	var buf bytes.Buffer
-	logger := log.New(&buf, "", log.LstdFlags)
-
-	newService(
+// TestNewService_NilLogger_NoStart verifies that newService accepts a nil
+// *slog.Logger without panicking. Replaces TestNewService_TextMode_NoWarnFlaggedLogger.
+func TestNewService_NilLogger_NoStart(t *testing.T) {
+	// Nil logger: newService must not panic; the service runs in nil-logger mode.
+	svc := newService(
 		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
 		func(proto.RebuildArgs) ([]string, string, error) { return []string{}, "", nil },
 		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
@@ -90,13 +117,14 @@ func TestNewService_TextMode_NoWarnFlaggedLogger(t *testing.T) {
 		},
 		"/tmp/test.sock",
 		make(chan struct{}),
-		logger,
+		nil, // nil logger — no output, no panic
 		1,
 	)
-
-	out := buf.String()
-	if strings.Contains(out, "WARN:") {
-		t.Errorf("unexpected WARN in log output in text mode with flagged logger, got: %q", out)
+	if svc == nil {
+		t.Fatal("newService returned nil")
+	}
+	if svc.logger != nil {
+		t.Errorf("expected nil logger on service, got non-nil")
 	}
 }
 

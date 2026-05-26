@@ -3,7 +3,7 @@ package daemon
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -163,8 +163,10 @@ type Service struct {
 	mcpCallTool  MCPCallToolFunc
 
 	// logger is the daemon's structured logger, forwarded to the MCP
-	// dispatcher for per-call debug logging (tool=name elapsed=X repo=Y).
-	logger *log.Logger
+	// dispatcher for per-call debug logging (tool=name elapsed_ms=X repo=Y).
+	// Handler selection (text vs JSON) happens at construction time via
+	// ARCHIGRAPH_DAEMON_LOG_JSON; see newService.
+	logger *slog.Logger
 
 	// dashboardPort is the TCP port the embedded dashboard server is
 	// bound to. Set by server.go after the dashboard goroutine starts.
@@ -180,34 +182,17 @@ type Service struct {
 // stopReq channel is closed by Stop to signal the server loop; the
 // service itself never re-closes it (a stopped atomic guards the close).
 // logger may be nil; it is forwarded to the MCP dispatcher for debug-level
-// per-call logging (tool=name elapsed=X repo=Y).
+// per-call logging (tool=name elapsed_ms=X repo=Y).
 // maxConcurrentGroups controls how many groups may be rebuilt in parallel
 // (0 or 1 → serial; ≥2 → worker pool). Added in #1276.
 //
-// JSON-lines mode (ARCHIGRAPH_DAEMON_LOG_JSON=1, added in PR #2350):
-// When this env var is set, every log line is emitted as a JSON object so
-// structured log shippers can parse it. For this to produce valid JSON the
-// underlying logger MUST be created with log.New(w, "", 0) — no prefix and
-// no flags. If the logger has any flags set (e.g. log.LstdFlags adds a
-// timestamp prefix), log lines will look like:
-//
-//	2026/05/27 12:00:00 {"event":"mcp_rpc",...}
-//
-// which is NOT valid JSON and will cause log shippers to silently discard
-// the entry. newService warns to stderr at startup if it detects this
-// misconfiguration. Long-term: migrate to log/slog (tracked as follow-up).
-func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath string, stopReq chan<- struct{}, logger *log.Logger, maxConcurrentGroups int) *Service {
+// The logger is a *slog.Logger whose handler (text or JSON) is selected by
+// the caller based on ARCHIGRAPH_DAEMON_LOG_JSON. Handler selection at
+// construction time eliminates the prefix-corruption risk that required the
+// startup guard removed in #2375 — slog cannot be misconfigured this way.
+func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath string, stopReq chan<- struct{}, logger *slog.Logger, maxConcurrentGroups int) *Service {
 	if maxConcurrentGroups < 1 {
 		maxConcurrentGroups = 1
-	}
-	// Guard: warn at startup if JSON-lines mode is active but the logger has
-	// flags set. Flags like log.LstdFlags prepend a timestamp to every line,
-	// making the JSON output invalid. The check is cheap and non-fatal — the
-	// daemon continues to run, but operators are alerted immediately rather
-	// than discovering parse failures in their log shipper.
-	if logger != nil && daemonLogJSON() && logger.Flags() != 0 {
-		logger.Printf("WARN: %s=1 but log.Logger has flags=%d — JSON lines may be prefixed with timestamps and unparseable by log shippers; recreate the logger with log.New(w, \"\", 0)",
-			EnvDaemonLogJSON, logger.Flags())
 	}
 	return &Service{
 		startedAt:           time.Now(),
@@ -382,8 +367,13 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	}()
 
 	if s.logger != nil {
-		s.logger.Printf("rebuild: start group=%s token=%q wipe=%v incremental=%v slug=%q",
-			args.Group, args.ProgressToken, args.Wipe, args.Incremental, args.Slug)
+		s.logger.Info("rebuild: start",
+			"group", args.Group,
+			"token", args.ProgressToken,
+			"wipe", args.Wipe,
+			"incremental", args.Incremental,
+			"slug", args.Slug,
+		)
 	}
 
 	// Per-RPC timeout: bound the maximum wall-clock time so a stalled
@@ -428,8 +418,10 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	go func() {
 		for range deadMan.C {
 			if s.logger != nil {
-				s.logger.Printf("rebuild: WARNING group=%s still running after %s (no result yet) — possible stall",
-					args.Group, time.Since(rebuildStartTime).Truncate(time.Second))
+				s.logger.Warn("rebuild: possible stall — no result yet",
+					"group", args.Group,
+					"elapsed", time.Since(rebuildStartTime).Truncate(time.Second).String(),
+				)
 			}
 		}
 	}()
@@ -443,8 +435,10 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 		// Normal completion.
 	case <-timer.C:
 		if s.logger != nil {
-			s.logger.Printf("rebuild: TIMEOUT group=%s after %s — RPC unblocked; background index may still be running",
-				args.Group, rebuildRPCTimeout)
+			s.logger.Warn("rebuild: RPC timeout — unblocked; background index may still be running",
+				"group", args.Group,
+				"timeout", rebuildRPCTimeout.String(),
+			)
 		}
 		if sess != nil {
 			sess.mu.Lock()
@@ -470,9 +464,9 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 
 	if s.logger != nil {
 		if res.err != nil {
-			s.logger.Printf("rebuild: error group=%s err=%v", args.Group, res.err)
+			s.logger.Error("rebuild: error", "group", args.Group, "err", res.err)
 		} else {
-			s.logger.Printf("rebuild: done group=%s repos=%d warning=%q", args.Group, len(res.repos), res.warning)
+			s.logger.Info("rebuild: done", "group", args.Group, "repos", len(res.repos), "warning", res.warning)
 		}
 	}
 
@@ -684,7 +678,7 @@ func (s *Service) RemoveRepo(args *proto.RemoveRepoArgs, reply *proto.RemoveRepo
 			freed, _ := dirSize(cacheDir)
 			reply.FreedBytes = freed
 			if err := os.RemoveAll(cacheDir); err != nil && s.logger != nil {
-				s.logger.Printf("remove-repo: delete cache %s: %v", cacheDir, err)
+				s.logger.Error("remove-repo: delete cache", "dir", cacheDir, "err", err)
 			}
 			_ = info
 		}
