@@ -71,7 +71,7 @@ func RenderBlock(patterns []Pattern, opts ExportOptions) string {
 	fmt.Fprintln(&b, BlockStartMarker)
 	fmt.Fprintln(&b)
 	if len(exported) == 0 {
-		fmt.Fprintln(&b, "_No approved patterns yet — run `/generate-docs` or `/archigraph-patterns-discover` to bootstrap._")
+		fmt.Fprintln(&b, "_No approved patterns yet — run `/archigraph-tech-docs` or `/archigraph-patterns-discover` to bootstrap._")
 		fmt.Fprintln(&b)
 		fmt.Fprintln(&b, BlockEndMarker)
 		return b.String()

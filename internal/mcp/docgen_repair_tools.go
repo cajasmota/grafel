@@ -8,7 +8,7 @@ package mcp
 // and returns a per-repo summary with fidelity before/after.
 //
 // This is the apply-path companion to the skill-side emission described in
-// skills/generate-docs/SKILL.md § "Docgen Repair Feedback Contract".
+// skills/archigraph-tech-docs/SKILL.md § "Docgen Repair Feedback Contract".
 
 import (
 	"context"

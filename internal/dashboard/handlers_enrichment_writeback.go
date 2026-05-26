@@ -14,7 +14,7 @@ package dashboard
 //
 //  2. YAML-frontmatter Markdown file — written to
 //     <repo>/docs/enrichments/<kind>/<entity_id>.md following the convention
-//     documented in skills/generate-docs/SKILL.md. This is the file that
+//     documented in skills/archigraph-tech-docs/SKILL.md. This is the file that
 //     dashboard panels and MCP tools read for rich descriptions.
 //
 //  3. Audit log — the enrichment action is recorded via s.auditor.OK so it
@@ -235,7 +235,7 @@ func (s *Server) handleEnrichmentWriteback(w http.ResponseWriter, r *http.Reques
 
 	// ─── Target 2: write YAML-frontmatter Markdown doc ────────────────────
 	// Path: <repo>/docs/enrichments/<kind>/<entity_id>.md
-	// This is the convention from skills/generate-docs/SKILL.md.
+	// This is the convention from skills/archigraph-tech-docs/SKILL.md.
 	docPath := filepath.Join(
 		found.repoPath, "docs", "enrichments", req.Kind,
 		sanitizePathSegment(subjectID)+".md",

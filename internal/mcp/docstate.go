@@ -2,7 +2,7 @@ package mcp
 
 // docstate.go — documentation-state tracking for archigraph_whoami (issue #734).
 //
-// Reads <group>/.archigraph/docgen-state.json (written by /generate-docs skill)
+// Reads <group>/.archigraph/docgen-state.json (written by /archigraph-tech-docs skill)
 // and computes:
 //
 //	documentation_state  "never_generated" | "stale" | "fresh"
@@ -21,7 +21,7 @@ import (
 )
 
 // DocgenState is the on-disk shape of docgen-state.json.
-// Written by the /generate-docs skill after a successful run;
+// Written by the /archigraph-tech-docs skill after a successful run;
 // read here by the MCP server and daemon helpers.
 type DocgenState struct {
 	// LastDocgenAt is the RFC3339 timestamp of the last /generate-docs run.
@@ -102,7 +102,7 @@ func LoadDocgenState(group string) (*DocgenState, error) {
 }
 
 // SaveDocgenState writes docgen-state.json atomically (tmp + rename).
-// This is called by the /generate-docs skill completion path.
+// This is called by the /archigraph-tech-docs skill completion path.
 func SaveDocgenState(group string, st DocgenState) error {
 	dir := defaultDocstateDir(group)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -136,7 +136,7 @@ func ComputeDocState(groupName string, lg *LoadedGroup) DocStateResult {
 			DocumentationState: "never_generated",
 			LastDocgenAt:       nil,
 			StaleCount:         0,
-			SuggestedAction:    "run /generate-docs",
+			SuggestedAction:    "run /archigraph-tech-docs",
 		}
 	}
 
@@ -204,7 +204,7 @@ func ComputeDocState(groupName string, lg *LoadedGroup) DocStateResult {
 func composeSuggestedAction(docState DocStateResult, candidateCount, residualCount int) string {
 	// Docs-first: if never generated or stale, that dominates.
 	if docState.DocumentationState == "never_generated" {
-		return "run /generate-docs"
+		return "run /archigraph-tech-docs"
 	}
 	if docState.DocumentationState == "stale" {
 		return fmt.Sprintf("refresh docs — %d file(s) changed since last generation", docState.StaleCount)

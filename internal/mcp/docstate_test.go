@@ -79,7 +79,7 @@ func TestComputeDocState_neverGenerated(t *testing.T) {
 	if res.DocumentationState != "never_generated" {
 		t.Errorf("state: got %q want never_generated", res.DocumentationState)
 	}
-	if res.SuggestedAction != "run /generate-docs" {
+	if res.SuggestedAction != "run /archigraph-tech-docs" {
 		t.Errorf("action: got %q", res.SuggestedAction)
 	}
 	if res.LastDocgenAt != nil {
@@ -167,7 +167,7 @@ func TestComposeSuggestedAction_transitions(t *testing.T) {
 		{
 			name:          "never_generated",
 			docState:      DocStateResult{DocumentationState: "never_generated"},
-			wantSubstring: "run /generate-docs",
+			wantSubstring: "run /archigraph-tech-docs",
 		},
 		{
 			name:          "stale",
@@ -253,7 +253,7 @@ func TestHandleWhoami_enrichedResponse_neverGenerated(t *testing.T) {
 	}
 
 	checkField(t, out, "documentation_state", "never_generated")
-	checkField(t, out, "suggested_action", "run /generate-docs")
+	checkField(t, out, "suggested_action", "run /archigraph-tech-docs")
 }
 
 func TestHandleWhoami_enrichedResponse_afterDocgen_fresh(t *testing.T) {

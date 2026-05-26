@@ -327,12 +327,12 @@ func newDevDoctorEnv(t *testing.T) *devDoctorEnv {
 
 	// Skills source (simulate repo working tree).
 	srcDir := filepath.Join(tmp, "repo", "skills")
-	skillName := "generate-docs"
+	skillName := "archigraph-quality-check"
 	srcSkillDir := filepath.Join(srcDir, skillName)
 	if err := os.MkdirAll(srcSkillDir, 0o755); err != nil {
 		t.Fatalf("mkdir src skill: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(srcSkillDir, "SKILL.md"), []byte("# generate-docs"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(srcSkillDir, "SKILL.md"), []byte("# archigraph-quality-check"), 0o644); err != nil {
 		t.Fatalf("write src SKILL.md: %v", err)
 	}
 
