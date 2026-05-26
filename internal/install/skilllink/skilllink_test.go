@@ -14,64 +14,114 @@ import (
 func toSlash(p string) string { return filepath.ToSlash(p) }
 
 func TestDiscoverSkillsDir(t *testing.T) {
-	dir := t.TempDir()
+	// Clear ARCHIGRAPH_SKILLS_DIR for the whole test so env-based discovery
+	// does not interfere with layout-based cases.
+	t.Setenv("ARCHIGRAPH_SKILLS_DIR", "")
 
-	// Create a temporary skills directory for testing.
-	skillsDir := filepath.Join(dir, "skills")
-	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	t.Run("explicit skillsSourceDir takes precedence", func(t *testing.T) {
+		dir := t.TempDir()
+		skillsDir := filepath.Join(dir, "skills")
+		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		result := DiscoverSkillsDir("", skillsDir)
+		if result != skillsDir {
+			t.Errorf("expected %q, got %q", skillsDir, result)
+		}
+	})
 
-	tests := []struct {
-		name            string
-		binPath         string
-		skillsSourceDir string
-		envPath         string
-		expectFound     bool
-	}{
-		{
-			name:            "explicit skillsSourceDir takes precedence",
-			skillsSourceDir: skillsDir,
-			expectFound:     true,
-		},
-		{
-			name:            "empty skills source dir falls through to defaults",
-			skillsSourceDir: "",
-			envPath:         "",
-			expectFound:     false, // won't find anything in a temp dir
-		},
-	}
+	t.Run("explicit skillsSourceDir that does not exist returns empty", func(t *testing.T) {
+		result := DiscoverSkillsDir("", "/nonexistent/path/skills")
+		if result != "" {
+			t.Errorf("expected empty result, got %q", result)
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Save the original HOME and ARCHIGRAPH_SKILLS_DIR.
-			oldHome := os.Getenv("HOME")
-			oldEnv := os.Getenv("ARCHIGRAPH_SKILLS_DIR")
+	t.Run("sibling layout: binary at repo/archigraph, skills at repo/skills", func(t *testing.T) {
+		// Simulates `go build ./cmd/archigraph` run in the repo root.
+		dir := t.TempDir()
+		skillsDir := filepath.Join(dir, "skills")
+		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binPath := filepath.Join(dir, "archigraph")
+		result := DiscoverSkillsDir(binPath, "")
+		if result != skillsDir {
+			t.Errorf("sibling layout: expected %q, got %q", skillsDir, result)
+		}
+	})
 
-			// Set the environment for this test.
-			if tt.envPath != "" {
-				t.Setenv("ARCHIGRAPH_SKILLS_DIR", tt.envPath)
-			} else {
-				t.Setenv("ARCHIGRAPH_SKILLS_DIR", "")
-			}
+	t.Run("one-up layout: binary at repo/bin/archigraph, skills at repo/skills", func(t *testing.T) {
+		// Simulates a bin/ subdirectory install.
+		dir := t.TempDir()
+		skillsDir := filepath.Join(dir, "skills")
+		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binDir := filepath.Join(dir, "bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binPath := filepath.Join(binDir, "archigraph")
+		result := DiscoverSkillsDir(binPath, "")
+		if result != skillsDir {
+			t.Errorf("one-up layout: expected %q, got %q", skillsDir, result)
+		}
+	})
 
-			result := DiscoverSkillsDir(tt.binPath, tt.skillsSourceDir)
-			if tt.expectFound && result == "" {
-				t.Errorf("expected to find skills dir, got empty")
-			}
-			if !tt.expectFound && result != "" && tt.skillsSourceDir != "" {
-				t.Errorf("expected empty result when skillsSourceDir doesn't exist, got: %s", result)
-			}
+	t.Run("walk-up layout: binary at repo/build/archigraph, skills at repo/skills", func(t *testing.T) {
+		// Simulates a nested build directory (e.g. cmake-style build/).
+		dir := t.TempDir()
+		skillsDir := filepath.Join(dir, "skills")
+		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		buildDir := filepath.Join(dir, "build")
+		if err := os.MkdirAll(buildDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binPath := filepath.Join(buildDir, "archigraph")
+		result := DiscoverSkillsDir(binPath, "")
+		if result != skillsDir {
+			t.Errorf("walk-up layout: expected %q, got %q", skillsDir, result)
+		}
+	})
 
-			// Restore environment.
-			if oldHome != "" {
-				t.Setenv("HOME", oldHome)
-			}
-			if oldEnv != "" {
-				t.Setenv("ARCHIGRAPH_SKILLS_DIR", oldEnv)
-			}
-		})
-	}
+	t.Run("env var override is respected when no binary layout matches", func(t *testing.T) {
+		dir := t.TempDir()
+		skillsDir := filepath.Join(dir, "env-skills")
+		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ARCHIGRAPH_SKILLS_DIR", skillsDir)
+		// Use a binPath that has no skills/ around it.
+		result := DiscoverSkillsDir(filepath.Join(dir, "archigraph"), "")
+		if result != skillsDir {
+			t.Errorf("env var: expected %q, got %q", skillsDir, result)
+		}
+	})
+
+	t.Run("no skills anywhere on path returns empty", func(t *testing.T) {
+		dir := t.TempDir()
+		// Do NOT create a skills/ directory anywhere.
+		binPath := filepath.Join(dir, "archigraph")
+		result := DiscoverSkillsDir(binPath, "")
+		if result != "" {
+			t.Errorf("expected empty result when no skills/ exists, got %q", result)
+		}
+	})
+
+	t.Run("no hardcoded home path dependency", func(t *testing.T) {
+		// Override HOME to a temp dir that has no skills/ — ensures no
+		// machine-specific fallback fires.
+		emptyHome := t.TempDir()
+		t.Setenv("HOME", emptyHome)
+		dir := t.TempDir()
+		result := DiscoverSkillsDir(filepath.Join(dir, "archigraph"), "")
+		if result != "" {
+			t.Errorf("should return empty with empty HOME + no skills layout; got %q", result)
+		}
+	})
 }
 
 // TestClaudeSkillsDirForConfig table-drives the path-derivation helper.

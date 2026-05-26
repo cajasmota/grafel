@@ -119,10 +119,17 @@ func PruneOrphanSkillSymlinks(out io.Writer, skillsSubdir string) {
 // DiscoverSkillsDir finds the source directory containing the archigraph
 // skills. It tries these locations in order:
 //
-// 1. If skillsSourceDir is non-empty, use it as-is (no validation)
-// 2. Check $(dirname binPath)/../skills (for shipped binaries)
-// 3. Check $ARCHIGRAPH_SKILLS_DIR env var if set
-// 4. Check ~/Documents/Projects/archigraph/skills (fallback for local dev)
+//  1. If skillsSourceDir is non-empty, use it as-is (caller-validated override)
+//  2. Check $(dirname binPath)/skills — sibling layout produced by
+//     `go build ./cmd/archigraph` in the repo root (e.g. repo/archigraph +
+//     repo/skills)
+//  3. Check $(dirname binPath)/../skills — one-up layout used by shipped
+//     binaries installed under a bin/ subdirectory (e.g. prefix/bin/archigraph +
+//     prefix/skills)
+//  4. Check $ARCHIGRAPH_SKILLS_DIR env var if set
+//  5. Walk up ancestor directories from dirname(binPath) up to 5 levels,
+//     checking <ancestor>/skills at each level — handles arbitrary repo layouts
+//     such as repo/build/archigraph + repo/skills
 //
 // Returns "" if none of the locations exist, which signals the caller to
 // error or skip the step.
@@ -136,12 +143,19 @@ func DiscoverSkillsDir(binPath, skillsSourceDir string) string {
 		return ""
 	}
 
-	// Try $(dirname binPath)/../skills (standard for shipped binaries).
 	if binPath != "" {
 		binDir := filepath.Dir(binPath)
-		candidate := filepath.Join(binDir, "..", "skills")
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
+
+		// Try sibling: $(dirname binPath)/skills — produced by `go build` in repo root.
+		sibling := filepath.Join(binDir, "skills")
+		if info, err := os.Stat(sibling); err == nil && info.IsDir() {
+			return sibling
+		}
+
+		// Try one-up: $(dirname binPath)/../skills — shipped bin/ layout.
+		oneUp := filepath.Join(binDir, "..", "skills")
+		if info, err := os.Stat(oneUp); err == nil && info.IsDir() {
+			return oneUp
 		}
 	}
 
@@ -152,12 +166,22 @@ func DiscoverSkillsDir(binPath, skillsSourceDir string) string {
 		}
 	}
 
-	// Fallback: local dev repository.
-	home, err := os.UserHomeDir()
-	if err == nil {
-		devPath := filepath.Join(home, "Documents", "Projects", "archigraph", "skills")
-		if info, err := os.Stat(devPath); err == nil && info.IsDir() {
-			return devPath
+	// Walk up ancestors of binPath (up to 5 levels) looking for a skills/
+	// subdirectory.  This handles layouts like repo/build/archigraph + repo/skills
+	// without encoding any machine-specific path.
+	if binPath != "" {
+		dir := filepath.Dir(binPath)
+		for i := 0; i < 5; i++ {
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				// Reached filesystem root.
+				break
+			}
+			dir = parent
+			candidate := filepath.Join(dir, "skills")
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				return candidate
+			}
 		}
 	}
 
