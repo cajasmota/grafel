@@ -665,7 +665,7 @@ func TestExtract_Generic_Subtype(t *testing.T) {
 
 func TestFixture_GitHubActions(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/sources/yaml/yaml__github_actions.yml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/sources/yaml/yaml__github_actions.yml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -689,7 +689,7 @@ func TestFixture_GitHubActions(t *testing.T) {
 
 func TestFixture_Kubernetes(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/sources/yaml/yaml__k8s_deployment.yml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/sources/yaml/yaml__k8s_deployment.yml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -726,7 +726,7 @@ func TestFixture_Kubernetes(t *testing.T) {
 
 func TestFixture_DockerCompose(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/sources/yaml/yaml__docker_compose.yml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/sources/yaml/yaml__docker_compose.yml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -748,7 +748,7 @@ func TestFixture_DockerCompose(t *testing.T) {
 
 func TestFixture_GitLabCI(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/sources/yaml/yaml__gitlab_ci.yml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/sources/yaml/yaml__gitlab_ci.yml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -986,7 +986,7 @@ func TestMX1059_Ansible_PreTasks_Extracted(t *testing.T) {
 
 func TestMX1059_Ansible_RealWorldFixture_AtLeast5Entities(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/real-world/ansible/deploy_playbook.yml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/real-world/ansible/deploy_playbook.yml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -1084,7 +1084,7 @@ func TestMX1059_K8sDeployment_ContainerPorts_AreComponent(t *testing.T) {
 
 func TestMX1059_K8sDeployment_RealWorldFixture_AtLeast5Entities(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/real-world/kubernetes/webapp_deployment.yaml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/real-world/kubernetes/webapp_deployment.yaml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -1174,7 +1174,7 @@ func TestMX1059_K8sService_Ports_AreComponent(t *testing.T) {
 
 func TestMX1059_K8sService_RealWorldFixture_AtLeast3Entities(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/real-world/kubernetes/webapp_service.yaml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/real-world/kubernetes/webapp_service.yaml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -1526,7 +1526,7 @@ func TestMX1104_Ingress_AtLeast5Entities(t *testing.T) {
 
 func TestMX1104_RealWorld_Deployment_AtLeast10Entities(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/real-world/kubernetes/deployment.yaml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/real-world/kubernetes/deployment.yaml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -1544,7 +1544,7 @@ func TestMX1104_RealWorld_Deployment_AtLeast10Entities(t *testing.T) {
 
 func TestMX1104_RealWorld_MultiDoc_EachDoc_AtLeast5Entities(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/real-world/kubernetes/full_stack_manifests.yaml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/real-world/kubernetes/full_stack_manifests.yaml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -1564,7 +1564,7 @@ func TestMX1104_RealWorld_MultiDoc_EachDoc_AtLeast5Entities(t *testing.T) {
 
 func TestMX1104_MultiDocFixture_EachDocAtLeast5Entities(t *testing.T) {
 	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/sources/yaml/yaml__k8s_multi_doc.yml"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/sources/yaml/yaml__k8s_multi_doc.yml"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

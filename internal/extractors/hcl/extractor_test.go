@@ -639,7 +639,7 @@ func TestKindMapping(t *testing.T) {
 // ----------------------------------------------------------------
 
 func TestFixtureEntityCount(t *testing.T) {
-	src, err := os.ReadFile("../../../fixtures/sources/hcl/hcl__sample.tf")
+	src, err := os.ReadFile("../../../testdata/fixtures/sources/hcl/hcl__sample.tf")
 	if err != nil {
 		t.Skipf("fixture not found: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestFixtureEntityCount(t *testing.T) {
 }
 
 func TestFixtureSubtypeCoverage(t *testing.T) {
-	src, err := os.ReadFile("../../../fixtures/sources/hcl/hcl__sample.tf")
+	src, err := os.ReadFile("../../../testdata/fixtures/sources/hcl/hcl__sample.tf")
 	if err != nil {
 		t.Skipf("fixture not found: %v", err)
 	}
@@ -679,7 +679,7 @@ func TestFixtureSubtypeCoverage(t *testing.T) {
 }
 
 func TestFixtureDependsOn(t *testing.T) {
-	src, err := os.ReadFile("../../../fixtures/sources/hcl/hcl__sample.tf")
+	src, err := os.ReadFile("../../../testdata/fixtures/sources/hcl/hcl__sample.tf")
 	if err != nil {
 		t.Skipf("fixture not found: %v", err)
 	}
@@ -713,7 +713,7 @@ func TestFixtureDependsOn(t *testing.T) {
 
 // terraformFixturePath is the path to the EKS + Lambda + RDS fixture relative
 // to the test file.
-const terraformFixturePath = "../../../fixtures/sources/terraform/terraform__infra.tf"
+const terraformFixturePath = "../../../testdata/fixtures/sources/terraform/terraform__infra.tf"
 
 // expectedTerraformEntities lists every entity that must be present in the
 // fixture to satisfy the ≥80% recall gate.  The list covers the canonical

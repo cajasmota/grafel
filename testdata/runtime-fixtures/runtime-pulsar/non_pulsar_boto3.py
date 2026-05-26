@@ -1,5 +1,5 @@
 """
-Non-Pulsar boto3 fixture — verify2/fixtures/runtime-pulsar/non_pulsar_boto3.py
+Non-Pulsar boto3 fixture — testdata/runtime-fixtures/runtime-pulsar/non_pulsar_boto3.py
 
 Must NOT produce any Pulsar edges. boto3 SQS uses create_queue / send_message
 with a completely different call signature; the Pulsar pass must ignore it.

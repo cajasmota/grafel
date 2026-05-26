@@ -328,7 +328,7 @@ test:
 }
 
 func TestJustExtractor_RealWorldFixture(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "fixtures", "real-world", "just", "Justfile")
+	path := filepath.Join("..", "..", "..", "testdata", "fixtures", "real-world", "just", "Justfile")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)

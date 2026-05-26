@@ -286,12 +286,12 @@ func TestExtractLess_NoParamsMixin(t *testing.T) {
 }
 
 func TestExtractLess_FixtureFile(t *testing.T) {
-	content, err := os.ReadFile("../../../fixtures/sources/css/less/variables.less")
+	content, err := os.ReadFile("../../../testdata/fixtures/sources/css/less/variables.less")
 	if err != nil {
 		t.Skipf("fixture not found: %v", err)
 	}
 	file := extractor.FileInput{
-		Path:    "fixtures/sources/css/less/variables.less",
+		Path:    "testdata/fixtures/sources/css/less/variables.less",
 		Content: content,
 	}
 

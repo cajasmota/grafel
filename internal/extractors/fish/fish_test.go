@@ -270,7 +270,7 @@ func TestFishExtractor_MalformedInput_NoPanic(t *testing.T) {
 }
 
 func TestFishExtractor_RealWorldFixture(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "fixtures", "real-world", "fish", "config.fish")
+	path := filepath.Join("..", "..", "..", "testdata", "fixtures", "real-world", "fish", "config.fish")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)

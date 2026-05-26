@@ -1,5 +1,5 @@
 // Package verify exercises the VERIFY-2 measurement harness against the
-// in-repo synthetic corpus at fixtures/sources/. The test asserts a
+// in-repo synthetic corpus at testdata/fixtures/sources/. The test asserts a
 // minimum entity / relationship floor and a regression-net bug-rate
 // ceiling — NOT the v1.0 ship-gate threshold (which is gated on the
 // public OSS corpus exercised by scripts/verify2/run.sh).
@@ -56,7 +56,7 @@ func repoRoot(t *testing.T) string {
 }
 
 // TestHarness_FixturesCorpus builds archigraph, runs `index --json-stats`
-// against fixtures/sources/, and asserts the regression net: at least
+// against testdata/fixtures/sources/, and asserts the regression net: at least
 // some entities / relationships were extracted and the bug-rate is well
 // below the catastrophic-failure threshold. The actual ship-gate
 // (bug-rate <= 1%) is enforced by scripts/verify2/run.sh against the
@@ -78,7 +78,7 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
 
-	corpus := filepath.Join(root, "fixtures", "sources")
+	corpus := filepath.Join(root, "testdata", "fixtures", "sources")
 
 	// Per ADR-0017, indexing happens inside the daemon. Point the daemon
 	// at an isolated tempdir (so this test never touches ~/.archigraph)

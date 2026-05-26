@@ -4,7 +4,7 @@
 # legacy graph.json reparse path.
 #
 # Inputs:
-#   FIXTURE_REPO    repo to index (default: fixtures/real-world/go)
+#   FIXTURE_REPO    repo to index (default: testdata/fixtures/real-world/go)
 #   BIN             archigraph binary (default: build/archigraph)
 #
 # Outputs:
@@ -24,7 +24,7 @@
 set -euo pipefail
 
 BIN="${BIN:-./build/archigraph}"
-FIXTURE_REPO="${FIXTURE_REPO:-fixtures/real-world/go}"
+FIXTURE_REPO="${FIXTURE_REPO:-testdata/fixtures/real-world/go}"
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 OUT="/tmp/bench-mcp-latency/$RUN_ID"

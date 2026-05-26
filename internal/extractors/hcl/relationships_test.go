@@ -315,7 +315,7 @@ resource "aws_lambda_function" "fn" {
 // terraform-aws-vpc corpus produces non-trivial counts of all three new edge
 // kinds. This is the proxy for issue #162 corpus coverage.
 func TestCorpus_TerraformAwsVpc_RelationshipCounts(t *testing.T) {
-	const path = "../../../fixtures/real-world/hcl/terraform_aws_vpc.tf"
+	const path = "../../../testdata/fixtures/real-world/hcl/terraform_aws_vpc.tf"
 	srcBytes, err := os.ReadFile(path)
 	if err != nil {
 		t.Skipf("corpus not found: %v", err)

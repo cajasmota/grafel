@@ -1,5 +1,5 @@
 """
-Pulsar Python consumer fixture — verify2/fixtures/runtime-pulsar/consumer.py
+Pulsar Python consumer fixture — testdata/runtime-fixtures/runtime-pulsar/consumer.py
 
 Emits SUBSCRIBES_TO edge to topic:pulsar:persistent://public/default/orders.
 """

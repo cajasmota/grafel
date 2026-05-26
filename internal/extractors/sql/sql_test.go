@@ -326,7 +326,7 @@ func TestMX1059_Dbt_NonDbtSQL_NoJinjaEntities(t *testing.T) {
 
 func TestMX1059_Dbt_RealWorldFixture_AtLeast3Entities(t *testing.T) {
 	root := repoRootSQL(t)
-	src, err := os.ReadFile(filepath.Join(root, "fixtures/real-world/dbt/orders_model.sql"))
+	src, err := os.ReadFile(filepath.Join(root, "testdata/fixtures/real-world/dbt/orders_model.sql"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

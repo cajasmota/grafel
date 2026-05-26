@@ -155,7 +155,7 @@ func TestExtractor_NoCodeBlock_QualityScore(t *testing.T) {
 // ---- Fixture: EmptyComponent.razor -----------------------------------------
 
 func TestFixture_EmptyComponent(t *testing.T) {
-	entities := extractFromFile(t, "../../../fixtures/sources/razor/EmptyComponent.razor")
+	entities := extractFromFile(t, "../../../testdata/fixtures/sources/razor/EmptyComponent.razor")
 	if len(entities) != 1 {
 		t.Errorf("EmptyComponent fixture: len = %d, want exactly 1", len(entities))
 	}
@@ -208,7 +208,7 @@ func TestExtractor_MultipleInjects(t *testing.T) {
 // ---- Fixture: WithInject.razor ---------------------------------------------
 
 func TestFixture_WithInject(t *testing.T) {
-	entities := extractFromFile(t, "../../../fixtures/sources/razor/WithInject.razor")
+	entities := extractFromFile(t, "../../../testdata/fixtures/sources/razor/WithInject.razor")
 	if countBySubtype(entities, "inject") == 0 {
 		t.Error("WithInject fixture: expected at least 1 inject entity")
 	}
@@ -343,7 +343,7 @@ func TestExtractor_EventHandler_MultipleHandlers(t *testing.T) {
 // ---- Fixture: Counter.razor -------------------------------------------------
 
 func TestFixture_Counter_AtLeastFiveEntities(t *testing.T) {
-	entities := extractFromFile(t, "../../../fixtures/sources/razor/Counter.razor")
+	entities := extractFromFile(t, "../../../testdata/fixtures/sources/razor/Counter.razor")
 	if len(entities) < 5 {
 		t.Errorf("Counter fixture: len = %d, want >= 5", len(entities))
 		for _, e := range entities {
@@ -353,7 +353,7 @@ func TestFixture_Counter_AtLeastFiveEntities(t *testing.T) {
 }
 
 func TestFixture_Counter_HasComponentEntity(t *testing.T) {
-	entities := extractFromFile(t, "../../../fixtures/sources/razor/Counter.razor")
+	entities := extractFromFile(t, "../../../testdata/fixtures/sources/razor/Counter.razor")
 	comp := findByName(entities, "Counter")
 	if comp == nil {
 		t.Fatal("Counter component entity not found")
@@ -364,14 +364,14 @@ func TestFixture_Counter_HasComponentEntity(t *testing.T) {
 }
 
 func TestFixture_Counter_HasParameters(t *testing.T) {
-	entities := extractFromFile(t, "../../../fixtures/sources/razor/Counter.razor")
+	entities := extractFromFile(t, "../../../testdata/fixtures/sources/razor/Counter.razor")
 	if countBySubtype(entities, "parameter") == 0 {
 		t.Error("Counter fixture: expected at least 1 parameter entity")
 	}
 }
 
 func TestFixture_Counter_HasEventHandlers(t *testing.T) {
-	entities := extractFromFile(t, "../../../fixtures/sources/razor/Counter.razor")
+	entities := extractFromFile(t, "../../../testdata/fixtures/sources/razor/Counter.razor")
 	if countBySubtype(entities, "event_handler") == 0 {
 		t.Error("Counter fixture: expected at least 1 event_handler entity")
 	}

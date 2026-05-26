@@ -1,5 +1,5 @@
 """
-Pulsar Python producer fixture — verify2/fixtures/runtime-pulsar/producer.py
+Pulsar Python producer fixture — testdata/runtime-fixtures/runtime-pulsar/producer.py
 
 Emits PUBLISHES_TO edge to topic:pulsar:persistent://public/default/orders.
 """

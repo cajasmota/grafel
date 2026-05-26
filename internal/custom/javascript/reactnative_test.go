@@ -66,7 +66,7 @@ func checkMetadata(t *testing.T, meta map[string]interface{}, key, want string) 
 // rnFixture reads a fixture file relative to this package.
 func rnFixture(t *testing.T, rel string) []byte {
 	t.Helper()
-	data, err := os.ReadFile("../../../fixtures/sources/" + rel)
+	data, err := os.ReadFile("../../../testdata/fixtures/sources/" + rel)
 	if err != nil {
 		t.Fatalf("rnFixture %q: %v", rel, err)
 	}

@@ -19,9 +19,9 @@ mkdir -p "$ARCHIGRAPH_HOME"
 
 # Make 3 small repos from existing fixtures.
 mkdir -p "$ROOT/repos"
-cp -R fixtures/real-world/go "$ROOT/repos/repo-a"
-cp -R fixtures/real-world/javascript "$ROOT/repos/repo-b"
-cp -R fixtures/real-world/python "$ROOT/repos/repo-c"
+cp -R testdata/fixtures/real-world/go "$ROOT/repos/repo-a"
+cp -R testdata/fixtures/real-world/javascript "$ROOT/repos/repo-b"
+cp -R testdata/fixtures/real-world/python "$ROOT/repos/repo-c"
 
 REPO_A="$ROOT/repos/repo-a"
 REPO_B="$ROOT/repos/repo-b"

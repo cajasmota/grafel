@@ -533,7 +533,7 @@ func hello() {}
 // ---- golden fixture test ----------------------------------------------------
 
 func TestExtractGoldenFixture(t *testing.T) {
-	fixturePath := "../../../fixtures/sources/go/sample_handler/sample_handler.go"
+	fixturePath := "../../../testdata/fixtures/sources/go/sample_handler/sample_handler.go"
 	content, err := os.ReadFile(fixturePath)
 	if err != nil {
 		t.Skipf("golden fixture not found: %v", err)
@@ -541,7 +541,7 @@ func TestExtractGoldenFixture(t *testing.T) {
 
 	ext, _ := extractor.Get("go")
 	results, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path:     "fixtures/sources/go/sample_handler/sample_handler.go",
+		Path:     "testdata/fixtures/sources/go/sample_handler/sample_handler.go",
 		Content:  content,
 		Language: "go",
 		Tree:     parseGo(content),
@@ -1497,14 +1497,14 @@ type Empty struct{}
 func TestRelationships_SampleHandlerFixture(t *testing.T) {
 	// End-to-end check against the golden fixture. Verifies every
 	// relationship kind fires at least once on a realistic file.
-	fixturePath := "../../../fixtures/sources/go/sample_handler/sample_handler.go"
+	fixturePath := "../../../testdata/fixtures/sources/go/sample_handler/sample_handler.go"
 	content, err := os.ReadFile(fixturePath)
 	if err != nil {
 		t.Skipf("golden fixture not found: %v", err)
 	}
 	ext, _ := extractor.Get("go")
 	records, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path:     "fixtures/sources/go/sample_handler/sample_handler.go",
+		Path:     "testdata/fixtures/sources/go/sample_handler/sample_handler.go",
 		Content:  content,
 		Language: "go",
 		Tree:     parseGo(content),

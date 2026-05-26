@@ -592,7 +592,7 @@ namespace geo {
 // ----------------------------------------------------------------
 
 func TestFixtureEntityCount(t *testing.T) {
-	src, err := os.ReadFile("../../../fixtures/sources/cpp/cpp__sample.cpp")
+	src, err := os.ReadFile("../../../testdata/fixtures/sources/cpp/cpp__sample.cpp")
 	if err != nil {
 		t.Skipf("fixture not found: %v", err)
 	}

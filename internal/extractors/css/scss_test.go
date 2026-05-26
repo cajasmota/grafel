@@ -297,12 +297,12 @@ func TestExtractSCSS_NoParamsMixin(t *testing.T) {
 }
 
 func TestExtractSCSS_FixtureFile(t *testing.T) {
-	content, err := os.ReadFile("../../../fixtures/sources/css/scss/variables.scss")
+	content, err := os.ReadFile("../../../testdata/fixtures/sources/css/scss/variables.scss")
 	if err != nil {
 		t.Skipf("fixture not found: %v", err)
 	}
 	file := extractor.FileInput{
-		Path:    "fixtures/sources/css/scss/variables.scss",
+		Path:    "testdata/fixtures/sources/css/scss/variables.scss",
 		Content: content,
 	}
 
