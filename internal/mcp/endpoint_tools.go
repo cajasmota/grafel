@@ -319,18 +319,32 @@ type PaginationOpts struct {
 	Method       string
 }
 
-// paginationOptsFromReq extracts the standard pagination and filter arguments
-// from an MCP CallToolRequest into a PaginationOpts. The verbose flag is passed
-// separately because callers may have already resolved format="terse"|"full"
-// precedence before calling this function.
-func paginationOptsFromReq(req mcpapi.CallToolRequest, verbose bool, pathContains, method string) PaginationOpts {
+// Format returns the canonical format label ("full" or "terse") for this opts.
+func (o PaginationOpts) Format() string { return formatLabel(o.Verbose) }
+
+// FromRequest builds a fully-populated PaginationOpts from an MCP
+// CallToolRequest. Format-precedence resolution is internalised here so callers
+// need not thread verbose/pathContains/method as explicit params:
+//
+//   - format="full"  → Verbose=true  (takes precedence over verbose bool)
+//   - format="terse" → Verbose=false (takes precedence over verbose bool)
+//   - format unset   → Verbose=argBool(req,"verbose",false)
+//   - path_contains and method are read and normalised (lower/upper) here.
+func (PaginationOpts) FromRequest(req mcpapi.CallToolRequest) PaginationOpts {
+	format := strings.ToLower(argString(req, "format", ""))
+	verbose := argBool(req, "verbose", false)
+	if format == "full" {
+		verbose = true
+	} else if format == "terse" {
+		verbose = false
+	}
 	return PaginationOpts{
 		Offset:       argInt(req, "offset", 0),
 		Limit:        argInt(req, "limit", 20),
 		TokenBudget:  argInt(req, "token_budget", 800),
 		Verbose:      verbose,
-		PathContains: pathContains,
-		Method:       method,
+		PathContains: strings.ToLower(argString(req, "path_contains", "")),
+		Method:       strings.ToUpper(argString(req, "method", "")),
 	}
 }
 
@@ -443,18 +457,11 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	pathContains := strings.ToLower(argString(req, "path_contains", ""))
-	method := strings.ToUpper(argString(req, "method", ""))
+	pOpts := PaginationOpts{}.FromRequest(req)
+	pathContains := pOpts.PathContains
+	method := pOpts.Method
+	verbose := pOpts.Verbose
 	orphanOnly := argBool(req, "orphan_only", false)
-	// format="terse"|"full" is the preferred control; verbose=bool kept for
-	// backward compatibility. format takes precedence when set explicitly.
-	format := strings.ToLower(argString(req, "format", ""))
-	verbose := argBool(req, "verbose", false)
-	if format == "full" {
-		verbose = true
-	} else if format == "terse" {
-		verbose = false
-	}
 
 	// #2292: orphan_only=true filters to endpoint definitions with no inbound
 	// client-call edges. In this graph the edge kind from a call-site to its
@@ -530,8 +537,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 	total := len(out)
 
 	// #2315: use respondPaginated helper (token budget + page + cap).
-	// #2344: build PaginationOpts from req — keeps respondPaginated decoupled from MCP.
-	pOpts := paginationOptsFromReq(req, verbose, pathContains, method)
+	// #2360: pOpts already built via PaginationOpts{}.FromRequest(req) above.
 	out, env, truncationNote := respondPaginated(pOpts, out, total)
 
 	resp := map[string]any{
@@ -729,16 +735,11 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	pOpts := PaginationOpts{}.FromRequest(req)
 	orphanOnly := argBool(req, "orphan_only", false)
-	pathContains := strings.ToLower(argString(req, "path_contains", ""))
-	method := strings.ToUpper(argString(req, "method", ""))
-	format := strings.ToLower(argString(req, "format", ""))
-	verbose := argBool(req, "verbose", false)
-	if format == "full" {
-		verbose = true
-	} else if format == "terse" {
-		verbose = false
-	}
+	pathContains := pOpts.PathContains
+	method := pOpts.Method
+	verbose := pOpts.Verbose
 
 	// #2336: use shared endpointResolution helper.
 	// orphanOnly=false → linkedTargets not populated (not needed for call handler).
@@ -864,8 +865,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 	total := len(out)
 
 	// #2315: use respondPaginated helper (token budget + page + cap).
-	// #2344: build PaginationOpts from req — keeps respondPaginated decoupled from MCP.
-	pOpts := paginationOptsFromReq(req, verbose, pathContains, method)
+	// #2360: pOpts already built via PaginationOpts{}.FromRequest(req) above.
 	out, env, truncationNote := respondPaginated(pOpts, out, total)
 
 	// #2311: mirror the #2288/#2309 fix — terse mode (default) emits lines

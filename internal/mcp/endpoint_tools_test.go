@@ -1115,6 +1115,108 @@ func TestDedupeEndpointProperties(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// #2360: PaginationOpts.FromRequest builder tests
+// ---------------------------------------------------------------------------
+
+// makeReq builds a CallToolRequest with the given arguments for builder tests.
+func makeReq(args map[string]any) mcpapi.CallToolRequest {
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = args
+	return req
+}
+
+// TestPaginationOptsFromRequest_FormatFull verifies that format="full" sets
+// Verbose=true regardless of the verbose bool param.
+func TestPaginationOptsFromRequest_FormatFull(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{"format": "full", "verbose": false}))
+	if !opts.Verbose {
+		t.Error("format=full should set Verbose=true")
+	}
+	if opts.Format() != "full" {
+		t.Errorf("Format() should return %q, got %q", "full", opts.Format())
+	}
+}
+
+// TestPaginationOptsFromRequest_FormatTerse verifies that format="terse" sets
+// Verbose=false regardless of the verbose bool param.
+func TestPaginationOptsFromRequest_FormatTerse(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{"format": "terse", "verbose": true}))
+	if opts.Verbose {
+		t.Error("format=terse should set Verbose=false even when verbose=true")
+	}
+}
+
+// TestPaginationOptsFromRequest_DefaultVerboseFalse verifies that when format
+// is absent, Verbose defaults to false.
+func TestPaginationOptsFromRequest_DefaultVerboseFalse(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{}))
+	if opts.Verbose {
+		t.Error("default (no format, no verbose) should set Verbose=false")
+	}
+}
+
+// TestPaginationOptsFromRequest_VerboseTrueFallback verifies that when format
+// is absent but verbose=true, Verbose is true.
+func TestPaginationOptsFromRequest_VerboseTrueFallback(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{"verbose": true}))
+	if !opts.Verbose {
+		t.Error("verbose=true with no format should set Verbose=true")
+	}
+}
+
+// TestPaginationOptsFromRequest_PathContainsNormalised verifies that
+// path_contains is lower-cased by the builder.
+func TestPaginationOptsFromRequest_PathContainsNormalised(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{"path_contains": "Users"}))
+	if opts.PathContains != "users" {
+		t.Errorf("PathContains should be lower-cased, got %q", opts.PathContains)
+	}
+}
+
+// TestPaginationOptsFromRequest_MethodNormalised verifies that method is
+// upper-cased by the builder.
+func TestPaginationOptsFromRequest_MethodNormalised(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{"method": "post"}))
+	if opts.Method != "POST" {
+		t.Errorf("Method should be upper-cased, got %q", opts.Method)
+	}
+}
+
+// TestPaginationOptsFromRequest_PaginationDefaults verifies default offset,
+// limit, and token_budget values when absent from the request.
+func TestPaginationOptsFromRequest_PaginationDefaults(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{}))
+	if opts.Offset != 0 {
+		t.Errorf("default Offset: want 0, got %d", opts.Offset)
+	}
+	if opts.Limit != 20 {
+		t.Errorf("default Limit: want 20, got %d", opts.Limit)
+	}
+	if opts.TokenBudget != 800 {
+		t.Errorf("default TokenBudget: want 800, got %d", opts.TokenBudget)
+	}
+}
+
+// TestPaginationOptsFromRequest_ExplicitPagination verifies that explicit
+// offset/limit/token_budget values are respected.
+func TestPaginationOptsFromRequest_ExplicitPagination(t *testing.T) {
+	opts := PaginationOpts{}.FromRequest(makeReq(map[string]any{
+		"offset":       float64(10),
+		"limit":        float64(5),
+		"token_budget": float64(200),
+	}))
+	if opts.Offset != 10 {
+		t.Errorf("Offset: want 10, got %d", opts.Offset)
+	}
+	if opts.Limit != 5 {
+		t.Errorf("Limit: want 5, got %d", opts.Limit)
+	}
+	if opts.TokenBudget != 200 {
+		t.Errorf("TokenBudget: want 200, got %d", opts.TokenBudget)
+	}
+}
+
 // TestDedupeEndpointProperties_NilAndEmpty verifies edge cases.
 func TestDedupeEndpointProperties_NilAndEmpty(t *testing.T) {
 	if got := dedupeEndpointProperties(nil); got != nil {
