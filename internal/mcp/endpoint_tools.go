@@ -197,6 +197,32 @@ func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest
 // archigraph_endpoint_definitions
 // ---------------------------------------------------------------------------
 
+// isOrphanDefinition reports whether the endpoint-definition entity with the
+// given local ID (within repo r) has no inbound client-call edges. An endpoint
+// is orphan when:
+//
+//   - it has no inbound FETCHES edge in its own repo (the semantic
+//     "client → endpoint" edge in this graph; see handleEndpointCalls), AND
+//   - it is not the target of any cross-repo Link in lg.Links.
+//
+// Other inbound edge kinds (CONTAINS, DECLARES, …) are intentionally ignored —
+// they describe structure, not API consumption. (#2292)
+//
+// linkedTargets must be the precomputed set of lg.Links[*].Target values;
+// passing nil is allowed and treated as "no cross-repo callers".
+func isOrphanDefinition(r *LoadedRepo, localID string, linkedTargets map[string]bool) bool {
+	prefixed := prefixedID(r.Repo, localID)
+	if linkedTargets[prefixed] || linkedTargets[localID] {
+		return false
+	}
+	for _, e := range r.Adjacency.Incoming(localID) {
+		if strings.EqualFold(e.kind, "FETCHES") {
+			return false
+		}
+	}
+	return true
+}
+
 // handleEndpointDefinitions lists http_endpoint_definition entities (and the
 // legacy http_endpoint kind when Sub-A has not yet landed). This tool returns
 // ONLY definition-side entries — no call-sites.
@@ -219,6 +245,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 	limit := argInt(req, "limit", 20)
 	pathContains := strings.ToLower(argString(req, "path_contains", ""))
 	method := strings.ToUpper(argString(req, "method", ""))
+	orphanOnly := argBool(req, "orphan_only", false)
 	// format="terse"|"full" is the preferred control; verbose=bool kept for
 	// backward compatibility. format takes precedence when set explicitly.
 	format := strings.ToLower(argString(req, "format", ""))
@@ -227,6 +254,27 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		verbose = true
 	} else if format == "terse" {
 		verbose = false
+	}
+
+	// #2292: orphan_only=true filters to endpoint definitions with no inbound
+	// client-call edges. In this graph the edge kind from a call-site to its
+	// definition is FETCHES (see handleEndpointCalls / handleEndpointStats);
+	// "CALLS" in the issue text refers to that semantic edge — the literal
+	// graph kind is FETCHES. Other inbound edge kinds (CONTAINS, DECLARES, …)
+	// do NOT count, so a route nested inside a router with a CONTAINS edge but
+	// no FETCHES caller is still an orphan from the API-call perspective.
+	//
+	// Cross-repo callers: if the definition is the target of an entry in
+	// lg.Links (which records cross-repo HTTP link resolutions), it is also
+	// NOT orphan, matching the accounting in handleEndpointStats.
+	var linkedTargets map[string]bool
+	if orphanOnly {
+		linkedTargets = make(map[string]bool, len(lg.Links))
+		for _, l := range lg.Links {
+			if l.Target != "" {
+				linkedTargets[l.Target] = true
+			}
+		}
 	}
 
 	var out []endpointDefItem
@@ -248,6 +296,9 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 				continue
 			}
 			if method != "" && !strings.EqualFold(m, method) {
+				continue
+			}
+			if orphanOnly && !isOrphanDefinition(r, e.ID, linkedTargets) {
 				continue
 			}
 			it := endpointDefItem{
@@ -311,6 +362,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		"format":        formatLabel(verbose),
 		"path_contains": pathContains,
 		"method":        method,
+		"orphan_only":   orphanOnly,
 		"token_budget":  tokenBudget,
 		"note":          "format=terse (default) returns one-line 'lines' entries only. Pass format=full (or verbose=true) to also receive the full `definitions` struct array.",
 	}

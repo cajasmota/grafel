@@ -269,6 +269,130 @@ func TestEndpointDefinitions_NoteFieldPresent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// orphan_only filter tests (#2292)
+// ---------------------------------------------------------------------------
+
+// In buildEndpointDoc the only inbound FETCHES edge to a definition is
+// fn_other → ep_def. ep_legacy has no inbound FETCHES, so it is the lone
+// orphan when orphan_only=true.
+func TestEndpointDefinitions_OrphanOnly_FiltersToOrphans(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":       "test",
+		"orphan_only": true,
+		"verbose":     true,
+	})
+
+	defs := getSlice(t, res, "definitions")
+	if len(defs) != 1 {
+		t.Fatalf("expected 1 orphan definition, got %d: %v", len(defs), defs)
+	}
+	obj := defs[0].(map[string]any)
+	if got, _ := obj["entity_id"].(string); !strings.HasSuffix(got, "ep_legacy") {
+		t.Errorf("expected ep_legacy as orphan, got entity_id=%q", got)
+	}
+	if got, _ := res["orphan_only"].(bool); !got {
+		t.Errorf("orphan_only=true should be echoed in response, got %v", res["orphan_only"])
+	}
+}
+
+// orphan_only=false (and the default unset case) must return the full set of
+// definitions — backward compat with pre-#2292 behaviour.
+func TestEndpointDefinitions_OrphanOnly_FalseReturnsAll(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":       "test",
+		"orphan_only": false,
+		"verbose":     true,
+	})
+	if got := len(getSlice(t, res, "definitions")); got != 2 {
+		t.Errorf("orphan_only=false: expected 2 definitions, got %d", got)
+	}
+
+	resUnset := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":   "test",
+		"verbose": true,
+	})
+	if got := len(getSlice(t, resUnset, "definitions")); got != 2 {
+		t.Errorf("orphan_only unset: expected 2 definitions, got %d", got)
+	}
+}
+
+// When every definition has an inbound FETCHES edge, orphan_only=true must
+// produce an empty result — not an error, and (in terse mode) an empty
+// `lines` slice rather than a missing key.
+func TestEndpointDefinitions_OrphanOnly_NoOrphansReturnsEmpty(t *testing.T) {
+	doc := buildEndpointDoc()
+	// Cover the previously-uncalled ep_legacy with an inbound FETCHES.
+	doc.Relationships = append(doc.Relationships, graph.Relationship{
+		FromID: "fn_other", ToID: "ep_legacy", Kind: "FETCHES",
+	})
+	srv := newTestServerWithDoc(t, doc)
+
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":       "test",
+		"orphan_only": true,
+	})
+
+	if got := getFloat(t, res, "count"); got != 0 {
+		t.Errorf("expected count=0 when no orphans, got %v", got)
+	}
+	if got := getFloat(t, res, "total"); got != 0 {
+		t.Errorf("expected total=0 when no orphans, got %v", got)
+	}
+	// terse default → lines key must exist and be empty.
+	lines, ok := res["lines"]
+	if !ok {
+		t.Fatal("terse response missing `lines` key")
+	}
+	if ls, _ := lines.([]any); len(ls) != 0 {
+		t.Errorf("expected empty lines, got %v", lines)
+	}
+}
+
+// Non-CALLS/FETCHES inbound edges (e.g. CONTAINS) must NOT disqualify an
+// endpoint from being orphan — only FETCHES from a client counts. (#2292)
+func TestEndpointDefinitions_OrphanOnly_IgnoresNonFetchesInbound(t *testing.T) {
+	doc := buildEndpointDoc()
+	// ep_def already has fn_other -FETCHES-> ep_def (so it's NOT orphan).
+	// Replace that with a CONTAINS edge so ep_def has only structural inbound.
+	doc.Relationships = []graph.Relationship{
+		{FromID: "fn_other", ToID: "ep_def", Kind: "CONTAINS"},
+	}
+	srv := newTestServerWithDoc(t, doc)
+
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":       "test",
+		"orphan_only": true,
+		"verbose":     true,
+	})
+
+	defs := getSlice(t, res, "definitions")
+	// Both ep_legacy AND ep_def must now be reported as orphans.
+	if len(defs) != 2 {
+		t.Fatalf("expected 2 orphans (CONTAINS shouldn't count), got %d: %v", len(defs), defs)
+	}
+	gotIDs := map[string]bool{}
+	for _, d := range defs {
+		obj := d.(map[string]any)
+		id, _ := obj["entity_id"].(string)
+		gotIDs[id] = true
+	}
+	if !hasSuffixKey(gotIDs, "ep_def") || !hasSuffixKey(gotIDs, "ep_legacy") {
+		t.Errorf("expected ep_def AND ep_legacy in orphans, got %v", gotIDs)
+	}
+}
+
+func hasSuffixKey(m map[string]bool, suffix string) bool {
+	for k := range m {
+		if strings.HasSuffix(k, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
 // archigraph_endpoint_calls tests
 // ---------------------------------------------------------------------------
 
