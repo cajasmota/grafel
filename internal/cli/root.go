@@ -69,6 +69,7 @@ func newRoot() *cobra.Command {
 		newBranchesCmd(),
 		newInstallHooksCmd(),
 		newBenchCaptureCmd(),
+		newPersonasCmd(),
 		newHelpCmd(),
 	)
 
@@ -195,4 +196,9 @@ Agent-learned patterns (ADR-0018):
   patterns import --repo <p> | --file <p>     Diff CLAUDE.md vs the store
   patterns config [key=value]                 Get/set thresholds (per_subagent_threshold, …)
   patterns gc [--dry-run=false]               Prune candidates older than candidate_decay_days
+
+Personas (cross-platform wrappers):
+  personas render --target <target> [--output <dir>] [--personas-dir <dir>]
+                                  Render platform-specific wrappers from canonical persona files
+                                  Targets: claude-code, windsurf, cursor, codex
 `
