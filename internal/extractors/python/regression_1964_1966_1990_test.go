@@ -247,7 +247,6 @@ def handler():
 	out := extractPy12(t, src, "client_fixture_a/models.py")
 
 	sawConstraint := false
-	sawPattern := false
 	for _, ent := range out {
 		if ent.Language != "python" {
 			t.Errorf("entity %s/%s name=%q has language=%q (want python)",
@@ -256,15 +255,13 @@ def handler():
 		if ent.Kind == "SCOPE.Constraint" {
 			sawConstraint = true
 		}
-		if ent.Kind == "SCOPE.Pattern" {
-			sawPattern = true
-		}
+		// Issue #2282 dropped the SCOPE.Pattern try_catch emit; the
+		// error-handling pass is now a no-op for Python. The sweep
+		// still verifies Language stamping across the remaining passes
+		// (config_module, package_module, imports, constraint).
 	}
 	if !sawConstraint {
 		t.Errorf("fixture did not exercise SCOPE.Constraint (Meta.constraints pass)")
-	}
-	if !sawPattern {
-		t.Errorf("fixture did not exercise SCOPE.Pattern (error-handling pass)")
 	}
 }
 

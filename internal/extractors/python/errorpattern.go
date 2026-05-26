@@ -1,94 +1,32 @@
 // Error-handling pattern extraction for Python source files.
 //
-// This file implements a secondary extraction pass that emits one
-// SCOPE.Pattern EntityRecord per `try: ... except: ...` occurrence.
-// It runs AFTER the base entity extraction in Extractor.Extract and
-// never aborts the primary walker — a failure here is logged at warn
-// level and partial results are returned.
+// HISTORY: this pass used to emit one SCOPE.Pattern EntityRecord per
+// `try: ... except: ...` occurrence, with Name
+// "error_handling:try_catch:N". On the UpVate bench corpus that produced
+// ~1,077 nodes (~5.5% of the entire graph) with zero query value: no
+// caller asks "show me every try block at line N". Issue #2282 dropped
+// the emit. Pattern-level discovery (clustering, frequency analysis)
+// can be done over the existing kind=SCOPE.Component/SCOPE.Operation
+// nodes when we want it.
 //
-// Entity shape (matches Python indexer parser.py exactly):
-//
-//	Kind       = "SCOPE.Pattern"
-//	Name       = "error_handling:try_catch:N"  (N = 1-based line number)
-//	SourceFile = absolute path of the source file
-//	StartLine  = line number of the try statement (EndLine matches)
-//	Language   = "python"
-//	Metadata   = {"pattern_type": "error_handling"}
-//
-// Detection rule:
-//
-//	AST node type: try_statement
-//
-// tree-sitter-python represents `try/except/finally/else` blocks as a
-// single try_statement node. Every occurrence, whether it has one or
-// many except clauses, is emitted as one entity — matching the Python
-// parser behaviour where one `try` token in the file produces one
-// entity with the try-line number as the key.
+// The function is preserved as a no-op so the per-language extractor.go
+// call sites don't need to be rewired. If we ever want a different
+// pattern shape here (per-function aggregate, per-module roll-up,
+// per-file boolean), it slots in at this seam.
 
 package python
 
 import (
-	"fmt"
-	"log"
-
 	sitter "github.com/smacker/go-tree-sitter"
 
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// extractErrorHandlingPatterns walks the AST and returns one EntityRecord
-// per try_statement node found. Safe against panics — a recover at the
-// top converts them into a warn-level log, preserving any records
-// already collected.
+// extractErrorHandlingPatterns is intentionally a no-op since #2282.
+// Returns nil so the calling extractor's "entities = append(entities,
+// errorPatterns...)" continues to work without a special case.
 func extractErrorHandlingPatterns(root *sitter.Node, filePath string) []types.EntityRecord {
-	if root == nil {
-		return nil
-	}
-
-	var records []types.EntityRecord
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[python extractor] WARNING: error-pattern pass panicked on %s: %v — returning partial results", filePath, r)
-		}
-	}()
-
-	// Depth-first walk: collect every try_statement node. Iterative to
-	// avoid stack overflow on deeply-nested try/except blocks.
-	stack := []*sitter.Node{root}
-	for len(stack) > 0 {
-		n := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if n == nil {
-			continue
-		}
-		if n.Type() == "try_statement" {
-			line := int(n.StartPoint().Row) + 1
-			// Issue #1964 — emit the real end line from the AST node so the
-			// docgen source_window helper can excerpt the full try/except
-			// block instead of clipping at start_line.
-			endLine := int(n.EndPoint().Row) + 1
-			if endLine < line {
-				endLine = line
-			}
-			records = append(records, types.EntityRecord{
-				Name:       fmt.Sprintf("error_handling:try_catch:%d", line),
-				Kind:       "SCOPE.Pattern",
-				SourceFile: filePath,
-				StartLine:  line,
-				EndLine:    endLine,
-				Language:   "python",
-				Metadata: map[string]interface{}{
-					"pattern_type": "error_handling",
-				},
-				QualityScore:       1.0,
-				EnrichmentRequired: false,
-			})
-		}
-		count := int(n.ChildCount())
-		for i := 0; i < count; i++ {
-			stack = append(stack, n.Child(i))
-		}
-	}
-
-	return records
+	_ = root
+	_ = filePath
+	return nil
 }
