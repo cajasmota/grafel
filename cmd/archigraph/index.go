@@ -1042,7 +1042,24 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		}
 		reader := func(p string) []byte { return contentByPath[p] }
 
-		testsEdges := engine.ApplyTestsMultiHopViaHTTP(allPaths, reader, pass2Rels)
+		// #2570 — supplement pass2Rels with synthetic ROUTES_TO records
+		// derived from http_endpoint entities in pass3Records.  When the app
+		// separates router.register() and include(router.urls) into different
+		// files (upvate pattern), applyDjangoRouteComposition never fires in
+		// same-file mode and no composed ROUTES_TO land in pass2Rels.  The
+		// entities emitted by ApplyDjangoDRFRoutes carry path+source_handler
+		// properties that let us reconstruct equivalent ROUTES_TO records here.
+		endpointRoutesTo := engine.SynthesiseRoutesToFromEndpoints(
+			concatRecords(pass2Records, pass3Records),
+		)
+		routesForTests := pass2Rels
+		if len(endpointRoutesTo) > 0 {
+			routesForTests = make([]types.RelationshipRecord, len(pass2Rels)+len(endpointRoutesTo))
+			copy(routesForTests, pass2Rels)
+			copy(routesForTests[len(pass2Rels):], endpointRoutesTo)
+		}
+
+		testsEdges := engine.ApplyTestsMultiHopViaHTTP(allPaths, reader, routesForTests)
 		if len(testsEdges) > 0 {
 			fmt.Fprintf(os.Stderr, "archigraph: tests_multi_hop_http=%d edges\n", len(testsEdges))
 			pass2Rels = append(pass2Rels, testsEdges...)

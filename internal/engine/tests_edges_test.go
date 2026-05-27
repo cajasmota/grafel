@@ -273,6 +273,179 @@ func TestApplyTestsMultiHop_EmptyRoutes(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// TestSynthesiseRoutesToFromEndpoints (#2570)
+//
+// Verifies that SynthesiseRoutesToFromEndpoints converts http_endpoint entities
+// (emitted by ApplyDjangoDRFRoutes) into ROUTES_TO RelationshipRecords that
+// buildRoutesToIndex can consume, enabling Pass 2.8 to produce TESTS edges
+// on repositories like upvate that keep router.register() and include() in
+// separate files.
+// ---------------------------------------------------------------------------
+
+func TestSynthesiseRoutesToFromEndpoints_DRFPattern(t *testing.T) {
+	// Simulate entities from ApplyDjangoDRFRoutes for a ScheduleViewset.
+	entities := []types.EntityRecord{
+		{
+			Kind: "http_endpoint_synthesis",
+			Properties: map[string]string{
+				"verb":            "POST",
+				"path":            "/api/v1/schedule",
+				"source_handler":  "SCOPE.Operation:ScheduleViewset.create",
+				"drf_view_method": "ScheduleViewset.create",
+				"pattern_type":    "drf_router_expanded",
+				"framework":       "django",
+			},
+		},
+		{
+			Kind: "http_endpoint_synthesis",
+			Properties: map[string]string{
+				"verb":            "GET",
+				"path":            "/api/v1/schedule",
+				"source_handler":  "SCOPE.Operation:ScheduleViewset.list",
+				"drf_view_method": "ScheduleViewset.list",
+				"pattern_type":    "drf_router_expanded",
+				"framework":       "django",
+			},
+		},
+		// ANY catch-all — no source_handler; must be skipped.
+		{
+			Kind: "http_endpoint_synthesis",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/schedule/{id}",
+				"pattern_type": "drf_router_expanded",
+				"framework":    "django",
+			},
+		},
+		// Non-endpoint entity — must be ignored.
+		{
+			Kind: "SCOPE.Operation",
+			Properties: map[string]string{
+				"path": "/api/v1/schedule",
+			},
+		},
+	}
+
+	rels := SynthesiseRoutesToFromEndpoints(entities)
+
+	if len(rels) != 2 {
+		t.Fatalf("expected 2 ROUTES_TO records (POST + GET), got %d: %+v", len(rels), rels)
+	}
+	for _, r := range rels {
+		if r.Kind != "ROUTES_TO" {
+			t.Errorf("expected Kind=ROUTES_TO, got %q", r.Kind)
+		}
+	}
+
+	// Verify the POST record.
+	var foundPost bool
+	for _, r := range rels {
+		if r.FromID == "http:POST:/api/v1/schedule" && r.ToID == "SCOPE.Operation:ScheduleViewset.create" {
+			foundPost = true
+		}
+	}
+	if !foundPost {
+		t.Errorf("expected POST ROUTES_TO for ScheduleViewset.create; got %+v", rels)
+	}
+}
+
+// TestSynthesiseRoutesToFromEndpoints_Dedup verifies that duplicate (fromID, toID)
+// pairs are deduplicated even when the same endpoint entity appears twice
+// (e.g. from both pass2Records and pass3Records being merged via concatRecords).
+func TestSynthesiseRoutesToFromEndpoints_Dedup(t *testing.T) {
+	e := types.EntityRecord{
+		Kind: "http_endpoint_synthesis",
+		Properties: map[string]string{
+			"verb":           "POST",
+			"path":           "/api/v1/import",
+			"source_handler": "SCOPE.Operation:ImportViewSet.create",
+			"pattern_type":   "drf_router_expanded",
+		},
+	}
+	rels := SynthesiseRoutesToFromEndpoints([]types.EntityRecord{e, e, e})
+	if len(rels) != 1 {
+		t.Errorf("expected exactly 1 deduplicated ROUTES_TO record, got %d: %+v", len(rels), rels)
+	}
+}
+
+// TestSynthesiseRoutesToFromEndpoints_EmptyInput ensures the function is a
+// no-op when given an empty or nil slice.
+func TestSynthesiseRoutesToFromEndpoints_EmptyInput(t *testing.T) {
+	if rels := SynthesiseRoutesToFromEndpoints(nil); len(rels) != 0 {
+		t.Errorf("nil input must return empty; got %d records", len(rels))
+	}
+	if rels := SynthesiseRoutesToFromEndpoints([]types.EntityRecord{}); len(rels) != 0 {
+		t.Errorf("empty input must return empty; got %d records", len(rels))
+	}
+}
+
+// TestMultiHop_UpvatePattern is an integration-style test that simulates the
+// full Pass 2.8 flow for a repository like upvate: router.register() and
+// include() in separate files, so pass2Rels has zero ROUTES_TO but
+// pass3Records contains http_endpoint entities from ApplyDjangoDRFRoutes.
+//
+// The test verifies that when SynthesiseRoutesToFromEndpoints output is merged
+// into the routesToRels argument, ApplyTestsMultiHopViaHTTP produces TESTS
+// edges for a Django TestCase class method calling self.client.post(...).
+func TestMultiHop_UpvatePattern(t *testing.T) {
+	// Simulate the http_endpoint entity emitted by ApplyDjangoDRFRoutes.
+	drfEndpointEntities := []types.EntityRecord{
+		{
+			Kind: "http_endpoint_synthesis",
+			Properties: map[string]string{
+				"verb":            "POST",
+				"path":            "/api/v1/import",
+				"source_handler":  "SCOPE.Operation:ImportViewSet.create",
+				"drf_view_method": "ImportViewSet.create",
+				"pattern_type":    "drf_router_expanded",
+				"framework":       "django",
+			},
+		},
+	}
+
+	// Simulate a Django TestCase test method calling self.client.post('/api/v1/import').
+	const upvateTestSrc = `import io
+from rest_framework.test import APIClient, APITestCase
+
+class ImportCSVTest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_import_csv_returns_200(self):
+        response = self.client.post('/api/v1/import', data={}, format='json')
+        self.assertEqual(response.status_code, 200)
+`
+
+	paths := []string{"core/tests/test_schedule_import.py"}
+	content := map[string][]byte{
+		"core/tests/test_schedule_import.py": []byte(upvateTestSrc),
+	}
+	reader := func(p string) []byte { return content[p] }
+
+	// Simulate what index.go Pass 2.8 now does: synthesise ROUTES_TO from
+	// endpoint entities and merge with pass2Rels (empty for upvate pattern).
+	synthesised := SynthesiseRoutesToFromEndpoints(drfEndpointEntities)
+	if len(synthesised) == 0 {
+		t.Fatal("SynthesiseRoutesToFromEndpoints returned empty — test setup is wrong")
+	}
+
+	edges := ApplyTestsMultiHopViaHTTP(paths, reader, synthesised)
+
+	var found bool
+	for _, e := range edges {
+		if e.ToID == "SCOPE.Operation:ImportViewSet.create" &&
+			e.Properties["test_function"] == "test_import_csv_returns_200" &&
+			e.Properties["via"] == "http_router" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected TESTS edge from test_import_csv_returns_200 to ImportViewSet.create; got %+v", edges)
+	}
+}
+
 // TestTestsEdges_PathPrefixFallback verifies that a test calling a detail URL
 // (/api/v1/foo/42) is matched against the collection route (/api/v1/foo) when
 // no exact entry exists in the ROUTES_TO index.

@@ -288,3 +288,74 @@ func enclosingPyTestFunc(src string, pos int) string {
 	}
 	return matches[len(matches)-1][1]
 }
+
+// ---------------------------------------------------------------------------
+// Synthetic ROUTES_TO from http_endpoint entities (#2570)
+// ---------------------------------------------------------------------------
+
+// SynthesiseRoutesToFromEndpoints builds synthetic ROUTES_TO RelationshipRecords
+// from http_endpoint entity records emitted by ApplyDjangoDRFRoutes and
+// ApplyDjangoNestedURLConf.  These entity records carry routing metadata in
+// their Properties map but do NOT produce standalone RelationshipRecord entries
+// — they live in pass3Records, not pass2Rels.
+//
+// Pass 2.8 (ApplyTestsMultiHopViaHTTP) needs ROUTES_TO in pass2Rels to build
+// its route index.  When the application separates router.register() calls and
+// include(router.urls) into different files (upvate pattern: routers.py +
+// urls.py), applyDjangoRouteComposition never fires in same-file mode and the
+// composed ROUTES_TO edges are never added to pass2Rels — leaving the route
+// index empty and producing zero TESTS edges.
+//
+// This function reconstructs synthetic ROUTES_TO records from two entity
+// property conventions:
+//
+//  1. drf_router_expanded entities: Kind==http_endpoint_synthesis,
+//     Properties["path"] = "/api/v1/schedule",
+//     Properties["source_handler"] = "SCOPE.Operation:ScheduleViewset.create"
+//     → emits http:<VERB>:<path> -ROUTES_TO-> SCOPE.Operation:<ViewSet.method>
+//
+//  2. urlconf_nested_include entities: Kind==http_endpoint_synthesis,
+//     Properties["path"] = "/api/v1/schedule",
+//     Properties["source_handler"] = "Controller:schedule_view"  (FBV)
+//     → emits http:ANY:<path> -ROUTES_TO-> Controller:<handler>
+//
+// Only entities where both "path" and "source_handler" are non-empty are
+// processed; catch-all (ANY-verb, no single handler) entities are skipped.
+//
+// The returned records are append-only and intended to be merged into
+// pass2Rels before calling ApplyTestsMultiHopViaHTTP.
+func SynthesiseRoutesToFromEndpoints(entityRecords []types.EntityRecord) []types.RelationshipRecord {
+	const httpEndpointKind = "http_endpoint_synthesis"
+	var out []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, e := range entityRecords {
+		if e.Kind != httpEndpointKind {
+			continue
+		}
+		path := e.Properties["path"]
+		handler := e.Properties["source_handler"]
+		if path == "" || handler == "" {
+			continue
+		}
+		verb := e.Properties["verb"]
+		if verb == "" {
+			verb = "ANY"
+		}
+		fromID := "http:" + strings.ToUpper(verb) + ":" + path
+		key := fromID + "|" + handler
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, types.RelationshipRecord{
+			FromID: fromID,
+			ToID:   handler,
+			Kind:   string(types.RelationshipKindRoutesTo),
+			Properties: map[string]string{
+				"pattern_type": "synthesised_from_endpoint",
+				"framework":    "django",
+			},
+		})
+	}
+	return out
+}
