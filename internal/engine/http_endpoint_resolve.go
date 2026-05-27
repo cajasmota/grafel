@@ -136,6 +136,13 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// can locate and scan the actual handler body.
 	type knKey struct{ kind, name string }
 	globalIdx := make(map[knKey]int, len(merged))
+	// #2692 — multi-match index for the Phoenix-style `name@file_hint`
+	// resolution path. Routes-file frameworks (Phoenix router) declare
+	// handlers by short action name (`index`, `show`) that collides
+	// repo-wide. The synthesizer encodes the controller-module basename
+	// as a hint suffix; the resolver uses this list to pick the candidate
+	// whose source_file matches.
+	globalMulti := make(map[knKey][]int, len(merged))
 	// #1217: migrate legacy http_endpoint entities to the new split kinds
 	// based on their pattern_type property. Graphs indexed before this
 	// release may still carry the old kind string; we rewrite it in-place
@@ -169,6 +176,7 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 		if _, ok := globalIdx[gk]; !ok {
 			globalIdx[gk] = i
 		}
+		globalMulti[gk] = append(globalMulti[gk], i)
 	}
 
 	// Build an index of definitions by canonical Name (= synthetic ID)
@@ -322,14 +330,37 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 		// of `index` / `show` / `create` methods) BEFORE the global
 		// (kind, name) fallback picks the first arbitrary match.
 		lookupFile := r.SourceFile
+		handlerFileHint := ""
 		if r.Properties != nil {
 			if hf := r.Properties["handler_file"]; hf != "" {
 				lookupFile = hf
+				handlerFileHint = hf
 			}
 		}
 		// Prefer same-file match (handlers and route synthetics are
 		// often emitted from the same file by Phase 1 construction).
 		handlerIdx, found := idx[key{hk, hn, lookupFile}]
+		// #2692 — Phoenix-style cross-file hint: the synthesizer cannot
+		// know the full controller file path because Phoenix repos
+		// arrange them differently (lib/myapp_web/controllers/, web/,
+		// etc.). When the exact-file lookup misses and a `handler_file`
+		// hint is set, use it as a SUBSTRING match against every
+		// candidate entity with the right (kind, name).
+		if !found && handlerFileHint != "" {
+			candidateKinds := append([]string{hk}, resolverKindEquivalents[hk]...)
+			for _, ck := range candidateKinds {
+				for _, ci := range globalMulti[knKey{ck, hn}] {
+					if strings.Contains(merged[ci].SourceFile, handlerFileHint) {
+						handlerIdx = ci
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+		}
 		if !found {
 			// Cross-file fallback (#753). Django composed routes record
 			// a `View:<ViewSet>` handler reference whose entity lives in
@@ -566,6 +597,7 @@ func splitHandlerRef(ref string) (kind, name string, ok bool) {
 	}
 	return ref[:i], ref[i+1:], true
 }
+
 
 // resolveCallerToFetchesEdge attempts to resolve a consumer synthetic's
 // `source_caller` property into a real caller entity in the same file

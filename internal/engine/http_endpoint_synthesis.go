@@ -409,11 +409,17 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Consumer side (#721 wave 2b): Net::HTTP, Faraday, HTTParty, RestClient.
 		synthesizeRubyClientWithRuntime(string(content), emitClientRuntime)
 	case "csharp":
+		// Producer side (#2692): ASP.NET Core attribute routing —
+		// [HttpGet/Post/...] + class-level [Route("/api/[controller]")].
+		synthesizeASPNetCore(string(content), emit)
 		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
 		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
 	case "rust":
 		// Producer side (#1420): axum Router::new().route(...) registrations.
 		synthesizeAxumRoutes(string(content), emit)
+		// Producer side (#2692): Rocket attribute macros
+		// (#[get("/path")], #[post("/path")], ...).
+		synthesizeRocket(string(content), emit)
 		// Consumer side (#721 wave 2c): reqwest, hyper, ureq, surf.
 		synthesizeRustClientWithRuntime(string(content), emitClientRuntime)
 	case "php":
@@ -423,6 +429,24 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// WordPress HTTP API, Laravel Http facade.
 		synthesizePHPClientWithRuntime(string(content), emitClientRuntime)
 	case "elixir":
+		// Producer side (#2692): Phoenix router file scope/verb/resources.
+		// The synth supplies a controller-module snake_case file hint
+		// (e.g. `user_controller`); we stamp it as `handler_file` on the
+		// just-emitted synthetic so the resolver substring-matches it
+		// against candidate handler entities (#2692 extension of the
+		// #2691 Rails handler_file mechanism).
+		synthesizePhoenix(string(content), func(method, canonicalPath, framework, refKind, refName, fileHint string) {
+			before := len(entities)
+			emit(method, canonicalPath, framework, refKind, refName)
+			if fileHint == "" || len(entities) == before {
+				return
+			}
+			last := &entities[len(entities)-1]
+			if last.Properties == nil {
+				last.Properties = map[string]string{}
+			}
+			last.Properties["handler_file"] = fileHint
+		})
 		// Consumer side (#1483): Finch.build(:verb, url) + HTTPoison.<verb>(url).
 		synthesizeElixirHTTPClients(string(content), emitClient)
 	}

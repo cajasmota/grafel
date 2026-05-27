@@ -48,6 +48,17 @@ const (
 	// function sees the path, so canonicalisation here is identity +
 	// normaliseSlashes (default case).
 	FrameworkTornado = "tornado"
+	// FrameworkASPNetCore (#2692) — ASP.NET Core `[Route("/api/{id}")]` and
+	// `[HttpGet("/path/{id:int}")]` use the same curly-brace syntax as Spring
+	// (and accept the optional `:type` route-constraint suffix). Canonicalisation
+	// reuses canonicalizeCurlyBraces which strips the constraint suffix.
+	FrameworkASPNetCore = "aspnet_core"
+	// FrameworkPhoenix (#2692) — Elixir Phoenix routers use `:name` colon-prefixed
+	// path parameters (`get "/users/:id", ...`), identical to Express/Rails/Gin.
+	FrameworkPhoenix = "phoenix"
+	// FrameworkRocket (#2692) — Rust Rocket attribute macros use `<name>` angle-
+	// bracket path parameters (`#[get("/users/<id>")]`), like Django/Flask.
+	FrameworkRocket = "rocket"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -67,7 +78,7 @@ func Canonicalize(framework, raw string) string {
 
 	var out string
 	switch framework {
-	case FrameworkDjango, FrameworkFlask:
+	case FrameworkDjango, FrameworkFlask, FrameworkRocket:
 		// #2669 — Django re_path and DRF @action(url_path=…) frequently embed
 		// Python named-group regex `(?P<name>charclass)` inside the URL. Pre-strip
 		// these to `<name>` so the angle-bracket walker can canonicalise them
@@ -77,7 +88,7 @@ func Canonicalize(framework, raw string) string {
 		out = stripPythonNamedGroups(raw)
 		out = canonicalizeAngleBrackets(out)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
-		FrameworkStarlette, FrameworkPyramid:
+		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkTornado:
 		// Tornado paths arrive already pre-processed by the synthesizer
@@ -85,7 +96,7 @@ func Canonicalize(framework, raw string) string {
 		// strips any stray `:regex` constraints, mirroring the other
 		// curly-brace frameworks.
 		out = canonicalizeCurlyBraces(raw)
-	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi:
+	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi, FrameworkPhoenix:
 		out = canonicalizeColonParams(raw)
 	default:
 		// Unknown framework: pass through but still normalise slashes.
