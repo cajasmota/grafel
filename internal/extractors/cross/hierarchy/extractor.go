@@ -27,6 +27,8 @@ package hierarchy
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -36,6 +38,34 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// emitMigrationEntitiesEnv mirrors the constant in
+// internal/extractors/python/extractor.go.  Both must stay in sync.
+const emitMigrationEntitiesEnv = "ARCHIGRAPH_EMIT_MIGRATION_ENTITIES"
+
+// isDjangoMigrationFile returns true for Python files that live inside a
+// Django migrations/ package (e.g. core/migrations/0019_*.py).  Mirrors the
+// same predicate in internal/extractors/python/extractor.go so the two prune
+// paths always agree.
+func isDjangoMigrationFile(path string) bool {
+	if !strings.HasSuffix(path, ".py") {
+		return false
+	}
+	dir := filepath.Dir(filepath.FromSlash(path))
+	return filepath.Base(dir) == "migrations"
+}
+
+// shouldSkipMigrationFile returns true when the given file is an
+// auto-generated Django migration AND the ARCHIGRAPH_EMIT_MIGRATION_ENTITIES
+// opt-in env var is NOT set.  When this returns true the hierarchy extractor
+// should emit no class entities for the file (issue #2603).
+func shouldSkipMigrationFile(path string) bool {
+	if !isDjangoMigrationFile(path) {
+		return false
+	}
+	v := os.Getenv(emitMigrationEntitiesEnv)
+	return v != "1" && v != "true"
+}
 
 func init() {
 	extractor.Register("_cross_hierarchy", &Extractor{})
@@ -758,6 +788,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		extractJTCSharp(source, file.Path, lang, res)
 		extractJTCInterface(source, file.Path, lang, res)
 	case "python":
+		// Issue #2603 — Django migration files are pruned by default.  The
+		// Python extractor already returns early for these files, but this
+		// cross-language pass runs independently (Pass 3) and was emitting a
+		// SCOPE.Component/class entity for every `class Migration(...):`
+		// declaration it found via pyClassRE.  Gate it behind the same env-var
+		// opt-in used by the Python extractor.
+		if shouldSkipMigrationFile(file.Path) {
+			span.SetAttributes(attribute.Bool("django_migration_pruned", true))
+			return nil, nil
+		}
 		extractPython(source, file.Path, res)
 	case "ruby":
 		extractRuby(source, file.Path, res)

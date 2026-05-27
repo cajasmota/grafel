@@ -8,6 +8,60 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+// migrationSrc is a minimal Django migration file body that matches pyClassRE.
+const migrationSrc = `from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    initial = True
+    dependencies = []
+    operations = [
+        migrations.CreateModel(
+            name='Device',
+            fields=[('id', models.AutoField(primary_key=True))],
+        ),
+    ]
+`
+
+// TestMigrationFile_NoSCOPEComponentEntity verifies that by default (no
+// ARCHIGRAPH_EMIT_MIGRATION_ENTITIES env var) the hierarchy extractor emits
+// zero entities for Django migration files (issue #2603).
+//
+// Before the fix the pyClassRE matched `class Migration(migrations.Migration):`
+// and emitted a SCOPE.Component/class entity named "Migration" — bypassing the
+// prune that the Python extractor performs via its early-return gate.
+func TestMigrationFile_NoSCOPEComponentEntity(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_EMIT_MIGRATION_ENTITIES", "")
+
+	got := runExtract(t, "python", "core/migrations/0001_initial.py", migrationSrc)
+
+	if len(got) != 0 {
+		t.Errorf("default-off: hierarchy extractor emitted %d entities for migration file, want 0", len(got))
+		for _, e := range got {
+			t.Logf("  - name=%q kind=%q subtype=%q", e.Name, e.Kind, e.Subtype)
+		}
+	}
+}
+
+// TestMigrationFile_OptInEmitsComponent verifies that when
+// ARCHIGRAPH_EMIT_MIGRATION_ENTITIES=1 the hierarchy extractor DOES emit the
+// Migration class entity (opt-in path, symmetric with the Python extractor).
+func TestMigrationFile_OptInEmitsComponent(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_EMIT_MIGRATION_ENTITIES", "1")
+
+	got := runExtract(t, "python", "core/migrations/0001_initial.py", migrationSrc)
+
+	hasMigration := false
+	for _, e := range got {
+		if e.Name == "Migration" && e.Kind == "SCOPE.Component" {
+			hasMigration = true
+			break
+		}
+	}
+	if !hasMigration {
+		t.Errorf("opt-in: hierarchy extractor did not emit Migration SCOPE.Component entity; got %v", entityNames(got))
+	}
+}
+
 func runExtract(t *testing.T, lang, path, source string) []types.EntityRecord {
 	t.Helper()
 	e := &Extractor{}
