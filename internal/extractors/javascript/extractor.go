@@ -377,6 +377,16 @@ type extractor struct {
 	// emits a CALLS edge tagged Properties["via"]="zustand_store".
 	// Nil when no zustand import is found in the file (fast-path).
 	zustand *zustandTracker
+
+	// destructureBindings — Issue #2625. Built once per file in
+	// buildDestructureBindings (called from Extract before walk). Tracks
+	// object-pattern destructuring declarations whose RHS is a recognised
+	// hook/store/query call (Zustand selector, React Query hooks, imported
+	// functions). When a call_expression's bare callee matches a binding,
+	// extractCallRelationships emits a CALLS edge tagged
+	// Properties["via"]="destructured_binding" (or the source-specific via).
+	// Nil when no relevant destructuring is found in the file (fast-path).
+	destructureBindings map[string]*destructureBinding
 }
 
 // dispatchMapInfo records the handlers registered in a Record<string, Fn>
@@ -1828,6 +1838,11 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 	}
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
+
+	// Issue #2625 — build the per-body destructure-binding table so that
+	// bare callee identifiers introduced by object-pattern destructuring of
+	// Zustand/React Query hooks inside this body get their CALLS edges.
+	bodyBindings := x.buildDestructureBindings(body)
 	for _, call := range calls {
 		// Issue #2553 — dynamic dispatch map: RESOLVERS[k](args).
 		// Check for subscript_expression as the function child BEFORE
@@ -1885,6 +1900,23 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			continue
 		}
 		seen[target] = true
+
+		// Issue #2625 — destructure-binding resolution: when the bare callee
+		// was introduced into scope by an object-pattern destructuring of a
+		// recognised hook/store/query call, replace the bare name edge with
+		// one tagged with the binding's source information so the resolver can
+		// trace back to the original symbol.
+		if dbRel := destructureBindingCallEdge(target, bodyBindings); dbRel != nil {
+			if !seen[dbRel.ToID] || dbRel.ToID == target {
+				// Register under the resolved target to avoid duplicates.
+				if dbRel.ToID != target {
+					seen[dbRel.ToID] = true
+				}
+				rels = append(rels, *dbRel)
+			}
+			continue
+		}
+
 		// Issues #514 / #517 — stamp receiver_package when the call's
 		// receiver was bound to an Express-family or NestJS application
 		// object. The resolver checks this property before
