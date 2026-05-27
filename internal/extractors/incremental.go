@@ -439,6 +439,19 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// --- Step 8: merge + sort + write ---
 	doc.Entities = append(doc.Entities, newEntities...)
 	doc.Relationships = append(doc.Relationships, newRels...)
+
+	// #2706 — belt-and-suspenders prune of Django migration entities.
+	// The incremental path bypasses the per-extractor prune gates only
+	// indirectly (it calls extractor.Extract which respects them), but the
+	// merged `doc.Entities` slice includes survivors carried forward from
+	// the previous on-disk graph. If a previous build slipped any migration
+	// entities through (e.g. before the per-extractor prune existed, or via
+	// a new emission path) they would survive here forever. The central
+	// sweep keeps the incremental and full-rebuild paths in lockstep.
+	if ePruned, rPruned := PruneMigrationEntities(doc); ePruned > 0 {
+		logger.Printf("incremental: migration-prune dropped %d entities + %d relationships", ePruned, rPruned)
+	}
+
 	doc.Stats.Entities = len(doc.Entities)
 	doc.Stats.Relationships = len(doc.Relationships)
 	doc.GeneratedAt = time.Now().UTC()

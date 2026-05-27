@@ -1171,6 +1171,24 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			"archigraph: incremental — carried forward %d entities and %d relationships from previous graph (dropped %d stale edges)\n",
 			mergeStats.entitiesAdded, mergeStats.relsAdded, mergeStats.relsDropped)
 	}
+
+	// #2706 — belt-and-suspenders prune of Django migration entities.
+	// Per-extractor prunes (#2551, #2602, #2616) cover the AST-walk and
+	// cross-language hierarchy paths, but every per-language extractor calls
+	// extractor.FileEntity at the top of Extract() which unconditionally
+	// emits SCOPE.Component(subtype="file") — and Wave 3-5 added new
+	// emission paths (file_conventions, framework synthesisers) that don't
+	// know about the migration gate. This single sweep at the indexer level
+	// drops every container/scope-shaped entity anchored to a migrations/
+	// file regardless of which extractor emitted it. Opt-in via
+	// ARCHIGRAPH_EMIT_MIGRATION_ENTITIES=1|true bypasses the prune.
+	//
+	// Runs AFTER mergeIncrementalPrevDoc so that entities carried forward
+	// from a previous graph (which may predate the per-extractor prunes or
+	// have been emitted by a Wave 3-5 path) are also caught.
+	if ePruned, rPruned := extractors.PruneMigrationEntities(doc); ePruned > 0 && verbose() {
+		fmt.Fprintf(os.Stderr, "migration-prune: dropped %d entities + %d relationships anchored to Django migration files\n", ePruned, rPruned)
+	}
 	// Drop the per-pass record slices now that buildDocument has produced
 	// the merged + deduped graph.Entity / graph.Relationship slices. These
 	// pass-level slices hold a copy of every entity's Properties /
