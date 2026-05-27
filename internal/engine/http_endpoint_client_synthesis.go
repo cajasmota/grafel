@@ -433,6 +433,12 @@ func isEnvVarStyleExpr(expr string) bool {
 func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, bool) {
 	// Whether the FIRST substitution was an env-var prefix (to be stripped).
 	firstSubst := true
+	// #2704 — Track whether the template begins with a ${var} interpolation
+	// that resolved to a same-file constant string (variable-binding resolution).
+	// When it does and the resolved value lacks a leading slash, we prepend
+	// one so the path validates as URL-absolute (e.g. `${path}/${id}` with
+	// `const path = "companies"` → `/companies/{id}` instead of being rejected).
+	leadingConstResolved := false
 
 	// Replace each ${expr} with its constant value or a named placeholder.
 	result := templateSubstRe.ReplaceAllStringFunc(tmpl, func(match string) string {
@@ -448,11 +454,17 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 		// For member expressions (e.g. `obj.field`), try the full expr
 		// first, then the leading identifier.
 		if val, ok := syms[inner]; ok {
+			if isFirst {
+				leadingConstResolved = true
+			}
 			return val
 		}
 		// Try just the leading identifier of a dotted expression.
 		if dot := strings.IndexByte(inner, '.'); dot > 0 {
 			if val, ok := syms[inner[:dot]]; ok {
+				if isFirst {
+					leadingConstResolved = true
+				}
 				return val
 			}
 		}
@@ -483,6 +495,16 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 
 	// Strip host prefix for absolute URLs.
 	result = stripURLHost(result)
+
+	// #2704 — When the leading interpolation resolved to a same-file const
+	// string without a leading slash (e.g. `${path}/${id}` with `const path =
+	// "companies"` → `companies/{id}`), prepend one so the path validates
+	// as URL-absolute. Guarded by `leadingConstResolved` so we don't accept
+	// bogus template literals like `not-a-path-${name}` whose leading literal
+	// chunk was never a constant reference.
+	if leadingConstResolved && len(result) > 0 && result[0] != '/' && result[0] != '{' {
+		result = "/" + result
+	}
 
 	// Validate that this looks like a URL path (absolute) or a
 	// template-parameter-prefixed path (starts with {<name>}).
