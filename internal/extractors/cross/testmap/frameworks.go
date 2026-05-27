@@ -572,8 +572,10 @@ var frameworkOrder = []frameworkEntry{
 		importHints: []string{"cypress", "cy.", "@cypress/"},
 		filenameHints: []*regexp.Regexp{
 			regexp.MustCompile(`\.cy\.(?:ts|tsx|js|jsx)$`),
-			regexp.MustCompile(`cypress/e2e/`),
-			regexp.MustCompile(`cypress/integration/`),
+		},
+		pathHints: []*regexp.Regexp{
+			regexp.MustCompile(`/cypress/e2e/`),
+			regexp.MustCompile(`/cypress/integration/`),
 		},
 		detect: detectJest,
 	},
