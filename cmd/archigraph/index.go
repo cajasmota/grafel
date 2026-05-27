@@ -739,9 +739,19 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// content hash changed since the last successful index. The manifest is
 	// loaded once before filtering; it is written back in saveGraph below
 	// only when the index completes successfully.
+	//
+	// #2719: when files are filtered down to only the changed subset we MUST
+	// also load the previous graph here and remember which files are
+	// unchanged, so that after the per-pass extraction + buildDocument we can
+	// merge the unchanged-file entities + edges back in. Without that merge
+	// the resulting graph contains only the changed-file entities and every
+	// downstream consumer (algorithms, embeddings, on-disk write) sees a tiny
+	// fraction of the real graph.
 	var (
-		diffManifest *idiff.Manifest
-		allFiles     = files // original full list for manifest update
+		diffManifest      *idiff.Manifest
+		allFiles          = files // original full list for manifest update
+		incrementalPrev   *graph.Document
+		incrementalChange map[string]bool // changed-file set (forward-slash, relative)
 	)
 	if i.incremental && i.incrementalStateDir != "" {
 		diffManifest = idiff.LoadManifest(i.incrementalStateDir)
@@ -756,6 +766,25 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				"archigraph: incremental — processing %d of %d files (%.1f%% cache hit)\n",
 				diffStats.Changed, diffStats.Total, diffStats.CacheHitRate())
 			files = changed
+			// #2719: load the previous graph now so the unchanged-file
+			// portion can be merged into the current run's doc below. If the
+			// load fails we fall back to a full reindex by clearing the
+			// changed-set: every file stays in `files` and the rest of the
+			// pipeline reindexes everything (the old broken behaviour of
+			// silently corrupting the graph is replaced with a safe
+			// full-reindex fallback).
+			prev, perr := graph.LoadGraphFromDir(i.incrementalStateDir)
+			if perr != nil || prev == nil {
+				fmt.Fprintf(os.Stderr,
+					"archigraph: incremental — previous graph not loadable (%v); falling back to full reindex\n", perr)
+				files = allFiles
+			} else {
+				incrementalPrev = prev
+				incrementalChange = make(map[string]bool, len(changed))
+				for _, f := range changed {
+					incrementalChange[filepath.ToSlash(f)] = true
+				}
+			}
 		}
 	}
 
@@ -1120,6 +1149,28 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Pass 5 — build document (deduped).
 	trk.PhaseStart(progress.PhaseMaterialize, len(files), 0)
 	doc := i.buildDocument(pass1Records, pass2Records, pass2Rels, pass3Records)
+
+	// #2719 — incremental merge: when this run processed only the changed
+	// subset of files, splice the unchanged-file portion of the previous
+	// graph back into doc. Without this the doc that flows into Pass 4
+	// (graph algorithms), external synthesis, embeddings, rename detection,
+	// and the on-disk write would contain only the changed-file entities —
+	// a tiny fraction of the real graph — silently corrupting the persisted
+	// state for every CLI `archigraph rebuild <group> --incremental` invocation.
+	//
+	// Entities sourced from changed files are produced fresh in `doc`; we add
+	// every previous entity whose SourceFile is NOT in the changed-set. We
+	// also carry forward every previous relationship whose endpoints both
+	// survive (either re-emitted in this run, or carried forward from the
+	// previous unchanged-file portion). Edges that touched a changed-file
+	// entity are dropped here — the resolver passes already attached above
+	// produced replacements for them against the fresh entity IDs.
+	if incrementalPrev != nil && incrementalChange != nil {
+		mergeStats := mergeIncrementalPrevDoc(doc, incrementalPrev, incrementalChange)
+		fmt.Fprintf(os.Stderr,
+			"archigraph: incremental — carried forward %d entities and %d relationships from previous graph (dropped %d stale edges)\n",
+			mergeStats.entitiesAdded, mergeStats.relsAdded, mergeStats.relsDropped)
+	}
 	// Drop the per-pass record slices now that buildDocument has produced
 	// the merged + deduped graph.Entity / graph.Relationship slices. These
 	// pass-level slices hold a copy of every entity's Properties /
@@ -3716,6 +3767,99 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		Entities:      entities,
 		Relationships: relationships,
 	}
+}
+
+// incrementalMergeStats reports what mergeIncrementalPrevDoc carried forward.
+type incrementalMergeStats struct {
+	entitiesAdded int
+	relsAdded     int
+	relsDropped   int
+}
+
+// mergeIncrementalPrevDoc splices unchanged-file entities and relationships
+// from prev into doc when doc was built from a changed-files-only subset
+// (issue #2719). The function is path-pure (it mutates doc in place) and:
+//
+//   - Adds every prev entity whose SourceFile is NOT in changedFiles, unless
+//     an entity with the same ID is already present in doc (which would
+//     indicate a re-extraction collision from a freshly-extracted file).
+//   - Adds every prev relationship whose endpoints are both alive — meaning
+//     both endpoints are either already in doc or are being carried forward
+//     in this same merge. Edges with an endpoint sourced from a changed file
+//     are dropped: the per-file extraction pass already re-emitted the
+//     authoritative version of those edges against the fresh entity IDs.
+//   - Pure-string-keyed relationships pointing at synthetic / external nodes
+//     (kind="ext:*", or any entity ID present in doc.Entities) are carried
+//     forward normally — the surviving-endpoint check covers them.
+//
+// The function is intentionally separate from internal/extractors.TryIncremental:
+// TryIncremental owns the daemon's fast in-place reindex (Path A), while this
+// helper owns the CLI's full-pipeline incremental rebuild (Path B). Sharing
+// extraction logic would invert the dependency (cmd → internal/extractors
+// already; internal/extractors → cmd would be a cycle), so the merge step is
+// duplicated by design — both implementations are exercised by their own
+// regression tests in this package and internal/extractors.
+func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedFiles map[string]bool) incrementalMergeStats {
+	var stats incrementalMergeStats
+	if doc == nil || prev == nil {
+		return stats
+	}
+	// Build a set of entity IDs already present in doc (sourced from
+	// changed-file re-extraction). These take precedence over the previous
+	// graph — they reflect the current source code.
+	docEntityIDs := make(map[string]bool, len(doc.Entities))
+	for _, e := range doc.Entities {
+		docEntityIDs[e.ID] = true
+	}
+
+	// First pass: copy across entities sourced from UNCHANGED files. Track
+	// every entity ID that will survive the merge so we can filter
+	// relationships in the second pass.
+	survivingIDs := make(map[string]bool, len(docEntityIDs)+len(prev.Entities))
+	for id := range docEntityIDs {
+		survivingIDs[id] = true
+	}
+	for _, e := range prev.Entities {
+		// Entities without a source file (e.g. ext:* synthetics) are
+		// regenerated downstream by external.Synthesize against the merged
+		// graph; skip them here so we do not double-emit.
+		if e.SourceFile == "" {
+			continue
+		}
+		if changedFiles[filepath.ToSlash(e.SourceFile)] {
+			continue
+		}
+		if docEntityIDs[e.ID] {
+			continue
+		}
+		doc.Entities = append(doc.Entities, e)
+		survivingIDs[e.ID] = true
+		stats.entitiesAdded++
+	}
+
+	// Second pass: copy across relationships whose endpoints are both alive
+	// in the merged graph. Edges incident to a changed-file entity are
+	// dropped — the fresh extraction has already emitted the canonical
+	// replacements against the new entity IDs in this run.
+	docRelIDs := make(map[string]bool, len(doc.Relationships))
+	for _, r := range doc.Relationships {
+		docRelIDs[r.ID] = true
+	}
+	for _, r := range prev.Relationships {
+		if !survivingIDs[r.FromID] || !survivingIDs[r.ToID] {
+			stats.relsDropped++
+			continue
+		}
+		if docRelIDs[r.ID] {
+			continue
+		}
+		doc.Relationships = append(doc.Relationships, r)
+		stats.relsAdded++
+	}
+
+	doc.Stats.Entities = len(doc.Entities)
+	doc.Stats.Relationships = len(doc.Relationships)
+	return stats
 }
 
 // runJavaAnnotationRoutes runs the Java JAX-RS / Spring MVC annotation

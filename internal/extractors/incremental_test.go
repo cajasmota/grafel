@@ -383,6 +383,84 @@ func TestIncremental_DeleteFile_EntitiesDisappear(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Test: deleting a file prunes BOTH outbound AND inbound dangling edges (#2719)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIncremental_DeleteFile_PrunesInboundDanglingEdges verifies the #2719
+// Path A fix: when the only entity at the destination of an inbound CALLS
+// edge disappears (its source file is deleted), the edge is removed instead
+// of being left to dangle until the next full reindex.
+func TestIncremental_DeleteFile_PrunesInboundDanglingEdges(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Two files; caller.go has an INBOUND edge from itself pointing at an
+	// entity defined in target.go. We will delete target.go and assert the
+	// inbound edge (caller → target's entity) is pruned.
+	writeFile(t, repo, "caller.go", "package p\n\nfunc Caller() {}\n")
+	writeFile(t, repo, "target.go", "package p\n\nfunc Target() {}\n")
+
+	callerID := graph.EntityID("test-repo", "SCOPE.Operation", "Caller", "caller.go")
+	targetID := graph.EntityID("test-repo", "SCOPE.Operation", "Target", "target.go")
+
+	entityCaller := graph.Entity{
+		ID: callerID, Name: "Caller", Kind: "SCOPE.Operation",
+		SourceFile: "caller.go", Language: "go",
+	}
+	entityTarget := graph.Entity{
+		ID: targetID, Name: "Target", Kind: "SCOPE.Operation",
+		SourceFile: "target.go", Language: "go",
+	}
+	// Inbound rel: Caller (unchanged file) → Target (about to be deleted).
+	rel := graph.Relationship{
+		ID:     graph.RelationshipID(callerID, targetID, "CALLS"),
+		FromID: callerID,
+		ToID:   targetID,
+		Kind:   "CALLS",
+	}
+	buildMinimalGraph(t, stateDir,
+		[]graph.Entity{entityCaller, entityTarget},
+		[]graph.Relationship{rel})
+	seedManifest(t, repo, stateDir)
+
+	// Delete target.go — Target entity is gone, the Caller→Target inbound
+	// edge must be pruned.
+	deleteFile(t, repo, "target.go")
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+	if !res.Done {
+		t.Fatalf("TryIncremental: unexpected fallback: %s", res.FallbackReason)
+	}
+
+	doc, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("load graph: %v", err)
+	}
+	// Target must be gone.
+	for _, e := range doc.Entities {
+		if e.ID == targetID {
+			t.Errorf("Target entity should have been removed, still present: %+v", e)
+		}
+	}
+	// Caller must survive.
+	hasCaller := false
+	for _, e := range doc.Entities {
+		if e.ID == callerID {
+			hasCaller = true
+		}
+	}
+	if !hasCaller {
+		t.Error("Caller (unchanged file) should still be present")
+	}
+	// The dangling inbound edge MUST be pruned.
+	for _, r := range doc.Relationships {
+		if r.ToID == targetID {
+			t.Errorf("dangling inbound edge to removed Target should be pruned, got: %+v", r)
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Test: > default limit files changed → fallback to full reindex
 // (Raised default is 20 for feature branches, #2170)
 // ─────────────────────────────────────────────────────────────────────────────

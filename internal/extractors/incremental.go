@@ -308,7 +308,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 	doc.Entities = filteredEntities
 
-	// Remove outbound relationships from removed entities.
+	// Remove outbound relationships from removed entities. Inbound edges
+	// from surviving files to removed entities are handled below, after
+	// re-extraction reveals which removed-entity IDs are actually re-emitted
+	// (entity IDs are deterministic over kind/name/source_file, so re-extracting
+	// a file usually re-creates entities with the same ID — keeping inbound
+	// cross-file edges valid for free).
 	filteredRels := doc.Relationships[:0]
 	for _, r := range doc.Relationships {
 		if !removedEntityIDs[r.FromID] {
@@ -369,6 +374,29 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			}
 		}
 	}
+
+	// --- Step 6a: inbound-dangling prune (#2719) ---
+	// Now that we know which entity IDs are coming back via re-extraction,
+	// drop inbound edges to removed entities whose ID is NOT among the
+	// re-extracted set. Without this pass, deleting an entity (or renaming it
+	// such that its EntityID changes) leaves stale inbound edges pointing at
+	// nothing — invisible orphans until a full reindex sweeps them up.
+	// Entities re-extracted with the same ID keep their inbound edges intact
+	// (entity IDs are deterministic over kind/name/source_file), which
+	// preserves the carefully-resolved cross-file CALLS / REFERENCES edges
+	// that other files asserted into the previous graph.
+	reEmittedIDs := make(map[string]bool, len(newEntities))
+	for _, e := range newEntities {
+		reEmittedIDs[e.ID] = true
+	}
+	prunedInbound := doc.Relationships[:0]
+	for _, r := range doc.Relationships {
+		if removedEntityIDs[r.ToID] && !reEmittedIDs[r.ToID] {
+			continue // truly removed → drop the dangling inbound edge
+		}
+		prunedInbound = append(prunedInbound, r)
+	}
+	doc.Relationships = prunedInbound
 
 	// --- Step 6b: signature-change detection (#2170) ---
 	// For each newly extracted entity, compare its properties hash against the
