@@ -212,6 +212,29 @@ func pathContains(ancestor, child string) bool {
 	return strings.HasPrefix(childWithSep, ancestorNorm)
 }
 
+// hasGitDirInTree walks dir upward looking for a .git file or directory,
+// indicating a git repository. It returns true if .git is found, false if
+// it walks to the filesystem root without finding one. This is a fast check
+// to avoid subprocess calls to gitmeta.Capture for non-git directories (#2563).
+func hasGitDirInTree(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	cur := dir
+	for {
+		gitPath := filepath.Join(cur, ".git")
+		if _, err := os.Stat(gitPath); err == nil {
+			return true
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Reached filesystem root.
+			return false
+		}
+		cur = parent
+	}
+}
+
 // groupFromCWD walks dir upward looking for .archigraph/group.json which
 // encodes {"group": "<name>"}.
 func groupFromCWD(dir string) string {
@@ -452,6 +475,12 @@ func ResolveCWD(s *State, cwd string) CWDResolution {
 	}
 
 	// Step 2: worktree-sibling resolution.
+	// Fast path (#2563): if .git doesn't exist (anywhere up the tree), skip
+	// git capture entirely — no point in spinning up subprocesses.
+	if !hasGitDirInTree(abs) {
+		// Not a git repo — no git metadata to capture.
+		return CWDResolution{Source: "none"}
+	}
 	// Ask git for the toplevel of whatever repo cwd is inside.
 	meta := gitmeta.Capture(abs)
 	if meta.TopLevel == "" || !meta.IsWorktree {

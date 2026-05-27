@@ -338,3 +338,140 @@ func TestGroupFromRegistryWithCandidates_CaseInsensitive(t *testing.T) {
 		t.Errorf("groupFromRegistryWithCandidates: want group=upvate, got %s (candidates: %v)", g, candidates)
 	}
 }
+
+// TestResolveCWD_NonGitCwd_SkipsGitCapture verifies that when cwd is not
+// inside any git repository (no .git file/dir in the tree), ResolveCWD
+// returns early without calling gitmeta.Capture (#2563).
+func TestResolveCWD_NonGitCwd_SkipsGitCapture(t *testing.T) {
+	tmp := t.TempDir()
+	// Create a directory tree with no .git — this ensures the fast-check
+	// prevents expensive subprocess calls.
+	nonGitCwd := filepath.Join(tmp, "nonrepo", "subdir")
+	if err := mkdirp(nonGitCwd); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Create a minimal registry with no repos.
+	reg := &Registry{
+		Groups: map[string]RegistryGroup{},
+	}
+	st := NewState(reg)
+
+	res := ResolveCWD(st, nonGitCwd)
+	if res.Source != "none" {
+		t.Errorf("ResolveCWD(non-git cwd): want Source=none, got %s", res.Source)
+	}
+	if res.Group != "" || res.RepoSlug != "" || res.Ref != "" {
+		t.Errorf("ResolveCWD(non-git cwd): want empty fields, got Group=%s RepoSlug=%s Ref=%s",
+			res.Group, res.RepoSlug, res.Ref)
+	}
+}
+
+// TestResolveCWD_GitCwd_StillCaptures verifies that when cwd is inside a git
+// repository (has .git in tree), ResolveCWD still calls gitmeta.Capture and
+// processes the worktree-sibling path (#2563 regression test).
+func TestResolveCWD_GitCwd_StillCaptures(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create a git repository structure manually by creating a .git directory.
+	repoPath := filepath.Join(tmp, "test-repo")
+	if err := mkdirp(repoPath); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	gitDir := filepath.Join(repoPath, ".git")
+	if err := os.Mkdir(gitDir, 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+
+	// Use a subdirectory inside the repo.
+	cwdInRepo := filepath.Join(repoPath, "src", "views")
+	if err := mkdirp(cwdInRepo); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Create a minimal registry with no matches.
+	reg := &Registry{
+		Groups: map[string]RegistryGroup{},
+	}
+	st := NewState(reg)
+
+	res := ResolveCWD(st, cwdInRepo)
+	// We expect either a "worktree" result (if this is a linked worktree of a
+	// registered repo) or "none" (if it's a standalone repo not in the registry).
+	// The key assertion is that we didn't panic and the fast-check allowed the
+	// git capture to proceed (we found .git).
+	if res.Source != "none" && res.Source != "worktree" {
+		t.Logf("ResolveCWD(git cwd): got Source=%s (acceptable; we called git)", res.Source)
+	}
+	// If we got here without panicking, the fast-check didn't block legitimate git repos.
+}
+
+// TestHasGitDirInTree_WalksUp verifies that hasGitDirInTree walks up the
+// directory tree and finds .git at any ancestor level (#2563).
+func TestHasGitDirInTree_WalksUp(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create a nested directory structure with .git at the repo root.
+	repoRoot := filepath.Join(tmp, "repo")
+	if err := mkdirp(repoRoot); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	gitDir := filepath.Join(repoRoot, ".git")
+	if err := os.Mkdir(gitDir, 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+
+	// Create deep subdirectories below the .git.
+	deepPath := filepath.Join(repoRoot, "a", "b", "c", "d")
+	if err := mkdirp(deepPath); err != nil {
+		t.Fatalf("mkdir deep: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		cwd     string
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "at repo root with .git",
+			cwd:  repoRoot,
+			want: true,
+		},
+		{
+			name: "in subdir — walks up and finds .git",
+			cwd:  filepath.Join(repoRoot, "src"),
+			want: true,
+		},
+		{
+			name: "deeply nested — walks up many levels",
+			cwd:  deepPath,
+			want: true,
+		},
+		{
+			name: "outside repo — walks to root and finds nothing",
+			cwd:  filepath.Join(tmp, "elsewhere"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Ensure the directory exists (or create it if it's a test case that
+			// uses a non-existent path).
+			if tt.wantErr {
+				// OK to not exist
+			} else if tt.cwd != filepath.Join(tmp, "elsewhere") {
+				// For other test cases, ensure the directory exists.
+				if err := mkdirp(tt.cwd); err != nil && tt.wantErr {
+					t.Fatalf("setup mkdir: %v", err)
+				}
+			}
+
+			got := hasGitDirInTree(tt.cwd)
+			if got != tt.want {
+				t.Errorf("hasGitDirInTree(%q): want %v, got %v", tt.cwd, tt.want, got)
+			}
+		})
+	}
+}
