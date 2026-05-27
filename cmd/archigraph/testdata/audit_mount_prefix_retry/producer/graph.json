@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "repo": "producer",
+  "entities": [
+    {
+      "id": "handler-things",
+      "name": "ListThings",
+      "kind": "Controller",
+      "source_file": "myapp/views.py"
+    },
+    {
+      "id": "mount-api-v1",
+      "name": "http:ANY:/internal/v3:mount",
+      "kind": "http_endpoint",
+      "source_file": "myapp/urls.py",
+      "properties": {
+        "verb": "ANY",
+        "path": "/internal/v3",
+        "framework": "django",
+        "pattern_type": "url_mount_point",
+        "url_prefix": "/internal/v3"
+      }
+    },
+    {
+      "id": "endpoint-things",
+      "name": "http:GET:/internal/v3/things",
+      "kind": "http_endpoint",
+      "source_file": "myapp/views.py",
+      "properties": {
+        "verb": "GET",
+        "path": "/internal/v3/things",
+        "framework": "django",
+        "pattern_type": "http_endpoint_synthesis"
+      }
+    }
+  ],
+  "relationships": [
+    { "from_id": "handler-things", "to_id": "endpoint-things", "kind": "IMPLEMENTS" }
+  ]
+}

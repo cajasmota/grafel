@@ -272,6 +272,23 @@ func caseNormalizePathSegments(path string) string {
 	return strings.Join(segs, "/")
 }
 
+// patternTypeURLMountPoint is the synthesis marker set by
+// internal/engine/django_urlconf_nested.go (#2677) on the synthetic emitted
+// for every `path("prefix", include(...))` declaration. The consumer-side
+// mount-prefix retry (#2702) harvests every such entity from the producer
+// repos and uses its `url_prefix` as a retry candidate, so the resolution
+// stays grounded in prefixes actually declared by the producer instead of
+// a global hardcoded list.
+const patternTypeURLMountPoint = "url_mount_point"
+
+// staticMountPrefixFallbacks is the conservative set of well-known API
+// mount prefixes tried by the consumer-side mount-prefix retry (#2702) when
+// the producer repo has no url_mount_point entities of its own. Kept tiny
+// on purpose — the discovered prefixes are the primary signal, this list is
+// only here so a producer that hasn't yet been re-indexed by #2677 (or one
+// whose include() declaration the extractor cannot see) still benefits.
+var staticMountPrefixFallbacks = []string{"/api/", "/api/v1/", "/api/v2/"}
+
 // MethodHTTP identifies this pass's cross-repo HTTP link emissions in links.json.
 const MethodHTTP = "http"
 
@@ -382,6 +399,11 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 
 	// Index: synthetic name → repo → []hit.
 	hits := map[string]map[string][]*httpEndpointHit{}
+	// #2702 — discovered URL mount prefixes per producer repo. Populated from
+	// every entity carrying pattern_type=url_mount_point (emitted by
+	// internal/engine/django_urlconf_nested.go since #2677). Drives the
+	// consumer-side mount-prefix retry below.
+	mountPrefixesByRepo := map[string]map[string]bool{}
 	for _, g := range graphs {
 		edgesForRepo := edgesByEndpoint[g.Repo]
 		// Index entities-by-(kind,name,file) so source_caller refs can
@@ -402,6 +424,30 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		for _, e := range g.Entities {
 			// #1217: match all three http endpoint kind variants.
 			if !isHTTPEndpointLink(e.Kind) {
+				continue
+			}
+			// #2702 — harvest mount-point prefixes declared in this repo.
+			// `url_mount_point` synthetics carry the include() prefix in
+			// `url_prefix` (preferred — already normalised with a leading
+			// slash by the emitter) and the canonical join in `path`. Both
+			// are recorded under a normalised "/<segments>/" shape so the
+			// retry sweep can prepend them verbatim.
+			if e.Properties != nil && e.Properties["pattern_type"] == patternTypeURLMountPoint {
+				raw := e.Properties["url_prefix"]
+				if raw == "" {
+					raw = e.Properties["route"]
+				}
+				if raw == "" {
+					raw = e.Properties["path"]
+				}
+				if pfx := normalizeMountPrefix(raw); pfx != "" {
+					if mountPrefixesByRepo[g.Repo] == nil {
+						mountPrefixesByRepo[g.Repo] = map[string]bool{}
+					}
+					mountPrefixesByRepo[g.Repo][pfx] = true
+				}
+				// A mount-point synthetic is not a real producer endpoint —
+				// it cannot match a consumer call on its own. Skip indexing.
 				continue
 			}
 			if e.Name == "" {
@@ -711,6 +757,51 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 			}
 		}
 
+		// #2702 — mount-prefix wildcarding. The verb-wildcarding probe above
+		// only finds counterpart hits keyed by an identical (or
+		// generic-stripped) normalized path; a consumer calling `/things`
+		// will not surface a producer keyed `/internal/v3/things` because
+		// the generic strip only handles the `/api,/api/vN,/vN` family.
+		// Probe one more time using each discovered url_mount_point prefix
+		// (plus the static fallback set) prepended to the bucket's name,
+		// so a same-verb producer on the prefixed path is pulled in.
+		//
+		// This drives the actual link emission in the (cRepo, pRepo) inner
+		// loop below — the per-consumer mount-prefix retry already living
+		// there only runs when the bucket already contains at least one
+		// producer for the target repo. Without this wildcarding step the
+		// bucket for a /things-only consumer would short-circuit at the
+		// `len(producers) == 0` check before the inner retry ever fires.
+		if verb, p, ok := parseHTTPName(name); ok && len(consumers) > 0 {
+			normKey := normalizePathForIndex(p)
+			if _, hasPrefix := stripAPIPrefix(normKey); !hasPrefix && normKey != "" {
+				// Build the union of mount prefixes across every repo so a
+				// consumer in one repo can pull in a prefixed producer from
+				// any other repo. Per-repo restriction is then applied
+				// inside the per-consumer mount-prefix retry on the inner
+				// loop, which is where the strategy stamp gets written.
+				union := map[string]bool{}
+				for _, perRepo := range mountPrefixesByRepo {
+					for pfx := range perRepo {
+						union[pfx] = true
+					}
+				}
+				for _, pfx := range mountPrefixesForRepo(union) {
+					probedKey := normalizePathForIndex(pfx + strings.TrimPrefix(normKey, "/"))
+					for _, h := range byPath[probedKey] {
+						if h.side != sideProducer {
+							continue
+						}
+						hVerb, _, _ := parseHTTPName(h.name)
+						if !verbsCompatible(verb, hVerb) {
+							continue
+						}
+						producers = appendUnique(producers, h)
+					}
+				}
+			}
+		}
+
 		if len(producers) == 0 || len(consumers) == 0 {
 			// Record consumer hits even when unmatched — they count as orphans
 			// unless covered by a later bucket.
@@ -782,6 +873,23 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// deterministic.
 					p, quality := pickProducerForConsumer(c, producersByRepo[pRepo])
 
+					// #2702 — mount-prefix attribution. The wildcarding step
+					// above this loop can pull a producer into producersByRepo
+					// via a discovered url_mount_point prefix; when that
+					// happens, the picker returns it labelled "exact" because
+					// the bucket already contains the producer. Detect the
+					// case retroactively by comparing the consumer's normalized
+					// path to the chosen producer's: if the producer path
+					// equals `<prefix> + consumer_path` for any discovered
+					// prefix in the producer's repo, the resolution is a
+					// mount-prefix hit, and the link must be stamped
+					// accordingly so the telemetry counts it under the right
+					// strategy.
+					var preselectedMountPrefix string
+					if p != nil && !intraRepo {
+						preselectedMountPrefix = detectMountPrefix(c, p, mountPrefixesByRepo[pRepo])
+					}
+
 					// Prefix-injection retry (#2569): mirrors Tier 2 of
 					// resolveCallByPath in internal/engine/http_endpoint_match.go
 					// (#2557). When the standard byPath match missed AND the
@@ -827,8 +935,61 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						}
 					}
 
+					// Consumer-side mount-prefix retry (#2702): when the standard
+					// byPath probe AND the hardcoded prefix-injection retry both
+					// miss, retry once more using prefixes actually declared in the
+					// producer repo. These come from `url_mount_point` synthetics
+					// (#2677) — every `path("api/v1/", include(...))` site
+					// contributes one — followed by a tiny static fallback set
+					// (`/api/`, `/api/v1/`, `/api/v2/`) so producers that have not
+					// yet been re-indexed under #2677 still benefit.
+					//
+					// First match wins. The emitted link is stamped with
+					// Properties["resolve_strategy"] = "mount_prefix_added" and
+					// Properties["applied_mount_prefix"] so the resolution stays
+					// traceable in the graph, mirroring the prefix_normalized
+					// annotation used by the older retry.
+					appliedMountPrefix := preselectedMountPrefix
+					if p == nil {
+						consumerPath := c.canonicalPath
+						if consumerPath == "" {
+							if _, parsed, ok := parseHTTPName(c.name); ok {
+								consumerPath = parsed
+							}
+						}
+						normConsumerPath := normalizePathForIndex(consumerPath)
+						// Guard against double-prefixing: consumers that already
+						// carry an API/version prefix were handled by the upstream
+						// byPath / generic-strip path and should not pick up a
+						// second one here.
+						if _, hasPrefix := stripAPIPrefix(normConsumerPath); !hasPrefix && normConsumerPath != "" {
+							candidates := mountPrefixesForRepo(mountPrefixesByRepo[pRepo])
+							for _, pfx := range candidates {
+								// pfx is normalised to "/<segments>/"; consumer
+								// path starts with "/", so trim once to avoid "//".
+								prefixedPath := pfx + strings.TrimPrefix(normConsumerPath, "/")
+								prefixedKey := normalizePathForIndex(prefixedPath)
+								pfxCandidates := make([]*httpEndpointHit, 0)
+								for _, h := range byPath[prefixedKey] {
+									if h.repo == pRepo && h.side == sideProducer {
+										pfxCandidates = appendUnique(pfxCandidates, h)
+									}
+								}
+								if len(pfxCandidates) == 0 {
+									continue
+								}
+								sort.SliceStable(pfxCandidates, func(i, j int) bool { return less(pfxCandidates[i], pfxCandidates[j]) })
+								p, quality = pickProducerForConsumer(c, pfxCandidates)
+								if p != nil {
+									appliedMountPrefix = pfx
+									break
+								}
+							}
+						}
+					}
+
 					// Case-normalization retry (#2703): when both the standard
-					// byPath lookup AND the prefix-injection retry miss, attempt to
+					// byPath lookup AND the mount-prefix retry miss, attempt to
 					// match the consumer path against the byCaseNorm index after
 					// normalizing each segment to its canonical id (lowercase,
 					// hyphens/underscores stripped). This handles the upvate
@@ -842,10 +1003,10 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// of scope (#2703 acceptance #4).
 					//
 					// We probe with and without API-version prefix-injection so
-					// this strategy composes with #2702 (mount-prefix retry):
-					// `/assignedContacts` consumer matches `/api/v1/.../assigned_contacts`
-					// producer via the prefix-stripped alias that byCaseNorm
-					// registers above.
+					// this strategy composes with the mount-prefix retry:
+					// `/assignedContacts` consumer matches
+					// `/api/v1/.../assigned_contacts` producer via the
+					// prefix-stripped alias that byCaseNorm registers above.
 					//
 					// First match wins; edge is stamped with
 					// Properties["resolve_strategy"] = "case_normalized".
@@ -982,6 +1143,8 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						switch {
 						case urlPatternNormAnnotation != "":
 							hitsByStrategy["url_pattern"]++
+						case appliedMountPrefix != "":
+							hitsByStrategy["mount_prefix_added"]++
 						case caseNormalized:
 							hitsByStrategy["case_normalized"]++
 						case prefixNormalized != "":
@@ -1020,6 +1183,13 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					}
 					if prefixNormalized != "" {
 						link.Properties = map[string]string{"prefix_normalized": prefixNormalized}
+					}
+					if appliedMountPrefix != "" {
+						if link.Properties == nil {
+							link.Properties = map[string]string{}
+						}
+						link.Properties["resolve_strategy"] = "mount_prefix_added"
+						link.Properties["applied_mount_prefix"] = appliedMountPrefix
 					}
 					if caseNormalized {
 						if link.Properties == nil {
@@ -1524,13 +1694,13 @@ var dynamicBaseURLRe = regexp.MustCompile(`^/\{[^}]*\}(?:/|$)`)
 // recognised today:
 //
 //   - "dynamic_baseurl"  — first segment is a `{template}` expression
-//                          (e.g. `/{apiUrl}/things`, `/{base_url.rstrip(`)
-//                          or the path is otherwise malformed by a partial
-//                          string-template extraction.
+//     (e.g. `/{apiUrl}/things`, `/{base_url.rstrip(`)
+//     or the path is otherwise malformed by a partial
+//     string-template extraction.
 //   - "no_endpoint_match" — the path looks well-formed but no producer in
-//                           any other repo serves it. The dominant case for
-//                           upvate is calls to external services (third-
-//                           party APIs, Cognito JWKS, NYC OpenData, etc.).
+//     any other repo serves it. The dominant case for
+//     upvate is calls to external services (third-
+//     party APIs, Cognito JWKS, NYC OpenData, etc.).
 //
 // The classification is deliberately conservative: anything ambiguous falls
 // into "no_endpoint_match" so the bucket reflects what an operator can act
@@ -1550,6 +1720,110 @@ func classifyOrphanReason(consumerPath string) string {
 		return "dynamic_baseurl"
 	}
 	return "no_endpoint_match"
+}
+
+// detectMountPrefix returns the discovered mount-prefix that bridges a
+// consumer call to the chosen producer, or "" when the pair shares the same
+// canonical path (i.e. no prefix bridging needed). The check normalises both
+// sides via normalizePathForIndex and walks the producer's repo-local
+// mount-prefix set in longest-first order so /internal/v3/ wins over
+// /internal/ when both were declared.
+//
+// Used by the post-pick attribution step in runHTTPPass to detect when the
+// mount-prefix wildcarding step (rather than the per-consumer retry) is
+// responsible for surfacing the producer, so the link can be stamped with
+// resolve_strategy=mount_prefix_added even though `p` was already non-nil
+// out of pickProducerForConsumer.
+func detectMountPrefix(c, p *httpEndpointHit, discovered map[string]bool) string {
+	if c == nil || p == nil || len(discovered) == 0 {
+		return ""
+	}
+	consumerPath := c.canonicalPath
+	if consumerPath == "" {
+		if _, parsed, ok := parseHTTPName(c.name); ok {
+			consumerPath = parsed
+		}
+	}
+	producerPath := p.canonicalPath
+	if producerPath == "" {
+		if _, parsed, ok := parseHTTPName(p.name); ok {
+			producerPath = parsed
+		}
+	}
+	if consumerPath == "" || producerPath == "" {
+		return ""
+	}
+	cNorm := normalizePathForIndex(consumerPath)
+	pNorm := normalizePathForIndex(producerPath)
+	if cNorm == pNorm {
+		return ""
+	}
+	if _, hasPrefix := stripAPIPrefix(cNorm); hasPrefix {
+		return ""
+	}
+	for _, pfx := range mountPrefixesForRepo(discovered) {
+		candidate := normalizePathForIndex(pfx + strings.TrimPrefix(cNorm, "/"))
+		if candidate == pNorm {
+			return pfx
+		}
+	}
+	return ""
+}
+
+// normalizeMountPrefix coerces a raw `url_prefix` / `path` value emitted on
+// a url_mount_point synthetic into the canonical "/<segments>/" shape used
+// by mountPrefixesForRepo and the retry sweep (#2702). Returns "" when the
+// value is empty, the root "/", or otherwise unusable. Lower-casing keeps
+// the shape aligned with normalizePathForIndex so the prepended candidate
+// can be probed against byPath without further canonicalisation.
+func normalizeMountPrefix(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(raw, "/") {
+		raw = "/" + raw
+	}
+	raw = strings.TrimRight(raw, "/")
+	if raw == "" {
+		return ""
+	}
+	return strings.ToLower(raw) + "/"
+}
+
+// mountPrefixesForRepo returns the deduplicated, deterministically ordered
+// list of mount-prefix candidates to try for a given producer repo. The
+// discovered url_mount_point prefixes come first (longest-first so a
+// `/api/v1/` mount wins over a coexisting `/api/`), followed by the static
+// fallbacks (#2702) for any prefix the discovered set did not already cover.
+func mountPrefixesForRepo(discovered map[string]bool) []string {
+	out := make([]string, 0, len(discovered)+len(staticMountPrefixFallbacks))
+	seen := map[string]bool{}
+	for p := range discovered {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	// Longest-first ensures `/api/v1/` is tried before `/api/` when both
+	// were discovered, mirroring the ordering invariant on
+	// crossRepoPrefixCandidates. Ties break alphabetically so the order
+	// stays deterministic across runs.
+	sort.Slice(out, func(i, j int) bool {
+		if len(out[i]) != len(out[j]) {
+			return len(out[i]) > len(out[j])
+		}
+		return out[i] < out[j]
+	})
+	for _, p := range staticMountPrefixFallbacks {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
 }
 
 // splitKindNameRef parses "<Kind>:<Name>" into (kind, name). The Kind
