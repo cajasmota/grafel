@@ -2189,3 +2189,257 @@ class ChildViewSet(ModelViewSet):
 		"http:GET:/parents/{pk}/children/{pk}",
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Issue #2614 — ViewSet.as_view({dict}) route synthesis tests
+// ---------------------------------------------------------------------------
+
+// TestDRF_ActionDecorator_EmitsEndpoint verifies that a ViewSet with an
+// @action decorator whose url_path contains a slash (e.g. "notes/create")
+// is correctly emitted under the full composed path
+// /<prefix>/{pk}/notes/create when detail=True. This is the upvate
+// ContractViewSet pattern where custom sub-resource actions are mounted as
+// nested URL segments rather than flat paths.
+func TestDRF_ActionDecorator_EmitsEndpoint(t *testing.T) {
+	files := fileMap{
+		"core/routers.py": `
+from rest_framework import routers
+from core.views import ContractViewSet
+
+router = routers.DefaultRouter()
+router.register(r"contracts", ContractViewSet)
+
+urlpatterns = [
+    path("", include(router.urls)),
+]
+`,
+		"upvate_core/urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path("api/v1/", include("core.routers")),
+]
+`,
+		"core/views.py": `
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action
+
+class ContractViewSet(ModelViewSet):
+    @action(
+        methods=["post"],
+        detail=False,
+        url_path="notes/create",
+    )
+    def create_note(self, request):
+        pass
+
+    @action(
+        methods=["delete"],
+        detail=True,
+        url_path="notes/delete",
+    )
+    def delete_note(self, request, pk, *args, **kwargs):
+        pass
+`,
+	}
+
+	pyPaths := []string{"upvate_core/urls.py", "core/routers.py", "core/views.py"}
+	got := ApplyDjangoDRFRoutes(pyPaths, files.reader)
+
+	// detail=False → collection route (no {pk})
+	assertHasAllIDs(t, got, []string{
+		"http:POST:/api/v1/contracts/notes/create",
+	})
+	// detail=True → detail route with {pk}
+	assertHasAllIDs(t, got, []string{
+		"http:DELETE:/api/v1/contracts/{pk}/notes/delete",
+	})
+}
+
+// TestDRF_ActionDetailFalse_EmitsCollectionPath verifies that
+// @action(detail=False) decorators on a ViewSet emit the action at the
+// collection path (without a {pk} segment). Tests multiple HTTP verbs and
+// url_path values to cover the common upvate patterns (permissions,
+// s3_attachment, import viewsets).
+func TestDRF_ActionDetailFalse_EmitsCollectionPath(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import PermissionViewSet
+
+router = routers.DefaultRouter()
+router.register(r"permissions", PermissionViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action
+
+class PermissionViewSet(ModelViewSet):
+    @action(methods=["put"], detail=False, url_path="bulk_update_permissions")
+    def bulk_update_permissions(self, request):
+        pass
+
+    @action(methods=["get"], detail=True, url_path="scope_permissions")
+    def scope_permissions(self, request, pk=None):
+        pass
+
+    @action(methods=["put"], detail=True, url_path="assign_scope_permissions")
+    def assign_scope_permissions(self, request, pk=None):
+        pass
+`,
+	}
+
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	// detail=False → collection path (no {pk})
+	assertHasAllIDs(t, got, []string{
+		"http:PUT:/permissions/bulk_update_permissions",
+	})
+	// detail=True → detail path with {pk}
+	assertHasAllIDs(t, got, []string{
+		"http:GET:/permissions/{pk}/scope_permissions",
+		"http:PUT:/permissions/{pk}/assign_scope_permissions",
+	})
+	// detail=False action must NOT have {pk} in the path
+	assertHasNoneIDs(t, got, []string{
+		"http:PUT:/permissions/{pk}/bulk_update_permissions",
+	})
+}
+
+// TestDjango_CustomPathOutsideRouter_EmitsEndpoint is the primary regression
+// test for #2614 pattern (b): a DRF ViewSet mounted outside router.register()
+// via the explicit method-map form ViewSet.as_view({'verb': 'action'}).
+//
+// This covers the upvate notification routing pattern where:
+//
+//	_notification_list = views.NotificationViewSet.as_view({
+//	    'get': 'list', 'delete': 'delete_all'})
+//	urlpatterns = [
+//	    path("notifications/", _notification_list),
+//	    path("notifications/<int:pk>/", _notification_detail),
+//	]
+func TestDjango_CustomPathOutsideRouter_EmitsEndpoint(t *testing.T) {
+	files := fileMap{
+		"upvate_core/urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path("api/v1/", include("core.routers")),
+]
+`,
+		"core/routers.py": `
+from django.urls import path, include
+from rest_framework import routers
+from core import views
+
+router = routers.DefaultRouter()
+router.register(r"contracts", views.ContractViewSet)
+
+_notification_list = views.NotificationViewSet.as_view({
+    'get': 'list',
+    'delete': 'delete_all',
+})
+_notification_detail = views.NotificationViewSet.as_view({
+    'patch': 'partial_update',
+    'delete': 'destroy',
+})
+_notification_mark_all_read = views.NotificationViewSet.as_view({
+    'post': 'mark_all_read',
+})
+
+urlpatterns = [
+    path("", include(router.urls)),
+    path("notifications/", _notification_list, name="notifications-list"),
+    path("notifications/mark-all-read/", _notification_mark_all_read, name="notifications-mark-all-read"),
+    path("notifications/<int:pk>/", _notification_detail, name="notifications-detail"),
+]
+`,
+	}
+
+	pyPaths := []string{"upvate_core/urls.py", "core/routers.py"}
+	got := ApplyDjangoViewSetAsViewRoutes(pyPaths, files.reader)
+
+	// Pre-bound variable form: _notification_list → GET + DELETE at collection path.
+	assertHasAllIDs(t, got, []string{
+		"http:GET:/api/v1/notifications",
+		"http:DELETE:/api/v1/notifications",
+	})
+	// _notification_mark_all_read → POST at mark-all-read path.
+	assertHasAllIDs(t, got, []string{
+		"http:POST:/api/v1/notifications/mark-all-read",
+	})
+	// _notification_detail → PATCH + DELETE at detail path.
+	assertHasAllIDs(t, got, []string{
+		"http:PATCH:/api/v1/notifications/{pk}",
+		"http:DELETE:/api/v1/notifications/{pk}",
+	})
+}
+
+// TestDjango_ViewSetAsView_InlineDict verifies that an inline
+// ViewSet.as_view({'get': 'list'}) call directly inside a path() (no
+// pre-bound variable) is also handled.
+func TestDjango_ViewSetAsView_InlineDict(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from django.urls import path
+from views import ItemViewSet
+
+urlpatterns = [
+    path("items/", ItemViewSet.as_view({'get': 'list', 'post': 'create'})),
+    path("items/<int:pk>/", ItemViewSet.as_view({'get': 'retrieve', 'delete': 'destroy'})),
+]
+`,
+	}
+
+	got := ApplyDjangoViewSetAsViewRoutes([]string{"urls.py"}, files.reader)
+
+	assertHasAllIDs(t, got, []string{
+		"http:GET:/items",
+		"http:POST:/items",
+		"http:GET:/items/{pk}",
+		"http:DELETE:/items/{pk}",
+	})
+}
+
+// TestDjango_ViewSetAsView_SourceHandlerSet verifies that the
+// source_handler property on each emitted entity points to the correct
+// ViewSet action method name, enabling the Phase-2 resolver to emit
+// IMPLEMENTS edges.
+func TestDjango_ViewSetAsView_SourceHandlerSet(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from django.urls import path
+from views import NotificationViewSet
+
+_list = NotificationViewSet.as_view({'get': 'list', 'delete': 'delete_all'})
+
+urlpatterns = [
+    path("notifications/", _list),
+]
+`,
+	}
+
+	got := ApplyDjangoViewSetAsViewRoutes([]string{"urls.py"}, files.reader)
+
+	wantHandlers := map[string]string{
+		"http:GET:/notifications":    "SCOPE.Operation:NotificationViewSet.list",
+		"http:DELETE:/notifications": "SCOPE.Operation:NotificationViewSet.delete_all",
+	}
+
+	foundCount := 0
+	for _, r := range got {
+		if r.Kind != httpEndpointKind {
+			continue
+		}
+		wantHandler, ok := wantHandlers[r.ID]
+		if !ok {
+			continue
+		}
+		foundCount++
+		gotHandler := r.Properties["source_handler"]
+		if gotHandler != wantHandler {
+			t.Errorf("entity %q: source_handler=%q want %q", r.ID, gotHandler, wantHandler)
+		}
+	}
+	if foundCount != 2 {
+		t.Errorf("expected 2 matching entities, found %d", foundCount)
+	}
+}
