@@ -129,6 +129,55 @@ func TestJS_NoHTTPCalls(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// #2615 — template-literal URL normalization
+// ---------------------------------------------------------------------------
+
+// TestTSExtractor_TemplateString_NormalizedToWildcard verifies that a single
+// ${...} interpolation in a backtick template literal is replaced with the
+// {*} wildcard sentinel so the client path can match the server route
+// /users/{pk} or /users/<int:id> via normalizePathForIndex.
+func TestTSExtractor_TemplateString_NormalizedToWildcard(t *testing.T) {
+	src := "fetch(`/users/${id}`)"
+	apis := apiEntities(runExtract(t, "typescript", src))
+	if len(apis) != 1 {
+		t.Fatalf("expected 1 API entity, got %d", len(apis))
+	}
+	want := "/users/{*}"
+	if apis[0].Name != want {
+		t.Errorf("url = %q, want %q", apis[0].Name, want)
+	}
+}
+
+// TestTSExtractor_NestedTemplateString_AllPlaceholdersReplaced verifies that
+// every ${...} expression in a multi-segment template literal is independently
+// replaced with {*}, covering paths like /users/${id}/posts/${postId}.
+func TestTSExtractor_NestedTemplateString_AllPlaceholdersReplaced(t *testing.T) {
+	src := "fetch(`/users/${id}/posts/${postId}`)"
+	apis := apiEntities(runExtract(t, "typescript", src))
+	if len(apis) != 1 {
+		t.Fatalf("expected 1 API entity, got %d", len(apis))
+	}
+	want := "/users/{*}/posts/{*}"
+	if apis[0].Name != want {
+		t.Errorf("url = %q, want %q", apis[0].Name, want)
+	}
+}
+
+// TestTSExtractor_StaticString_Unchanged is a negative regression test: a
+// plain string argument with no interpolations must be emitted verbatim.
+func TestTSExtractor_StaticString_Unchanged(t *testing.T) {
+	src := `fetch('/foo')`
+	apis := apiEntities(runExtract(t, "typescript", src))
+	if len(apis) != 1 {
+		t.Fatalf("expected 1 API entity, got %d", len(apis))
+	}
+	want := "/foo"
+	if apis[0].Name != want {
+		t.Errorf("url = %q, want %q", apis[0].Name, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Python: requests / httpx
 // ---------------------------------------------------------------------------
 

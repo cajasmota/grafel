@@ -32,6 +32,20 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+// jsTemplateInterpolationRE matches a single ${...} expression inside a
+// template literal. Used by normalizeTemplateURL to replace each interpolation
+// with the {*} wildcard sentinel so that dynamic paths (e.g. `/users/${id}`)
+// round-trip through normalizePathForIndex the same way as server-side route
+// parameters like `/users/{pk}` or `/users/<int:id>`.
+var jsTemplateInterpolationRE = regexp.MustCompile(`\$\{[^}]*\}`)
+
+// normalizeTemplateURL replaces every ${...} interpolation in a template-literal
+// URL with the canonical wildcard sentinel {*}. Static URLs (no interpolations)
+// are returned unchanged.
+func normalizeTemplateURL(url string) string {
+	return jsTemplateInterpolationRE.ReplaceAllString(url, "{*}")
+}
+
 func init() {
 	extractor.Register("_cross_httpclient", &Extractor{})
 }
@@ -59,14 +73,26 @@ type call struct {
 // Note: RE2 (Go's regexp engine) limits repetition counts to 1000 max.
 var jsFetchDoubleRE = regexp.MustCompile(`(?m)\bfetch\s*\(\s*"([^"\s]{1,500})"`)
 var jsFetchSingleRE = regexp.MustCompile(`(?m)\bfetch\s*\(\s*'([^'\s]{1,500})'`)
-var jsFetchBacktickRE = regexp.MustCompile("(?m)\\bfetch\\s*\\(\\s*`([^`\\s]{1,500})`")
 
-// axios.METHOD('url') — separate patterns for single and double quotes.
+// jsFetchBacktickRE matches fetch(`...`) including template literals with
+// ${...} interpolations. The interpolation content is allowed to be empty or
+// non-backtick so the regex captures the full raw template string; callers
+// pass the captured group through normalizeTemplateURL to replace each ${...}
+// with the {*} wildcard sentinel (#2615).
+var jsFetchBacktickRE = regexp.MustCompile("(?m)\\bfetch\\s*\\(\\s*`([^`]{1,500})`")
+
+// axios.METHOD('url') — separate patterns for single, double, and backtick quotes.
 var jsAxiosDoubleRE = regexp.MustCompile(
 	`(?im)\baxios\.(get|post|put|patch|delete|head|options|request)\s*\(\s*"([^"\s]{1,500})"`,
 )
 var jsAxiosSingleRE = regexp.MustCompile(
 	`(?im)\baxios\.(get|post|put|patch|delete|head|options|request)\s*\(\s*'([^'\s]{1,500})'`,
+)
+
+// jsAxiosBacktickRE matches axios.METHOD(`url`) with optional ${...} interpolations.
+// Captured group 2 is passed through normalizeTemplateURL (#2615).
+var jsAxiosBacktickRE = regexp.MustCompile(
+	"(?im)\\baxios\\.(get|post|put|patch|delete|head|options|request)\\s*\\(\\s*`([^`]{1,500})`",
 )
 
 // Python: requests.METHOD('url') / httpx.METHOD('url')
@@ -231,8 +257,9 @@ func extractJS(source string) []call {
 	for _, m := range jsFetchSingleRE.FindAllStringSubmatch(source, -1) {
 		out = append(out, call{url: m[1]})
 	}
+	// Backtick template literals: normalize ${...} interpolations to {*} (#2615).
 	for _, m := range jsFetchBacktickRE.FindAllStringSubmatch(source, -1) {
-		out = append(out, call{url: m[1]})
+		out = append(out, call{url: normalizeTemplateURL(m[1])})
 	}
 
 	// axios double-quote: groups [full, method, url]
@@ -245,6 +272,12 @@ func extractJS(source string) []call {
 	for _, m := range jsAxiosSingleRE.FindAllStringSubmatch(source, -1) {
 		if len(m) >= 3 {
 			out = append(out, call{url: m[2], method: strings.ToUpper(m[1])})
+		}
+	}
+	// axios backtick template literals: normalize ${...} interpolations to {*} (#2615).
+	for _, m := range jsAxiosBacktickRE.FindAllStringSubmatch(source, -1) {
+		if len(m) >= 3 {
+			out = append(out, call{url: normalizeTemplateURL(m[2]), method: strings.ToUpper(m[1])})
 		}
 	}
 
