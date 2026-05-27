@@ -42,6 +42,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 
+## Framework-specific
+
+### Expo Ecosystem
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `eas_build_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — |
+| `expo_config_extraction` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — |
+| `expo_router_specifics` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/navigation.go` |
+
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON

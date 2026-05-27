@@ -244,13 +244,25 @@ type categorySubSection struct {
 
 // detailPageData feeds detail/<id>.md.tmpl. When Grouped is true the
 // template renders one sub-table per group (GroupViews); otherwise the
-// legacy single capability table (CapList) is used.
+// legacy single capability table (CapList) is used. FrameworkSpecific
+// renders as an additional top-level section below canonical capabilities
+// when the record carries framework-unique capability groups (#2739).
 type detailPageData struct {
-	Marker     string
-	Record     Record
-	CapList    []capEntry
-	GroupViews []groupView
-	Grouped    bool
+	Marker            string
+	Record            Record
+	CapList           []capEntry
+	GroupViews        []groupView
+	Grouped           bool
+	FrameworkSpecific []frameworkSpecificView
+}
+
+// frameworkSpecificView is one free-form capability group rendered on a
+// detail page. Name is emitted verbatim (no prettyKey transformation —
+// authors choose the human-readable group name). CapList holds the
+// sorted capability cells in this group.
+type frameworkSpecificView struct {
+	Name    string
+	CapList []capEntry
 }
 
 // recordToView materialises a Record with sorted capability entries so
@@ -312,6 +324,34 @@ func buildGroupViews(rec Record) []groupView {
 		views = append(views, makeGroupView(name, rec.Groups[name]))
 	}
 	return views
+}
+
+// buildFrameworkSpecificViews materialises rec.FrameworkSpecific as a
+// slice of template-ready views. Group names sort alphabetically (no
+// canonical taxonomy applies) and capability keys within each group
+// follow sortedCapKeys. Returns nil when the record has no
+// framework-specific entries so the template can guard with a simple
+// length check.
+func buildFrameworkSpecificViews(rec Record) []frameworkSpecificView {
+	if !rec.HasFrameworkSpecific() {
+		return nil
+	}
+	names := make([]string, 0, len(rec.FrameworkSpecific))
+	for n := range rec.FrameworkSpecific {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]frameworkSpecificView, 0, len(names))
+	for _, n := range names {
+		caps := rec.FrameworkSpecific[n]
+		keys := sortedCapKeys(caps)
+		list := make([]capEntry, 0, len(keys))
+		for _, k := range keys {
+			list = append(list, capEntry{Key: k, Cap: caps[k]})
+		}
+		out = append(out, frameworkSpecificView{Name: n, CapList: list})
+	}
+	return out
 }
 
 // makeGroupView constructs a groupView from a group name + its cell
@@ -668,11 +708,12 @@ func generate(reg *Registry, outRoot string) error {
 		if err := renderToFile(tmpls, "detail.md.tmpl",
 			filepath.Join(root, "detail", rec.ID+".md"),
 			detailPageData{
-				Marker:     doNotEditMarker,
-				Record:     rec,
-				CapList:    view.CapList,
-				GroupViews: view.GroupViews,
-				Grouped:    view.Grouped,
+				Marker:            doNotEditMarker,
+				Record:            rec,
+				CapList:           view.CapList,
+				GroupViews:        view.GroupViews,
+				Grouped:           view.Grouped,
+				FrameworkSpecific: buildFrameworkSpecificViews(rec),
 			}); err != nil {
 			return err
 		}

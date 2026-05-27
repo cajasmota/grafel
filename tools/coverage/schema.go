@@ -133,6 +133,14 @@ type Record struct {
 	Label        string
 	Capabilities map[string]Capability
 	Groups       map[string]map[string]Capability
+	// FrameworkSpecific carries framework-unique capabilities that do
+	// not fit any subcategory's canonical taxonomy. The shape mirrors
+	// Groups (group name → capability key → cell) but group names are
+	// free-form (no taxonomy lookup) and capability keys are
+	// framework-defined. Validation enforces that capability keys are
+	// unique within the record across both Capabilities/Groups and
+	// FrameworkSpecific.
+	FrameworkSpecific map[string]map[string]Capability
 }
 
 // Capability is a single capability cell on a record.
@@ -146,6 +154,10 @@ type Capability struct {
 
 // IsGrouped reports whether the record carries grouped capabilities.
 func (r *Record) IsGrouped() bool { return len(r.Groups) > 0 }
+
+// HasFrameworkSpecific reports whether the record declares any
+// framework-specific capability groups.
+func (r *Record) HasFrameworkSpecific() bool { return len(r.FrameworkSpecific) > 0 }
 
 // AllCapabilities returns every capability cell on the record as a flat
 // map keyed by capability slug. For grouped records keys are flattened
@@ -187,12 +199,13 @@ func (r Record) MarshalJSON() ([]byte, error) {
 		}
 	}
 	out := struct {
-		ID           string         `json:"id"`
-		Category     string         `json:"category"`
-		Subcategory  string         `json:"subcategory,omitempty"`
-		Language     string         `json:"language"`
-		Label        string         `json:"label"`
-		Capabilities map[string]any `json:"capabilities"`
+		ID                string                        `json:"id"`
+		Category          string                        `json:"category"`
+		Subcategory       string                        `json:"subcategory,omitempty"`
+		Language          string                        `json:"language"`
+		Label             string                        `json:"label"`
+		Capabilities      map[string]any                `json:"capabilities"`
+		FrameworkSpecific map[string]map[string]capWire `json:"framework_specific,omitempty"`
 	}{
 		ID: r.ID, Category: r.Category, Subcategory: r.Subcategory,
 		Language: r.Language, Label: r.Label,
@@ -211,6 +224,16 @@ func (r Record) MarshalJSON() ([]byte, error) {
 			out.Capabilities[k] = toWire(c)
 		}
 	}
+	if r.HasFrameworkSpecific() {
+		out.FrameworkSpecific = map[string]map[string]capWire{}
+		for g, caps := range r.FrameworkSpecific {
+			inner := map[string]capWire{}
+			for k, c := range caps {
+				inner[k] = toWire(c)
+			}
+			out.FrameworkSpecific[g] = inner
+		}
+	}
 	return json.Marshal(out)
 }
 
@@ -218,12 +241,13 @@ func (r Record) MarshalJSON() ([]byte, error) {
 // Capabilities field is deferred to json.RawMessage so UnmarshalJSON can
 // inspect the inner structure and route to the flat or grouped target.
 type recordJSON struct {
-	ID           string          `json:"id"`
-	Category     string          `json:"category"`
-	Subcategory  string          `json:"subcategory,omitempty"`
-	Language     string          `json:"language"`
-	Label        string          `json:"label"`
-	Capabilities json.RawMessage `json:"capabilities"`
+	ID                string                           `json:"id"`
+	Category          string                           `json:"category"`
+	Subcategory       string                           `json:"subcategory,omitempty"`
+	Language          string                           `json:"language"`
+	Label             string                           `json:"label"`
+	Capabilities      json.RawMessage                  `json:"capabilities"`
+	FrameworkSpecific map[string]map[string]Capability `json:"framework_specific,omitempty"`
 }
 
 // UnmarshalJSON decodes a record, distinguishing the flat capability
@@ -244,6 +268,7 @@ func (r *Record) UnmarshalJSON(data []byte) error {
 	r.Label = raw.Label
 	r.Capabilities = nil
 	r.Groups = nil
+	r.FrameworkSpecific = raw.FrameworkSpecific
 	if len(raw.Capabilities) == 0 || bytes.Equal(bytes.TrimSpace(raw.Capabilities), []byte("null")) {
 		return nil
 	}

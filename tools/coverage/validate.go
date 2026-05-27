@@ -4,9 +4,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
+
+// frameworkSpecificKeyPattern restricts framework-specific capability
+// keys to the same snake_case identifier shape used by canonical keys:
+// lowercase letters, digits, and underscores. It deliberately rejects
+// spaces and hyphens so prettyKey produces clean section headings.
+var frameworkSpecificKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // staleDays is the threshold beyond which a capability cell triggers a
 // stale-verification warning.
@@ -70,6 +78,9 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 			validateGroupedRecord(res, prefix, rec, repoRoot)
 		} else {
 			validateFlatRecord(res, prefix, rec, repoRoot)
+		}
+		if rec.HasFrameworkSpecific() {
+			validateFrameworkSpecific(res, prefix, rec, repoRoot)
 		}
 	}
 
@@ -185,6 +196,88 @@ func validateCapabilityCell(res *ValidationResult, capPrefix string, cap Capabil
 	if (cap.Status == StatusMissing || cap.Status == StatusPartial) && cap.Issue == "" {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%s: %s capability has no tracking issue", capPrefix, cap.Status))
 	}
+}
+
+// validateFrameworkSpecific enforces the #2739 rules for the
+// framework_specific field:
+//
+//   - Group names are non-empty (whitespace-only rejected).
+//   - Capability keys match the canonical snake_case shape so
+//     prettyKey renders them sensibly.
+//   - Capability keys are unique within the record's framework_specific
+//     field (no two groups may declare the same key).
+//   - Capability keys MUST NOT collide with any key in the record's
+//     canonical capabilities (flat or grouped) — that's the headline
+//     constraint of the three-tier shape.
+//
+// Group names are otherwise free-form. As an advisory hint we emit a
+// warning when a group name doesn't reference the record's framework
+// label (e.g. "Angular Internals" passes; "Internals" warns).
+func validateFrameworkSpecific(res *ValidationResult, prefix string, rec Record, repoRoot string) {
+	canonical := collectCanonicalKeys(rec)
+	seenKeys := map[string]string{}
+	groupNames := make([]string, 0, len(rec.FrameworkSpecific))
+	for g := range rec.FrameworkSpecific {
+		groupNames = append(groupNames, g)
+	}
+	sort.Strings(groupNames)
+	for _, gname := range groupNames {
+		gPrefix := fmt.Sprintf("%s.framework_specific[%s]", prefix, gname)
+		if strings.TrimSpace(gname) == "" {
+			res.Errors = append(res.Errors, fmt.Sprintf("%s: group name is empty or whitespace-only", gPrefix))
+			continue
+		}
+		if rec.Label != "" && !strings.Contains(strings.ToLower(gname), strings.ToLower(firstLabelToken(rec.Label))) {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: group name %q does not reference framework label %q", gPrefix, gname, rec.Label))
+		}
+		caps := rec.FrameworkSpecific[gname]
+		keys := sortedCapKeys(caps)
+		for _, k := range keys {
+			capPrefix := fmt.Sprintf("%s.%s", gPrefix, k)
+			if !frameworkSpecificKeyPattern.MatchString(k) {
+				res.Errors = append(res.Errors, fmt.Sprintf("%s: capability key %q must match %s", capPrefix, k, frameworkSpecificKeyPattern.String()))
+				continue
+			}
+			if prev, dup := seenKeys[k]; dup {
+				res.Errors = append(res.Errors, fmt.Sprintf("%s: capability key %q already declared under framework_specific group %q", capPrefix, k, prev))
+				continue
+			}
+			if _, clash := canonical[k]; clash {
+				res.Errors = append(res.Errors, fmt.Sprintf("%s: capability key %q also appears in canonical capabilities (keys must be unique within the record)", capPrefix, k))
+				continue
+			}
+			seenKeys[k] = gname
+			validateCapabilityCell(res, capPrefix, caps[k], repoRoot)
+		}
+	}
+}
+
+// collectCanonicalKeys returns the set of capability keys carried by
+// the record's canonical capabilities (flat map or grouped buckets).
+// Used by framework_specific validation to detect key collisions.
+func collectCanonicalKeys(rec Record) map[string]struct{} {
+	out := map[string]struct{}{}
+	for k := range rec.Capabilities {
+		out[k] = struct{}{}
+	}
+	for _, g := range rec.Groups {
+		for k := range g {
+			out[k] = struct{}{}
+		}
+	}
+	return out
+}
+
+// firstLabelToken returns the first whitespace-delimited token of label
+// lowercased, used as the framework-name hint for the advisory warning
+// on framework_specific group names. Returns label unchanged when it
+// contains no whitespace.
+func firstLabelToken(label string) string {
+	fields := strings.Fields(label)
+	if len(fields) == 0 {
+		return label
+	}
+	return fields[0]
 }
 
 // inStringSlice reports whether needle is present in haystack.

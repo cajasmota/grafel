@@ -44,6 +44,15 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|
 | `static_generation` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
 
+## Framework-specific
+
+### Next.js Internals
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `middleware_runtime_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — |
+| `next_config_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — |
+
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON

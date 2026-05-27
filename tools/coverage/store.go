@@ -86,6 +86,13 @@ func sortRegistry(reg *Registry) {
 			}
 			reg.Records[i].Groups[g] = inner
 		}
+		for g, inner := range reg.Records[i].FrameworkSpecific {
+			for k, cap := range inner {
+				sort.Strings(cap.Cites)
+				inner[k] = cap
+			}
+			reg.Records[i].FrameworkSpecific[g] = inner
+		}
 	}
 }
 
@@ -161,8 +168,68 @@ func writeRecord(buf *bytes.Buffer, rec Record, indent string) error {
 			}
 		}
 	}
-	buf.WriteString("}\n")
+	buf.WriteString("}")
+	if len(rec.FrameworkSpecific) > 0 {
+		buf.WriteString(",\n")
+		buf.WriteString(inner + "\"framework_specific\": {")
+		if err := writeFrameworkSpecific(buf, inner+"  ", rec.FrameworkSpecific); err != nil {
+			return err
+		}
+		buf.WriteString("}\n")
+	} else {
+		buf.WriteString("\n")
+	}
 	buf.WriteString(indent + "}")
+	return nil
+}
+
+// writeFrameworkSpecific serialises rec.FrameworkSpecific in the same
+// nested shape as grouped capabilities, with group names sorted
+// alphabetically (no canonical taxonomy applies — group names are
+// free-form) and capability keys sorted alphabetically within each
+// group. Mirrors writeGroupedCapabilities for output stability.
+func writeFrameworkSpecific(buf *bytes.Buffer, indent string, fs map[string]map[string]Capability) error {
+	if len(fs) == 0 {
+		return nil
+	}
+	groups := make([]string, 0, len(fs))
+	for g := range fs {
+		groups = append(groups, g)
+	}
+	sort.Strings(groups)
+	buf.WriteString("\n")
+	for gi, gname := range groups {
+		encG, err := json.Marshal(gname)
+		if err != nil {
+			return err
+		}
+		buf.WriteString(indent)
+		buf.Write(encG)
+		buf.WriteString(": {")
+		inner := indent + "  "
+		caps := fs[gname]
+		keys := sortedCapKeys(caps)
+		if len(keys) > 0 {
+			buf.WriteString("\n")
+		}
+		for i, k := range keys {
+			if err := writeCapability(buf, inner, k, caps[k]); err != nil {
+				return err
+			}
+			if i < len(keys)-1 {
+				buf.WriteString(",\n")
+			} else {
+				buf.WriteString("\n" + indent)
+			}
+		}
+		buf.WriteString("}")
+		if gi < len(groups)-1 {
+			buf.WriteString(",\n")
+		} else {
+			buf.WriteString("\n")
+			buf.WriteString(indent[:len(indent)-2])
+		}
+	}
 	return nil
 }
 

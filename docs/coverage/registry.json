@@ -4154,6 +4154,22 @@
           ],
           "verified_at": "2026-05-28"
         }
+      },
+      "framework_specific": {
+        "Spring Boot Internals": {
+          "actuator_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "autoconfiguration_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "profile_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          }
+        }
       }
     },
     {
@@ -4855,6 +4871,26 @@
             "status": "missing"
           }
         }
+      },
+      "framework_specific": {
+        "Angular Internals": {
+          "decorator_recognition": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "dependency_injection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "ngmodule_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "rxjs_pattern_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          }
+        }
       }
     },
     {
@@ -4982,6 +5018,25 @@
               "internal/engine/rules/javascript_typescript/frameworks/expo.yaml"
             ],
             "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+            "verified_at": "2026-05-28"
+          }
+        }
+      },
+      "framework_specific": {
+        "Expo Ecosystem": {
+          "eas_build_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "expo_config_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "expo_router_specifics": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/javascript/navigation.go"
+            ],
             "verified_at": "2026-05-28"
           }
         }
@@ -5494,6 +5549,18 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2735"
           }
         }
+      },
+      "framework_specific": {
+        "Next.js Internals": {
+          "middleware_runtime_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "next_config_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          }
+        }
       }
     },
     {
@@ -5693,6 +5760,18 @@
             "verified_at": "2026-05-28"
           }
         }
+      },
+      "framework_specific": {
+        "React Native CLI": {
+          "metro_config_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "native_link_recognition": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          }
+        }
       }
     },
     {
@@ -5830,6 +5909,18 @@
             "status": "missing"
           }
         }
+      },
+      "framework_specific": {
+        "Svelte Reactivity": {
+          "reactive_statement_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "store_pattern_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          }
+        }
       }
     },
     {
@@ -5944,6 +6035,22 @@
         "Navigation": {
           "router_pattern": {
             "status": "missing"
+          }
+        }
+      },
+      "framework_specific": {
+        "Vue Ecosystem": {
+          "composition_api_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "pinia_pattern_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "scoped_style_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
           }
         }
       }
@@ -7619,6 +7726,22 @@
         },
         "middleware_coverage": {
           "status": "missing"
+        }
+      },
+      "framework_specific": {
+        "Django Internals": {
+          "admin_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          },
+          "signal_handler_attribution": {
+            "status": "partial",
+            "cites": [
+              "internal/engine/django_signal_pubsub_edges.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2739",
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"reflect"
 	"testing"
 )
@@ -304,6 +305,162 @@ func TestBuildBucketSectionNoSubcategoriesUsesLegacy(t *testing.T) {
 	}
 	if len(sec.Records) != 1 {
 		t.Errorf("want 1 flat record, got %d", len(sec.Records))
+	}
+}
+
+// TestFrameworkSpecificRoundTrip exercises load + write of a record
+// that carries framework_specific entries, both for the flat and
+// grouped capability shapes (#2739).
+func TestFrameworkSpecificRoundTrip(t *testing.T) {
+	src := `{
+  "$schema_version": 1,
+  "records": [
+    {
+      "id": "lang.jsts.framework.angular",
+      "category": "http_framework",
+      "subcategory": "ui_frontend",
+      "language": "jsts",
+      "label": "Angular",
+      "capabilities": {
+        "Structure": {
+          "component_extraction": {"status": "missing"}
+        }
+      },
+      "framework_specific": {
+        "Angular Internals": {
+          "dependency_injection": {"status": "missing"}
+        }
+      }
+    }
+  ]
+}`
+	tmp := t.TempDir() + "/reg.json"
+	if err := writeFile(tmp, []byte(src)); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := loadRegistry(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := reg.Records[0]
+	if !rec.HasFrameworkSpecific() {
+		t.Fatalf("expected framework_specific to be present")
+	}
+	if len(rec.FrameworkSpecific["Angular Internals"]) != 1 {
+		t.Errorf("expected 1 cap in Angular Internals; got %v", rec.FrameworkSpecific)
+	}
+	if err := saveRegistry(tmp, reg); err != nil {
+		t.Fatal(err)
+	}
+	reg2, err := loadRegistry(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reg2.Records[0].HasFrameworkSpecific() {
+		t.Errorf("framework_specific lost across save/load")
+	}
+	if reg2.Records[0].FrameworkSpecific["Angular Internals"]["dependency_injection"].Status != StatusMissing {
+		t.Errorf("framework_specific status not preserved")
+	}
+}
+
+// writeFile is a tiny helper used by round-trip tests.
+func writeFile(path string, data []byte) error {
+	return os.WriteFile(path, data, 0o644)
+}
+
+// TestValidateFrameworkSpecific exercises the #2739 rules for the
+// framework_specific field: empty group names rejected, malformed
+// capability keys rejected, cross-group key collisions rejected, and
+// canonical capability collisions rejected.
+func TestValidateFrameworkSpecific(t *testing.T) {
+	reg := &Registry{
+		SchemaVersion: SchemaVersion,
+		Records: []Record{
+			{
+				ID: "lang.jsts.framework.angular", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "Angular",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"component_extraction": {Status: StatusMissing, Issue: "x"}},
+				},
+				FrameworkSpecific: map[string]map[string]Capability{
+					"Angular Internals": {"dependency_injection": {Status: StatusMissing, Issue: "x"}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.fs-empty", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "EmptyGroup",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"component_extraction": {Status: StatusMissing, Issue: "x"}},
+				},
+				FrameworkSpecific: map[string]map[string]Capability{
+					"   ": {"foo_bar": {Status: StatusMissing, Issue: "x"}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.fs-badkey", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "BadKey",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"component_extraction": {Status: StatusMissing, Issue: "x"}},
+				},
+				FrameworkSpecific: map[string]map[string]Capability{
+					"BadKey Internals": {"Bad Key With Spaces": {Status: StatusMissing, Issue: "x"}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.fs-dupkey", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "DupKey",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"component_extraction": {Status: StatusMissing, Issue: "x"}},
+				},
+				FrameworkSpecific: map[string]map[string]Capability{
+					"DupKey A": {"foo_bar": {Status: StatusMissing, Issue: "x"}},
+					"DupKey B": {"foo_bar": {Status: StatusMissing, Issue: "x"}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.fs-clash", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "Clash",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"component_extraction": {Status: StatusMissing, Issue: "x"}},
+				},
+				FrameworkSpecific: map[string]map[string]Capability{
+					"Clash Internals": {"component_extraction": {Status: StatusMissing, Issue: "x"}},
+				},
+			},
+		},
+	}
+	res := validateRegistry(reg, ".")
+	hasError := func(needle string) bool {
+		for _, e := range res.Errors {
+			if containsStr(e, needle) {
+				return true
+			}
+		}
+		return false
+	}
+	hasErrorFor := func(id, needle string) bool {
+		for _, e := range res.Errors {
+			if containsStr(e, id) && containsStr(e, needle) {
+				return true
+			}
+		}
+		return false
+	}
+	if hasErrorFor("lang.jsts.framework.angular", "framework_specific") {
+		t.Errorf("angular framework_specific should validate; got: %v", res.Errors)
+	}
+	if !hasError("group name is empty or whitespace-only") {
+		t.Errorf("expected empty-group-name error; got: %v", res.Errors)
+	}
+	if !hasError("must match ^[a-z]") {
+		t.Errorf("expected capability-key shape error; got: %v", res.Errors)
+	}
+	if !hasError("already declared under framework_specific group") {
+		t.Errorf("expected duplicate-key error; got: %v", res.Errors)
+	}
+	if !hasError("also appears in canonical capabilities") {
+		t.Errorf("expected canonical-clash error; got: %v", res.Errors)
 	}
 }
 

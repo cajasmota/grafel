@@ -42,6 +42,15 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 
+## Framework-specific
+
+### React Native CLI
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `metro_config_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — |
+| `native_link_recognition` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — |
+
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
