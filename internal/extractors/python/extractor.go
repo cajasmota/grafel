@@ -810,17 +810,43 @@ func walkNode(
 // QualifiedName is set to "<module>.<name>" where module is derived from
 // the file path (issue #1413). For nested classes the caller must re-derive
 // QualifiedName after prefixing rec.Name with the parent class path.
+//
+// Issue #2552 — entity Name MUST equal the literal AST symbol extracted from
+// the class_definition name node. No post-hoc substitution with inferred labels
+// (filename stem, docstring reference, PascalCase conversion) is permitted.
+// When a human-friendly label is available from the filename stem and differs
+// from the AST name, it is stored in Properties["display_name"] so MCP
+// consumers can surface both, but the Name field is never overwritten.
 func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
 		return types.EntityRecord{}
 	}
+	// Name is always the verbatim AST identifier — never an inferred label.
 	name := nodeText(nameNode, file.Content)
 
 	mod := filePathToModule(file.Path)
 	qn := mod + "." + name
 	if mod == "" {
 		qn = name
+	}
+
+	// Issue #2552 — when the file stem (e.g. "notes_helper") provides a
+	// human-friendly label that differs from the AST name (e.g. "n" or any
+	// short single-purpose class), record it as display_name without touching
+	// Name. toPascalCase converts "notes_helper" → "NotesHelper". We only set
+	// display_name when it is non-empty and different from the AST name so that
+	// well-named classes (class NoteHelper in notes_helper.py) don't get a
+	// redundant property.
+	var props map[string]string
+	if base := filepath.Base(file.Path); base != "" {
+		stem := strings.TrimSuffix(base, filepath.Ext(base))
+		if stem != "" && stem != "__init__" {
+			pascal := toPascalCase(stem)
+			if pascal != "" && pascal != name {
+				props = map[string]string{"display_name": pascal}
+			}
+		}
 	}
 
 	return types.EntityRecord{
@@ -833,8 +859,38 @@ func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord 
 		StartLine:          int(node.StartPoint().Row) + 1,
 		EndLine:            int(node.EndPoint().Row) + 1,
 		Signature:          "class " + name,
+		Properties:         props,
 		EnrichmentRequired: false,
 	}
+}
+
+// toPascalCase converts a snake_case or kebab-case identifier to PascalCase.
+// Used by buildClass to derive a human-readable display_name from a filename
+// stem when the AST class name is short or otherwise opaque (issue #2552).
+//
+//	"notes_helper" → "NotesHelper"
+//	"n"            → "N"            (single char — capitalised but kept)
+//	"my-view"      → "MyView"
+func toPascalCase(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	upNext := true
+	for _, r := range s {
+		if r == '-' || r == '_' {
+			upNext = true
+			continue
+		}
+		if upNext && r >= 'a' && r <= 'z' {
+			b.WriteRune(r - 32)
+		} else {
+			b.WriteRune(r)
+		}
+		upNext = false
+	}
+	return b.String()
 }
 
 // buildFunction constructs a SCOPE.Operation EntityRecord for a function_definition.

@@ -2058,3 +2058,93 @@ class Migration(migrations.Migration):
 		t.Errorf("file entity: want 1, got %d", fileEntCount)
 	}
 }
+
+// TestPythonExtractor_PreservesAstSymbolName verifies that entity Name equals
+// the verbatim AST identifier for every class — including single-character
+// class names and classes whose name differs from the enclosing filename stem.
+//
+// Regression guard for issue #2552: the extractor was replacing Name with an
+// inferred display label (PascalCase of the filename stem) instead of the
+// literal AST symbol. A file "notes_helper.py" containing "class n:" produced
+// entity Name="NoteHelper" — a fabrication that broke chain-of-reference
+// lookups because no such symbol existed in the source.
+//
+// Contract (both cases must hold simultaneously):
+//   - Name  == AST symbol verbatim ("Foo" and "b" respectively)
+//   - display_name in Properties, if present, must NOT equal Name (it is an
+//     auxiliary label, never a replacement)
+func TestPythonExtractor_PreservesAstSymbolName(t *testing.T) {
+	// Two classes in a file whose stem ("notes_helper") would produce a
+	// different PascalCase label ("NotesHelper") via the display_name path.
+	// "Foo" matches the expected PascalCase form but is still the verbatim
+	// symbol; "b" is a deliberately short single-letter name.
+	src := `class Foo:
+    pass
+
+class b:
+    pass
+`
+	// Use a filename whose stem differs from both class names so the
+	// display_name machinery is exercised.
+	const filePath = "core/helper/notes_helper.py"
+
+	ext, ok := extractor.Get("python")
+	if !ok {
+		t.Fatal("python extractor not registered")
+	}
+	tree := parse(t, []byte(src))
+	entities, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     filePath,
+		Content:  []byte(src),
+		Language: "python",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	entities = stripFileEntity(entities)
+
+	// Collect class entities by name for assertion.
+	byName := make(map[string]types.EntityRecord)
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "class" {
+			byName[e.Name] = e
+		}
+	}
+
+	// --- "Foo": well-named class, Name must be exactly "Foo" ---
+	foo, ok := byName["Foo"]
+	if !ok {
+		t.Fatalf("expected class entity with Name=%q; got names: %v", "Foo", classNames(byName))
+	}
+	if foo.Name != "Foo" {
+		t.Errorf("Foo: Name=%q, want %q (AST symbol must be preserved)", foo.Name, "Foo")
+	}
+	// display_name, if set, must differ from Name (it is an auxiliary label).
+	if dn := foo.Properties["display_name"]; dn == foo.Name {
+		t.Errorf("Foo: display_name=%q must not equal Name — display_name must be an auxiliary label, not a replacement", dn)
+	}
+
+	// --- "b": single-letter class, Name must be exactly "b" ---
+	b, ok := byName["b"]
+	if !ok {
+		t.Fatalf("expected class entity with Name=%q; got names: %v", "b", classNames(byName))
+	}
+	if b.Name != "b" {
+		t.Errorf("b: Name=%q, want %q (single-char AST symbol must be preserved verbatim)", b.Name, "b")
+	}
+	// display_name, if set, must differ from Name.
+	if dn := b.Properties["display_name"]; dn == b.Name {
+		t.Errorf("b: display_name=%q must not equal Name", dn)
+	}
+}
+
+// classNames returns the keys of the byName map as a sorted slice for
+// readable test failure messages.
+func classNames(m map[string]types.EntityRecord) []string {
+	names := make([]string, 0, len(m))
+	for k := range m {
+		names = append(names, k)
+	}
+	return names
+}
