@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -127,6 +128,17 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 	_, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return nil, errRes
+	}
+	// #2665: route-literal resolution. When entity_id starts with "/" AND no
+	// entity matches by ID/name across loaded repos, treat it as a route
+	// literal: find NAVIGATES_TO edges whose ToID is "route:<literal>" (or
+	// whose Properties["route"] matches) and return the push-site callers
+	// directly. This makes find_callers discoverable for in-app navigation
+	// without users having to remember the dedicated archigraph_navigates tool.
+	if strings.HasPrefix(entityID, "/") && !entityExistsAnywhere(lg, entityID) {
+		if res := s.tryFindCallersByRoute(req, lg, entityID); res != nil {
+			return res, nil
+		}
 	}
 	depth := argInt(req, "depth", 1)
 	if depth < 1 {
@@ -1437,4 +1449,135 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 		"truncated": total > len(out),
 		"note":      "Dead code candidates. Class 1 (confidence 0.6): isolated entities with no edges — may be an extraction gap. Class 2 (confidence 0.85): unreferenced public operations carrying a dead-code marker. Verify before deletion — some entry points are invoked via reflection or config.",
 	}), nil
+}
+
+// ---------------------------------------------------------------------------
+// #2665 — route-literal resolution for archigraph_find_callers
+// ---------------------------------------------------------------------------
+
+// entityExistsAnywhere reports whether the given id matches an entity ID or
+// Name across any repo in the group. Used by findCallersStructured to decide
+// whether to attempt route-literal resolution.
+func entityExistsAnywhere(lg *LoadedGroup, id string) bool {
+	if lg == nil {
+		return false
+	}
+	_, local := splitPrefixed(id)
+	probe := id
+	if local != "" {
+		probe = local
+	}
+	for _, r := range lg.Repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		if _, ok := r.ByID[probe]; ok {
+			return true
+		}
+		for i := range r.Doc.Entities {
+			if r.Doc.Entities[i].Name == probe {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tryFindCallersByRoute resolves a route literal (e.g. "/users/[id]") by
+// walking NAVIGATES_TO edges in reverse and returning their source entities
+// as callers. Returns nil if no matching edges exist so the caller can fall
+// through to the standard not-found path.
+//
+// Match rules (in order of preference):
+//  1. rel.ToID == "route:" + literal
+//  2. Properties["route"] == literal
+//  3. Properties["route"] case-insensitive equals literal (final fallback)
+//
+// Each returned caller carries file:line + the NAVIGATES_TO params_keys so
+// the agent can immediately answer "which call sites pass param X?".
+func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGroup, routeLit string) map[string]any {
+	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	type routeCaller struct {
+		EntityID   string `json:"id"`
+		Name       string `json:"name"`
+		Repo       string `json:"repo,omitempty"`
+		SourceFile string `json:"file,omitempty"`
+		StartLine  int    `json:"line,omitempty"`
+		Route      string `json:"route,omitempty"`
+		ParamsKeys string `json:"params_keys,omitempty"`
+		HopCount   int    `json:"hop_count"`
+	}
+	var callers []routeCaller
+	wantToID := "route:" + routeLit
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Relationships {
+			rel := &r.Doc.Relationships[i]
+			if rel.Kind != "NAVIGATES_TO" {
+				continue
+			}
+			match := rel.ToID == wantToID
+			if !match && rel.Properties != nil {
+				if rel.Properties["route"] == routeLit {
+					match = true
+				} else if strings.EqualFold(rel.Properties["route"], routeLit) {
+					match = true
+				}
+			}
+			if !match {
+				continue
+			}
+			line := 0
+			route := routeLit
+			paramsKeys := ""
+			if rel.Properties != nil {
+				if ls := rel.Properties["line"]; ls != "" {
+					if n, perr := strconv.Atoi(ls); perr == nil {
+						line = n
+					}
+				}
+				if rt := rel.Properties["route"]; rt != "" {
+					route = rt
+				}
+				paramsKeys = rel.Properties["params_keys"]
+			}
+			rc := routeCaller{
+				EntityID:   prefixedID(r.Repo, rel.FromID),
+				Repo:       r.Repo,
+				StartLine:  line,
+				Route:      route,
+				ParamsKeys: paramsKeys,
+				HopCount:   1,
+			}
+			if e := r.ByID[rel.FromID]; e != nil {
+				rc.Name = e.Name
+				rc.SourceFile = e.SourceFile
+			}
+			callers = append(callers, rc)
+		}
+	}
+	if len(callers) == 0 {
+		return nil
+	}
+	sort.Slice(callers, func(i, j int) bool {
+		if callers[i].Repo != callers[j].Repo {
+			return callers[i].Repo < callers[j].Repo
+		}
+		if callers[i].SourceFile != callers[j].SourceFile {
+			return callers[i].SourceFile < callers[j].SourceFile
+		}
+		return callers[i].StartLine < callers[j].StartLine
+	})
+	return map[string]any{
+		"entity_id":       routeLit,
+		"entity_name":     routeLit,
+		"resolved_as":     "navigation_route",
+		"navigation_edge": "NAVIGATES_TO",
+		"depth":           1,
+		"callers":         callers,
+		"count":           len(callers),
+		"note":            "Route literal resolved via NAVIGATES_TO incoming edges (#2665). params_keys (JSON array) on each caller indicates which navigation params are statically passed.",
+	}
 }

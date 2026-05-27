@@ -285,6 +285,26 @@ archigraph_endpoints(action="stats")
 → { "totals": { "definitions": 12, "calls": 8, "orphan_calls": 2 }, "migrated": true }
 ```
 
+#### `archigraph_endpoints(kind="navigation")` — in-app navigation routes (#2665)
+Surfaces NAVIGATES_TO routes (Expo Router, React Navigation, Next.js) through
+the same endpoints tool. Each entry merges param keys across all call-sites as
+a sorted JSON array, so you can answer "which screens take param X / which
+are missing it?" with one call.
+
+```
+archigraph_endpoints(kind="navigation", path_contains="/users")
+→ { "routes": [{ "route": "/users/[id]", "call_sites": 3, "params_keys": "[\"id\",\"mode\"]", ... }] }
+
+# Side-by-side with HTTP definitions:
+archigraph_endpoints(action="definitions", include_navigation=true)
+→ { "definitions": [...], "navigation_routes": [...], "navigation_count": 4 }
+```
+
+`archigraph_find_callers("/route/literal")` is the natural inverse: pass a
+literal beginning with `/` and the handler resolves it via reverse
+NAVIGATES_TO traversal, returning push-site callers with `file`, `line`, and
+`params_keys` for each call.
+
 ---
 
 ### 3.6 Queue management tools

@@ -21,7 +21,9 @@
 package javascript
 
 import (
+	"encoding/json"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -232,8 +234,16 @@ func extractObjectFormRoute(x *extractor, obj *sitter.Node) (route string, param
 // extractParamKeys returns the property/shorthand key names from an object
 // expression used as the `params:` value in a navigation call.
 //
-// Handles both shorthand `{id}` (shorthand_property_identifier) and explicit
-// `{id: value}` (pair) property shapes.
+// Handles:
+//   - explicit `{id: value}` (pair)
+//   - shorthand `{id}` (shorthand_property_identifier[_pattern])
+//   - spread elements `{...rest}` — recorded as the sentinel "...spread" so
+//     downstream queries know dynamic keys may exist (#2665)
+//
+// If the params value is not an object literal (e.g. a variable reference like
+// `params: opts`), returns an empty slice — we deliberately do NOT perform any
+// data-flow analysis here. Caller can distinguish "no params object" (nil)
+// from "params object with non-static contents" (empty slice).
 func extractParamKeys(x *extractor, obj *sitter.Node) []string {
 	if obj == nil {
 		return nil
@@ -249,7 +259,10 @@ func extractParamKeys(x *extractor, obj *sitter.Node) []string {
 		}
 	}
 	if obj.Type() != "object" && obj.Type() != "object_expression" {
-		return nil
+		// #2665: caller passed e.g. `params: opts` — variable reference.
+		// Return empty (non-nil) so emitNavigationEdge can record an empty
+		// params_keys array (dynamic params, no static keys recoverable).
+		return []string{}
 	}
 
 	var keys []string
@@ -267,6 +280,10 @@ func extractParamKeys(x *extractor, obj *sitter.Node) []string {
 			}
 		case "shorthand_property_identifier", "shorthand_property_identifier_pattern":
 			keyName = x.nodeText(child)
+		case "spread_element":
+			// #2665: record that a spread exists so consumers know dynamic
+			// keys may be present beyond the static set.
+			keyName = "...spread"
 		}
 		if keyName != "" && !seen[keyName] {
 			seen[keyName] = true
@@ -282,10 +299,15 @@ func extractParamKeys(x *extractor, obj *sitter.Node) []string {
 // against declared route entities.
 //
 // Properties set:
-//   - "route"   : the destination route/screen name
-//   - "params"  : comma-separated param key names (omitted when empty)
-//   - "line"    : 1-indexed source line of the call site
-//   - "via"     : "navigation_call" (traceability tag)
+//   - "route"       : the destination route/screen name
+//   - "params"      : comma-separated param key names (omitted when empty)
+//   - "params_keys" : JSON array string of sorted, deduped param keys (#2665).
+//                     Empty array "[]" indicates the params object existed but
+//                     contained no statically-extractable keys (e.g. variable
+//                     reference). Property is omitted entirely when no params
+//                     object was observed.
+//   - "line"        : 1-indexed source line of the call site
+//   - "via"         : "navigation_call" (traceability tag)
 func emitNavigationEdge(route string, params []string, call *sitter.Node) types.RelationshipRecord {
 	toID := "route:" + route
 	props := map[string]string{
@@ -295,6 +317,28 @@ func emitNavigationEdge(route string, params []string, call *sitter.Node) types.
 	}
 	if len(params) > 0 {
 		props["params"] = strings.Join(params, ", ")
+	}
+	// #2665: emit params_keys whenever a params object was observed (params != nil),
+	// even when empty — distinguishes "no params arg" from "params: <dynamic>".
+	if params != nil {
+		// Dedupe + sort. extractParamKeys already dedupes, but normalise here
+		// so callers that build the edge from other paths get the same shape.
+		seen := make(map[string]struct{}, len(params))
+		uniq := make([]string, 0, len(params))
+		for _, k := range params {
+			if k == "" {
+				continue
+			}
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			uniq = append(uniq, k)
+		}
+		sort.Strings(uniq)
+		if b, err := json.Marshal(uniq); err == nil {
+			props["params_keys"] = string(b)
+		}
 	}
 	return types.RelationshipRecord{
 		ToID:       toID,
