@@ -448,11 +448,18 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	// successfully embeds the question (#461 / ADR-0019). Per-repo fusion
 	// keeps ranks comparable; cross-repo merging follows the existing
 	// re-rank pass below.
+	//
+	// bm25HitsByRepo tracks the raw BM25 hit count per repo before de-noise /
+	// min_score filtering. Used by the "always-1" fallback (#2554b) to scope
+	// the PageRank-fallback entity to the repo most textually similar to the
+	// query, preventing cross-context entity bleed.
 	all := []scored{}
+	bm25HitsByRepo := make(map[*LoadedRepo]int, len(repos))
 	var qVec []float32
 	var qHave bool
 	for _, r := range repos {
 		bm25Hits := r.BM25.Search(question, 10)
+		bm25HitsByRepo[r] = len(bm25Hits)
 		if r.Semantic != nil && r.Semantic.Len() > 0 {
 			if !qHave {
 				qVec, qHave = embedQuery(ctx, question)
@@ -530,8 +537,21 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	// "always-1" rule: if nothing matched but repos contain entities, return
 	// the highest-PageRank entity as a single-result fallback so callers see
 	// something rather than empty.
+	//
+	// #2554b: scope the fallback to the repo most textually similar to the
+	// query to prevent cross-context bleed. Without scoping, pickFallback
+	// selected the globally highest-PageRank entity across ALL repos, which
+	// caused bench iter 1 q10 (InspectionResultsPage trace) to surface an
+	// unrelated POST /schedule/import endpoint from a different repo.
+	//
+	// Scoping order:
+	//  1. If a single repo_filter was provided, restrict to that repo.
+	//  2. Otherwise use the repo with the most raw BM25 candidate hits
+	//     (highest textual overlap with the query terms) — never cross-repo.
+	//  3. Fall back to the first repo if all hit counts are zero.
 	if len(all) == 0 {
-		fallback := pickFallback(repos)
+		scopedRepos := scopeFallbackRepos(repos, repoFilter, bm25HitsByRepo)
+		fallback := pickFallback(scopedRepos)
 		if fallback != nil {
 			all = append(all, scored{repo: fallback.repo, hit: Hit{Entity: fallback.entity, Score: 0.0001}})
 		}
@@ -651,6 +671,45 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		recordNodeIDs(ctx, prefixedID(nw.Repo, nw.Entity.ID))
 	}
 	return mcpapi.NewToolResultText(renderCompact(rr, tokenBudget)), nil
+}
+
+// scopeFallbackRepos returns the single-element repo slice that the "always-1"
+// fallback should be scoped to, preventing cross-repo entity bleed (#2554b).
+//
+// Selection priority:
+//  1. If a single repo_filter was requested, honour it — the caller already
+//     said "I want results from this repo only".
+//  2. Otherwise pick the repo with the highest raw BM25 hit count (most
+//     textual overlap with the query). This keeps the fallback in the same
+//     semantic neighbourhood as the query even when every candidate fell below
+//     minScore or was denoised away.
+//  3. If all hit counts are zero (empty corpus / no BM25 index), fall back to
+//     the first repo in the ordered slice so we always return something.
+//
+// The returned slice is always length 1 — pickFallback receives a restricted
+// candidate set, not the full multi-repo list.
+func scopeFallbackRepos(repos []*LoadedRepo, repoFilter []string, bm25Hits map[*LoadedRepo]int) []*LoadedRepo {
+	if len(repos) == 0 {
+		return repos
+	}
+	// Priority 1: explicit single-repo filter.
+	if len(repoFilter) == 1 && repoFilter[0] != "*" {
+		return repos[:1] // repos was already filtered by reposToConsider; first == the only one
+	}
+	// Priority 2: repo with the most BM25 hits.
+	var best *LoadedRepo
+	bestCount := -1
+	for _, r := range repos {
+		if c := bm25Hits[r]; c > bestCount {
+			bestCount = c
+			best = r
+		}
+	}
+	if best != nil && bestCount > 0 {
+		return []*LoadedRepo{best}
+	}
+	// Priority 3: first repo (preserves original behaviour for empty corpora).
+	return repos[:1]
 }
 
 // pickFallback returns the highest-pagerank entity across repos.
