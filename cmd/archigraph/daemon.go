@@ -849,6 +849,14 @@ func daemonRebuildFuncCore(
 		warning = fmt.Sprintf("link passes failed: %v", err)
 	}
 
+	// Explicitly invalidate the cache for each rebuilt repo (#2607).
+	// Belt-and-braces: the LRU cache's mtime safety-net has 1s granularity
+	// which can race when rebuild completes faster. Explicit invalidation
+	// ensures the next MCP query sees the freshly written graph.fb.
+	for _, repoPath := range rebuilt {
+		invalidateAfterIndex(repoPath)
+	}
+
 	// Persist a quality-metrics snapshot to health-history.jsonl (#1329).
 	// Best-effort: failure is logged but never blocks the caller.
 	go func() {
