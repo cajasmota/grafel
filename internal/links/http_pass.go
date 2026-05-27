@@ -631,16 +631,23 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		for _, p := range producers {
 			producersByRepo[p.repo] = append(producersByRepo[p.repo], p)
 		}
-		// Group consumers by repo (first hit per repo — the deterministic
-		// ordering above means we keep the smallest stampedID per repo).
-		consumerRepos := map[string]*httpEndpointHit{}
+		// Group ALL consumers by repo — unlike the old single-consumer-per-repo
+		// deduplication, we now allow every distinct consumer entity (e.g.
+		// a legacy service file and a V2 service file that both call the same
+		// endpoint) to receive its own cross-repo link. The emitted map keyed
+		// by (source, target, method) prevents duplicate links when two
+		// consumers in the same repo happen to resolve to the same producer
+		// entity. (#2611)
+		consumersByRepo := map[string][]*httpEndpointHit{}
 		for _, h := range consumers {
-			if _, ok := consumerRepos[h.repo]; !ok {
-				consumerRepos[h.repo] = h
-			}
+			consumersByRepo[h.repo] = append(consumersByRepo[h.repo], h)
 		}
 
-		consumerRepoNames := sortedKeys(consumerRepos)
+		consumerRepoNames := make([]string, 0, len(consumersByRepo))
+		for r := range consumersByRepo {
+			consumerRepoNames = append(consumerRepoNames, r)
+		}
+		sort.Strings(consumerRepoNames)
 		producerRepoNames := make([]string, 0, len(producersByRepo))
 		for r := range producersByRepo {
 			producerRepoNames = append(producerRepoNames, r)
@@ -650,184 +657,185 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		for _, cRepo := range consumerRepoNames {
 			for _, pRepo := range producerRepoNames {
 				intraRepo := cRepo == pRepo
-				c := consumerRepos[cRepo]
-				// Verb-aware producer selection (#747):
-				//   Tier 1 — producer with the SAME specific verb as the
-				//            consumer (exact_verb).
-				//   Tier 2 — producer with verb=ANY (any_fallback).
-				//   Tier 3 — none. We skip rather than fall through to a
-				//            different specific verb: DELETE/{id} must
-				//            never link to PATCH/{id} just because both
-				//            paths normalize the same.
-				// Producers within each tier are already sorted by
-				// less() above, so picking the first match is
-				// deterministic.
-				p, quality := pickProducerForConsumer(c, producersByRepo[pRepo])
+				for _, c := range consumersByRepo[cRepo] {
+					// Verb-aware producer selection (#747):
+					//   Tier 1 — producer with the SAME specific verb as the
+					//            consumer (exact_verb).
+					//   Tier 2 — producer with verb=ANY (any_fallback).
+					//   Tier 3 — none. We skip rather than fall through to a
+					//            different specific verb: DELETE/{id} must
+					//            never link to PATCH/{id} just because both
+					//            paths normalize the same.
+					// Producers within each tier are already sorted by
+					// less() above, so picking the first match is
+					// deterministic.
+					p, quality := pickProducerForConsumer(c, producersByRepo[pRepo])
 
-				// Prefix-injection retry (#2569): mirrors Tier 2 of
-				// resolveCallByPath in internal/engine/http_endpoint_match.go
-				// (#2557). When the standard byPath match missed AND the
-				// consumer path carries no API/version prefix of its own,
-				// retry by prepending each well-known prefix candidate to the
-				// consumer's normalized path and probing byPath. This handles
-				// the upvate pattern where the frontend extractor emits a raw
-				// path (e.g. `/searchBuildings`) while the backend mounts the
-				// route at `/api/v1/searchBuildings`.
-				//
-				// First match wins; edge is stamped with
-				// Properties["prefix_normalized"] (e.g. "api/v1") so the
-				// resolution is traceable in the graph.
-				var prefixNormalized string
-				if p == nil {
-					consumerPath := c.canonicalPath
-					if consumerPath == "" {
-						if _, parsed, ok := parseHTTPName(c.name); ok {
-							consumerPath = parsed
+					// Prefix-injection retry (#2569): mirrors Tier 2 of
+					// resolveCallByPath in internal/engine/http_endpoint_match.go
+					// (#2557). When the standard byPath match missed AND the
+					// consumer path carries no API/version prefix of its own,
+					// retry by prepending each well-known prefix candidate to the
+					// consumer's normalized path and probing byPath. This handles
+					// the upvate pattern where the frontend extractor emits a raw
+					// path (e.g. `/searchBuildings`) while the backend mounts the
+					// route at `/api/v1/searchBuildings`.
+					//
+					// First match wins; edge is stamped with
+					// Properties["prefix_normalized"] (e.g. "api/v1") so the
+					// resolution is traceable in the graph.
+					var prefixNormalized string
+					if p == nil {
+						consumerPath := c.canonicalPath
+						if consumerPath == "" {
+							if _, parsed, ok := parseHTTPName(c.name); ok {
+								consumerPath = parsed
+							}
 						}
-					}
-					normConsumerPath := normalizePathForIndex(consumerPath)
-					// Only attempt when the consumer path has no API/version
-					// prefix itself — a double-prefixed path would be invalid.
-					if _, hasPrefix := stripAPIPrefix(normConsumerPath); !hasPrefix && normConsumerPath != "" {
-						for _, pfx := range crossRepoPrefixCandidates {
-							prefixedKey := pfx + normConsumerPath
-							pfxCandidates := make([]*httpEndpointHit, 0)
-							for _, h := range byPath[prefixedKey] {
-								if h.repo == pRepo && h.side == sideProducer {
-									pfxCandidates = appendUnique(pfxCandidates, h)
+						normConsumerPath := normalizePathForIndex(consumerPath)
+						// Only attempt when the consumer path has no API/version
+						// prefix itself — a double-prefixed path would be invalid.
+						if _, hasPrefix := stripAPIPrefix(normConsumerPath); !hasPrefix && normConsumerPath != "" {
+							for _, pfx := range crossRepoPrefixCandidates {
+								prefixedKey := pfx + normConsumerPath
+								pfxCandidates := make([]*httpEndpointHit, 0)
+								for _, h := range byPath[prefixedKey] {
+									if h.repo == pRepo && h.side == sideProducer {
+										pfxCandidates = appendUnique(pfxCandidates, h)
+									}
+								}
+								if len(pfxCandidates) > 0 {
+									sort.SliceStable(pfxCandidates, func(i, j int) bool { return less(pfxCandidates[i], pfxCandidates[j]) })
+									p, quality = pickProducerForConsumer(c, pfxCandidates)
+									if p != nil {
+										prefixNormalized = strings.TrimPrefix(pfx, "/")
+										break
+									}
 								}
 							}
-							if len(pfxCandidates) > 0 {
-								sort.SliceStable(pfxCandidates, func(i, j int) bool { return less(pfxCandidates[i], pfxCandidates[j]) })
-								p, quality = pickProducerForConsumer(c, pfxCandidates)
-								if p != nil {
-									prefixNormalized = strings.TrimPrefix(pfx, "/")
+						}
+					}
+
+					// URL-pattern normalization retry (#2588): when both the standard
+					// byPath lookup AND the prefix-injection retry miss, attempt to
+					// match the consumer path against every producer in the target repo
+					// using normalizeURLPattern. This resolves the 374-candidate case
+					// where client emits /inspections/{id} and server emits
+					// /api/v1/inspections/<pk:int> — different param syntax only.
+					//
+					// When a normalized match is found, confidence is boosted to
+					// urlPatternNormConfidence (0.95) and Properties["normalization"]
+					// is set to "url_pattern" so the resolution is traceable.
+					var urlPatternNormAnnotation string
+					var urlPatternNormConfidenceVal float64
+					if p == nil {
+						consumerPath := c.canonicalPath
+						if consumerPath == "" {
+							if _, parsed, ok := parseHTTPName(c.name); ok {
+								consumerPath = parsed
+							}
+						}
+						if consumerPath != "" {
+							for _, candidate := range producersByRepo[pRepo] {
+								if !verbsCompatible(c.verb, candidate.verb) {
+									continue
+								}
+								producerPath := candidate.canonicalPath
+								if producerPath == "" {
+									if _, parsed, ok := parseHTTPName(candidate.name); ok {
+										producerPath = parsed
+									}
+								}
+								conf, ann := applyURLPatternNorm(consumerPath, producerPath)
+								if conf > 0 {
+									p = candidate
+									quality = matchQualityAnyFallback
+									urlPatternNormAnnotation = ann
+									urlPatternNormConfidenceVal = conf
 									break
 								}
 							}
 						}
 					}
-				}
 
-				// URL-pattern normalization retry (#2588): when both the standard
-				// byPath lookup AND the prefix-injection retry miss, attempt to
-				// match the consumer path against every producer in the target repo
-				// using normalizeURLPattern. This resolves the 374-candidate case
-				// where client emits /inspections/{id} and server emits
-				// /api/v1/inspections/<pk:int> — different param syntax only.
-				//
-				// When a normalized match is found, confidence is boosted to
-				// urlPatternNormConfidence (0.95) and Properties["normalization"]
-				// is set to "url_pattern" so the resolution is traceable.
-				var urlPatternNormAnnotation string
-				var urlPatternNormConfidenceVal float64
-				if p == nil {
-					consumerPath := c.canonicalPath
-					if consumerPath == "" {
-						if _, parsed, ok := parseHTTPName(c.name); ok {
-							consumerPath = parsed
+					if p == nil {
+						continue
+					}
+
+					// Source / target: consumer's caller → producer's handler.
+					// If either side hasn't resolved to a real entity, fall
+					// back to the synthetic stampedID so the link still
+					// points at something meaningful.
+					srcID := c.callerID
+					if srcID == "" {
+						srcID = c.stampedID
+					}
+					tgtID := p.handlerID
+					if tgtID == "" {
+						tgtID = p.stampedID
+					}
+					source := entityKey(c.repo, srcID)
+					target := entityKey(p.repo, tgtID)
+					// #2585 — intra-repo HTTP self-calls use MethodHTTPSelf so
+					// they are segregated from cross-repo CALLS links.
+					linkMethod := MethodHTTP
+					if intraRepo {
+						linkMethod = MethodHTTPSelf
+					}
+					id := MakeID(source, target, linkMethod)
+					if emitted[id] {
+						continue
+					}
+					emitted[id] = true
+					// #2571/#2573: mark this consumer as cross-repo-resolved for
+					// the per-pass counter. One consumer may link to multiple
+					// producer repos; we count it resolved once it has any link.
+					matchedConsumers[entityKey(c.repo, c.stampedID)] = true
+
+					ident := canonicalIdentifier(c, p)
+					ch := httpChannel
+					confidence := ScoreImport()
+					if urlPatternNormConfidenceVal > 0 {
+						confidence = urlPatternNormConfidenceVal
+					}
+					// Intra-repo self-calls use RelationRoutesTo; cross-repo uses RelationCalls.
+					relation := RelationCalls
+					if intraRepo {
+						relation = RelationRoutesTo
+					}
+					link := Link{
+						ID:           id,
+						Source:       source,
+						Target:       target,
+						Relation:     relation,
+						Method:       linkMethod,
+						Confidence:   confidence,
+						Channel:      &ch,
+						Identifier:   &ident,
+						DiscoveredAt: now,
+						SourceLocations: [][]string{
+							{c.sourceFile},
+							{p.sourceFile},
+						},
+						MatchQuality: quality,
+					}
+					if prefixNormalized != "" {
+						link.Properties = map[string]string{"prefix_normalized": prefixNormalized}
+					}
+					if urlPatternNormAnnotation != "" {
+						if link.Properties == nil {
+							link.Properties = map[string]string{}
 						}
+						link.Properties["normalization"] = urlPatternNormAnnotation
 					}
-					if consumerPath != "" {
-						for _, candidate := range producersByRepo[pRepo] {
-							if !verbsCompatible(c.verb, candidate.verb) {
-								continue
-							}
-							producerPath := candidate.canonicalPath
-							if producerPath == "" {
-								if _, parsed, ok := parseHTTPName(candidate.name); ok {
-									producerPath = parsed
-								}
-							}
-							conf, ann := applyURLPatternNorm(consumerPath, producerPath)
-							if conf > 0 {
-								p = candidate
-								quality = matchQualityAnyFallback
-								urlPatternNormAnnotation = ann
-								urlPatternNormConfidenceVal = conf
-								break
-							}
+					if intraRepo {
+						if link.Properties == nil {
+							link.Properties = map[string]string{}
 						}
+						link.Properties["intra_repo"] = "true"
 					}
-				}
-
-				if p == nil {
-					continue
-				}
-
-				// Source / target: consumer's caller → producer's handler.
-				// If either side hasn't resolved to a real entity, fall
-				// back to the synthetic stampedID so the link still
-				// points at something meaningful.
-				srcID := c.callerID
-				if srcID == "" {
-					srcID = c.stampedID
-				}
-				tgtID := p.handlerID
-				if tgtID == "" {
-					tgtID = p.stampedID
-				}
-				source := entityKey(c.repo, srcID)
-				target := entityKey(p.repo, tgtID)
-				// #2585 — intra-repo HTTP self-calls use MethodHTTPSelf so
-				// they are segregated from cross-repo CALLS links.
-				linkMethod := MethodHTTP
-				if intraRepo {
-					linkMethod = MethodHTTPSelf
-				}
-				id := MakeID(source, target, linkMethod)
-				if emitted[id] {
-					continue
-				}
-				emitted[id] = true
-				// #2571/#2573: mark this consumer as cross-repo-resolved for
-				// the per-pass counter. One consumer may link to multiple
-				// producer repos; we count it resolved once it has any link.
-				matchedConsumers[entityKey(c.repo, c.stampedID)] = true
-
-				ident := canonicalIdentifier(c, p)
-				ch := httpChannel
-				confidence := ScoreImport()
-				if urlPatternNormConfidenceVal > 0 {
-					confidence = urlPatternNormConfidenceVal
-				}
-				// Intra-repo self-calls use RelationRoutesTo; cross-repo uses RelationCalls.
-				relation := RelationCalls
-				if intraRepo {
-					relation = RelationRoutesTo
-				}
-				link := Link{
-					ID:           id,
-					Source:       source,
-					Target:       target,
-					Relation:     relation,
-					Method:       linkMethod,
-					Confidence:   confidence,
-					Channel:      &ch,
-					Identifier:   &ident,
-					DiscoveredAt: now,
-					SourceLocations: [][]string{
-						{c.sourceFile},
-						{p.sourceFile},
-					},
-					MatchQuality: quality,
-				}
-				if prefixNormalized != "" {
-					link.Properties = map[string]string{"prefix_normalized": prefixNormalized}
-				}
-				if urlPatternNormAnnotation != "" {
-					if link.Properties == nil {
-						link.Properties = map[string]string{}
-					}
-					link.Properties["normalization"] = urlPatternNormAnnotation
-				}
-				if intraRepo {
-					if link.Properties == nil {
-						link.Properties = map[string]string{}
-					}
-					link.Properties["intra_repo"] = "true"
-				}
-				fresh = append(fresh, link)
+					fresh = append(fresh, link)
+				} // end for _, c := range consumersByRepo[cRepo]
 			}
 		}
 	}

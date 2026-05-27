@@ -2310,3 +2310,188 @@ func TestHTTPPass_IntraRepoSelfCall_Resolved(t *testing.T) {
 		}
 	}
 }
+
+// TestHTTPPass_MultiConsumerSameEndpoint verifies that when two consumer entities
+// in the same repo share the same canonical path (e.g. a legacy service file and
+// a V2 service file both calling GET /users/{id}), the pass emits a cross-repo
+// CALLS link for EACH consumer, not just the first one (#2611).
+//
+// Before the fix: only the consumer with the lexicographically-smaller stampedID
+// was resolved; the other remained a permanent orphan.
+// After the fix: both consumers are resolved, producing two distinct links.
+func TestHTTPPass_MultiConsumerSameEndpoint(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "UserView", "kind": "Controller", "source_file": "app/views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/users/{id}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/users/{id}", "framework": "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	// Two frontend consumer entities for the SAME endpoint path, in different
+	// source files — simulating a legacy service and a V2 service.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "loadUserLegacy", "kind": "Function", "source_file": "src/api.js"},
+			{
+				"id": "ep2", "name": "http:GET:/users/{id}", "kind": "http_endpoint",
+				"source_file": "src/api.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/users/{id}", "framework": "fetch",
+					"pattern_type": "http_endpoint_client_synthesis", "source_caller": "Function:loadUserLegacy",
+				},
+			},
+			{"id": "fn2", "name": "loadUserV2", "kind": "Function", "source_file": "src/apiV2.ts"},
+			{
+				"id": "ep3", "name": "http:GET:/users/{id}", "kind": "http_endpoint",
+				"source_file": "src/apiV2.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/users/{id}", "framework": "fetch",
+					"pattern_type": "http_endpoint_client_synthesis", "source_caller": "Function:loadUserV2",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2611", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2611-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+		}
+	}
+	// Both consumers must be resolved — two distinct links expected.
+	if len(httpLinks) != 2 {
+		t.Errorf("expected 2 http links (one per consumer), got %d: %+v", len(httpLinks), httpLinks)
+	}
+	// Both links must point to the same backend handler.
+	for _, l := range httpLinks {
+		if l.Target != "backend::h1" {
+			t.Errorf("expected target=backend::h1, got %s", l.Target)
+		}
+	}
+	// The two links must have distinct sources (fn1 and fn2).
+	sources := make([]string, 0, len(httpLinks))
+	for _, l := range httpLinks {
+		sources = append(sources, l.Source)
+	}
+	sort.Strings(sources)
+	wantSources := []string{"frontend::fn1", "frontend::fn2"}
+	sort.Strings(wantSources)
+	for i, s := range sources {
+		if s != wantSources[i] {
+			t.Errorf("sources[%d]: want %s, got %s", i, wantSources[i], s)
+		}
+	}
+}
+
+// TestHTTPPass_MultiConsumerBelowThreshold verifies that consumer entities with
+// paths that cannot match any producer (e.g. a truly novel path with no backend
+// definition) still remain orphans even after the multi-consumer fix. This pins
+// the negative path: lifting deduplication must not create spurious links.
+func TestHTTPPass_MultiConsumerBelowThreshold(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "UserView", "kind": "Controller", "source_file": "app/views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/users/{id}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/users/{id}", "framework": "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	// Two frontend consumers: one with a known path, one with a novel path
+	// that has no backend counterpart. Only the known path should be linked.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "loadUser", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/users/{id}", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/users/{id}", "framework": "fetch",
+					"pattern_type": "http_endpoint_client_synthesis", "source_caller": "Function:loadUser",
+				},
+			},
+			{"id": "fn2", "name": "loadOrphan", "kind": "Function", "source_file": "src/admin.ts"},
+			{
+				"id": "ep3", "name": "http:GET:/admin/secret-endpoint", "kind": "http_endpoint",
+				"source_file": "src/admin.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/admin/secret-endpoint", "framework": "fetch",
+					"pattern_type": "http_endpoint_client_synthesis", "source_caller": "Function:loadOrphan",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	res, err := RunAllPasses("g2611b", root, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2611b-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+		}
+	}
+	// Only the known-path consumer should be linked; the novel-path consumer stays orphan.
+	if len(httpLinks) != 1 {
+		t.Errorf("expected 1 http link (only the matchable consumer), got %d: %+v", len(httpLinks), httpLinks)
+	}
+	if len(httpLinks) > 0 && httpLinks[0].Source != "frontend::fn1" {
+		t.Errorf("expected source=frontend::fn1, got %s", httpLinks[0].Source)
+	}
+	// Find the HTTP pass result.
+	var httpPassResult *PassResult
+	for i, pr := range res.Results {
+		if pr.Pass == "http" {
+			httpPassResult = &res.Results[i]
+			break
+		}
+	}
+	if httpPassResult == nil {
+		t.Fatal("expected an http pass result")
+	}
+	// OrphanCalls should be 1 (the novel path consumer).
+	if httpPassResult.OrphanCalls != 1 {
+		t.Errorf("expected OrphanCalls=1, got %d", httpPassResult.OrphanCalls)
+	}
+	// CrossRepoResolved should be 1.
+	if httpPassResult.CrossRepoResolved != 1 {
+		t.Errorf("expected CrossRepoResolved=1, got %d", httpPassResult.CrossRepoResolved)
+	}
+	_ = strings.Contains("", "")
+}
