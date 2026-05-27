@@ -1770,6 +1770,9 @@ func entityNames(entities []types.EntityRecord) []string {
 // per-field/operation entities, while a non-migration file with identical
 // content is fully extracted.
 func TestExtract_MigrationFilePruned(t *testing.T) {
+	// Issue #2548: opt-in to migration entity emission for this test.
+	t.Setenv("ARCHIGRAPH_EMIT_MIGRATION_ENTITIES", "1")
+
 	src := `from django.db import migrations, models
 
 
@@ -1844,6 +1847,9 @@ class Migration(migrations.Migration):
 //   - django_models.py.fixture     — lives under core/models/ → fully extracted;
 //     at least Device class + two methods emitted.
 func TestExtract_DjangoMigrationFixtures(t *testing.T) {
+	// Issue #2548: opt-in to migration entity emission for this test.
+	t.Setenv("ARCHIGRAPH_EMIT_MIGRATION_ENTITIES", "1")
+
 	ext, ok := extractor.Get("python")
 	if !ok {
 		t.Fatal("python extractor not registered")
@@ -1947,6 +1953,9 @@ func TestExtract_DjangoMigrationFixtures(t *testing.T) {
 // exactly one kind=Migration entity (plus the file-level SCOPE.Component for
 // import resolution). Operations are preserved in entity properties.
 func TestExtract_DjangoMigration_OneEntityPerFile(t *testing.T) {
+	// Issue #2548: opt-in to migration entity emission for this test.
+	t.Setenv("ARCHIGRAPH_EMIT_MIGRATION_ENTITIES", "1")
+
 	src := `from django.db import migrations, models
 
 

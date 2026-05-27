@@ -25,6 +25,7 @@ package python
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -36,6 +37,12 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// emitMigrationEntitiesEnv controls whether Django migration files emit
+// Migration entities. Defaults to false (migrations are pruned). Set to "1"
+// or "true" to include migration entities in the output. This follows the
+// conservative-prune policy pattern (e.g., ARCHIGRAPH_EMIT_DESTRUCTURE_DETAIL).
+const emitMigrationEntitiesEnv = "ARCHIGRAPH_EMIT_MIGRATION_ENTITIES"
 
 func init() {
 	extractor.Register("python", &Extractor{})
@@ -131,17 +138,28 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// Migration entity per file with per-operation metadata encoded as
 	// properties (operations JSON array, op_count, dependencies) rather than
 	// as separate graph nodes.
+	//
+	// Issue #2548: Django migration files are now pruned by default (zero
+	// domain logic, pure ORM scaffolding). Opt-in via ARCHIGRAPH_EMIT_MIGRATION_ENTITIES=1
+	// for backward compatibility or when migration analysis is needed.
 	if isDjangoMigrationFile(file.Path) {
-		migEnt := extractMigrationEntity(djangoMigrationFile{
-			path:     file.Path,
-			language: file.Language,
-			source:   string(file.Content),
-		})
-		entities = append(entities, migEnt)
-		span.SetAttributes(
-			attribute.Int("entity_count", len(entities)),
-			attribute.Bool("django_migration_pruned", true),
-		)
+		emitMigrations := os.Getenv(emitMigrationEntitiesEnv) == "1" || os.Getenv(emitMigrationEntitiesEnv) == "true"
+		if emitMigrations {
+			migEnt := extractMigrationEntity(djangoMigrationFile{
+				path:     file.Path,
+				language: file.Language,
+				source:   string(file.Content),
+			})
+			entities = append(entities, migEnt)
+			span.SetAttributes(
+				attribute.Int("entity_count", len(entities)),
+				attribute.Bool("django_migration_emitted", true),
+			)
+		} else {
+			span.SetAttributes(
+				attribute.Bool("django_migration_pruned", true),
+			)
+		}
 		extractor.TagRelationshipsLanguage(entities, "python")
 		extractor.TagEntitiesLanguage(entities, "python")
 		return entities, nil
