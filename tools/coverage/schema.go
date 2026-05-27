@@ -1,8 +1,8 @@
 // Package main implements the coverage registry CLI.
 //
-// The schema mirrors docs/coverage.json. Keep this file in sync with
-// the documented schema in issue #2720. Pure value types: zero imports
-// from internal/ packages.
+// The schema mirrors docs/coverage/registry.json. Keep this file in sync
+// with the documented schema in issue #2720. Pure value types: zero
+// imports from internal/ packages.
 package main
 
 import (
@@ -36,7 +36,7 @@ var validStatuses = map[string]struct{}{
 //	lang.python.framework.django-drf
 var idPattern = regexp.MustCompile(`^[a-z0-9-]+(\.[a-z0-9-]+)+$`)
 
-// Registry is the root JSON document persisted at docs/coverage.json.
+// Registry is the root JSON document persisted at docs/coverage/registry.json.
 type Registry struct {
 	SchemaVersion int      `json:"$schema_version"`
 	Records       []Record `json:"records"`

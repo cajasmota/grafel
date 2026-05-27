@@ -1,15 +1,14 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — language: `python`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# python
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: 3 · **Tools**: 0 · **ORMs**: 0 · **Other**: 0
 
-- Records: **3**
-- Full: **4** · Partial: **1** · Missing: **0** · N/A: **0**
+Back to [summary](../summary.md).
 
-## Records
+## Frameworks
 
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.python.framework.django-drf](../detail/lang.python.framework.django-drf.md) | [http_framework](../by-category/http_framework.md) | Django REST Framework | auth_coverage=partial, endpoint_synthesis=full, handler_attribution=full |
-| [lang.python.framework.fastapi](../detail/lang.python.framework.fastapi.md) | [http_framework](../by-category/http_framework.md) | FastAPI | endpoint_synthesis=full |
-| [lang.python.framework.flask](../detail/lang.python.framework.flask.md) | [http_framework](../by-category/http_framework.md) | Flask | endpoint_synthesis=full |
+| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+|---|---|---|---|---|---|
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ⚠️ | ✅ | ✅ | — | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | — | ✅ | — | — | |
+| [Flask](../detail/lang.python.framework.flask.md) | — | ✅ | — | — | |

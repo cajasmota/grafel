@@ -1,17 +1,14 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — category: `http_framework`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# http_framework
 
-Auto-generated. Back to [summary](../summary.md).
+**Total**: 5 records · **javascript**: 2 · **python**: 3
 
-- Records: **5**
-- Valid capability keys: `auth_coverage`, `endpoint_synthesis`, `handler_attribution`, `middleware_coverage`
+Back to [summary](../summary.md). Bucket: **Frameworks**.
 
-## Records
-
-| ID | Language | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.javascript.framework.express](../detail/lang.javascript.framework.express.md) | [javascript](../by-language/javascript.md) | Express.js | endpoint_synthesis=full |
-| [lang.javascript.framework.nestjs](../detail/lang.javascript.framework.nestjs.md) | [javascript](../by-language/javascript.md) | NestJS | endpoint_synthesis=full |
-| [lang.python.framework.django-drf](../detail/lang.python.framework.django-drf.md) | [python](../by-language/python.md) | Django REST Framework | auth_coverage=partial, endpoint_synthesis=full, handler_attribution=full |
-| [lang.python.framework.fastapi](../detail/lang.python.framework.fastapi.md) | [python](../by-language/python.md) | FastAPI | endpoint_synthesis=full |
-| [lang.python.framework.flask](../detail/lang.python.framework.flask.md) | [python](../by-language/python.md) | Flask | endpoint_synthesis=full |
+| Language | Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+|---|---|---|---|---|---|---|
+| [javascript](../by-language/javascript.md) | [Express.js](../detail/lang.javascript.framework.express.md) | — | ✅ | — | — | |
+| [javascript](../by-language/javascript.md) | [NestJS](../detail/lang.javascript.framework.nestjs.md) | — | ✅ | — | — | |
+| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ⚠️ | ✅ | ✅ | — | |
+| [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | — | ✅ | — | — | |
+| [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | — | ✅ | — | — | |

@@ -17,7 +17,7 @@ const docsDir = "docs/coverage"
 
 // doNotEditMarker is prepended to every generated file so reviewers and
 // CI see immediately that hand-edits will be lost.
-const doNotEditMarker = "<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->"
+const doNotEditMarker = "<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->"
 
 //go:embed templates/*.tmpl
 var templateFS embed.FS
@@ -26,7 +26,7 @@ var templateFS embed.FS
 // are parsed once and reused per render; parsing here keeps generate.go
 // free of init-time side effects.
 func loadTemplates() (*template.Template, error) {
-	root := template.New("coverage")
+	root := template.New("coverage").Funcs(templateFuncs)
 	entries, err := templateFS.ReadDir("templates")
 	if err != nil {
 		return nil, fmt.Errorf("read templates dir: %w", err)
@@ -63,46 +63,84 @@ type recordView struct {
 	Category string
 	Language string
 	Label    string
+	Bucket   string
 	CapList  []capEntry
+	// CapByKey lets templates look up a capability cell by key without
+	// re-ranging CapList. Empty (missing) keys return the zero Capability;
+	// templates pair this with the Glyph helper to render "—".
+	CapByKey map[string]Capability
+	// Digest is the worst-status across this record's capabilities.
+	// Populated for every record; templates use it for the Other bucket's
+	// single Status column.
+	Digest string
 }
 
-// languageView is one row of the by-language summary.
-type languageView struct {
-	Name    string
-	Stats   LanguageStats
-	PctFull string
+// pivotRow is one row of the summary pivot table (rows = language,
+// columns = bucket counts).
+type pivotRow struct {
+	Name           string
+	Frameworks     int
+	Tools          int
+	ORMs           int
+	Other          int
+	Uncategorized  bool // true for the language-neutral "Uncategorized" row
 }
 
-// categoryView is one row of the by-category summary.
-type categoryView struct {
-	Name  string
-	Count int
+// bucketSection is one rendered section on a by-language page.
+type bucketSection struct {
+	Name           string   // bucket display name (Frameworks/Tools/ORMs/Other)
+	CapabilityKeys []string // capability columns; empty for Other
+	Records        []recordView
 }
 
 // summaryData feeds summary.md.tmpl.
 type summaryData struct {
-	Marker     string
-	Stats      Stats
-	Languages  []languageView
-	Categories []categoryView
-	Records    []recordView
+	Marker          string
+	TotalLanguages  int
+	TotalFrameworks int
+	TotalTools      int
+	TotalORMs       int
+	TotalOther      int
+	Rows            []pivotRow // sorted by language; Uncategorized last
 }
 
 // languagePageData feeds by-language/<lang>.md.tmpl.
 type languagePageData struct {
-	Marker   string
+	Marker     string
+	Language   string
+	Frameworks int
+	Tools      int
+	ORMs       int
+	Other      int
+	Sections   []bucketSection // bucketOrder, empty sections omitted
+}
+
+// categoryLanguageCount is one element of the by-category banner.
+type categoryLanguageCount struct {
 	Language string
-	Stats    LanguageStats
-	Records  []recordView
+	Count    int
+}
+
+// categoryRow is one row in the by-category table (Language column +
+// capability glyphs + Notes).
+type categoryRow struct {
+	Language string
+	Label    string
+	ID       string
+	CapList  []capEntry
+	CapByKey map[string]Capability
+	Digest   string
 }
 
 // categoryPageData feeds by-category/<cat>.md.tmpl.
 type categoryPageData struct {
 	Marker         string
 	Category       string
-	Count          int
-	CapabilityKeys []string
-	Records        []recordView
+	Bucket         string
+	Total          int
+	ByLanguage     []categoryLanguageCount
+	CapabilityKeys []string // capability columns for this category's bucket
+	Records        []categoryRow
 }
 
 // detailPageData feeds detail/<id>.md.tmpl.
@@ -117,27 +155,27 @@ type detailPageData struct {
 func recordToView(rec Record) recordView {
 	keys := sortedCapKeys(rec.Capabilities)
 	list := make([]capEntry, 0, len(keys))
+	byKey := make(map[string]Capability, len(keys))
 	for _, k := range keys {
 		list = append(list, capEntry{Key: k, Cap: rec.Capabilities[k]})
+		byKey[k] = rec.Capabilities[k]
 	}
 	return recordView{
 		ID:       rec.ID,
 		Category: rec.Category,
 		Language: rec.Language,
 		Label:    rec.Label,
+		Bucket:   bucketOf(rec.Category),
 		CapList:  list,
+		CapByKey: byKey,
+		Digest:   digestStatus(rec.Capabilities),
 	}
 }
 
-// pctFull renders the full-capability percentage as a string. Returns
-// "0%" when the language has no capability cells (avoids divide-by-zero
-// and keeps output deterministic across registries).
-func pctFull(ls LanguageStats) string {
-	total := ls.Full + ls.Partial + ls.Missing + ls.NotAppl
-	if total == 0 {
-		return "0%"
-	}
-	return fmt.Sprintf("%d%%", (ls.Full*100)/total)
+// templateFuncs are the helpers exposed to templates. Kept minimal so
+// most rendering logic lives in Go where it can be tested.
+var templateFuncs = template.FuncMap{
+	"glyph": statusGlyph,
 }
 
 // generate writes the full markdown tree under outRoot/docs/coverage.
@@ -149,19 +187,6 @@ func generate(reg *Registry, outRoot string) error {
 	if err != nil {
 		return err
 	}
-	stats := computeStats(reg)
-
-	// Pre-build sorted language and category lists.
-	langNames := make([]string, 0, len(stats.ByLanguage))
-	for k := range stats.ByLanguage {
-		langNames = append(langNames, k)
-	}
-	sort.Strings(langNames)
-	catNames := make([]string, 0, len(stats.ByCategory))
-	for k := range stats.ByCategory {
-		catNames = append(catNames, k)
-	}
-	sort.Strings(catNames)
 
 	// Sorted record views (registry already sorts records, but be defensive
 	// so generate works on any *Registry, not just one fresh from saveRegistry).
@@ -173,12 +198,54 @@ func generate(reg *Registry, outRoot string) error {
 		allViews[i] = recordToView(r)
 	}
 
-	// Group views per language and per category for slice pages.
+	// Group views per language, per category, and per (language, bucket).
 	byLang := map[string][]recordView{}
 	byCat := map[string][]recordView{}
+	byLangBucket := map[string]map[string][]recordView{}
+	langSet := map[string]struct{}{}
 	for _, v := range allViews {
 		byLang[v.Language] = append(byLang[v.Language], v)
 		byCat[v.Category] = append(byCat[v.Category], v)
+		if byLangBucket[v.Language] == nil {
+			byLangBucket[v.Language] = map[string][]recordView{}
+		}
+		byLangBucket[v.Language][v.Bucket] = append(byLangBucket[v.Language][v.Bucket], v)
+		langSet[v.Language] = struct{}{}
+	}
+
+	// Sort language names for deterministic iteration. The pivot table
+	// lists each language alphabetically; templates do not re-sort.
+	langNames := make([]string, 0, len(langSet))
+	for n := range langSet {
+		langNames = append(langNames, n)
+	}
+	sort.Strings(langNames)
+
+	// Sort category names.
+	catNames := make([]string, 0, len(byCat))
+	for n := range byCat {
+		catNames = append(catNames, n)
+	}
+	sort.Strings(catNames)
+
+	// Records within each slice are sorted by label (then ID for stability)
+	// per #2725 rendering rules.
+	sortByLabel := func(rs []recordView) {
+		sort.SliceStable(rs, func(i, j int) bool {
+			if rs[i].Label != rs[j].Label {
+				return rs[i].Label < rs[j].Label
+			}
+			return rs[i].ID < rs[j].ID
+		})
+	}
+	for _, n := range langNames {
+		sortByLabel(byLang[n])
+		for _, b := range bucketOrder {
+			sortByLabel(byLangBucket[n][b])
+		}
+	}
+	for _, n := range catNames {
+		sortByLabel(byCat[n])
 	}
 
 	root := filepath.Join(outRoot, docsDir)
@@ -192,36 +259,80 @@ func generate(reg *Registry, outRoot string) error {
 		return err
 	}
 
-	// Render summary.
-	languages := make([]languageView, 0, len(langNames))
+	// Build summary pivot rows.
+	totals := pivotRow{}
+	rows := make([]pivotRow, 0, len(langNames)+1)
 	for _, n := range langNames {
-		ls := stats.ByLanguage[n]
-		languages = append(languages, languageView{Name: n, Stats: ls, PctFull: pctFull(ls)})
+		buckets := byLangBucket[n]
+		row := pivotRow{
+			Name:       n,
+			Frameworks: len(buckets[BucketFrameworks]),
+			Tools:      len(buckets[BucketTools]),
+			ORMs:       len(buckets[BucketORMs]),
+			Other:      len(buckets[BucketOther]),
+		}
+		totals.Frameworks += row.Frameworks
+		totals.Tools += row.Tools
+		totals.ORMs += row.ORMs
+		totals.Other += row.Other
+		// Language-neutral pseudo-language. Surface it as an explicit
+		// "Uncategorized" row at the bottom rather than blending into the
+		// alphabetical list (per #2725 spec).
+		if n == "multi" || n == "" {
+			row.Name = "Uncategorized"
+			row.Uncategorized = true
+		}
+		rows = append(rows, row)
 	}
-	categories := make([]categoryView, 0, len(catNames))
-	for _, n := range catNames {
-		categories = append(categories, categoryView{Name: n, Count: stats.ByCategory[n]})
-	}
+	// Move any Uncategorized rows to the end.
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Uncategorized != rows[j].Uncategorized {
+			return !rows[i].Uncategorized
+		}
+		return rows[i].Name < rows[j].Name
+	})
+
 	if err := renderToFile(tmpls, "summary.md.tmpl", filepath.Join(root, "summary.md"), summaryData{
-		Marker:     doNotEditMarker,
-		Stats:      stats,
-		Languages:  languages,
-		Categories: categories,
-		Records:    allViews,
+		Marker:          doNotEditMarker,
+		TotalLanguages:  len(langNames),
+		TotalFrameworks: totals.Frameworks,
+		TotalTools:      totals.Tools,
+		TotalORMs:       totals.ORMs,
+		TotalOther:      totals.Other,
+		Rows:            rows,
 	}); err != nil {
 		return err
 	}
 
 	// Per-language pages.
 	for _, n := range langNames {
-		recs := byLang[n]
+		buckets := byLangBucket[n]
+		sections := make([]bucketSection, 0, len(bucketOrder))
+		for _, b := range bucketOrder {
+			recs := buckets[b]
+			if len(recs) == 0 {
+				continue
+			}
+			sections = append(sections, bucketSection{
+				Name:           b,
+				CapabilityKeys: bucketCapabilityKeys(b),
+				Records:        recs,
+			})
+		}
+		displayLang := n
+		if n == "multi" || n == "" {
+			displayLang = "Uncategorized"
+		}
 		if err := renderToFile(tmpls, "by-language.md.tmpl",
 			filepath.Join(root, "by-language", n+".md"),
 			languagePageData{
-				Marker:   doNotEditMarker,
-				Language: n,
-				Stats:    stats.ByLanguage[n],
-				Records:  recs,
+				Marker:     doNotEditMarker,
+				Language:   displayLang,
+				Frameworks: len(buckets[BucketFrameworks]),
+				Tools:      len(buckets[BucketTools]),
+				ORMs:       len(buckets[BucketORMs]),
+				Other:      len(buckets[BucketOther]),
+				Sections:   sections,
 			}); err != nil {
 			return err
 		}
@@ -230,17 +341,63 @@ func generate(reg *Registry, outRoot string) error {
 	// Per-category pages.
 	for _, n := range catNames {
 		recs := byCat[n]
-		keys := make([]string, len(categoryCapabilities[n]))
-		copy(keys, categoryCapabilities[n])
-		sort.Strings(keys)
+		bucket := bucketOf(n)
+		// Per-language banner counts for this category.
+		perLang := map[string]int{}
+		for _, r := range recs {
+			perLang[r.Language]++
+		}
+		langs := make([]string, 0, len(perLang))
+		for l := range perLang {
+			langs = append(langs, l)
+		}
+		sort.Strings(langs)
+		banner := make([]categoryLanguageCount, 0, len(langs))
+		for _, l := range langs {
+			banner = append(banner, categoryLanguageCount{Language: l, Count: perLang[l]})
+		}
+		// Capability keys: prefer the bucket-wide union for framework/orm/tool
+		// pages so the column set is consistent across categories in the
+		// same bucket. For Other categories, use the category's own keys
+		// (the bucket-wide nil signals "digest only", but per-category
+		// pages still benefit from showing the real columns).
+		var keys []string
+		if bucket == BucketOther {
+			keys = make([]string, len(categoryCapabilities[n]))
+			copy(keys, categoryCapabilities[n])
+			sort.Strings(keys)
+		} else {
+			keys = bucketCapabilityKeys(bucket)
+		}
+		// Rows sorted by language then label (already label-sorted; do a
+		// stable resort by language).
+		rows := make([]categoryRow, 0, len(recs))
+		for _, r := range recs {
+			rows = append(rows, categoryRow{
+				Language: r.Language,
+				Label:    r.Label,
+				ID:       r.ID,
+				CapList:  r.CapList,
+				CapByKey: r.CapByKey,
+				Digest:   r.Digest,
+			})
+		}
+		sort.SliceStable(rows, func(i, j int) bool {
+			if rows[i].Language != rows[j].Language {
+				return rows[i].Language < rows[j].Language
+			}
+			return rows[i].Label < rows[j].Label
+		})
 		if err := renderToFile(tmpls, "by-category.md.tmpl",
 			filepath.Join(root, "by-category", n+".md"),
 			categoryPageData{
 				Marker:         doNotEditMarker,
 				Category:       n,
-				Count:          stats.ByCategory[n],
+				Bucket:         bucket,
+				Total:          len(recs),
+				ByLanguage:     banner,
 				CapabilityKeys: keys,
-				Records:        recs,
+				Records:        rows,
 			}); err != nil {
 			return err
 		}

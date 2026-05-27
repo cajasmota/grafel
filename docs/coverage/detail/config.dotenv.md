@@ -1,4 +1,4 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # `config.dotenv` — .env (names-only — values stripped at extraction boundary)
 
 Auto-generated. Back to [summary](../summary.md).
@@ -11,12 +11,12 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `env_resolution` | `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` |
-| `file_parsing` | `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` |
+| `env_resolution` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` |
+| `file_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` |
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update config.dotenv ...`) then regenerate:
 
 ```

@@ -1,13 +1,12 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — language: `zig`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# zig
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: 0 · **Tools**: 0 · **ORMs**: 0 · **Other**: 1
 
-- Records: **1**
-- Full: **0** · Partial: **2** · Missing: **0** · N/A: **0**
+Back to [summary](../summary.md).
 
-## Records
+## Other
 
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.zig](../detail/lang.zig.md) | [language](../by-category/language.md) | Zig | call_line_precision=partial, core_extraction=partial |
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [Zig](../detail/lang.zig.md) | [language](../by-category/language.md) | ⚠️ | |

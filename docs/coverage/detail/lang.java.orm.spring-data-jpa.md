@@ -1,4 +1,4 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # `lang.java.orm.spring-data-jpa` — Spring Data JPA
 
 Auto-generated. Back to [summary](../summary.md).
@@ -11,12 +11,12 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `model_extraction` | `full` | `2026-05-28` | — | — | `internal/extractors/cross/ormlink/extractor.go` |
-| `query_attribution` | `partial` | `2026-05-28` | — | — | `internal/engine/orm_queries_other.go` |
+| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/cross/ormlink/extractor.go` |
+| `query_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/orm_queries_other.go` |
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update lang.java.orm.spring-data-jpa ...`) then regenerate:
 
 ```

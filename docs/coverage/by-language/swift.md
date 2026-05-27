@@ -1,15 +1,24 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — language: `swift`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# swift
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 0 · **Other**: 1
 
-- Records: **3**
-- Full: **1** · Partial: **1** · Missing: **3** · N/A: **0**
+Back to [summary](../summary.md).
 
-## Records
+## Frameworks
 
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.swift](../detail/lang.swift.md) | [language](../by-category/language.md) | Swift | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.swift.framework.vapor](../detail/lang.swift.framework.vapor.md) | [http_framework](../by-category/http_framework.md) | Vapor | endpoint_synthesis=missing |
-| [pkg.swift-package](../detail/pkg.swift-package.md) | [package_manager](../by-category/package_manager.md) | Package.swift / Podfile | manifest_parsing=missing |
+| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+|---|---|---|---|---|---|
+| [Vapor](../detail/lang.swift.framework.vapor.md) | — | ❌ | — | — | |
+
+## Tools
+
+| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+|---|---|---|---|---|---|
+| [Package.swift / Podfile](../detail/pkg.swift-package.md) | — | — | ❌ | — | |
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [Swift](../detail/lang.swift.md) | [language](../by-category/language.md) | ❌ | |

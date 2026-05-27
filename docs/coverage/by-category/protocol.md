@@ -1,16 +1,13 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — category: `protocol`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# protocol
 
-Auto-generated. Back to [summary](../summary.md).
+**Total**: 4 records · **multi**: 4
 
-- Records: **4**
-- Valid capability keys: `cross_repo_linkage`, `method_attribution`, `service_extraction`
+Back to [summary](../summary.md). Bucket: **Other**.
 
-## Records
-
-| ID | Language | Label | Capabilities |
-|----|----------|-------|--------------|
-| [protocol.graphql](../detail/protocol.graphql.md) | [multi](../by-language/multi.md) | GraphQL SDL (Query/Mutation/Subscription) | cross_repo_linkage=partial, method_attribution=full, service_extraction=full |
-| [protocol.grpc](../detail/protocol.grpc.md) | [multi](../by-language/multi.md) | gRPC services | cross_repo_linkage=full, method_attribution=full, service_extraction=full |
-| [protocol.openapi](../detail/protocol.openapi.md) | [multi](../by-language/multi.md) | OpenAPI / Swagger spec | cross_repo_linkage=full, method_attribution=full, service_extraction=full |
-| [protocol.protobuf](../detail/protocol.protobuf.md) | [multi](../by-language/multi.md) | Protocol Buffers (.proto) | cross_repo_linkage=full, method_attribution=full, service_extraction=full |
+| Language | Name | cross_repo_linkage | method_attribution | service_extraction | Status | Notes |
+|---|---|---|---|---|---|---|
+| [multi](../by-language/multi.md) | [GraphQL SDL (Query/Mutation/Subscription)](../detail/protocol.graphql.md) | ⚠️ | ✅ | ✅ | ⚠️ | |
+| [multi](../by-language/multi.md) | [OpenAPI / Swagger spec](../detail/protocol.openapi.md) | ✅ | ✅ | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [Protocol Buffers (.proto)](../detail/protocol.protobuf.md) | ✅ | ✅ | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [gRPC services](../detail/protocol.grpc.md) | ✅ | ✅ | ✅ | ✅ | |

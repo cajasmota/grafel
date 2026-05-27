@@ -1,14 +1,18 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — language: `scala`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# scala
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: 0 · **Tools**: 1 · **ORMs**: 0 · **Other**: 1
 
-- Records: **2**
-- Full: **1** · Partial: **1** · Missing: **2** · N/A: **0**
+Back to [summary](../summary.md).
 
-## Records
+## Tools
 
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.scala](../detail/lang.scala.md) | [language](../by-category/language.md) | Scala | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [pkg.sbt](../detail/pkg.sbt.md) | [package_manager](../by-category/package_manager.md) | build.sbt | manifest_parsing=missing |
+| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+|---|---|---|---|---|---|
+| [build.sbt](../detail/pkg.sbt.md) | — | — | ❌ | — | |
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [Scala](../detail/lang.scala.md) | [language](../by-category/language.md) | ❌ | |

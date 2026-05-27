@@ -1,4 +1,4 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # `protocol.openapi` — OpenAPI / Swagger spec
 
 Auto-generated. Back to [summary](../summary.md).
@@ -11,13 +11,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `cross_repo_linkage` | `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
-| `method_attribution` | `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
-| `service_extraction` | `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
+| `cross_repo_linkage` | ✅ `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
+| `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
+| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update protocol.openapi ...`) then regenerate:
 
 ```

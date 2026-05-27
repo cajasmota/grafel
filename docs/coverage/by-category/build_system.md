@@ -1,16 +1,13 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — category: `build_system`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# build_system
 
-Auto-generated. Back to [summary](../summary.md).
+**Total**: 4 records · **multi**: 4
 
-- Records: **4**
-- Valid capability keys: `dependency_graph`, `target_extraction`
+Back to [summary](../summary.md). Bucket: **Tools**.
 
-## Records
-
-| ID | Language | Label | Capabilities |
-|----|----------|-------|--------------|
-| [build.bazel](../detail/build.bazel.md) | [multi](../by-language/multi.md) | Bazel / BUCK / WORKSPACE | dependency_graph=full, target_extraction=full |
-| [build.dockerfile](../detail/build.dockerfile.md) | [multi](../by-language/multi.md) | Dockerfile | dependency_graph=full, target_extraction=full |
-| [build.justfile](../detail/build.justfile.md) | [multi](../by-language/multi.md) | Justfile | dependency_graph=full, target_extraction=full |
-| [build.makefile](../detail/build.makefile.md) | [multi](../by-language/multi.md) | Makefile | dependency_graph=missing, target_extraction=partial |
+| Language | Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+|---|---|---|---|---|---|---|
+| [multi](../by-language/multi.md) | [Bazel / BUCK / WORKSPACE](../detail/build.bazel.md) | ✅ | — | — | ✅ | |
+| [multi](../by-language/multi.md) | [Dockerfile](../detail/build.dockerfile.md) | ✅ | — | — | ✅ | |
+| [multi](../by-language/multi.md) | [Justfile](../detail/build.justfile.md) | ✅ | — | — | ✅ | |
+| [multi](../by-language/multi.md) | [Makefile](../detail/build.makefile.md) | ❌ | — | — | ⚠️ | |

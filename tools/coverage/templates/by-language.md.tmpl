@@ -1,15 +1,24 @@
 {{.Marker}}
-# Coverage — language: `{{.Language}}`
+# {{.Language}}
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: {{.Frameworks}} · **Tools**: {{.Tools}} · **ORMs**: {{.ORMs}} · **Other**: {{.Other}}
 
-- Records: **{{.Stats.Records}}**
-- Full: **{{.Stats.Full}}** · Partial: **{{.Stats.Partial}}** · Missing: **{{.Stats.Missing}}** · N/A: **{{.Stats.NotAppl}}**
-
-## Records
-
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
+Back to [summary](../summary.md).
+{{range .Sections}}
+## {{.Name}}
+{{if eq .Name "Other"}}
+| Name | Category | Status | Notes |
+|---|---|---|---|
 {{- range .Records}}
-| [{{.ID}}](../detail/{{.ID}}.md) | [{{.Category}}](../by-category/{{.Category}}.md) | {{.Label}} | {{range $i, $c := .CapList}}{{if $i}}, {{end}}{{$c.Key}}={{$c.Cap.Status}}{{end}} |
+| [{{.Label}}](../detail/{{.ID}}.md) | [{{.Category}}](../by-category/{{.Category}}.md) | {{glyph .Digest}} | |
+{{- end}}
+{{else}}
+| Name |{{range .CapabilityKeys}} {{.}} |{{end}} Notes |
+|---|{{range .CapabilityKeys}}---|{{end}}---|
+{{- $caps := .CapabilityKeys}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
+{{- end}}
+{{end}}
 {{- end}}

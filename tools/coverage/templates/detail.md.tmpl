@@ -12,12 +12,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 {{- range .CapList}}
-| `{{.Key}}` | `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{if .Cap.VerifiedSHA}}`{{.Cap.VerifiedSHA}}`{{else}}—{{end}} | {{if .Cap.Issue}}[link]({{.Cap.Issue}}){{else}}—{{end}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} |
+| `{{.Key}}` | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{if .Cap.VerifiedSHA}}`{{.Cap.VerifiedSHA}}`{{else}}—{{end}} | {{if .Cap.Issue}}[link]({{.Cap.Issue}}){{else}}—{{end}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} |
 {{- end}}
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update {{.Record.ID}} ...`) then regenerate:
 
 ```

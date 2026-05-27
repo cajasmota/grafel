@@ -1,4 +1,4 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # `infra.observability.datadog` — Datadog APM / StatsD
 
 Auto-generated. Back to [summary](../summary.md).
@@ -11,12 +11,12 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `metric_extraction` | `missing` | — | — | — | — |
-| `trace_extraction` | `missing` | — | — | — | — |
+| `metric_extraction` | ❌ `missing` | — | — | — | — |
+| `trace_extraction` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update infra.observability.datadog ...`) then regenerate:
 
 ```

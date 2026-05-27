@@ -1,14 +1,13 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — language: `javascript`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# javascript
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: 2 · **Tools**: 0 · **ORMs**: 0 · **Other**: 0
 
-- Records: **2**
-- Full: **2** · Partial: **0** · Missing: **0** · N/A: **0**
+Back to [summary](../summary.md).
 
-## Records
+## Frameworks
 
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.javascript.framework.express](../detail/lang.javascript.framework.express.md) | [http_framework](../by-category/http_framework.md) | Express.js | endpoint_synthesis=full |
-| [lang.javascript.framework.nestjs](../detail/lang.javascript.framework.nestjs.md) | [http_framework](../by-category/http_framework.md) | NestJS | endpoint_synthesis=full |
+| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+|---|---|---|---|---|---|
+| [Express.js](../detail/lang.javascript.framework.express.md) | — | ✅ | — | — | |
+| [NestJS](../detail/lang.javascript.framework.nestjs.md) | — | ✅ | — | — | |

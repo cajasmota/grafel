@@ -1,4 +1,4 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # `lang.python.orm.django` — Django ORM
 
 Auto-generated. Back to [summary](../summary.md).
@@ -11,13 +11,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `migration_parsing` | `full` | `2026-05-28` | — | — | `internal/extractors/python/django_migration.go` |
-| `model_extraction` | `full` | `2026-05-28` | — | — | `internal/extractors/python/django_relational.go`<br>`internal/extractors/python/extractor.go` |
-| `query_attribution` | `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_python.go` |
+| `migration_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/python/django_migration.go` |
+| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/python/django_relational.go`<br>`internal/extractors/python/extractor.go` |
+| `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_python.go` |
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update lang.python.orm.django ...`) then regenerate:
 
 ```

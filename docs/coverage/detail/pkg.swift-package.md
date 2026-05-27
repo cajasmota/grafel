@@ -1,4 +1,4 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # `pkg.swift-package` — Package.swift / Podfile
 
 Auto-generated. Back to [summary](../summary.md).
@@ -11,11 +11,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `manifest_parsing` | `missing` | — | — | — | — |
+| `manifest_parsing` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update pkg.swift-package ...`) then regenerate:
 
 ```

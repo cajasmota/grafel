@@ -2,13 +2,12 @@ name: coverage-docs
 on:
   pull_request:
     paths:
-      - 'docs/coverage.json'
-      - 'tools/coverage/**'
       - 'docs/coverage/**'
+      - 'tools/coverage/**'
   push:
     branches: [main]
     paths:
-      - 'docs/coverage.json'
+      - 'docs/coverage/**'
       - 'tools/coverage/**'
 jobs:
   verify:

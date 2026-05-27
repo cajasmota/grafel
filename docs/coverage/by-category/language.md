@@ -1,37 +1,34 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — category: `language`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# language
 
-Auto-generated. Back to [summary](../summary.md).
+**Total**: 25 records · **clojure**: 1 · **cpp**: 1 · **crystal**: 1 · **csharp**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 1 · **fsharp**: 1 · **go**: 1 · **groovy**: 1 · **haskell**: 1 · **java**: 1 · **javascript**: 1 · **kotlin**: 1 · **nim**: 1 · **ocaml**: 1 · **php**: 1 · **python**: 1 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **solidity**: 1 · **swift**: 1 · **typescript**: 1 · **zig**: 1
 
-- Records: **25**
-- Valid capability keys: `call_line_precision`, `core_extraction`, `discriminates_on`, `navigates_to`
+Back to [summary](../summary.md). Bucket: **Other**.
 
-## Records
-
-| ID | Language | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.clojure](../detail/lang.clojure.md) | [clojure](../by-language/clojure.md) | Clojure | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.cpp](../detail/lang.cpp.md) | [cpp](../by-language/cpp.md) | C++ | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.crystal](../detail/lang.crystal.md) | [crystal](../by-language/crystal.md) | Crystal | call_line_precision=partial, core_extraction=full |
-| [lang.csharp](../detail/lang.csharp.md) | [csharp](../by-language/csharp.md) | C# | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.dart](../detail/lang.dart.md) | [dart](../by-language/dart.md) | Dart | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.elixir](../detail/lang.elixir.md) | [elixir](../by-language/elixir.md) | Elixir | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.erlang](../detail/lang.erlang.md) | [erlang](../by-language/erlang.md) | Erlang | call_line_precision=partial, core_extraction=full |
-| [lang.fsharp](../detail/lang.fsharp.md) | [fsharp](../by-language/fsharp.md) | F# | call_line_precision=partial, core_extraction=full |
-| [lang.go](../detail/lang.go.md) | [go](../by-language/go.md) | Go | call_line_precision=full, core_extraction=full, discriminates_on=missing, navigates_to=missing |
-| [lang.groovy](../detail/lang.groovy.md) | [groovy](../by-language/groovy.md) | Groovy | call_line_precision=partial, core_extraction=full |
-| [lang.haskell](../detail/lang.haskell.md) | [haskell](../by-language/haskell.md) | Haskell | call_line_precision=partial, core_extraction=full |
-| [lang.java](../detail/lang.java.md) | [java](../by-language/java.md) | Java | call_line_precision=full, core_extraction=full, discriminates_on=missing |
-| [lang.javascript](../detail/lang.javascript.md) | [javascript](../by-language/javascript.md) | JavaScript | call_line_precision=full, core_extraction=full, discriminates_on=full, navigates_to=full |
-| [lang.kotlin](../detail/lang.kotlin.md) | [kotlin](../by-language/kotlin.md) | Kotlin | call_line_precision=full, core_extraction=full, discriminates_on=missing |
-| [lang.nim](../detail/lang.nim.md) | [nim](../by-language/nim.md) | Nim | call_line_precision=partial, core_extraction=full |
-| [lang.ocaml](../detail/lang.ocaml.md) | [ocaml](../by-language/ocaml.md) | OCaml | call_line_precision=partial, core_extraction=full |
-| [lang.php](../detail/lang.php.md) | [php](../by-language/php.md) | PHP | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.python](../detail/lang.python.md) | [python](../by-language/python.md) | Python | call_line_precision=full, core_extraction=full, discriminates_on=full, navigates_to=missing |
-| [lang.ruby](../detail/lang.ruby.md) | [ruby](../by-language/ruby.md) | Ruby | call_line_precision=full, core_extraction=full, discriminates_on=missing |
-| [lang.rust](../detail/lang.rust.md) | [rust](../by-language/rust.md) | Rust | call_line_precision=full, core_extraction=full, discriminates_on=missing |
-| [lang.scala](../detail/lang.scala.md) | [scala](../by-language/scala.md) | Scala | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.solidity](../detail/lang.solidity.md) | [solidity](../by-language/solidity.md) | Solidity | call_line_precision=partial, core_extraction=full |
-| [lang.swift](../detail/lang.swift.md) | [swift](../by-language/swift.md) | Swift | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.typescript](../detail/lang.typescript.md) | [typescript](../by-language/typescript.md) | TypeScript (shares the JavaScript extractor) | call_line_precision=full, core_extraction=full, discriminates_on=full, navigates_to=full |
-| [lang.zig](../detail/lang.zig.md) | [zig](../by-language/zig.md) | Zig | call_line_precision=partial, core_extraction=partial |
+| Language | Name | call_line_precision | core_extraction | discriminates_on | navigates_to | Status | Notes |
+|---|---|---|---|---|---|---|---|
+| [clojure](../by-language/clojure.md) | [Clojure](../detail/lang.clojure.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [cpp](../by-language/cpp.md) | [C++](../detail/lang.cpp.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [crystal](../by-language/crystal.md) | [Crystal](../detail/lang.crystal.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [csharp](../by-language/csharp.md) | [C#](../detail/lang.csharp.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [dart](../by-language/dart.md) | [Dart](../detail/lang.dart.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [elixir](../by-language/elixir.md) | [Elixir](../detail/lang.elixir.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [erlang](../by-language/erlang.md) | [Erlang](../detail/lang.erlang.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [fsharp](../by-language/fsharp.md) | [F#](../detail/lang.fsharp.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [go](../by-language/go.md) | [Go](../detail/lang.go.md) | ✅ | ✅ | ❌ | ❌ | ❌ | |
+| [groovy](../by-language/groovy.md) | [Groovy](../detail/lang.groovy.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [haskell](../by-language/haskell.md) | [Haskell](../detail/lang.haskell.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [java](../by-language/java.md) | [Java](../detail/lang.java.md) | ✅ | ✅ | ❌ | — | ❌ | |
+| [javascript](../by-language/javascript.md) | [JavaScript](../detail/lang.javascript.md) | ✅ | ✅ | ✅ | ✅ | ✅ | |
+| [kotlin](../by-language/kotlin.md) | [Kotlin](../detail/lang.kotlin.md) | ✅ | ✅ | ❌ | — | ❌ | |
+| [nim](../by-language/nim.md) | [Nim](../detail/lang.nim.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [ocaml](../by-language/ocaml.md) | [OCaml](../detail/lang.ocaml.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [php](../by-language/php.md) | [PHP](../detail/lang.php.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [python](../by-language/python.md) | [Python](../detail/lang.python.md) | ✅ | ✅ | ✅ | ❌ | ❌ | |
+| [ruby](../by-language/ruby.md) | [Ruby](../detail/lang.ruby.md) | ✅ | ✅ | ❌ | — | ❌ | |
+| [rust](../by-language/rust.md) | [Rust](../detail/lang.rust.md) | ✅ | ✅ | ❌ | — | ❌ | |
+| [scala](../by-language/scala.md) | [Scala](../detail/lang.scala.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [solidity](../by-language/solidity.md) | [Solidity](../detail/lang.solidity.md) | ⚠️ | ✅ | — | — | ⚠️ | |
+| [swift](../by-language/swift.md) | [Swift](../detail/lang.swift.md) | ⚠️ | ✅ | ❌ | — | ❌ | |
+| [typescript](../by-language/typescript.md) | [TypeScript (shares the JavaScript extractor)](../detail/lang.typescript.md) | ✅ | ✅ | ✅ | ✅ | ✅ | |
+| [zig](../by-language/zig.md) | [Zig](../detail/lang.zig.md) | ⚠️ | ⚠️ | — | — | ⚠️ | |

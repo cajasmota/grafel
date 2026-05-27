@@ -1,27 +1,24 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — category: `package_manager`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# package_manager
 
-Auto-generated. Back to [summary](../summary.md).
+**Total**: 15 records · **csharp**: 1 · **dart**: 1 · **elixir**: 1 · **go**: 1 · **java**: 2 · **javascript**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
 
-- Records: **15**
-- Valid capability keys: `lockfile_parsing`, `manifest_parsing`
+Back to [summary](../summary.md). Bucket: **Tools**.
 
-## Records
-
-| ID | Language | Label | Capabilities |
-|----|----------|-------|--------------|
-| [pkg.cargo](../detail/pkg.cargo.md) | [rust](../by-language/rust.md) | Cargo.toml | lockfile_parsing=missing, manifest_parsing=full |
-| [pkg.composer](../detail/pkg.composer.md) | [php](../by-language/php.md) | composer.json | lockfile_parsing=missing, manifest_parsing=missing |
-| [pkg.csproj](../detail/pkg.csproj.md) | [csharp](../by-language/csharp.md) | .csproj / packages.config | lockfile_parsing=missing, manifest_parsing=missing |
-| [pkg.gemfile](../detail/pkg.gemfile.md) | [ruby](../by-language/ruby.md) | Gemfile | lockfile_parsing=missing, manifest_parsing=full |
-| [pkg.go-mod](../detail/pkg.go-mod.md) | [go](../by-language/go.md) | go.mod | lockfile_parsing=partial, manifest_parsing=full |
-| [pkg.gradle](../detail/pkg.gradle.md) | [java](../by-language/java.md) | build.gradle / build.gradle.kts | lockfile_parsing=missing, manifest_parsing=missing |
-| [pkg.mix](../detail/pkg.mix.md) | [elixir](../by-language/elixir.md) | mix.exs | manifest_parsing=missing |
-| [pkg.npm](../detail/pkg.npm.md) | [javascript](../by-language/javascript.md) | package.json (npm/yarn/pnpm) | lockfile_parsing=missing, manifest_parsing=full |
-| [pkg.pipfile](../detail/pkg.pipfile.md) | [python](../by-language/python.md) | Pipfile / Pipfile.lock | lockfile_parsing=missing, manifest_parsing=missing |
-| [pkg.pom](../detail/pkg.pom.md) | [java](../by-language/java.md) | pom.xml | manifest_parsing=full |
-| [pkg.pubspec](../detail/pkg.pubspec.md) | [dart](../by-language/dart.md) | pubspec.yaml | lockfile_parsing=missing, manifest_parsing=full |
-| [pkg.pyproject](../detail/pkg.pyproject.md) | [python](../by-language/python.md) | pyproject.toml | lockfile_parsing=missing, manifest_parsing=full |
-| [pkg.requirements](../detail/pkg.requirements.md) | [python](../by-language/python.md) | requirements.txt | manifest_parsing=full |
-| [pkg.sbt](../detail/pkg.sbt.md) | [scala](../by-language/scala.md) | build.sbt | manifest_parsing=missing |
-| [pkg.swift-package](../detail/pkg.swift-package.md) | [swift](../by-language/swift.md) | Package.swift / Podfile | manifest_parsing=missing |
+| Language | Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+|---|---|---|---|---|---|---|
+| [csharp](../by-language/csharp.md) | [.csproj / packages.config](../detail/pkg.csproj.md) | — | ❌ | ❌ | — | |
+| [dart](../by-language/dart.md) | [pubspec.yaml](../detail/pkg.pubspec.md) | — | ❌ | ✅ | — | |
+| [elixir](../by-language/elixir.md) | [mix.exs](../detail/pkg.mix.md) | — | — | ❌ | — | |
+| [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | ⚠️ | ✅ | — | |
+| [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | ❌ | ❌ | — | |
+| [java](../by-language/java.md) | [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | — | |
+| [javascript](../by-language/javascript.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ❌ | ✅ | — | |
+| [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ❌ | ❌ | — | |
+| [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | ❌ | ❌ | — | |
+| [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | ❌ | ✅ | — | |
+| [python](../by-language/python.md) | [requirements.txt](../detail/pkg.requirements.md) | — | — | ✅ | — | |
+| [ruby](../by-language/ruby.md) | [Gemfile](../detail/pkg.gemfile.md) | — | ❌ | ✅ | — | |
+| [rust](../by-language/rust.md) | [Cargo.toml](../detail/pkg.cargo.md) | — | ❌ | ✅ | — | |
+| [scala](../by-language/scala.md) | [build.sbt](../detail/pkg.sbt.md) | — | — | ❌ | — | |
+| [swift](../by-language/swift.md) | [Package.swift / Podfile](../detail/pkg.swift-package.md) | — | — | ❌ | — | |

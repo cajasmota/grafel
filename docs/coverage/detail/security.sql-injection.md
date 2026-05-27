@@ -1,4 +1,4 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # `security.sql-injection` — SQL injection heuristic (f-string / .format() / % interpolation into SQL)
 
 Auto-generated. Back to [summary](../summary.md).
@@ -11,11 +11,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `sql_injection` | `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/sql_injection_detector.yaml` |
+| `sql_injection` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/sql_injection_detector.yaml` |
 
 ## Provenance
 
-This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
 (or use `go run ./tools/coverage update security.sql-injection ...`) then regenerate:
 
 ```

@@ -1,18 +1,32 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — language: `csharp`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# csharp
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: 3 · **Tools**: 1 · **ORMs**: 1 · **Other**: 1
 
-- Records: **6**
-- Full: **3** · Partial: **4** · Missing: **7** · N/A: **0**
+Back to [summary](../summary.md).
 
-## Records
+## Frameworks
 
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.csharp](../detail/lang.csharp.md) | [language](../by-category/language.md) | C# | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.csharp.framework.aspnet-core](../detail/lang.csharp.framework.aspnet-core.md) | [http_framework](../by-category/http_framework.md) | ASP.NET Core | auth_coverage=missing, endpoint_synthesis=full, handler_attribution=full |
-| [lang.csharp.framework.aspnet-mvc](../detail/lang.csharp.framework.aspnet-mvc.md) | [http_framework](../by-category/http_framework.md) | ASP.NET MVC (attribute-route subset) | endpoint_synthesis=partial, handler_attribution=partial |
-| [lang.csharp.framework.blazor](../detail/lang.csharp.framework.blazor.md) | [http_framework](../by-category/http_framework.md) | Blazor Server / WebAssembly | endpoint_synthesis=missing |
-| [lang.csharp.orm.efcore](../detail/lang.csharp.orm.efcore.md) | [orm](../by-category/orm.md) | Entity Framework Core | migration_parsing=missing, model_extraction=partial, query_attribution=missing |
-| [pkg.csproj](../detail/pkg.csproj.md) | [package_manager](../by-category/package_manager.md) | .csproj / packages.config | lockfile_parsing=missing, manifest_parsing=missing |
+| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+|---|---|---|---|---|---|
+| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ❌ | ✅ | ✅ | — | |
+| [ASP.NET MVC (attribute-route subset)](../detail/lang.csharp.framework.aspnet-mvc.md) | — | ⚠️ | ⚠️ | — | |
+| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | — | ❌ | — | — | |
+
+## Tools
+
+| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+|---|---|---|---|---|---|
+| [.csproj / packages.config](../detail/pkg.csproj.md) | — | ❌ | ❌ | — | |
+
+## ORMs
+
+| Name | migration_parsing | model_extraction | query_attribution | Notes |
+|---|---|---|---|---|
+| [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ❌ | ⚠️ | ❌ | |
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [C#](../detail/lang.csharp.md) | [language](../by-category/language.md) | ❌ | |

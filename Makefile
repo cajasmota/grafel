@@ -77,13 +77,13 @@ mcp-audit:
 fb-bench:
 	$(GO) test ./internal/graph/ -bench=. -benchmem -run=^$$ -count=3 -benchtime=2s
 
-# coverage: regenerate docs/coverage/*.md from docs/coverage.json. CI runs
-# `validate` then `gen` then asserts `git diff --exit-code docs/coverage/`
-# is clean. See .github/workflows/coverage-docs.yml.
+# coverage: regenerate docs/coverage/*.md from docs/coverage/registry.json.
+# CI runs `validate` then `gen` then asserts `git diff --exit-code
+# docs/coverage/` is clean. See .github/workflows/coverage-docs.yml.
 coverage:
 	@$(GO) run ./tools/coverage gen
 
 # coverage-validate: schema + cite-path-exists + duplicate-id + stale checks
-# on docs/coverage.json. Exit 0 with warnings only; non-zero on errors.
+# on docs/coverage/registry.json. Exit 0 with warnings only; non-zero on errors.
 coverage-validate:
 	@$(GO) run ./tools/coverage validate

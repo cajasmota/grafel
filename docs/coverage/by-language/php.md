@@ -1,19 +1,33 @@
-<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
-# Coverage — language: `php`
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# php
 
-Auto-generated. Back to [summary](../summary.md).
+**Frameworks**: 3 · **Tools**: 1 · **ORMs**: 2 · **Other**: 1
 
-- Records: **7**
-- Full: **3** · Partial: **2** · Missing: **9** · N/A: **0**
+Back to [summary](../summary.md).
 
-## Records
+## Frameworks
 
-| ID | Category | Label | Capabilities |
-|----|----------|-------|--------------|
-| [lang.php](../detail/lang.php.md) | [language](../by-category/language.md) | PHP | call_line_precision=partial, core_extraction=full, discriminates_on=missing |
-| [lang.php.framework.laravel](../detail/lang.php.framework.laravel.md) | [http_framework](../by-category/http_framework.md) | Laravel | auth_coverage=missing, endpoint_synthesis=full, handler_attribution=full |
-| [lang.php.framework.slim](../detail/lang.php.framework.slim.md) | [http_framework](../by-category/http_framework.md) | Slim | endpoint_synthesis=missing |
-| [lang.php.framework.symfony](../detail/lang.php.framework.symfony.md) | [http_framework](../by-category/http_framework.md) | Symfony | endpoint_synthesis=missing |
-| [lang.php.orm.doctrine](../detail/lang.php.orm.doctrine.md) | [orm](../by-category/orm.md) | Doctrine | model_extraction=missing, query_attribution=missing |
-| [lang.php.orm.eloquent](../detail/lang.php.orm.eloquent.md) | [orm](../by-category/orm.md) | Eloquent (Laravel ActiveRecord) | model_extraction=partial, query_attribution=missing |
-| [pkg.composer](../detail/pkg.composer.md) | [package_manager](../by-category/package_manager.md) | composer.json | lockfile_parsing=missing, manifest_parsing=missing |
+| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+|---|---|---|---|---|---|
+| [Laravel](../detail/lang.php.framework.laravel.md) | ❌ | ✅ | ✅ | — | |
+| [Slim](../detail/lang.php.framework.slim.md) | — | ❌ | — | — | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | — | ❌ | — | — | |
+
+## Tools
+
+| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+|---|---|---|---|---|---|
+| [composer.json](../detail/pkg.composer.md) | — | ❌ | ❌ | — | |
+
+## ORMs
+
+| Name | migration_parsing | model_extraction | query_attribution | Notes |
+|---|---|---|---|---|
+| [Doctrine](../detail/lang.php.orm.doctrine.md) | — | ❌ | ❌ | |
+| [Eloquent (Laravel ActiveRecord)](../detail/lang.php.orm.eloquent.md) | — | ⚠️ | ❌ | |
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [PHP](../detail/lang.php.md) | [language](../by-category/language.md) | ❌ | |

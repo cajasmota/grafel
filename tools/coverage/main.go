@@ -1,6 +1,6 @@
 // Command coverage maintains the archigraph capabilities registry at
-// docs/coverage.json. It is a standalone dev tool with zero imports
-// from internal/ packages; pure file I/O only.
+// docs/coverage/registry.json. It is a standalone dev tool with zero
+// imports from internal/ packages; pure file I/O only.
 //
 // See issue #2720 for the full spec and docs/coverage/summary.md for
 // the rendered registry.
@@ -70,13 +70,13 @@ subcommands:
   gaps      list missing/partial records (--language, --category, --json)
   stats     counters across the registry (--json)
   validate  schema + cite-exists + duplicate-id + stale checks
-  gen       regenerate docs/coverage/*.md from docs/coverage.json (--out, --file)`)
+  gen       regenerate docs/coverage/*.md from docs/coverage/registry.json (--out, --file)`)
 }
 
 // registryFlag adds a shared --file flag for overriding the registry
 // path (handy for tests). Returns a getter for the resolved path.
 func registryFlag(fs *flag.FlagSet) *string {
-	return fs.String("file", defaultRegistryPath, "path to coverage.json")
+	return fs.String("file", defaultRegistryPath, "path to the registry JSON (default docs/coverage/registry.json)")
 }
 
 func cmdList(args []string, out io.Writer) error {

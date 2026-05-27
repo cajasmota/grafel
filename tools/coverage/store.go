@@ -10,7 +10,7 @@ import (
 )
 
 // defaultRegistryPath is the canonical on-disk location of the registry.
-const defaultRegistryPath = "docs/coverage.json"
+const defaultRegistryPath = "docs/coverage/registry.json"
 
 // loadRegistry reads and decodes the registry from path.
 func loadRegistry(path string) (*Registry, error) {
