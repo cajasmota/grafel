@@ -967,6 +967,34 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		}
 		pass3Records = append(pass3Records, signalEnts...)
 		pass2Rels = append(pass2Rels, signalRels...)
+
+		// Pass 2.6g — Serializer.Meta.model → Model REFERENCES edges (#2578).
+		// DRF Serializer subclasses whose inner Meta class declares `model = X`
+		// emit a REFERENCES edge so that graph queries for a Model X also surface
+		// its serializers.
+		serializerModelRels := runSerializerMetaModelEdges(classified)
+		if len(serializerModelRels) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: serializer_meta_model_edges=%d\n", len(serializerModelRels))
+		}
+		pass2Rels = append(pass2Rels, serializerModelRels...)
+
+		// Pass 2.6h — @receiver(sender=Model) → Model HANDLES_SIGNAL edges (#2578).
+		// Explicit-sender @receiver decorators link the handler function to the
+		// Model class so queries for a Model also surface its signal handlers.
+		receiverSenderRels := runReceiverSenderEdges(classified)
+		if len(receiverSenderRels) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: receiver_sender_edges=%d\n", len(receiverSenderRels))
+		}
+		pass2Rels = append(pass2Rels, receiverSenderRels...)
+
+		// Pass 2.6i — FilterSet.Meta.model → Model REFERENCES edges (#2578).
+		// django_filter FilterSet subclasses with Meta.model = X emit a REFERENCES
+		// edge so that queries for a Model also return its filter classes.
+		filterSetModelRels := runFilterSetMetaModelEdges(classified)
+		if len(filterSetModelRels) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: filterset_meta_model_edges=%d\n", len(filterSetModelRels))
+		}
+		pass2Rels = append(pass2Rels, filterSetModelRels...)
 	}
 
 	// Pass 2.6 — Java JAX-RS / Spring MVC annotation route composition.
@@ -2614,6 +2642,66 @@ func runDjangoCBVRoutes(classified []classifiedFile) []types.EntityRecord {
 		return contentByPath[relPath]
 	}
 	return engine.ApplyDjangoCBVRoutes(pyPaths, reader)
+}
+
+// runSerializerMetaModelEdges emits REFERENCES edges from DRF Serializer
+// classes to the Model class named in their inner Meta.model = X declaration
+// (#2578). Repo-wide Python pass.
+func runSerializerMetaModelEdges(classified []classifiedFile) []types.RelationshipRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte { return contentByPath[relPath] }
+	return engine.ApplySerializerMetaModelEdges(pyPaths, reader)
+}
+
+// runReceiverSenderEdges emits HANDLES_SIGNAL edges from @receiver(…,
+// sender=Model) handler functions to the named Model class (#2578).
+// Repo-wide Python pass.
+func runReceiverSenderEdges(classified []classifiedFile) []types.RelationshipRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte { return contentByPath[relPath] }
+	return engine.ApplyReceiverSenderEdges(pyPaths, reader)
+}
+
+// runFilterSetMetaModelEdges emits REFERENCES edges from django_filter
+// FilterSet classes to the Model class named in their inner Meta.model = X
+// declaration (#2578). Repo-wide Python pass.
+func runFilterSetMetaModelEdges(classified []classifiedFile) []types.RelationshipRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte { return contentByPath[relPath] }
+	return engine.ApplyFilterSetMetaModelEdges(pyPaths, reader)
 }
 
 // stampEntityIDs computes the deterministic graph entity ID for every
