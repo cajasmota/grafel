@@ -5,16 +5,64 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** Meta Framework
+- **Capability cells:** 13
 
 ## Capabilities
 
+
+### Structure
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — | — |
-| `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/frameworks/play_framework.yaml` | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/frameworks/play_framework.yaml` | — |
-| `middleware_coverage` | ❌ `missing` | — | — | — | — | — |
+| `component_extraction` | ❌ `missing` | — | — | — | — | — |
+| `hook_recognition` | ❌ `missing` | — | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `data_loaders` | ❌ `missing` | — | — | — | — | — |
+
+### Server
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `hydration_boundaries` | ❌ `missing` | — | — | — | — | — |
+| `server_components` | ❌ `missing` | — | — | — | — | — |
+
+### Routing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `route_extraction` | ❌ `missing` | — | — | — | — | — |
+| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+
+### Build
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `static_generation` | ❌ `missing` | — | — | — | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `enum_extraction` | ❌ `missing` | — | — | — | — | — |
+| `interface_extraction` | ❌ `missing` | — | — | — | — | — |
+| `type_alias_extraction` | ❌ `missing` | — | — | — | — | — |
+
+### Lifecycle
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `state_setter_emission` | ❌ `missing` | — | — | — | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `tests_linkage` | ❌ `missing` | — | — | — | — | — |
 
 ## Provenance
 

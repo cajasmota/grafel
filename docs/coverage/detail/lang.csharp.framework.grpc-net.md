@@ -5,16 +5,29 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** RPC Framework
+- **Capability cells:** 3
 
 ## Capabilities
 
+
+### Schema
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — | — |
-| `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go`<br>`internal/engine/rules/csharp/frameworks/grpc_net.yaml` | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/csharp/frameworks/grpc_net.yaml` | — |
-| `middleware_coverage` | ❌ `missing` | — | — | — | — | — |
+| `procedure_extraction` | ❌ `missing` | — | — | — | — | — |
+| `schema_extraction` | ❌ `missing` | — | — | — | — | — |
+
+### Codegen
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `client_codegen` | ❌ `missing` | — | — | — | — | — |
+
+### Transport
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
 
 ## Provenance
 

@@ -5,16 +5,29 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** AI Integration
+- **Capability cells:** 3
 
 ## Capabilities
 
+
+### Prompts
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/frameworks/langchain4j.yaml` | — |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — | — |
+| `prompt_template_extraction` | ❌ `missing` | — | — | — | — | — |
+
+### Composition
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `chain_composition` | ❌ `missing` | — | — | — | — | — |
+| `tool_use_detection` | ❌ `missing` | — | — | — | — | — |
+
+### Tracking
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
 
 ## Provenance
 

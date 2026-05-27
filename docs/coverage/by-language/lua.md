@@ -7,7 +7,10 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Lapis](../detail/lang.lua.framework.lapis.md) | — | ❌ | — | — | |
-| [OpenResty](../detail/lang.lua.framework.openresty.md) | — | ❌ | — | — | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Lapis](../detail/lang.lua.framework.lapis.md) | — | — | — | — | — | — | — | |
+| [OpenResty](../detail/lang.lua.framework.openresty.md) | — | — | — | — | — | — | — | |

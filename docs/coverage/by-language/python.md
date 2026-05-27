@@ -7,28 +7,38 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Bottle](../detail/lang.python.framework.bottle.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Celery (task queue)](../detail/lang.python.framework.celery.md) | — | — | ✅ | — | |
-| [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Django](../detail/lang.python.framework.django.md) | ⚠️ | ✅ | ✅ | ⚠️ | |
-| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ⚠️ | ✅ | ✅ | ❌ | |
-| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | — | — | ⚠️ | — | |
-| [Falcon](../detail/lang.python.framework.falcon.md) | ❌ | ❌ | ❌ | ❌ | |
-| [FastAPI](../detail/lang.python.framework.fastapi.md) | ⚠️ | ✅ | ✅ | ❌ | |
-| [Flask](../detail/lang.python.framework.flask.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Hug](../detail/lang.python.framework.hug.md) | ❌ | ❌ | ❌ | ❌ | |
-| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | — | — | ⚠️ | — | |
-| [Litestar](../detail/lang.python.framework.litestar.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Pyramid](../detail/lang.python.framework.pyramid.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Quart](../detail/lang.python.framework.quart.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Robyn](../detail/lang.python.framework.robyn.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Sanic](../detail/lang.python.framework.sanic.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Starlette](../detail/lang.python.framework.starlette.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Tornado](../detail/lang.python.framework.tornado.md) | ❌ | ✅ | ✅ | ❌ | |
-| [aiohttp](../detail/lang.python.framework.aiohttp.md) | ❌ | ✅ | ✅ | ❌ | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Bottle](../detail/lang.python.framework.bottle.md) | — | — | — | — | — | — | — | |
+| [Celery (task queue)](../detail/lang.python.framework.celery.md) | — | — | — | — | — | — | — | |
+| [CherryPy](../detail/lang.python.framework.cherrypy.md) | — | — | — | — | — | — | — | |
+| [Django](../detail/lang.python.framework.django.md) | — | — | — | — | — | — | — | |
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | — | — | — | — | — | — | — | |
+| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | — | — | — | — | — | — | — | |
+| [Falcon](../detail/lang.python.framework.falcon.md) | — | — | — | — | — | — | — | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | — | — | — | — | — | — | — | |
+| [Flask](../detail/lang.python.framework.flask.md) | — | — | — | — | — | — | — | |
+| [Hug](../detail/lang.python.framework.hug.md) | — | — | — | — | — | — | — | |
+| [Litestar](../detail/lang.python.framework.litestar.md) | — | — | — | — | — | — | — | |
+| [Pyramid](../detail/lang.python.framework.pyramid.md) | — | — | — | — | — | — | — | |
+| [Quart](../detail/lang.python.framework.quart.md) | — | — | — | — | — | — | — | |
+| [Robyn](../detail/lang.python.framework.robyn.md) | — | — | — | — | — | — | — | |
+| [Sanic](../detail/lang.python.framework.sanic.md) | — | — | — | — | — | — | — | |
+| [Starlette](../detail/lang.python.framework.starlette.md) | — | — | — | — | — | — | — | |
+| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | — | — | — | — | — | — | — | |
+| [Tornado](../detail/lang.python.framework.tornado.md) | — | — | — | — | — | — | — | |
+| [aiohttp](../detail/lang.python.framework.aiohttp.md) | — | — | — | — | — | — | — | |
+
+
+### AI Integration
+
+| Name | Prompts | Composition | Tracking | Notes |
+|---|---|---|---|---|
+| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 0/1 | ❌ 0/2 | — | |
+
 
 ## Tools
 

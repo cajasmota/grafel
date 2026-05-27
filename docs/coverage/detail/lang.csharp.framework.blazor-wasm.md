@@ -5,16 +5,56 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** UI Frontend
+- **Capability cells:** 15
 
 ## Capabilities
 
+
+### Structure
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/csharp/frameworks/blazor_webassembly.yaml` | — |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — | — |
+| `component_extraction` | ❌ `missing` | — | — | — | — | — |
+| `context_extraction` | ❌ `missing` | — | — | — | — | — |
+| `hoc_wrapper_recognition` | ❌ `missing` | — | — | — | — | — |
+| `hook_recognition` | ❌ `missing` | — | — | — | — | — |
+| `jsx_template` | ❌ `missing` | — | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `branch_conditions` | ❌ `missing` | — | — | — | — | — |
+| `data_fetching` | ❌ `missing` | — | — | — | — | — |
+| `prop_extraction` | ❌ `missing` | — | — | — | — | — |
+| `state_management` | ❌ `missing` | — | — | — | — | — |
+
+### Navigation
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `enum_extraction` | ❌ `missing` | — | — | — | — | — |
+| `interface_extraction` | ❌ `missing` | — | — | — | — | — |
+| `type_alias_extraction` | ❌ `missing` | — | — | — | — | — |
+
+### Lifecycle
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `state_setter_emission` | ❌ `missing` | — | — | — | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `tests_linkage` | ❌ `missing` | — | — | — | — | — |
 
 ## Provenance
 

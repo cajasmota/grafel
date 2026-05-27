@@ -7,19 +7,29 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Axum](../detail/lang.rust.framework.axum.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Poem](../detail/lang.rust.framework.poem.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | — | — | ⚠️ | — | |
-| [Tide](../detail/lang.rust.framework.tide.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Warp](../detail/lang.rust.framework.warp.md) | ❌ | ✅ | ✅ | ❌ | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Actix Web](../detail/lang.rust.framework.actix.md) | — | — | — | — | — | — | — | |
+| [Axum](../detail/lang.rust.framework.axum.md) | — | — | — | — | — | — | — | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | — | — | — | — | — | — | — | |
+| [Poem](../detail/lang.rust.framework.poem.md) | — | — | — | — | — | — | — | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | — | — | — | — | — | — | — | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | — | — | — | — | — | — | — | |
+| [Tide](../detail/lang.rust.framework.tide.md) | — | — | — | — | — | — | — | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | — | — | — | — | — | — | — | |
+| [Warp](../detail/lang.rust.framework.warp.md) | — | — | — | — | — | — | — | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | — | — | — | — | — | — | — | |
+
+
+### Desktop
+
+| Name | Process | Native | Updates | Notes |
+|---|---|---|---|---|
+| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 0/2 | ❌ 0/1 | — | |
+
 
 ## Tools
 
