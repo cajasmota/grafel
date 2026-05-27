@@ -63,9 +63,10 @@ import (
 // registration file. Scoped to Go frameworks shipping in #2678's Go audit;
 // other languages land the same change via their own audits.
 var goFrameworkRetargetAttribution = map[string]bool{
-	"gin":  true,
-	"echo": true,
-	"chi":  true,
+	"gin":   true,
+	"echo":  true,
+	"chi":   true,
+	"fiber": true,
 }
 
 // resolverKindEquivalents maps a synthesizer-emitted handler Kind to

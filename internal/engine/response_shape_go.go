@@ -37,9 +37,29 @@ var goRouteRe = regexp.MustCompile(
 		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]+)["` + "`" + `]` + "`" + `?\s*,\s*([\w.]+)`,
 )
 
+// goRouteTitleRe matches the Title-case verb form used by chi and fiber:
+//
+//	r.Get("/path", handlerFunc)        // chi (Title-case)
+//	app.Post("/items", h.Create)        // fiber
+//	r.Delete("/users/{id}", deleteUser) // chi
+//
+// Group 1 is the verb, group 2 is the path, group 3 is the handler
+// identifier. The same caveats as goRouteRe apply (last-component
+// handler-name resolution). Scoped to files that import chi or fiber
+// — see synthesizeGoRouters — so we don't match unrelated `.Get(` /
+// `.Post(` method calls on non-router types in regular Go code.
+//
+// "Connect" / "Trace" / "Any" / "All" are intentionally excluded
+// because the false-positive rate is too high (e.g. `db.Connect()`).
+// Add them back if a real codebase needs the coverage.
+var goRouteTitleRe = regexp.MustCompile(
+	`\b\w+\s*\.\s*(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*` +
+		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]+)["` + "`" + `]` + "`" + `?\s*,\s*([\w.]+)`,
+)
+
 // goFrameworkFromImports returns the framework name based on package
 // imports observable in the source. Falls back to "gin" when none of
-// the three explicit markers match (Gin is the most common, and the
+// the explicit markers match (Gin is the most common, and the
 // response-shape extractor treats gin/echo/chi identically).
 func goFrameworkFromImports(content string) string {
 	switch {
@@ -47,38 +67,77 @@ func goFrameworkFromImports(content string) string {
 		return "echo"
 	case strings.Contains(content, "github.com/go-chi/chi"):
 		return "chi"
+	case strings.Contains(content, "github.com/gofiber/fiber"):
+		return "fiber"
 	case strings.Contains(content, "github.com/gin-gonic/gin"):
 		return "gin"
 	}
 	return "gin"
 }
 
+// goFileUsesTitleCaseRouter reports whether the file imports a router
+// whose API uses Title-case verb methods (chi, fiber). The Title-case
+// synthesis is gated on this check to avoid false-positives from
+// unrelated `.Get(` / `.Post(` method calls in regular Go code (e.g.
+// `db.Get(ctx, key)`, `cache.Post(...)` etc.).
+func goFileUsesTitleCaseRouter(content string) bool {
+	return strings.Contains(content, "github.com/go-chi/chi") ||
+		strings.Contains(content, "github.com/gofiber/fiber")
+}
+
 // synthesizeGoRouters scans a Go file for HTTP route registrations
-// against a Gin, Echo, or Chi router and emits one http_endpoint per
-// (verb, path) pair. The handler identifier is recorded so the response
-// shape extractor can walk back to the handler body.
+// against a Gin, Echo, Chi, or Fiber router and emits one http_endpoint
+// per (verb, path) pair. The handler identifier is recorded so the
+// response shape extractor can walk back to the handler body.
+//
+// Upper-case verbs (GET / POST / ...) are emitted unconditionally — they
+// can only come from Gin or Echo's API. Title-case verbs (Get / Post /
+// ...) are emitted only when the file imports chi or fiber, because
+// those identifiers are common Go method names on non-router types and
+// would otherwise produce false-positive endpoint synthetics.
+//
+// #2678 — when fiber is the importing framework, chi's Title-case path
+// is also covered (both frameworks share the same verb-method
+// convention). The framework property on the emitted entity is taken
+// from goFrameworkFromImports so downstream consumers can distinguish.
 func synthesizeGoRouters(content string, emit emitFn) {
-	if !strings.Contains(content, ".GET(") && !strings.Contains(content, ".POST(") &&
-		!strings.Contains(content, ".PUT(") && !strings.Contains(content, ".PATCH(") &&
-		!strings.Contains(content, ".DELETE(") && !strings.Contains(content, ".HEAD(") &&
-		!strings.Contains(content, ".OPTIONS(") {
+	hasUpper := strings.Contains(content, ".GET(") || strings.Contains(content, ".POST(") ||
+		strings.Contains(content, ".PUT(") || strings.Contains(content, ".PATCH(") ||
+		strings.Contains(content, ".DELETE(") || strings.Contains(content, ".HEAD(") ||
+		strings.Contains(content, ".OPTIONS(")
+	titleCase := goFileUsesTitleCaseRouter(content)
+	if !hasUpper && !titleCase {
 		return
 	}
 	framework := goFrameworkFromImports(content)
-	for _, m := range goRouteRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
-			continue
-		}
-		verb := m[1]
-		raw := m[2]
-		handler := m[3]
-		// Use the last `.`-separated component so a `h.Create` style
-		// handler resolves to `Create` in the same file's func decls.
+
+	emitMatch := func(verb, raw, handler string) {
 		if i := strings.LastIndex(handler, "."); i >= 0 {
 			handler = handler[i+1:]
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, raw)
 		emit(verb, canonical, framework, "Controller", handler)
+	}
+
+	if hasUpper {
+		for _, m := range goRouteRe.FindAllStringSubmatch(content, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			emitMatch(m[1], m[2], m[3])
+		}
+	}
+	if titleCase {
+		// chi / fiber use Title-case verb methods. The same first-arg
+		// shape ("path", handler) applies, so we reuse emitMatch.
+		// Normalize the verb to upper-case so the synthetic ID
+		// (http:<VERB>:<path>) is consistent across frameworks.
+		for _, m := range goRouteTitleRe.FindAllStringSubmatch(content, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			emitMatch(strings.ToUpper(m[1]), m[2], m[3])
+		}
 	}
 }
 
