@@ -5,7 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
-- **Capability cells:** 2
+- **Capability cells:** 3
 
 ## Capabilities
 
@@ -13,6 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|
 | `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/sse_edges.go` |
 | `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/sse_edges.go` |
+| `topic_attribution` | — `not_applicable` | — | — | — | — |
 
 ## Provenance
 

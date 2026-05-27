@@ -5,14 +5,15 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
-- **Capability cells:** 2
+- **Capability cells:** 3
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `consumer_extraction` | ❌ `missing` | — | — | — | — |
-| `producer_extraction` | ❌ `missing` | — | — | — | — |
+| `consumer_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/event_bus_edges.go` |
+| `producer_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/event_bus_edges.go` |
+| `topic_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/event_bus_edges.go` |
 
 ## Provenance
 

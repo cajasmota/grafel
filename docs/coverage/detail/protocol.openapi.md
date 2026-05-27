@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `protocol.openapi` — OpenAPI / Swagger spec
+# `protocol.openapi` — OpenAPI / Swagger
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `cross_repo_linkage` | ✅ `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
-| `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
-| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/links/openapi_pass.go` |
+| `cross_repo_linkage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/http_endpoint_match.go` |
+| `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/openapi/language.yaml` |
+| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/openapi/language.yaml` |
 
 ## Provenance
 

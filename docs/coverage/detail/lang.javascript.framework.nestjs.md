@@ -5,15 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [javascript](../by-language/javascript.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/1942) | `internal/engine/java_auth_policy.go` |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` |
-| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_synthesis.go` |
+| `auth_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml` |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml` |
+| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml` |
+| `middleware_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml` |
 
 ## Provenance
 

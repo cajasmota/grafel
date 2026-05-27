@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `msg.broker.redis` — Redis pub/sub + Streams
+# `msg.broker.redis` — Redis pub/sub & streams
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|
 | `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/redis_pubsub_edges.go` |
 | `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/redis_pubsub_edges.go` |
-| `topic_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/links/topic_pass.go` |
+| `topic_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/redis_pubsub_edges.go` |
 
 ## Provenance
 

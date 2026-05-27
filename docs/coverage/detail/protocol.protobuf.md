@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `protocol.protobuf` — Protocol Buffers (.proto)
+# `protocol.protobuf` — Protocol Buffers
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `cross_repo_linkage` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go` |
-| `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/proto/proto.go` |
-| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/proto/proto.go` |
+| `cross_repo_linkage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go` |
+| `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/proto` |
+| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/protobuf/_manifest.yaml`<br>`internal/extractors/proto` |
 
 ## Provenance
 

@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `protocol.grpc` — gRPC services
+# `protocol.grpc` — gRPC
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `cross_repo_linkage` | ✅ `full` | `2026-05-28` | — | — | `internal/links/grpc_pass.go` |
+| `cross_repo_linkage` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go` |
 | `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go` |
 | `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go` |
 

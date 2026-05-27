@@ -5,15 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/java_auth_policy.go` |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/spring_routes_kotlin.go` |
+| `auth_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/java_auth_policy.go` |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/kotlin/frameworks/spring_boot_kotlin.yaml`<br>`internal/engine/spring_routes_kotlin.go` |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/spring_routes_kotlin.go` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

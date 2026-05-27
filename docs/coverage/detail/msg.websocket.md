@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `msg.websocket` — WebSocket channels
+# `msg.websocket` — WebSocket
 
 Auto-generated. Back to [summary](../summary.md).
 

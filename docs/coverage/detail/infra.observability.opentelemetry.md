@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `infra.observability.opentelemetry` — OpenTelemetry instrumentation
+# `infra.observability.opentelemetry` — OpenTelemetry (OTEL)
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -12,8 +12,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `log_extraction` | ❌ `missing` | — | — | — | — |
-| `metric_extraction` | ❌ `missing` | — | — | — | — |
-| `trace_extraction` | ❌ `missing` | — | — | — | — |
+| `metric_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/event_bus_edges.go` |
+| `trace_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/event_flow.go`<br>`internal/engine/process_flow.go` |
 
 ## Provenance
 

@@ -1,19 +1,20 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `lang.java.framework.jaxrs` — JAX-RS / Jakarta EE
+# `lang.java.framework.jaxrs` — JAX-RS / Jakarta REST
 
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/java_auth_policy.go` |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/java_annotation_routes.go` |
+| `auth_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/java_auth_policy.go` |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/jakarta_ee.yaml` |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/java_annotation_routes.go` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

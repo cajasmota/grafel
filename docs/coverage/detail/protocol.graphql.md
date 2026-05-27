@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `protocol.graphql` — GraphQL SDL (Query/Mutation/Subscription)
+# `protocol.graphql` — GraphQL
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `cross_repo_linkage` | ⚠️ `partial` | — | — | — | — |
+| `cross_repo_linkage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/http_endpoint_match.go` |
 | `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go` |
-| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/graphql/graphql.go` |
+| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go`<br>`internal/engine/rules/graphql/frameworks/graphql_schema.yaml` |
 
 ## Provenance
 

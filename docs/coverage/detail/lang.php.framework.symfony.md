@@ -5,13 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [php](../by-language/php.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 1
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `endpoint_synthesis` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2717) | — |
+| `auth_coverage` | ❌ `missing` | — | — | — | — |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_php_producer.go`<br>`internal/engine/rules/php/frameworks/symfony.yaml` |
+| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_php_producer.go` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

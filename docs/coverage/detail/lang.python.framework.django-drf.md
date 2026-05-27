@@ -5,15 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ⚠️ `partial` | `2026-05-27` | — | [link](https://github.com/cajasmota/archigraph/issues/1942) | `internal/engine/django_drf_actions.go` |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/django_drf_actions.go`<br>`internal/engine/http_endpoint_synthesis.go` |
-| `handler_attribution` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/django_drf_actions.go` |
+| `auth_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/django_drf_actions.go` |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_drf_actions.go`<br>`internal/extractors/python/django_drf_actions.go` |
+| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_drf_actions.go`<br>`internal/extractors/python/drf_serializer_fields.go` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

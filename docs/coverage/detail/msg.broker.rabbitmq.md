@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|
 | `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rabbitmq_edges.go` |
 | `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rabbitmq_edges.go` |
-| `topic_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/links/topic_pass.go` |
+| `topic_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rabbitmq_edges.go` |
 
 ## Provenance
 

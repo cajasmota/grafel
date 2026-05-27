@@ -1,18 +1,20 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `lang.javascript.framework.next-api` — Next.js API routes
+# `lang.javascript.framework.next-api` — Next.js API Routes / App Router
 
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [javascript](../by-language/javascript.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 2
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_jsts_extra.go` |
-| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_jsts_extra.go` |
+| `auth_coverage` | ❌ `missing` | — | — | — | — |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` |
+| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

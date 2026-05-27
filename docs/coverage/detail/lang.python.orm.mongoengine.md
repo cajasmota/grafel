@@ -5,14 +5,15 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [python](../by-language/python.md)
 - **Category:** [orm](../by-category/orm.md)
-- **Capability cells:** 2
+- **Capability cells:** 3
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `model_extraction` | ❌ `missing` | — | — | — | — |
-| `query_attribution` | ❌ `missing` | — | — | — | — |
+| `migration_parsing` | — `not_applicable` | — | — | — | — |
+| `model_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/mongoengine.yaml` |
+| `query_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/mongoengine.yaml` |
 
 ## Provenance
 

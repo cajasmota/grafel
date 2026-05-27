@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `migration_parsing` | ⚠️ `partial` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2720) | — |
-| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/cross/ormlink/extractor.go` |
+| `migration_parsing` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/alembic.yaml` |
+| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_field_edges.go`<br>`internal/engine/rules/python/orms/sqlalchemy.yaml` |
 | `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_python.go` |
 
 ## Provenance

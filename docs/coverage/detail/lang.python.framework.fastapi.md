@@ -5,14 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 2
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` |
+| `auth_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/fastapi.yaml` |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/python/frameworks/fastapi.yaml` |
+| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/fastapi.yaml` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

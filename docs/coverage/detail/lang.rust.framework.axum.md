@@ -5,14 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 2
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_axum.go` |
+| `auth_coverage` | ❌ `missing` | — | — | — | — |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_axum.go`<br>`internal/engine/rules/rust/frameworks/axum.yaml` |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_axum.go` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

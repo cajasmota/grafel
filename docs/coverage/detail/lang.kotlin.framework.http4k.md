@@ -5,13 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 1
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `endpoint_synthesis` | ❌ `missing` | — | — | — | — |
+| `auth_coverage` | ❌ `missing` | — | — | — | — |
+| `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/kotlin/frameworks/http4k.yaml` |
+| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/kotlin/frameworks/http4k.yaml` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

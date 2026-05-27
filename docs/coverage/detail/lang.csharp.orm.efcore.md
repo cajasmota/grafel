@@ -12,8 +12,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `migration_parsing` | ❌ `missing` | — | — | — | — |
-| `model_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/_engine/column_schema_extractor.yaml` |
-| `query_attribution` | ❌ `missing` | — | — | — | — |
+| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/csharp/frameworks/entity_framework_core.yaml`<br>`internal/engine/rules/csharp/orms/entity_framework_core.yaml` |
+| `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_other.go` |
 
 ## Provenance
 

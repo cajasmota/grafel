@@ -1,11 +1,11 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `msg.webhook` — Webhook inbound (Stripe, GitHub, Twilio, Slack, SendGrid, Mailgun, ...)
+# `msg.webhook` — Webhooks
 
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
-- **Capability cells:** 2
+- **Capability cells:** 3
 
 ## Capabilities
 
@@ -13,6 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|
 | `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/webhooks_edges.go` |
 | `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/webhooks_edges.go` |
+| `topic_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/webhooks_edges.go` |
 
 ## Provenance
 

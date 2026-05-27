@@ -5,13 +5,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [javascript](../by-language/javascript.md)
 - **Category:** [orm](../by-category/orm.md)
-- **Capability cells:** 2
+- **Capability cells:** 3
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/cross/ormlink/extractor.go` |
+| `migration_parsing` | ❌ `missing` | — | — | — | — |
+| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/sequelize.yaml` |
 | `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go` |
 
 ## Provenance

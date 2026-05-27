@@ -5,13 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 1
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `endpoint_synthesis` | ❌ `missing` | — | — | — | — |
+| `auth_coverage` | ❌ `missing` | — | — | — | — |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/sanic.yaml` |
+| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/sanic.yaml` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

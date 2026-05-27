@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/pulsar_edges.go` |
-| `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/pulsar_edges.go` |
-| `topic_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/links/topic_pass.go` |
+| `consumer_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pulsar_edges.go` |
+| `producer_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pulsar_edges.go` |
+| `topic_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pulsar_edges.go` |
 
 ## Provenance
 

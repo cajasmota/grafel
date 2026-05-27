@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `migration_parsing` | ❌ `missing` | — | — | — | — |
-| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/cross/ormlink/extractor.go` |
+| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/typeorm.yaml` |
 | `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go` |
 
 ## Provenance

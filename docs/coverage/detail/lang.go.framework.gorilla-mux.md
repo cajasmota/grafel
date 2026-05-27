@@ -1,18 +1,20 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `lang.go.framework.gorilla-mux` — gorilla/mux
+# `lang.go.framework.gorilla-mux` — Gorilla Mux
 
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 2
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_go_trio.go` |
+| `auth_coverage` | ❌ `missing` | — | — | — | — |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/go_routes.go`<br>`internal/engine/rules/go/frameworks/gorilla_mux.yaml` |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/go_routes.go` |
+| `middleware_coverage` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

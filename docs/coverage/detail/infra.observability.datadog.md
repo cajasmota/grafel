@@ -1,16 +1,17 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `infra.observability.datadog` — Datadog APM / StatsD
+# `infra.observability.datadog` — Datadog
 
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [observability](../by-category/observability.md)
-- **Capability cells:** 2
+- **Capability cells:** 3
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
+| `log_extraction` | ❌ `missing` | — | — | — | — |
 | `metric_extraction` | ❌ `missing` | — | — | — | — |
 | `trace_extraction` | ❌ `missing` | — | — | — | — |
 
