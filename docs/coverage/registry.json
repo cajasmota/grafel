@@ -1799,6 +1799,669 @@
       }
     },
     {
+      "id": "lang.c-cpp.driver.libpqxx",
+      "category": "orm",
+      "language": "c-cpp",
+      "label": "libpqxx (PostgreSQL)",
+      "capabilities": {
+        "migration_parsing": {
+          "status": "missing"
+        },
+        "model_extraction": {
+          "status": "missing"
+        },
+        "query_attribution": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.driver.mongocxx",
+      "category": "orm",
+      "language": "c-cpp",
+      "label": "mongocxx",
+      "capabilities": {
+        "migration_parsing": {
+          "status": "missing"
+        },
+        "model_extraction": {
+          "status": "missing"
+        },
+        "query_attribution": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.driver.mysql-connector-cpp",
+      "category": "orm",
+      "language": "c-cpp",
+      "label": "MySQL Connector/C++",
+      "capabilities": {
+        "migration_parsing": {
+          "status": "missing"
+        },
+        "model_extraction": {
+          "status": "missing"
+        },
+        "query_attribution": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.driver.redis-plus-plus",
+      "category": "orm",
+      "language": "c-cpp",
+      "label": "redis-plus-plus",
+      "capabilities": {
+        "migration_parsing": {
+          "status": "missing"
+        },
+        "model_extraction": {
+          "status": "missing"
+        },
+        "query_attribution": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.ace",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "ACE (Adaptive Communication Environment)",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.boost",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "Boost (Boost.Asio + utilities)",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.boost-asio",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "Boost.Asio",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.cpprestsdk",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "cpprestsdk (Casablanca)",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.crow",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "Crow",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.drogon",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "Drogon",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.libev",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "libev",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.libevent",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "libevent",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.libuv",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "libuv",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.oatpp",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "Oat++",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.pistache",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "Pistache",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.poco",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "POCO C++ Libraries",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.qt",
+      "category": "http_framework",
+      "subcategory": "ui_frontend",
+      "language": "c-cpp",
+      "label": "Qt",
+      "capabilities": {
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "missing"
+          },
+          "jsx_template": {
+            "status": "missing"
+          },
+          "context_extraction": {
+            "status": "missing"
+          },
+          "hoc_wrapper_recognition": {
+            "status": "missing"
+          }
+        },
+        "Data Flow": {
+          "prop_extraction": {
+            "status": "missing"
+          },
+          "state_management": {
+            "status": "missing"
+          },
+          "data_fetching": {
+            "status": "missing"
+          },
+          "branch_conditions": {
+            "status": "missing"
+          }
+        },
+        "Navigation": {
+          "router_pattern": {
+            "status": "missing"
+          }
+        },
+        "Type System": {
+          "interface_extraction": {
+            "status": "missing"
+          },
+          "type_alias_extraction": {
+            "status": "missing"
+          },
+          "enum_extraction": {
+            "status": "missing"
+          }
+        },
+        "Lifecycle": {
+          "state_setter_emission": {
+            "status": "missing"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.restbed",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "Restbed",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.restinio",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "c-cpp",
+      "label": "RESTinio",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "missing"
+        },
+        "endpoint_synthesis": {
+          "status": "missing"
+        },
+        "handler_attribution": {
+          "status": "missing"
+        },
+        "middleware_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.ros",
+      "category": "http_framework",
+      "subcategory": "desktop",
+      "language": "c-cpp",
+      "label": "ROS (Robot Operating System)",
+      "capabilities": {
+        "Process": {
+          "ipc_extraction": {
+            "status": "missing"
+          },
+          "main_renderer_split": {
+            "status": "missing"
+          }
+        },
+        "Native": {
+          "native_module_imports": {
+            "status": "missing"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.unreal-engine",
+      "category": "http_framework",
+      "subcategory": "desktop",
+      "language": "c-cpp",
+      "label": "Unreal Engine",
+      "capabilities": {
+        "Process": {
+          "ipc_extraction": {
+            "status": "missing"
+          },
+          "main_renderer_split": {
+            "status": "missing"
+          }
+        },
+        "Native": {
+          "native_module_imports": {
+            "status": "missing"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.orm.odb",
+      "category": "orm",
+      "language": "c-cpp",
+      "label": "ODB",
+      "capabilities": {
+        "migration_parsing": {
+          "status": "missing"
+        },
+        "model_extraction": {
+          "status": "missing"
+        },
+        "query_attribution": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.orm.soci",
+      "category": "orm",
+      "language": "c-cpp",
+      "label": "SOCI",
+      "capabilities": {
+        "migration_parsing": {
+          "status": "missing"
+        },
+        "model_extraction": {
+          "status": "missing"
+        },
+        "query_attribution": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.orm.sqlpp11",
+      "category": "orm",
+      "language": "c-cpp",
+      "label": "sqlpp11",
+      "capabilities": {
+        "migration_parsing": {
+          "status": "missing"
+        },
+        "model_extraction": {
+          "status": "missing"
+        },
+        "query_attribution": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.buck2",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "Buck2",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.build2",
+      "category": "package_manager",
+      "language": "c-cpp",
+      "label": "build2",
+      "capabilities": {
+        "lockfile_parsing": {
+          "status": "missing"
+        },
+        "manifest_parsing": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.cmake",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "CMake",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.conan",
+      "category": "package_manager",
+      "language": "c-cpp",
+      "label": "Conan",
+      "capabilities": {
+        "lockfile_parsing": {
+          "status": "missing"
+        },
+        "manifest_parsing": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.hunter",
+      "category": "package_manager",
+      "language": "c-cpp",
+      "label": "Hunter",
+      "capabilities": {
+        "lockfile_parsing": {
+          "status": "missing"
+        },
+        "manifest_parsing": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.make",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "GNU Make",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.meson",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "Meson",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.ninja",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "Ninja",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.vcpkg",
+      "category": "package_manager",
+      "language": "c-cpp",
+      "label": "vcpkg",
+      "capabilities": {
+        "lockfile_parsing": {
+          "status": "missing"
+        },
+        "manifest_parsing": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.tool.xmake",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "xmake",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
       "id": "lang.csharp.driver.cassandra",
       "category": "orm",
       "language": "csharp",
@@ -12506,6 +13169,20 @@
       }
     },
     {
+      "id": "test.boost-test",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "Boost.Test",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
       "id": "test.cargo-test",
       "category": "build_system",
       "language": "rust",
@@ -12529,10 +13206,52 @@
       }
     },
     {
+      "id": "test.catch2",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "Catch2",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
       "id": "test.codeception",
       "category": "build_system",
       "language": "php",
       "label": "Codeception",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "test.cppunit",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "CppUnit",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "test.cpputest",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "CppUTest",
       "capabilities": {
         "dependency_graph": {
           "status": "missing"
@@ -12589,6 +13308,20 @@
       "category": "build_system",
       "language": "python",
       "label": "doctest (stdlib)",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "test.doctest-cpp",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "doctest (C++)",
       "capabilities": {
         "dependency_graph": {
           "status": "missing"
@@ -12677,6 +13410,20 @@
       "category": "build_system",
       "language": "go",
       "label": "Gomega",
+      "capabilities": {
+        "dependency_graph": {
+          "status": "missing"
+        },
+        "target_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "test.gtest",
+      "category": "build_system",
+      "language": "c-cpp",
+      "label": "GoogleTest (gtest)",
       "capabilities": {
         "dependency_graph": {
           "status": "missing"

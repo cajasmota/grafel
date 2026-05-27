@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 37 (15 active · 22 placeholder) · **Frameworks**: 165 · **ORMs**: 143 · **Tools**: 94 · **Other**: 99
+**Languages**: 37 (16 active · 21 placeholder) · **Frameworks**: 182 · **ORMs**: 150 · **Tools**: 110 · **Other**: 99
 
 ## Coverage by language
 
@@ -10,6 +10,7 @@
 | [JS/TS](by-language/jsts.md) | 30 | 21 | 18 | 2 |
 | [python](by-language/python.md) | 20 | 15 | 17 | 3 |
 | [java](by-language/java.md) | 19 | 10 | 13 | 2 |
+| [C/C++](by-language/c-cpp.md) | 17 | 16 | 7 | 0 |
 | [go](by-language/go.md) | 17 | 8 | 17 | 0 |
 | [C#](by-language/csharp.md) | 15 | 7 | 14 | 0 |
 | [kotlin](by-language/kotlin.md) | 12 | 0 | 7 | 0 |
@@ -44,7 +45,6 @@
 | Language |
 |---|
 | [Astro](by-language/astro.md) |
-| [C++](by-language/cpp.md) |
 | [Clojure](by-language/clojure.md) |
 | [Crystal](by-language/crystal.md) |
 | [Elm](by-language/elm.md) |
@@ -66,4 +66,4 @@
 | [Vue](by-language/vue.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 165 frameworks · 94 tools · 143 ORMs · 99 other
+Total: 182 frameworks · 110 tools · 150 ORMs · 99 other

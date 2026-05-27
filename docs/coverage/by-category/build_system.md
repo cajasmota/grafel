@@ -1,13 +1,25 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # build_system
 
-**Total**: 79 records · **C#**: 6 · **elixir**: 4 · **go**: 7 · **groovy**: 1 · **java**: 8 · **JS/TS**: 20 · **multi**: 4 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 5 · **scala**: 2
+**Total**: 91 records · **C/C++**: 12 · **C#**: 6 · **elixir**: 4 · **go**: 7 · **groovy**: 1 · **java**: 8 · **JS/TS**: 20 · **multi**: 4 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 5 · **scala**: 2
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
 
 | Language | Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|---|
+| [C/C++](../by-language/c-cpp.md) | [Boost.Test](../detail/test.boost-test.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [Buck2](../detail/lang.c-cpp.tool.buck2.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [CMake](../detail/lang.c-cpp.tool.cmake.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [Catch2](../detail/test.catch2.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [CppUTest](../detail/test.cpputest.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [CppUnit](../detail/test.cppunit.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [GNU Make](../detail/lang.c-cpp.tool.make.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [GoogleTest (gtest)](../detail/test.gtest.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [Meson](../detail/lang.c-cpp.tool.meson.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [Ninja](../detail/lang.c-cpp.tool.ninja.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [doctest (C++)](../detail/test.doctest-cpp.md) | ❌ | — | — | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [xmake](../detail/lang.c-cpp.tool.xmake.md) | ❌ | — | — | ❌ | |
 | [C#](../by-language/csharp.md) | [FluentAssertions](../detail/test.fluentassertions.md) | ❌ | — | — | ❌ | |
 | [C#](../by-language/csharp.md) | [MSTest](../detail/test.mstest.md) | ⚠️ | — | — | ⚠️ | |
 | [C#](../by-language/csharp.md) | [NUnit](../detail/test.nunit.md) | ⚠️ | — | — | ⚠️ | |

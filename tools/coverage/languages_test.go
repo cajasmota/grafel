@@ -59,7 +59,7 @@ func TestSupportedLanguagesAliasingAndExcludes(t *testing.T) {
 	}
 
 	got := SupportedLanguages(root)
-	want := []string{"cpp", "go", "haskell", "jsts", "python", "ruby"}
+	want := []string{"c-cpp", "go", "haskell", "jsts", "python", "ruby"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("SupportedLanguages mismatch:\nwant %v\n got %v", want, got)
 	}
@@ -77,7 +77,7 @@ func TestLanguageDisplayName(t *testing.T) {
 	}{
 		{"jsts", "JS/TS"},
 		{"csharp", "C#"},
-		{"cpp", "C++"},
+		{"c-cpp", "C/C++"},
 		{"fsharp", "F#"},
 		{"reasonml", "ReasonML"},
 		{"rescript", "ReScript"},
@@ -101,6 +101,7 @@ func TestExtractorDirForSlug(t *testing.T) {
 	cases := map[string]string{
 		"jsts":    "javascript",
 		"go":      "golang",
+		"c-cpp":   "cpp",
 		"haskell": "haskell",
 		"zig":     "zig",
 	}

@@ -1,13 +1,17 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 15 records · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **go**: 1 · **java**: 2 · **JS/TS**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
+**Total**: 19 records · **C/C++**: 4 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **go**: 1 · **java**: 2 · **JS/TS**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
 
 | Language | Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|---|
+| [C/C++](../by-language/c-cpp.md) | [Conan](../detail/lang.c-cpp.tool.conan.md) | — | ❌ | ❌ | — | |
+| [C/C++](../by-language/c-cpp.md) | [Hunter](../detail/lang.c-cpp.tool.hunter.md) | — | ❌ | ❌ | — | |
+| [C/C++](../by-language/c-cpp.md) | [build2](../detail/lang.c-cpp.tool.build2.md) | — | ❌ | ❌ | — | |
+| [C/C++](../by-language/c-cpp.md) | [vcpkg](../detail/lang.c-cpp.tool.vcpkg.md) | — | ❌ | ❌ | — | |
 | [C#](../by-language/csharp.md) | [.csproj / packages.config](../detail/pkg.csproj.md) | — | ❌ | ❌ | — | |
 | [dart](../by-language/dart.md) | [pubspec.yaml](../detail/pkg.pubspec.md) | — | ❌ | ✅ | — | |
 | [elixir](../by-language/elixir.md) | [mix.exs](../detail/pkg.mix.md) | — | — | ❌ | — | |

@@ -49,11 +49,14 @@ var extractorNonLanguageFormats = map[string]bool{
 // extractorDirAliases maps extractor directory names to the canonical
 // language slug used by the registry. JavaScript and TypeScript collapse
 // to "jsts" because the registry tags both under a single slug; "golang"
-// is the extractor dirname but the registry uses "go".
+// is the extractor dirname but the registry uses "go"; "cpp" expands to
+// "c-cpp" because archigraph's C/C++ extractor is shared across .c and
+// .cpp sources (mirrors the JS/TS collapse — see #2732).
 var extractorDirAliases = map[string]string{
 	"javascript": "jsts",
 	"typescript": "jsts",
 	"golang":     "go",
+	"cpp":        "c-cpp",
 }
 
 // languageDisplayOverrides maps a canonical language slug to its human
@@ -62,7 +65,7 @@ var extractorDirAliases = map[string]string{
 var languageDisplayOverrides = map[string]string{
 	"jsts":     "JS/TS",
 	"csharp":   "C#",
-	"cpp":      "C++",
+	"c-cpp":    "C/C++",
 	"fsharp":   "F#",
 	"reasonml": "ReasonML",
 	"rescript": "ReScript",
@@ -138,6 +141,8 @@ func extractorDirForSlug(slug string) string {
 		return "javascript"
 	case "go":
 		return "golang"
+	case "c-cpp":
+		return "cpp"
 	}
 	return slug
 }

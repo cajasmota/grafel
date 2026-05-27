@@ -1,13 +1,20 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 143 records · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 13 · **JS/TS**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 14 · **scala**: 6
+**Total**: 150 records · **C/C++**: 7 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 13 · **JS/TS**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 14 · **scala**: 6
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
 
 | Language | Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|---|
+| [C/C++](../by-language/c-cpp.md) | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | ❌ | ❌ | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [ODB](../detail/lang.c-cpp.orm.odb.md) | ❌ | ❌ | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [SOCI](../detail/lang.c-cpp.orm.soci.md) | ❌ | ❌ | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | ❌ | ❌ | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | ❌ | ❌ | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | ❌ | ❌ | ❌ | |
+| [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | ❌ | ❌ | ❌ | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | — | — | ⚠️ | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | — | — | ⚠️ | |
 | [C#](../by-language/csharp.md) | [Dapper](../detail/lang.csharp.orm.dapper.md) | ❌ | ⚠️ | ⚠️ | |
