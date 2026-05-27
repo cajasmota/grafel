@@ -71,10 +71,10 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"constant_propagation",
 		"context_extraction",
 		"data_fetching",
-		// #2766 substrate Phase 1B reachability + dead-code keys.
-		"dead_code_detection",
 		// #2764 Phase 1A substrate effect-classification keys.
 		"db_effect",
+		// #2766 substrate Phase 1B reachability + dead-code keys.
+		"dead_code_detection",
 		"enum_extraction",
 		"env_fallback_recognition",
 		"fs_effect",
@@ -112,10 +112,10 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"constant_propagation",
 		"context_extraction",
 		"data_fetching",
-		// #2766 substrate Phase 1B reachability + dead-code keys.
-		"dead_code_detection",
 		// #2764 Phase 1A substrate effect-classification keys.
 		"db_effect",
+		// #2766 substrate Phase 1B reachability + dead-code keys.
+		"dead_code_detection",
 		"endpoint_synthesis",
 		"enum_extraction",
 		"env_fallback_recognition",
