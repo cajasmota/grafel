@@ -16,7 +16,7 @@ Back to [summary](../summary.md).
 | [Buffalo](../detail/lang.go.framework.buffalo.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 | [Echo](../detail/lang.go.framework.echo.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 | [Fiber](../detail/lang.go.framework.fiber.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
-| [Gin](../detail/lang.go.framework.gin.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
+| [Gin](../detail/lang.go.framework.gin.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 4/9 | |
 | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 | [Huma](../detail/lang.go.framework.huma.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
@@ -38,9 +38,9 @@ Back to [summary](../summary.md).
 
 ### Desktop
 
-| Name | Process | Native | Updates | Notes |
-|---|---|---|---|---|
-| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | ❌ 0/2 | ❌ 0/1 | — | |
+| Name | Process | Native | Updates | Substrate | Notes |
+|---|---|---|---|---|---|
+| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | ❌ 0/2 | ❌ 0/1 | — | — | |
 
 
 ## Tools

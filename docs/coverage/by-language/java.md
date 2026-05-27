@@ -22,7 +22,7 @@ Back to [summary](../summary.md).
 | [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 | [Micronaut](../detail/lang.java.framework.micronaut.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 | [Quarkus](../detail/lang.java.framework.quarkus.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
-| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ✅ 2/2 | ✅ 1/1 | — | ⚠️ 0/1 | — | — | — | ⚠️ 2/3 | |
+| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ✅ 2/2 | ✅ 1/1 | — | ⚠️ 0/1 | — | — | — | ⚠️ 4/9 | |
 | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 | [Vert.x](../detail/lang.java.framework.vertx.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 2/3 | |
 
@@ -39,7 +39,7 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Data Flow | Server | Routing | Build | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | — | |
 
 
 ### Mobile

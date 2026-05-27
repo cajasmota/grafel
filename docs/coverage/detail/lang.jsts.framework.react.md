@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 18
+- **Capability cells:** 24
 
 ## Capabilities
 
@@ -61,8 +61,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `constant_propagation` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| `db_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_jsts.go`<br>`internal/links/effect_propagation.go` | — |
+| `dead_code_detection` | ✅ `full` | `2026-05-28` | — | — | `internal/substrate/entry_points_jsts.go`<br>`internal/substrate/entry_points.go`<br>`internal/links/reachability.go`<br>`internal/mcp/dead_code.go` | — |
 | `env_fallback_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| `fs_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_jsts.go`<br>`internal/links/effect_propagation.go` | — |
+| `http_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_jsts.go`<br>`internal/links/effect_propagation.go` | — |
 | `import_resolution_quality` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| `mutation_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_jsts.go`<br>`internal/links/effect_propagation.go` | — |
+| `reachability_analysis` | ✅ `full` | `2026-05-28` | — | — | `internal/substrate/entry_points_jsts.go`<br>`internal/substrate/entry_points.go`<br>`internal/links/reachability.go` | — |
 
 ## Provenance
 

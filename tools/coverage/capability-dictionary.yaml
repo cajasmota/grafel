@@ -258,6 +258,12 @@ subcategories:
       - ipc_extraction
       - main_renderer_split
       - native_module_imports
+      - constant_propagation
+      - env_fallback_recognition
+      - import_resolution_quality
+      - confidence_overlay
+      - reachability_analysis
+      - dead_code_detection
     groups:
       - name: Process
         keys: [ipc_extraction, main_renderer_split]
@@ -265,6 +271,8 @@ subcategories:
         keys: [native_module_imports]
       - name: Updates
         keys: []
+      - name: Substrate
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
 
   rpc_framework:
     display: "RPC Framework"

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 7
+- **Capability cells:** 13
 
 ## Capabilities
 
@@ -55,8 +55,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `constant_propagation` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| `db_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_python.go`<br>`internal/links/effect_propagation.go` | — |
+| `dead_code_detection` | ✅ `full` | `2026-05-28` | — | — | `internal/substrate/entry_points_python.go`<br>`internal/substrate/entry_points.go`<br>`internal/links/reachability.go`<br>`internal/mcp/dead_code.go` | — |
 | `env_fallback_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| `fs_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_python.go`<br>`internal/links/effect_propagation.go` | — |
+| `http_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_python.go`<br>`internal/links/effect_propagation.go` | — |
 | `import_resolution_quality` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| `mutation_effect` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/substrate/effect_sinks_python.go`<br>`internal/links/effect_propagation.go` | — |
+| `reachability_analysis` | ✅ `full` | `2026-05-28` | — | — | `internal/substrate/entry_points_python.go`<br>`internal/substrate/entry_points.go`<br>`internal/links/reachability.go` | — |
 
 ## Framework-specific
 
