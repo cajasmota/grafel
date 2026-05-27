@@ -43,6 +43,13 @@ func TestIsTestFile(t *testing.T) {
 		{"src/test/User.java", true},
 		{"src/spec/user.rb", true},
 		{"src/main/User.java", false},
+		// Python in tests/ directory — no test_ prefix required (#2608):
+		// Django projects place test files under core/tests/schedule.py etc.
+		// The path-segment check ("/tests/") must fire before the .py stem check.
+		{"core/tests/schedule.py", true},
+		{"api/tests/views.py", true},
+		{"tests/conftest.py", true},
+		{"app/test/integration.py", true},
 	}
 	for _, tc := range cases {
 		got := isTestFile(tc.path)
