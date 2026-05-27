@@ -65,6 +65,8 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 	want := []string{
 		"branch_conditions",
 		"component_extraction",
+		// #2769 substrate confidence overlay.
+		"confidence_overlay",
 		// #2761 substrate cross-cutting keys.
 		"constant_propagation",
 		"context_extraction",
@@ -95,6 +97,8 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"auth_coverage",
 		"branch_conditions",
 		"component_extraction",
+		// #2769 substrate confidence overlay.
+		"confidence_overlay",
 		// #2761 substrate keys live under the Substrate group across every
 		// subcategory that imports an HTTP / RPC client surface.
 		"constant_propagation",
