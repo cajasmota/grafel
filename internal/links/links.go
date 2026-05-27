@@ -49,6 +49,11 @@ const (
 	// between two shared-library domain models that represent the same
 	// concept (emitted by the P8 same-as pass — see sameas_pass.go).
 	RelationSameAs = "same_as"
+	// RelationRoutesTo marks an intra-repo HTTP self-call edge where the
+	// caller and the server-side handler live in the same repository
+	// (#2585). These are emitted with method = MethodHTTPSelf so they can
+	// be queried and displayed independently of cross-repo CALLS links.
+	RelationRoutesTo = "routes_to"
 )
 
 // Method values identify which pass produced an entry. Method-segregated

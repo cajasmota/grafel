@@ -224,8 +224,16 @@ const urlPatternNormConfidence = 0.95
 // `/api/v1` is preferred over `/api` when both would match.
 var crossRepoPrefixCandidates = []string{"/api/v1", "/api/v2", "/api", "/v1"}
 
-// MethodHTTP identifies this pass's emissions in links.json.
+// MethodHTTP identifies this pass's cross-repo HTTP link emissions in links.json.
 const MethodHTTP = "http"
+
+// MethodHTTPSelf identifies intra-repo HTTP self-call link emissions in
+// links.json (#2585). These are consumer→producer pairs where the caller and
+// the endpoint definition live in the SAME repo (e.g. a Django task that
+// calls its own API via requests.get). They are stored under a distinct
+// method so they can be queried separately and are not confused with
+// cross-repo CALLS links.
+const MethodHTTPSelf = "http_self"
 
 // httpChannel is the channel string used on every emitted link.
 const httpChannel = "http"
@@ -287,8 +295,8 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 
 	if len(graphs) < 2 {
 		// Method-segregated overwrite still runs so a previous group of
-		// ≥ 2 repos that shrunk to 1 cleans up its prior HTTP entries.
-		_, _, err := replaceByMethod(paths.Links, newMethodSet(MethodHTTP), nil, rejects)
+		// ≥ 2 repos that shrunk to 1 cleans up its prior HTTP and http_self entries.
+		_, _, err := replaceByMethod(paths.Links, newMethodSet(MethodHTTP, MethodHTTPSelf), nil, rejects)
 		return res, err
 	}
 
@@ -641,9 +649,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 
 		for _, cRepo := range consumerRepoNames {
 			for _, pRepo := range producerRepoNames {
-				if cRepo == pRepo {
-					continue // never emit a self-pair as a cross-repo edge
-				}
+				intraRepo := cRepo == pRepo
 				c := consumerRepos[cRepo]
 				// Verb-aware producer selection (#747):
 				//   Tier 1 — producer with the SAME specific verb as the
@@ -763,7 +769,13 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				}
 				source := entityKey(c.repo, srcID)
 				target := entityKey(p.repo, tgtID)
-				id := MakeID(source, target, MethodHTTP)
+				// #2585 — intra-repo HTTP self-calls use MethodHTTPSelf so
+				// they are segregated from cross-repo CALLS links.
+				linkMethod := MethodHTTP
+				if intraRepo {
+					linkMethod = MethodHTTPSelf
+				}
+				id := MakeID(source, target, linkMethod)
 				if emitted[id] {
 					continue
 				}
@@ -779,12 +791,17 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				if urlPatternNormConfidenceVal > 0 {
 					confidence = urlPatternNormConfidenceVal
 				}
+				// Intra-repo self-calls use RelationRoutesTo; cross-repo uses RelationCalls.
+				relation := RelationCalls
+				if intraRepo {
+					relation = RelationRoutesTo
+				}
 				link := Link{
 					ID:           id,
 					Source:       source,
 					Target:       target,
-					Relation:     RelationCalls,
-					Method:       MethodHTTP,
+					Relation:     relation,
+					Method:       linkMethod,
 					Confidence:   confidence,
 					Channel:      &ch,
 					Identifier:   &ident,
@@ -803,6 +820,12 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						link.Properties = map[string]string{}
 					}
 					link.Properties["normalization"] = urlPatternNormAnnotation
+				}
+				if intraRepo {
+					if link.Properties == nil {
+						link.Properties = map[string]string{}
+					}
+					link.Properties["intra_repo"] = "true"
 				}
 				fresh = append(fresh, link)
 			}
@@ -917,7 +940,9 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		}
 	}
 
-	added, skipped, err := replaceByMethod(paths.Links, newMethodSet(MethodHTTP), fresh, rejects)
+	// #2585: replace both cross-repo (http) and intra-repo (http_self) entries
+	// atomically so that removing all client calls from a repo cleans both sets.
+	added, skipped, err := replaceByMethod(paths.Links, newMethodSet(MethodHTTP, MethodHTTPSelf), fresh, rejects)
 	if err != nil {
 		return res, err
 	}

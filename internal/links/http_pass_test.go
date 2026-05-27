@@ -2210,3 +2210,103 @@ func TestHTTPPass_CrossRepoResolvedMatchesLinks(t *testing.T) {
 		t.Errorf("CrossRepoResolved + OrphanCalls: want 2 total consumers, got %d", total)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #2585 — intra-repo HTTP self-call resolution
+// ---------------------------------------------------------------------------
+
+// TestHTTPPass_IntraRepoSelfCall_Resolved verifies that a consumer and producer
+// that live in the SAME repo produce a ROUTES_TO link with method=http_self
+// rather than being silently dropped by the former `cRepo == pRepo` guard.
+//
+// Fixture: upvate-core style — a Django DRF endpoint (producer) and a
+// requests.get call in a Celery task (consumer) in the same "upvate-core" repo.
+// The expected link: caller (task function) --ROUTES_TO--> handler (view),
+// method = "http_self", relation = "routes_to", intra_repo = "true".
+func TestHTTPPass_IntraRepoSelfCall_Resolved(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "upvate-core",
+		Entities: []map[string]any{
+			// Producer: DRF ViewSet handler
+			{
+				"id": "view1", "name": "DobSyncViewSet", "kind": "Controller",
+				"source_file": "core/views/dobsync_viewset.py",
+			},
+			{
+				"id": "ep-prod", "name": "http:GET:/api/v1/dobsync", "kind": "http_endpoint",
+				"source_file": "core/views/dobsync_viewset.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/dobsync",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+			// Consumer: Celery task that calls its own API via requests.get
+			{
+				"id": "task1", "name": "sync_dob_data", "kind": "Function",
+				"source_file": "core/tasks/dobsync_process.py",
+			},
+			{
+				"id": "ep-cons", "name": "http:GET:/api/v1/dobsync", "kind": "http_endpoint",
+				"source_file": "core/tasks/dobsync_process.py",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/api/v1/dobsync",
+					"framework":     "requests",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:sync_dob_data",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "view1", "to_id": "ep-prod", "kind": "IMPLEMENTS"},
+		},
+	})
+	// A second repo is required so runHTTPPass does not short-circuit (len(graphs) < 2).
+	// This repo has no HTTP entities and acts as a neutral observer.
+	writeFixture(t, root, fixtureGraph{
+		Repo:     "frontend",
+		Entities: []map[string]any{},
+		Edges:    []map[string]string{},
+	})
+	home := fixtureRoot(t) // separate home dir
+	home = t.TempDir()
+	if _, err := RunAllPasses("g2585-intra", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2585-intra-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *Link
+	for i, l := range doc.Links {
+		if l.Method == MethodHTTPSelf {
+			found = &doc.Links[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("#2585: expected an http_self link for intra-repo self-call; links=%+v", doc.Links)
+	}
+	if found.Relation != RelationRoutesTo {
+		t.Errorf("#2585: relation: want %q, got %q", RelationRoutesTo, found.Relation)
+	}
+	if found.Source != "upvate-core::task1" {
+		t.Errorf("#2585: source: want upvate-core::task1 (resolved caller), got %s", found.Source)
+	}
+	if found.Target != "upvate-core::view1" {
+		t.Errorf("#2585: target: want upvate-core::view1 (resolved handler), got %s", found.Target)
+	}
+	if found.Properties["intra_repo"] != "true" {
+		t.Errorf("#2585: expected Properties[intra_repo]=true, got %v", found.Properties)
+	}
+	// Ensure no cross-repo link was emitted for this endpoint (there is no
+	// matching endpoint in the frontend repo, so no http link should exist).
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			t.Errorf("#2585: unexpected cross-repo http link: %+v", l)
+		}
+	}
+}
