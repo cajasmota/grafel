@@ -224,6 +224,54 @@ const urlPatternNormConfidence = 0.95
 // `/api/v1` is preferred over `/api` when both would match.
 var crossRepoPrefixCandidates = []string{"/api/v1", "/api/v2", "/api", "/v1"}
 
+// caseNormalizePathSegments produces a canonical form of a path for
+// case-normalized cross-repo matching (#2703). Each segment is lower-cased
+// and stripped of `-` and `_` characters; path-parameter placeholders
+// (already collapsed to `{*}` by normalizePathForIndex) are passed through
+// unchanged.
+//
+// Examples:
+//
+//	/api/v1/contracts/{*}/assigned_contacts  → /api/v1/contracts/{*}/assignedcontacts
+//	/api/v1/contracts/{*}/assigned-contacts  → /api/v1/contracts/{*}/assignedcontacts
+//	/api/v1/contracts/{*}/assignedContacts   → /api/v1/contracts/{*}/assignedcontacts
+//	/api/v1/contracts/{*}/AssignedContacts   → /api/v1/contracts/{*}/assignedcontacts
+//
+// Critically, the segment structure is PRESERVED: this normalization MUST
+// NOT cause `/searchBuildings` (1 segment) to match `/buildings/search`
+// (2 segments). That is path-reordering, which is explicitly out of scope
+// for #2703.
+//
+// The input is expected to already be normalizePathForIndex-canonicalised
+// (placeholders collapsed to `{*}`, lower-cased). The function still applies
+// lower-casing and strips `-`/`_` defensively so it can be safely called on
+// any path; the resulting key is suitable for byCaseNorm bucket lookup.
+func caseNormalizePathSegments(path string) string {
+	if path == "" {
+		return ""
+	}
+	// Split on `/` so segment count is preserved (empty leading segment for
+	// the leading slash is intentional and contributes to structural identity).
+	segs := strings.Split(path, "/")
+	for i, seg := range segs {
+		if seg == "" || seg == "{*}" {
+			continue
+		}
+		// Lower-case + strip `-` and `_` so camelCase, snake_case, kebab-case
+		// and PascalCase all collapse to the same canonical id.
+		var b strings.Builder
+		b.Grow(len(seg))
+		for _, r := range strings.ToLower(seg) {
+			if r == '-' || r == '_' {
+				continue
+			}
+			b.WriteRune(r)
+		}
+		segs[i] = b.String()
+	}
+	return strings.Join(segs, "/")
+}
+
 // MethodHTTP identifies this pass's cross-repo HTTP link emissions in links.json.
 const MethodHTTP = "http"
 
@@ -513,6 +561,53 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		}
 	}
 
+	// #2703 — case-normalization index. Keyed by
+	// caseNormalizePathSegments(normalizePathForIndex(path)) so that producers
+	// using snake_case / kebab-case / camelCase / PascalCase route segments
+	// all bucket together with consumers using a different casing style.
+	// Per-segment normalization preserves segment structure, so this index
+	// CANNOT match a single-segment consumer (e.g. `/searchBuildings`) to a
+	// multi-segment producer (`/buildings/search`) — path reordering is out
+	// of scope (see #2703 acceptance criterion 4).
+	//
+	// Only producer hits are indexed; consumer hits probe this index when
+	// the standard byPath lookup AND prefix-injection retry both miss.
+	byCaseNorm := map[string][]*httpEndpointHit{}
+	for _, byRepo := range hits {
+		for _, perRepo := range byRepo {
+			for _, h := range perRepo {
+				if h.side != sideProducer {
+					continue
+				}
+				producerPath := h.canonicalPath
+				if producerPath == "" {
+					if _, p, ok := parseHTTPName(h.name); ok {
+						producerPath = p
+					}
+				}
+				if producerPath == "" {
+					continue
+				}
+				baseKey := normalizePathForIndex(producerPath)
+				caseKey := caseNormalizePathSegments(baseKey)
+				if caseKey != baseKey {
+					byCaseNorm[caseKey] = append(byCaseNorm[caseKey], h)
+				}
+				// Also register the prefix-stripped form so a consumer that
+				// omits the API/version prefix (the layered #2702 mount-prefix
+				// case) still finds the producer via the case-norm index. This
+				// composes mount-prefix + case-normalize without requiring
+				// #2702 to have landed.
+				if stripped, ok := stripAPIPrefix(baseKey); ok {
+					strippedCase := caseNormalizePathSegments(stripped)
+					if strippedCase != caseKey {
+						byCaseNorm[strippedCase] = append(byCaseNorm[strippedCase], h)
+					}
+				}
+			}
+		}
+	}
+
 	// #2588 — URL-pattern normalization index. Keyed by normalizeURLPattern(path)
 	// so that paths differing only in param syntax ({id} vs <pk:int>) or a
 	// trailing query string (/users?foo=bar vs /users) can be matched in the
@@ -732,6 +827,78 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						}
 					}
 
+					// Case-normalization retry (#2703): when both the standard
+					// byPath lookup AND the prefix-injection retry miss, attempt to
+					// match the consumer path against the byCaseNorm index after
+					// normalizing each segment to its canonical id (lowercase,
+					// hyphens/underscores stripped). This handles the upvate
+					// pattern where the frontend calls `/assignedContacts` and
+					// the backend defines `/api/v1/contracts/{pk}/assigned_contacts`,
+					// or `/equipment-types` ↔ `equipment_types`, etc.
+					//
+					// Per-segment normalization preserves segment count, so this
+					// retry cannot match across reordered paths (e.g.
+					// `/searchBuildings` ↔ `/buildings/search`) — those are out
+					// of scope (#2703 acceptance #4).
+					//
+					// We probe with and without API-version prefix-injection so
+					// this strategy composes with #2702 (mount-prefix retry):
+					// `/assignedContacts` consumer matches `/api/v1/.../assigned_contacts`
+					// producer via the prefix-stripped alias that byCaseNorm
+					// registers above.
+					//
+					// First match wins; edge is stamped with
+					// Properties["resolve_strategy"] = "case_normalized".
+					var caseNormalized bool
+					if p == nil {
+						consumerPath := c.canonicalPath
+						if consumerPath == "" {
+							if _, parsed, ok := parseHTTPName(c.name); ok {
+								consumerPath = parsed
+							}
+						}
+						normConsumerPath := normalizePathForIndex(consumerPath)
+						if normConsumerPath != "" {
+							probeKeys := []string{caseNormalizePathSegments(normConsumerPath)}
+							// Also try with each well-known API/version prefix
+							// prepended so the case-normalize retry composes
+							// with the prefix-injection strategy without
+							// requiring an exact ordering of which retry runs
+							// first.
+							if _, hasPrefix := stripAPIPrefix(normConsumerPath); !hasPrefix {
+								for _, pfx := range crossRepoPrefixCandidates {
+									probeKeys = append(probeKeys, caseNormalizePathSegments(pfx+normConsumerPath))
+								}
+							}
+							for _, probeKey := range probeKeys {
+								if probeKey == "" {
+									continue
+								}
+								caseCandidates := make([]*httpEndpointHit, 0)
+								for _, h := range byCaseNorm[probeKey] {
+									if h.repo == pRepo && h.side == sideProducer {
+										caseCandidates = appendUnique(caseCandidates, h)
+									}
+								}
+								if len(caseCandidates) == 0 {
+									continue
+								}
+								sort.SliceStable(caseCandidates, func(i, j int) bool { return less(caseCandidates[i], caseCandidates[j]) })
+								picked, q := pickProducerForConsumer(c, caseCandidates)
+								if picked != nil {
+									p, quality = picked, q
+									caseNormalized = true
+									// Reset prefixNormalized — the matched
+									// strategy is case_normalized, not
+									// prefix_stripped, even if the probe
+									// key happened to carry a prefix.
+									prefixNormalized = ""
+									break
+								}
+							}
+						}
+					}
+
 					// URL-pattern normalization retry (#2588): when both the standard
 					// byPath lookup AND the prefix-injection retry miss, attempt to
 					// match the consumer path against every producer in the target repo
@@ -815,6 +982,8 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						switch {
 						case urlPatternNormAnnotation != "":
 							hitsByStrategy["url_pattern"]++
+						case caseNormalized:
+							hitsByStrategy["case_normalized"]++
 						case prefixNormalized != "":
 							hitsByStrategy["prefix_stripped"]++
 						default:
@@ -852,6 +1021,12 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					if prefixNormalized != "" {
 						link.Properties = map[string]string{"prefix_normalized": prefixNormalized}
 					}
+					if caseNormalized {
+						if link.Properties == nil {
+							link.Properties = map[string]string{}
+						}
+						link.Properties["resolve_strategy"] = "case_normalized"
+					}
 					if urlPatternNormAnnotation != "" {
 						if link.Properties == nil {
 							link.Properties = map[string]string{}
@@ -866,6 +1041,139 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					}
 					fresh = append(fresh, link)
 				} // end for _, c := range consumersByRepo[cRepo]
+			}
+		}
+	}
+
+	// #2703 — case-normalization orphan-retry sweep.
+	//
+	// Consumer hits that the main loop could not match (their canonical name
+	// lives in a bucket without any compatible producer, and byPath
+	// wildcarding could not pull them together) are retried here using the
+	// byCaseNorm index. This handles the common pattern where the frontend
+	// emits a camelCase route segment and the backend defines a snake_case
+	// or kebab-case segment for the same conceptual endpoint.
+	//
+	// Per-segment normalization preserves segment count, so this sweep
+	// cannot match across reordered segments — `/searchBuildings` and
+	// `/buildings/search` remain orphans (out of scope per #2703 #4).
+	//
+	// Runs BEFORE the url_pattern sweep so the more-specific
+	// case_normalized strategy is preferred when both would match.
+	for _, byRepo := range hits {
+		for _, perRepo := range byRepo {
+			for _, c := range perRepo {
+				if c.side != sideConsumer {
+					continue
+				}
+				cKey := entityKey(c.repo, c.stampedID)
+				if matchedConsumers[cKey] {
+					continue // already resolved by main loop
+				}
+				consumerPath := c.canonicalPath
+				if consumerPath == "" {
+					if _, p, ok := parseHTTPName(c.name); ok {
+						consumerPath = p
+					}
+				}
+				if consumerPath == "" {
+					continue
+				}
+				normConsumerPath := normalizePathForIndex(consumerPath)
+				if normConsumerPath == "" {
+					continue
+				}
+				// Probe the case-norm index under the consumer's normalized
+				// case-key AND, when the consumer has no API/version prefix
+				// of its own, every prefix-prepended variant. This composes
+				// with the prefix-injection strategy (#2569 / #2702) so the
+				// frontend can emit `/assignedContacts` and match a producer
+				// at `/api/v1/contracts/{*}/assigned_contacts` if a producer
+				// exists at that case-canonical key.
+				probeKeys := []string{caseNormalizePathSegments(normConsumerPath)}
+				if _, hasPrefix := stripAPIPrefix(normConsumerPath); !hasPrefix {
+					for _, pfx := range crossRepoPrefixCandidates {
+						probeKeys = append(probeKeys, caseNormalizePathSegments(pfx+normConsumerPath))
+					}
+				}
+				var eligible []*httpEndpointHit
+				seenCandidate := map[string]bool{}
+				for _, probeKey := range probeKeys {
+					if probeKey == "" {
+						continue
+					}
+					for _, p := range byCaseNorm[probeKey] {
+						if p.repo == c.repo {
+							continue
+						}
+						if !verbsCompatible(c.verb, p.verb) {
+							continue
+						}
+						pid := entityKey(p.repo, p.stampedID)
+						if seenCandidate[pid] {
+							continue
+						}
+						seenCandidate[pid] = true
+						eligible = append(eligible, p)
+					}
+				}
+				if len(eligible) == 0 {
+					continue
+				}
+				sort.SliceStable(eligible, func(i, j int) bool { return less(eligible[i], eligible[j]) })
+				producersByRepoCN := map[string][]*httpEndpointHit{}
+				for _, p := range eligible {
+					producersByRepoCN[p.repo] = append(producersByRepoCN[p.repo], p)
+				}
+				pRepoNamesCN := make([]string, 0, len(producersByRepoCN))
+				for r := range producersByRepoCN {
+					pRepoNamesCN = append(pRepoNamesCN, r)
+				}
+				sort.Strings(pRepoNamesCN)
+				allConsumers[cKey] = true
+				for _, pRepo := range pRepoNamesCN {
+					p, quality := pickProducerForConsumer(c, producersByRepoCN[pRepo])
+					if p == nil {
+						continue
+					}
+					srcID := c.callerID
+					if srcID == "" {
+						srcID = c.stampedID
+					}
+					tgtID := p.handlerID
+					if tgtID == "" {
+						tgtID = p.stampedID
+					}
+					source := entityKey(c.repo, srcID)
+					target := entityKey(p.repo, tgtID)
+					id := MakeID(source, target, MethodHTTP)
+					if emitted[id] {
+						continue
+					}
+					emitted[id] = true
+					matchedConsumers[cKey] = true
+					hitsByStrategy["case_normalized"]++
+					ident := canonicalIdentifier(c, p)
+					ch := httpChannel
+					link := Link{
+						ID:           id,
+						Source:       source,
+						Target:       target,
+						Relation:     RelationCalls,
+						Method:       MethodHTTP,
+						Confidence:   ScoreImport(),
+						Channel:      &ch,
+						Identifier:   &ident,
+						DiscoveredAt: now,
+						SourceLocations: [][]string{
+							{c.sourceFile},
+							{p.sourceFile},
+						},
+						MatchQuality: quality,
+						Properties:   map[string]string{"resolve_strategy": "case_normalized"},
+					}
+					fresh = append(fresh, link)
+				}
 			}
 		}
 	}

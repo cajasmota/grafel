@@ -2632,6 +2632,209 @@ func TestHTTPPass_ResolveStrategy_TelemetryCounters(t *testing.T) {
 	}
 }
 
+// TestHTTPPass_CrossRepo_CaseNormalization verifies that a consumer calling
+// a camelCase path resolves to a producer defining the same conceptual route
+// in snake_case or kebab-case. Per-segment normalization (lowercase, strip
+// hyphens AND underscores) collapses all four casing conventions to the same
+// canonical id. The emitted link must carry
+// Properties["resolve_strategy"] = "case_normalized" and the hit must be
+// bucketed in CrossRepoResolveHitsByStrategy["case_normalized"]. (#2703)
+func TestHTTPPass_CrossRepo_CaseNormalization(t *testing.T) {
+	root := fixtureRoot(t)
+
+	// Backend producer: snake_case path, with a path parameter to confirm
+	// that placeholders (collapsed to {*}) are not corrupted by the
+	// case-normalizer.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{
+				"id": "h1", "name": "ContractAssignedContactsView", "kind": "Controller",
+				"source_file": "core/views/contract_assigned_contacts.py",
+			},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/contracts/{pk}/assigned_contacts", "kind": "http_endpoint",
+				"source_file": "core/views/contract_assigned_contacts.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/contracts/{pk}/assigned_contacts",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+
+	// Frontend consumer: camelCase path WITH the api/v1 prefix so the
+	// case-normalize retry resolves it directly (without depending on a
+	// separate mount-prefix retry). A second consumer omits the prefix to
+	// exercise the composed prefix+case path.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{
+				"id": "fn1", "name": "fetchAssignedContacts", "kind": "Function",
+				"source_file": "src/services/contracts/assignedContacts.ts",
+			},
+			{
+				"id": "ep2", "name": "http:GET:/api/v1/contracts/{id}/assignedContacts", "kind": "http_endpoint",
+				"source_file": "src/services/contracts/assignedContacts.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/api/v1/contracts/{id}/assignedContacts",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchAssignedContacts",
+				},
+			},
+			{
+				"id": "fn2", "name": "fetchAssignedContactsNoPrefix", "kind": "Function",
+				"source_file": "src/services/contracts/assignedContactsNoPrefix.ts",
+			},
+			{
+				"id": "ep3", "name": "http:GET:/contracts/{id}/assignedContacts", "kind": "http_endpoint",
+				"source_file": "src/services/contracts/assignedContactsNoPrefix.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/contracts/{id}/assignedContacts",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchAssignedContactsNoPrefix",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2703-case", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2703-case-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found1, found2 bool
+	for _, l := range doc.Links {
+		if l.Method != MethodHTTP {
+			continue
+		}
+		if l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			found1 = true
+			if l.Properties["resolve_strategy"] != "case_normalized" {
+				t.Errorf("fn1 link: resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "case_normalized")
+			}
+		}
+		if l.Source == "frontend::fn2" && l.Target == "backend::h1" {
+			found2 = true
+			if l.Properties["resolve_strategy"] != "case_normalized" {
+				t.Errorf("fn2 link: resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "case_normalized")
+			}
+		}
+	}
+	if !found1 {
+		t.Errorf("#2703: expected cross-repo link frontend::fn1 → backend::h1 (camelCase ↔ snake_case with /api/v1 prefix)")
+	}
+	if !found2 {
+		t.Errorf("#2703: expected cross-repo link frontend::fn2 → backend::h1 (camelCase ↔ snake_case, prefix injected)")
+	}
+}
+
+// TestHTTPPass_CrossRepo_CaseNormalization_NoReorderMatch verifies the
+// critical out-of-scope clause from #2703: per-segment normalization must
+// preserve segment count, so `/searchBuildings` (1 segment) MUST NOT match
+// `/buildings/search` (2 segments) even though both contain the tokens
+// "search" and "buildings".
+func TestHTTPPass_CrossRepo_CaseNormalization_NoReorderMatch(t *testing.T) {
+	root := fixtureRoot(t)
+
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "BuildingSearchView", "kind": "Controller", "source_file": "core/views/buildings.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/buildings/search", "kind": "http_endpoint",
+				"source_file": "core/views/buildings.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/buildings/search",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "searchBuildings", "kind": "Function", "source_file": "src/services/buildings/search.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/searchBuildings", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/search.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/searchBuildings",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:searchBuildings",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2703-noreorder", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2703-noreorder-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method != MethodHTTP {
+			continue
+		}
+		if l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			t.Errorf("#2703 acceptance #4: case_normalize MUST NOT match across reordered segments (/searchBuildings vs /buildings/search); got link %+v", l)
+		}
+	}
+}
+
+// TestCaseNormalizePathSegments covers the per-segment canonical-id
+// transformation in isolation. (#2703)
+func TestCaseNormalizePathSegments(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"/", "/"},
+		{"/assigned_contacts", "/assignedcontacts"},
+		{"/assigned-contacts", "/assignedcontacts"},
+		{"/assignedContacts", "/assignedcontacts"},
+		{"/AssignedContacts", "/assignedcontacts"},
+		{"/api/v1/contracts/{*}/assigned_contacts", "/api/v1/contracts/{*}/assignedcontacts"},
+		{"/api/v1/contracts/{*}/assignedContacts", "/api/v1/contracts/{*}/assignedcontacts"},
+		{"/equipment-types", "/equipmenttypes"},
+		// Segment count must be preserved.
+		{"/searchBuildings", "/searchbuildings"},
+		{"/buildings/search", "/buildings/search"},
+	}
+	for _, tc := range cases {
+		got := caseNormalizePathSegments(tc.in)
+		if got != tc.want {
+			t.Errorf("caseNormalizePathSegments(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 // TestClassifyOrphanReason covers the path-shape → miss-reason taxonomy
 // used by runHTTPPass to bucket residual orphans.
 func TestClassifyOrphanReason(t *testing.T) {

@@ -151,6 +151,7 @@ type PassResult struct {
 	// resolutions each strategy contributed. Keys (stable):
 	//   - "exact"            byPath bucket hit with a same-name producer
 	//   - "prefix_stripped"  prefix-injection retry (#2569)
+	//   - "case_normalized"  per-segment case/separator normalization (#2703)
 	//   - "url_pattern"      normalizeURLPattern fallback (#2588)
 	//   - "graphql_root"     consumer pointed at /graphql root, producer
 	//                        per-field synthetic registered there (#1496)
