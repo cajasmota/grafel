@@ -943,6 +943,18 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		}
 		pass3Records = append(pass3Records, adminEntities...)
 
+		// Pass 2.6e-vs — DRF ViewSet.as_view({dict}) route synthesis (#2614).
+		// Handles the explicit method-map mounting pattern that appears outside
+		// router.register() — e.g. the upvate notification routes where
+		// NotificationViewSet.as_view({'get': 'list', 'delete': 'delete_all'})
+		// is pre-bound to a variable and then wired into urlpatterns. Covers
+		// both the pre-bound-variable form and the inline as_view({}) form.
+		vsAsViewEntities := runDjangoViewSetAsViewRoutes(classified)
+		if len(vsAsViewEntities) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: drf_viewset_asview_routes=%d entities\n", len(vsAsViewEntities))
+		}
+		pass3Records = append(pass3Records, vsAsViewEntities...)
+
 		// Pass 2.6e — Celery cross-file dispatch edges (#1617). The per-file
 		// scheduled-job pass only links `task.delay()` call sites that share a
 		// file with the @shared_task definition. This repo-wide pass resolves
@@ -2642,6 +2654,30 @@ func runDjangoCBVRoutes(classified []classifiedFile) []types.EntityRecord {
 		return contentByPath[relPath]
 	}
 	return engine.ApplyDjangoCBVRoutes(pyPaths, reader)
+}
+
+// runDjangoViewSetAsViewRoutes runs the DRF ViewSet.as_view({dict}) route
+// expansion pass (#2614). Handles the explicit method-map pattern where a
+// ViewSet is mounted outside of a router.register() call via either a
+// pre-bound variable (_name = VS.as_view({'get': 'list'})) or an inline
+// call inside path("...", VS.as_view({'post': 'create'})).
+func runDjangoViewSetAsViewRoutes(classified []classifiedFile) []types.EntityRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte {
+		return contentByPath[relPath]
+	}
+	return engine.ApplyDjangoViewSetAsViewRoutes(pyPaths, reader)
 }
 
 // runSerializerMetaModelEdges emits REFERENCES edges from DRF Serializer

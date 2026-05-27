@@ -1954,6 +1954,218 @@ func ApplyDjangoCBVRoutes(
 	return out
 }
 
+// ---------------------------------------------------------------------------
+// DRF ViewSet.as_view({method_map}) routes — Issue #2614
+// ---------------------------------------------------------------------------
+//
+// Problem: DRF ViewSets can be mounted without a router via the explicit
+// method-map form:
+//
+//	_list = NotificationViewSet.as_view({'get': 'list', 'delete': 'delete_all'})
+//	urlpatterns = [
+//	    path("notifications/", _list, name="notifications-list"),
+//	]
+//
+// Or inline:
+//
+//	path("notifications/", NotificationViewSet.as_view({'get': 'list'}))
+//
+// ApplyDjangoDRFRoutes only processes files that contain router.register()
+// calls — it never sees the urlpatterns lines above. ApplyDjangoCBVRoutes
+// uses cbvAsViewRe which requires as_view() with NO arguments and thus
+// misses the dict form. ApplyDjangoNestedURLConf emits a single ANY entity
+// for the path but cannot derive the per-verb signal from the method map.
+//
+// Fix: scan every Django URL file and router file for the two patterns and
+// emit per-verb http_endpoint synthetics with source_handler set to the
+// ViewSet action method. Refs #2614.
+
+// drfViewSetAsViewAssignRe matches variable assignment of the form:
+//
+//	_name = ViewSet.as_view({'get': 'list', 'delete': 'delete_all'})
+//	_name = views.ViewSet.as_view({"get": "list"})
+//
+// Captures group 1 = variable name, group 2 = ViewSet class name (last
+// segment of dotted path), group 3 = the raw dict body inside { }.
+var drfViewSetAsViewAssignRe = regexp.MustCompile(
+	`(\w+)\s*=\s*(?:[\w.]+\.)?(\w+)\s*\.\s*as_view\s*\(\s*\{([^}]+)\}`)
+
+// drfViewSetAsViewInlineRe matches a path() call with an inline as_view({dict}):
+//
+//	path("notifications/", NotificationViewSet.as_view({'get': 'list'}))
+//
+// Captures group 1 = route pattern, group 2 = ViewSet class name (last
+// segment), group 3 = raw dict body.
+var drfViewSetAsViewInlineRe = regexp.MustCompile(
+	`(?:re_)?path\s*\(\s*r?["']([^"']*)["']\s*,\s*(?:[\w.]+\.)?(\w+)\s*\.\s*as_view\s*\(\s*\{([^}]+)\}`)
+
+// drfViewSetAsViewPathVarRe matches a path() whose handler is a bare
+// identifier (the variable assigned by drfViewSetAsViewAssignRe):
+//
+//	path("notifications/", _notification_list, name="...")
+//
+// Captures group 1 = route pattern, group 2 = handler variable name.
+var drfViewSetAsViewPathVarRe = regexp.MustCompile(
+	`(?:re_)?path\s*\(\s*r?["']([^"']*)["']\s*,\s*(_\w+)`)
+
+// drfMethodMapKVRe extracts key-value pairs from a Python dict literal of
+// the form 'verb': 'action' or "verb": "action".
+var drfMethodMapKVRe = regexp.MustCompile(
+	`["'](\w+)['"]\s*:\s*["'](\w+)["']`)
+
+// parseViewSetMethodMap parses the raw body of a {verb: action, ...} dict
+// from a ViewSet.as_view() call and returns the map of uppercase HTTP verb
+// → ViewSet action name.
+func parseViewSetMethodMap(body string) map[string]string {
+	out := map[string]string{}
+	for _, m := range drfMethodMapKVRe.FindAllStringSubmatch(body, -1) {
+		verb := strings.ToUpper(m[1])
+		action := m[2]
+		out[verb] = action
+	}
+	return out
+}
+
+// ApplyDjangoViewSetAsViewRoutes handles the DRF ViewSet.as_view({dict})
+// mounting pattern that appears outside of router.register() — either as a
+// pre-bound variable reused in urlpatterns, or as an inline as_view() call
+// directly inside a path(). For each such binding it emits one per-verb
+// http_endpoint synthetic carrying source_handler and, when the binding is
+// reached via a parent include() chain, the url_prefix property.
+//
+// parentFiles: repo-relative Python file paths.
+// fileReader:  resolves a repo-relative path to raw bytes.
+func ApplyDjangoViewSetAsViewRoutes(
+	parentFiles []string,
+	fileReader NestedURLConfFileReader,
+) []types.EntityRecord {
+	if fileReader == nil {
+		return nil
+	}
+
+	var out []types.EntityRecord
+	seen := map[string]bool{}
+
+	for _, relPath := range parentFiles {
+		if !isDjangoURLFile(relPath) && !isDjangoRoutersFile(relPath) {
+			continue
+		}
+		content := fileReader(relPath)
+		if len(content) == 0 {
+			continue
+		}
+		src := string(content)
+
+		// Step 1 — collect variable assignments:
+		//   _notification_list = views.NotificationViewSet.as_view({'get': 'list'})
+		// Map: varName → {HTTP_VERB: action_name, ViewSet: className}
+		type varBinding struct {
+			viewSetName string
+			methodMap   map[string]string
+		}
+		varBindings := map[string]varBinding{}
+		for _, m := range drfViewSetAsViewAssignRe.FindAllStringSubmatch(src, -1) {
+			varName := m[1]
+			viewSetName := m[2]
+			dictBody := m[3]
+			methodMap := parseViewSetMethodMap(dictBody)
+			if len(methodMap) > 0 {
+				varBindings[varName] = varBinding{viewSetName: viewSetName, methodMap: methodMap}
+			}
+		}
+
+		// Determine parent include() prefixes for prefix composition.
+		parentPrefixes := findParentIncludePrefixes(relPath, parentFiles, fileReader)
+		if len(parentPrefixes) == 0 {
+			parentPrefixes = []string{""}
+		}
+
+		// Also apply local path("prefix", include(routerVar.urls)) prefixes.
+		flat := flattenParenthesised(src)
+		localRouterPrefixes := buildLocalRouterPrefixes(flat)
+		// For router files, the local prefix is on the router var; for url
+		// files with explicit urlpatterns, there's typically no router var.
+		// Apply the first available local prefix as a general URL mount prefix.
+		var localMount string
+		for _, p := range localRouterPrefixes {
+			localMount = p
+			break
+		}
+		if localMount != "" && len(parentPrefixes) == 1 && parentPrefixes[0] == "" {
+			parentPrefixes = []string{localMount}
+		}
+
+		emitForBinding := func(rawPattern, viewSetName string, methodMap map[string]string) {
+			for _, pp := range parentPrefixes {
+				composed := joinDjangoRoutePaths(pp, rawPattern)
+				canonical := canonicalDjango(composed)
+				if canonical == "" || canonical == "/" {
+					continue
+				}
+				urlPrefix := ""
+				if pp != "" {
+					urlPrefix = "/" + strings.Trim(pp, "/")
+				}
+				for httpVerb, actionName := range methodMap {
+					id := httproutes.SyntheticID(httpVerb, canonical)
+					if seen[id] {
+						continue
+					}
+					seen[id] = true
+					qualifiedHandler := viewSetName + "." + actionName
+					props := map[string]string{
+						"verb":           httpVerb,
+						"path":           canonical,
+						"framework":      "django",
+						"pattern_type":   "drf_viewset_asview_route",
+						"drf_view_class": viewSetName,
+						"source_handler": "SCOPE.Operation:" + qualifiedHandler,
+					}
+					if urlPrefix != "" {
+						props["url_prefix"] = urlPrefix
+					}
+					out = append(out, types.EntityRecord{
+						ID:                 id,
+						Name:               id,
+						Kind:               httpEndpointKind,
+						SourceFile:         relPath,
+						Language:           "python",
+						Properties:         props,
+						EnrichmentRequired: false,
+						EnrichmentStatus:   types.StatusPending,
+						QualityScore:       0.8,
+					})
+				}
+			}
+		}
+
+		// Step 2a — inline as_view({dict}) directly inside path():
+		//   path("notifications/", NotificationViewSet.as_view({'get': 'list'}))
+		for _, m := range drfViewSetAsViewInlineRe.FindAllStringSubmatch(flat, -1) {
+			rawPattern := m[1]
+			viewSetName := m[2]
+			dictBody := m[3]
+			methodMap := parseViewSetMethodMap(dictBody)
+			if len(methodMap) > 0 {
+				emitForBinding(rawPattern, viewSetName, methodMap)
+			}
+		}
+
+		// Step 2b — pre-bound variable referenced in path():
+		//   path("notifications/", _notification_list, ...)
+		if len(varBindings) > 0 {
+			for _, m := range drfViewSetAsViewPathVarRe.FindAllStringSubmatch(flat, -1) {
+				rawPattern := m[1]
+				varName := m[2]
+				if binding, ok := varBindings[varName]; ok {
+					emitForBinding(rawPattern, binding.viewSetName, binding.methodMap)
+				}
+			}
+		}
+	}
+	return out
+}
+
 // emitCBVMethodEntities emits synthetic SCOPE.Operation entities for each
 // HTTP handler method that the CBV exposes via inheritance but does NOT
 // explicitly define. Mirrors emitViewSetMethodEntities from #783.
