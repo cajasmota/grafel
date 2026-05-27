@@ -12,18 +12,18 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [CakePHP](../detail/lang.php.framework.cakephp.md) | — | — | — | — | — | — | — | |
-| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | — | — | — | — | — | — | — | |
-| [Drupal](../detail/lang.php.framework.drupal.md) | — | — | — | — | — | — | — | |
-| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | — | — | — | — | — | — | — | |
-| [Laravel](../detail/lang.php.framework.laravel.md) | — | — | — | — | — | — | — | |
-| [Lumen](../detail/lang.php.framework.lumen.md) | — | — | — | — | — | — | — | |
-| [Magento](../detail/lang.php.framework.magento.md) | — | — | — | — | — | — | — | |
-| [Phalcon](../detail/lang.php.framework.phalcon.md) | — | — | — | — | — | — | — | |
-| [Slim](../detail/lang.php.framework.slim.md) | — | — | — | — | — | — | — | |
-| [Symfony](../detail/lang.php.framework.symfony.md) | — | — | — | — | — | — | — | |
-| [WordPress](../detail/lang.php.framework.wordpress.md) | — | — | — | — | — | — | — | |
-| [Yii](../detail/lang.php.framework.yii.md) | — | — | — | — | — | — | — | |
+| [CakePHP](../detail/lang.php.framework.cakephp.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Drupal](../detail/lang.php.framework.drupal.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Laravel](../detail/lang.php.framework.laravel.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Lumen](../detail/lang.php.framework.lumen.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Magento](../detail/lang.php.framework.magento.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Phalcon](../detail/lang.php.framework.phalcon.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Slim](../detail/lang.php.framework.slim.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [WordPress](../detail/lang.php.framework.wordpress.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Yii](../detail/lang.php.framework.yii.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
 
 
 ## Tools

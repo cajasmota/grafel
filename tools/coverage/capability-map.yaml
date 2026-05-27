@@ -212,92 +212,97 @@ records:
 
   lang.python.framework.django-drf:
     capabilities:
-      endpoint_synthesis:
-        status: full
-        symbols:
-          - file: internal/engine/django_drf_actions.go
-            functions:
-              - ApplyDjangoDRFRoutes
-              - DeduplicateNestedURLConfDRF
-              - DeduplicateHTTPSynthesisANY
-              - parseViewSetClass
-              - emitOneCRUDFamily
-          - file: internal/extractors/python/django_drf_actions.go
-            functions:
-              - emitDRFActionProperties
-              - walkDRFAction
-              - scanClassBodyForActions
-          - file: internal/extractors/python/router_register.go
-            functions: [emitRouterRegisterEdges]
-        tests:
-          - file: internal/extractors/python/django_drf_actions_test.go
-        issues_implemented: ["2549", "2570", "2579", "2677"]
-        verified_at: "2026-05-28"
-      handler_attribution:
-        status: full
-        symbols:
-          - file: internal/engine/django_drf_actions.go
-            functions: [ApplyDjangoDRFRoutes, parseViewSetClass]
-          - file: internal/extractors/python/drf_serializer_fields.go
-            functions:
-              - emitDRFSerializerFieldRefs
-              - extractRelatedFieldTarget
-              - appendUsesEdge
-        tests:
-          - file: internal/extractors/python/drf_serializer_fields_test.go
-        issues_implemented: ["2677"]
-        verified_at: "2026-05-28"
-      auth_coverage:
-        status: partial
-        symbols:
-          - file: internal/extractors/python/django_drf_actions.go
-            functions: [parseActionKwargs, scanClassBodyForActions]
-        issues_implemented: []
-        verified_at: "2026-05-28"
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/django_drf_actions.go
+              functions:
+                - ApplyDjangoDRFRoutes
+                - DeduplicateNestedURLConfDRF
+                - DeduplicateHTTPSynthesisANY
+                - parseViewSetClass
+                - emitOneCRUDFamily
+            - file: internal/extractors/python/django_drf_actions.go
+              functions:
+                - emitDRFActionProperties
+                - walkDRFAction
+                - scanClassBodyForActions
+            - file: internal/extractors/python/router_register.go
+              functions: [emitRouterRegisterEdges]
+          tests:
+            - file: internal/extractors/python/django_drf_actions_test.go
+          issues_implemented: ["2549", "2570", "2579", "2677"]
+          verified_at: "2026-05-28"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/django_drf_actions.go
+              functions: [ApplyDjangoDRFRoutes, parseViewSetClass]
+            - file: internal/extractors/python/drf_serializer_fields.go
+              functions:
+                - emitDRFSerializerFieldRefs
+                - extractRelatedFieldTarget
+                - appendUsesEdge
+          tests:
+            - file: internal/extractors/python/drf_serializer_fields_test.go
+          issues_implemented: ["2677"]
+          verified_at: "2026-05-28"
+      Security:
+        auth_coverage:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/django_drf_actions.go
+              functions: [parseActionKwargs, scanClassBodyForActions]
+          issues_implemented: []
+          verified_at: "2026-05-28"
 
   lang.python.framework.flask:
     capabilities:
-      endpoint_synthesis:
-        status: full
-        symbols:
-          - file: internal/engine/http_endpoint_synthesis.go
-            functions: [synthesizeFlask, parseFlaskMethods]
-          - file: internal/engine/rules/python/frameworks/flask.yaml
-        issues_implemented: ["2681"]
-        verified_at: "2026-05-28"
-      handler_attribution:
-        status: full
-        symbols:
-          - file: internal/engine/http_endpoint_synthesis.go
-            functions: [synthesizeFlask]
-          - file: internal/engine/rules/python/frameworks/flask.yaml
-        issues_implemented: ["2681"]
-        verified_at: "2026-05-28"
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeFlask, parseFlaskMethods]
+            - file: internal/engine/rules/python/frameworks/flask.yaml
+          issues_implemented: ["2681"]
+          verified_at: "2026-05-28"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeFlask]
+            - file: internal/engine/rules/python/frameworks/flask.yaml
+          issues_implemented: ["2681"]
+          verified_at: "2026-05-28"
 
   lang.python.framework.fastapi:
     capabilities:
-      endpoint_synthesis:
-        status: full
-        symbols:
-          - file: internal/engine/http_endpoint_synthesis.go
-            functions: [synthesizeFastAPI]
-          - file: internal/engine/rules/python/frameworks/fastapi.yaml
-        issues_implemented: ["2681"]
-        verified_at: "2026-05-28"
-      handler_attribution:
-        status: full
-        symbols:
-          - file: internal/engine/http_endpoint_synthesis.go
-            functions: [synthesizeFastAPI]
-          - file: internal/engine/rules/python/frameworks/fastapi.yaml
-        issues_implemented: ["2681"]
-        verified_at: "2026-05-28"
-      auth_coverage:
-        status: partial
-        symbols:
-          - file: internal/engine/rules/python/frameworks/fastapi.yaml
-        issues_implemented: []
-        verified_at: "2026-05-28"
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeFastAPI]
+            - file: internal/engine/rules/python/frameworks/fastapi.yaml
+          issues_implemented: ["2681"]
+          verified_at: "2026-05-28"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeFastAPI]
+            - file: internal/engine/rules/python/frameworks/fastapi.yaml
+          issues_implemented: ["2681"]
+          verified_at: "2026-05-28"
+      Security:
+        auth_coverage:
+          status: partial
+          symbols:
+            - file: internal/engine/rules/python/frameworks/fastapi.yaml
+          issues_implemented: []
+          verified_at: "2026-05-28"
 
   lang.jsts.framework.express:
     capabilities:
@@ -383,80 +388,84 @@ records:
 
   lang.java.framework.spring-boot:
     capabilities:
-      endpoint_synthesis:
-        status: full
-        symbols:
-          - file: internal/engine/http_endpoint_synthesis.go
-            functions: [synthesizeSpringFromComposed]
-          - file: internal/engine/spring_routes.go
-            functions:
-              - applySpringRouteComposition
-              - extractSpringComposedRoutes
-              - walkSpringClasses
-              - processSpringClass
-              - annotationNameAndPath
-              - joinRoutePaths
-              - httpMethodForAnnotation
-          - file: internal/engine/rules/java/frameworks/spring_boot.yaml
-          - file: internal/engine/rules/java/frameworks/spring_mvc.yaml
-        issues_implemented: ["2680"]
-        verified_at: "2026-05-28"
-      handler_attribution:
-        status: full
-        symbols:
-          - file: internal/engine/spring_routes.go
-            functions: [extractSpringComposedRoutes, processSpringClass]
-          - file: internal/engine/java_annotation_routes.go
-            functions:
-              - ApplyJavaAnnotationRoutesWithContext
-              - ApplyJavaAnnotationRoutes
-              - extractJavaEndpoints
-              - containsAnyHTTPAnnotation
-        issues_implemented: ["2680"]
-        verified_at: "2026-05-28"
-      auth_coverage:
-        status: full
-        symbols:
-          - file: internal/engine/java_auth_policy.go
-            functions:
-              - ResolveJavaAuthPolicy
-              - matchAnnotationPolicy
-              - parsePreAuthorizeRoles
-              - EncodeAuthPolicy
-              - DecodeAuthPolicy
-              - BuildJavaAuthContext
-        issues_implemented: ["2680"]
-        verified_at: "2026-05-28"
-      middleware_coverage:
-        status: partial
-        symbols:
-          - file: internal/engine/java_annotation_params.go
-            functions:
-              - extractJavaParameters
-              - classifyJavaParam
-              - paramRecord
-        issues_implemented: []
-        verified_at: "2026-05-28"
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeSpringFromComposed]
+            - file: internal/engine/spring_routes.go
+              functions:
+                - applySpringRouteComposition
+                - extractSpringComposedRoutes
+                - walkSpringClasses
+                - processSpringClass
+                - annotationNameAndPath
+                - joinRoutePaths
+                - httpMethodForAnnotation
+            - file: internal/engine/rules/java/frameworks/spring_boot.yaml
+            - file: internal/engine/rules/java/frameworks/spring_mvc.yaml
+          issues_implemented: ["2680"]
+          verified_at: "2026-05-28"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/spring_routes.go
+              functions: [extractSpringComposedRoutes, processSpringClass]
+            - file: internal/engine/java_annotation_routes.go
+              functions:
+                - ApplyJavaAnnotationRoutesWithContext
+                - ApplyJavaAnnotationRoutes
+                - extractJavaEndpoints
+                - containsAnyHTTPAnnotation
+          issues_implemented: ["2680"]
+          verified_at: "2026-05-28"
+      Security:
+        auth_coverage:
+          status: full
+          symbols:
+            - file: internal/engine/java_auth_policy.go
+              functions:
+                - ResolveJavaAuthPolicy
+                - matchAnnotationPolicy
+                - parsePreAuthorizeRoles
+                - EncodeAuthPolicy
+                - DecodeAuthPolicy
+                - BuildJavaAuthContext
+          issues_implemented: ["2680"]
+          verified_at: "2026-05-28"
+      Middleware:
+        middleware_coverage:
+          status: partial
+          symbols:
+            - file: internal/engine/java_annotation_params.go
+              functions:
+                - extractJavaParameters
+                - classifyJavaParam
+                - paramRecord
+          issues_implemented: []
+          verified_at: "2026-05-28"
 
   lang.go.framework.gin:
     capabilities:
-      endpoint_synthesis:
-        status: full
-        symbols:
-          - file: internal/engine/go_routes.go
-            functions:
-              - applyGoRouteComposition
-              - extractGoHandlerBindings
-              - buildGoVarTypeMap
-              - inferGoExprType
-              - typeNameFromExpr
-          - file: internal/engine/rules/go/frameworks/gin.yaml
-        issues_implemented: ["2679"]
-        verified_at: "2026-05-28"
-      handler_attribution:
-        status: full
-        symbols:
-          - file: internal/engine/go_routes.go
-            functions: [applyGoRouteComposition, extractGoHandlerBindings]
-        issues_implemented: ["2679"]
-        verified_at: "2026-05-28"
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/go_routes.go
+              functions:
+                - applyGoRouteComposition
+                - extractGoHandlerBindings
+                - buildGoVarTypeMap
+                - inferGoExprType
+                - typeNameFromExpr
+            - file: internal/engine/rules/go/frameworks/gin.yaml
+          issues_implemented: ["2679"]
+          verified_at: "2026-05-28"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/go_routes.go
+              functions: [applyGoRouteComposition, extractGoHandlerBindings]
+          issues_implemented: ["2679"]
+          verified_at: "2026-05-28"

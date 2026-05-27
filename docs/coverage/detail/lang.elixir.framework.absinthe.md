@@ -10,12 +10,45 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Routing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml`<br>`internal/engine/rules/graphql/frameworks/absinthe_elixir.yaml` | — |
+| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml` | — |
+
+### Security
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `auth_coverage` | ❌ `missing` | — | — | — | — | — |
-| `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml`<br>`internal/engine/rules/graphql/frameworks/absinthe_elixir.yaml` | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml` | — |
+
+### Validation
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+
+### Middleware
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
 | `middleware_coverage` | ❌ `missing` | — | — | — | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+
+### Observability
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+
+### Data
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
 
 ## Provenance
 

@@ -10,12 +10,45 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Routing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `endpoint_synthesis` | — `not_applicable` | — | — | — | — | — |
+| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/dramatiq.yaml` | — |
+
+### Security
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `auth_coverage` | — `not_applicable` | — | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/dramatiq.yaml` | — |
+
+### Validation
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+
+### Middleware
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
 | `middleware_coverage` | — `not_applicable` | — | — | — | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+
+### Observability
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+
+### Data
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
 
 ## Provenance
 

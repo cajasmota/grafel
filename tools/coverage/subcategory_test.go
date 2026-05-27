@@ -136,9 +136,9 @@ func TestValidateRegistrySubcategory(t *testing.T) {
 				Subcategory: "ui_frontend",
 				Language:    "jsts",
 				Label:       "React",
-				Capabilities: map[string]Capability{
-					"router_pattern":       {Status: StatusFull},
-					"component_extraction": {Status: StatusPartial, Issue: "x"},
+				Groups: map[string]map[string]Capability{
+					"Navigation": {"router_pattern": {Status: StatusFull}},
+					"Structure":  {"component_extraction": {Status: StatusPartial, Issue: "x"}},
 				},
 			},
 			{
@@ -157,8 +157,8 @@ func TestValidateRegistrySubcategory(t *testing.T) {
 				Subcategory: "ui_frontend",
 				Language:    "jsts",
 				Label:       "BadKey",
-				Capabilities: map[string]Capability{
-					"ipc_extraction": {Status: StatusMissing, Issue: "x"},
+				Groups: map[string]map[string]Capability{
+					"Structure": {"ipc_extraction": {Status: StatusMissing, Issue: "x"}},
 				},
 			},
 		},
@@ -307,6 +307,58 @@ func TestValidateGroupedRecord(t *testing.T) {
 	}
 	if !hasError("already declared under group") {
 		t.Errorf("expected duplicate-key error; got: %v", res.Errors)
+	}
+}
+
+// TestFlatShapeForbiddenForGroupedSubcategory pins the #2758 regression
+// guard: a record carrying a subcategory whose taxonomy declares groups
+// MUST use the nested shape. The flat shape — even with valid
+// capability keys — is rejected so by-language pivots never render
+// empty group columns for that record again.
+func TestFlatShapeForbiddenForGroupedSubcategory(t *testing.T) {
+	reg := &Registry{
+		SchemaVersion: SchemaVersion,
+		Records: []Record{
+			{
+				ID:          "lang.java.framework.quarkus",
+				Category:    "http_framework",
+				Subcategory: "http_backend",
+				Language:    "java",
+				Label:       "Quarkus",
+				Capabilities: map[string]Capability{
+					"endpoint_synthesis": {Status: StatusFull},
+				},
+			},
+			{
+				ID:          "static.example",
+				Category:    "http_framework",
+				Subcategory: "static_site",
+				Language:    "multi",
+				Label:       "Static",
+				Capabilities: map[string]Capability{
+					"build_extraction": {Status: StatusMissing, Issue: "x"},
+				},
+			},
+		},
+	}
+	res := validateRegistry(reg, ".")
+	hasError := func(needle string) bool {
+		for _, e := range res.Errors {
+			if containsStr(e, needle) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasError("flat capability shape forbidden") {
+		t.Errorf("expected flat-shape-forbidden error for http_backend record; got: %v", res.Errors)
+	}
+	// static_site has no group taxonomy declared — the flat shape is
+	// still permitted there.
+	for _, e := range res.Errors {
+		if containsStr(e, "static.example") && containsStr(e, "flat capability shape forbidden") {
+			t.Errorf("static_site record should accept flat shape (no group taxonomy); got: %v", res.Errors)
+		}
 	}
 }
 

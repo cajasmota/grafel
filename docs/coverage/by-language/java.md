@@ -12,19 +12,19 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | — | — | — | — | — | — | — | |
-| [Apache Struts](../detail/lang.java.framework.struts.md) | — | — | — | — | — | — | — | |
-| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | — | — | — | — | — | — | — | |
-| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | — | — | — | — | — | — | — | |
-| [Helidon](../detail/lang.java.framework.helidon.md) | — | — | — | — | — | — | — | |
-| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | — | — | — | — | — | — | — | |
-| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | — | — | — | — | — | — | — | |
-| [Javalin](../detail/lang.java.framework.javalin.md) | — | — | — | — | — | — | — | |
-| [Micronaut](../detail/lang.java.framework.micronaut.md) | — | — | — | — | — | — | — | |
-| [Quarkus](../detail/lang.java.framework.quarkus.md) | — | — | — | — | — | — | — | |
-| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | — | — | — | — | — | — | — | |
-| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | — | — | — | — | — | — | — | |
-| [Vert.x](../detail/lang.java.framework.vertx.md) | — | — | — | — | — | — | — | |
+| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Apache Struts](../detail/lang.java.framework.struts.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Helidon](../detail/lang.java.framework.helidon.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Micronaut](../detail/lang.java.framework.micronaut.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Quarkus](../detail/lang.java.framework.quarkus.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ✅ 2/2 | ✅ 1/1 | — | ⚠️ 0/1 | — | — | — | |
+| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Vert.x](../detail/lang.java.framework.vertx.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
 
 
 ### UI Frontend

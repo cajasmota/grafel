@@ -91,7 +91,16 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 
 // validateFlatRecord runs the legacy capability-key + status + cite +
 // freshness checks against a record using the flat capability shape.
+//
+// When a record carries a subcategory whose taxonomy declares groups,
+// the flat shape is forbidden — those records MUST use the nested
+// shape so the by-language pivot tables can render group-digest
+// columns (#2758). Records with no subcategory, or with a subcategory
+// that has no group taxonomy (e.g. static_site), are unaffected.
 func validateFlatRecord(res *ValidationResult, prefix string, rec Record, repoRoot string) {
+	if rec.Subcategory != "" && validSubcategory(rec.Category, rec.Subcategory) && len(knownGroupNames(rec.Subcategory)) > 0 && len(rec.Capabilities) > 0 {
+		res.Errors = append(res.Errors, fmt.Sprintf("%s: flat capability shape forbidden for subcategory %q (has group taxonomy; use nested capabilities[group][key])", prefix, rec.Subcategory))
+	}
 	keys := sortedCapKeys(rec.Capabilities)
 	for _, k := range keys {
 		cap := rec.Capabilities[k]

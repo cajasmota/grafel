@@ -12,14 +12,14 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | — | — | — | — | — | — | — | |
-| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | — | — | — | — | — | — | — | |
-| [Ktor](../detail/lang.kotlin.framework.ktor.md) | — | — | — | — | — | — | — | |
-| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | — | — | — | — | — | — | — | |
-| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | — | — | — | — | — | — | — | |
-| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | — | — | — | — | — | — | — | |
-| [http4k](../detail/lang.kotlin.framework.http4k.md) | — | — | — | — | — | — | — | |
-| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | — | — | — | — | — | — | — | |
+| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | |
+| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Ktor](../detail/lang.kotlin.framework.ktor.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [http4k](../detail/lang.kotlin.framework.http4k.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | |
 
 
 ### Mobile

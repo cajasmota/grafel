@@ -12,12 +12,12 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | — | — | — | — | — | — | — | |
-| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | — | — | — | — | — | — | — | |
-| [Carter](../detail/lang.csharp.framework.carter.md) | — | — | — | — | — | — | — | |
-| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | — | — | — | — | — | — | — | |
-| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | — | — | — | — | — | — | — | |
-| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | — | — | — | — | — | — | — | |
+| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ✅ 2/2 | ❌ 0/1 | — | ⚠️ 0/1 | — | — | — | |
+| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Carter](../detail/lang.csharp.framework.carter.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
 
 
 ### UI Frontend
