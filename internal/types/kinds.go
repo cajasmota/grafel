@@ -436,6 +436,17 @@ const (
 	RelationshipKindReadsField  RelationshipKind = "READS_FIELD"
 	RelationshipKindWritesField RelationshipKind = "WRITES_FIELD"
 
+	// #2655: Client-side navigation edges. Emitted by the JS/TS extractor
+	// for Expo Router / React Navigation / Next.js navigation call sites.
+	//   NAVIGATES_TO : caller operation → route stub (synthetic "route:<path>")
+	// Properties:
+	//   "route"   : destination route/screen name or path
+	//   "params"  : comma-separated param key names (omitted when empty)
+	//   "line"    : 1-indexed source line of the navigation call
+	//   "via"     : "navigation_call" (traceability tag)
+	// Phase 2 (followup): dedicated archigraph_navigates MCP query tool.
+	RelationshipKindNavigatesTo RelationshipKind = "NAVIGATES_TO"
+
 	// #2183 — Monorepo M6: Bazel BUILD-graph fusion.
 	//   BAZEL_DEPENDS_ON : bazel_target → bazel_target
 	//     Emitted for every entry in a BUILD rule's deps= list that can be
@@ -535,6 +546,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #2279 Django ORM field-access edges:
 		RelationshipKindReadsField,
 		RelationshipKindWritesField,
+		// #2655 client-side navigation edges:
+		RelationshipKindNavigatesTo,
 		// #2183 Bazel BUILD-graph fusion:
 		RelationshipKindBazelDependsOn,
 		RelationshipKindBazelDepStatus,

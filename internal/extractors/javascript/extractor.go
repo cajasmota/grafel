@@ -1891,6 +1891,27 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			}
 		}
 
+		// Issue #2655 — navigation edge extraction. Detect router.push /
+		// router.navigate / navigation.navigate / Linking.openURL patterns
+		// and emit NAVIGATES_TO edges in addition to (or instead of) CALLS.
+		// We check BEFORE callTarget so the navigation method's member-
+		// expression receiver check gates out plain array.push() calls;
+		// the normal CALLS edge is still emitted for the same call site so
+		// downstream flow BFS can traverse it.
+		if navRoute, navParams, navOK := extractNavigationCall(x, call); navOK {
+			navEdge := emitNavigationEdge(navRoute, navParams, call)
+			navKey := "nav:" + navEdge.ToID
+			if !seen[navKey] {
+				seen[navKey] = true
+				rels = append(rels, navEdge)
+			}
+			// For router.back() there is no meaningful callee to forward to
+			// the normal CALLS path, so skip it.
+			if navRoute == "<back>" {
+				continue
+			}
+		}
+
 		target := x.callTarget(call, frame)
 		if target == "" || target == "require" {
 			continue
