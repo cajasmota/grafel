@@ -659,8 +659,9 @@ func generate(reg *Registry, outRoot string) error {
 		}
 		var keys []string
 		if bucket == BucketOther {
-			keys = make([]string, len(categoryCapabilities[n]))
-			copy(keys, categoryCapabilities[n])
+			cats := dict().CategoryCapabilities(n)
+			keys = make([]string, len(cats))
+			copy(keys, cats)
 			sort.Strings(keys)
 		} else {
 			keys = bucketCapabilityKeys(bucket)
@@ -823,7 +824,7 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 	seen := map[string]bool{}
 	ordered := make([]string, 0, len(merged))
 	for _, c := range catList {
-		for _, s := range subcategoryOrder[c] {
+		for _, s := range dict().SubcategoriesByCategory(c) {
 			if merged[s] && !seen[s] {
 				ordered = append(ordered, s)
 				seen[s] = true

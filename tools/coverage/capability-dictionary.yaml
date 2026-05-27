@@ -1,0 +1,259 @@
+# Capability dictionary — single source of truth for the coverage tool's
+# taxonomy (#2752). The `gen` and `validate` subcommands read this file
+# at startup; helpers in capability_dictionary.go expose typed queries
+# over it.
+#
+# Adding a new capability:
+#   1. Append it to the `capabilities` list on the appropriate
+#      subcategory (and the keys list of one of that subcategory's
+#      groups, when the subcategory has a group taxonomy).
+#   2. Re-run `go run ./tools/coverage validate` and `gen`.
+#
+# Zero Go code changes are required.
+
+$schema_version: 1
+
+# Buckets group registry categories into the four rendering lanes used
+# by summary.md and the per-language pages. Order governs display order
+# across the registry.
+buckets:
+  Frameworks:
+    order: 1
+    categories: [http_framework, web_framework, nav_framework, rpc_framework, graphql]
+  Tools:
+    order: 2
+    categories: [build_system, build_tool, package_manager, manifest, linter, formatter]
+  ORMs:
+    order: 3
+    categories: [orm, query_builder, migration_tool]
+  Other:
+    order: 4
+    categories: []
+
+# Registry categories. Each category lists its category-wide capability
+# keys (the flat allow-list used for records that opt out of the
+# subcategory refinement). When a category supports subcategories, the
+# `subcategory_order` slice fixes their render order.
+categories:
+  language:
+    capabilities: [call_line_precision, discriminates_on, navigates_to, core_extraction]
+  http_framework:
+    capabilities: [endpoint_synthesis, handler_attribution, auth_coverage, middleware_coverage]
+    subcategory_order: [http_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration]
+  orm:
+    capabilities: [model_extraction, query_attribution, migration_parsing]
+  message_broker:
+    capabilities: [producer_extraction, consumer_extraction, topic_attribution]
+  observability:
+    capabilities: [trace_extraction, metric_extraction, log_extraction]
+  build_system:
+    capabilities: [target_extraction, dependency_graph]
+  package_manager:
+    capabilities: [manifest_parsing, lockfile_parsing]
+  databases:
+    capabilities: [resource_extraction, dependency_attribution]
+  platform:
+    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution]
+  security:
+    capabilities: [auth_policy, secret_detection, sql_injection]
+  protocol:
+    capabilities: [service_extraction, method_attribution, cross_repo_linkage]
+  ci_cd:
+    capabilities: [file_parsing, env_resolution]
+
+# Subcategories carve a broad category into honest narrower lanes (e.g.
+# http_framework → ui_frontend, mobile, ...). Each subcategory declares:
+#   - display:         human-facing section heading
+#   - parent_category: the category it refines
+#   - capabilities:    full allow-list of capability keys for records
+#                      tagged with this subcategory
+#   - groups:          optional ordered group taxonomy; when present the
+#                      per-subcategory pivot table switches from per-
+#                      capability columns to per-group digest columns
+subcategories:
+  http_backend:
+    display: "Backend HTTP"
+    parent_category: http_framework
+    capabilities:
+      - endpoint_synthesis
+      - handler_attribution
+      - auth_coverage
+      - middleware_coverage
+      - route_extraction
+      - request_validation
+      - tests_linkage
+      - dto_extraction
+    groups:
+      - name: Routing
+        keys: [endpoint_synthesis, handler_attribution, route_extraction]
+      - name: Security
+        keys: [auth_coverage]
+      - name: Validation
+        keys: [request_validation, dto_extraction]
+      - name: Middleware
+        keys: [middleware_coverage]
+      - name: Testing
+        keys: [tests_linkage]
+      - name: Observability
+        keys: []
+      - name: Data
+        keys: []
+
+  ui_frontend:
+    display: "UI Frontend"
+    parent_category: http_framework
+    capabilities:
+      - component_extraction
+      - prop_extraction
+      - hook_recognition
+      - state_management
+      - data_fetching
+      - router_pattern
+      - jsx_template
+      - context_extraction
+      - hoc_wrapper_recognition
+      - branch_conditions
+      - interface_extraction
+      - type_alias_extraction
+      - enum_extraction
+      - state_setter_emission
+      - tests_linkage
+    groups:
+      - name: Structure
+        keys: [component_extraction, hook_recognition, jsx_template, context_extraction, hoc_wrapper_recognition]
+      - name: Data Flow
+        keys: [prop_extraction, state_management, data_fetching, branch_conditions]
+      - name: Navigation
+        keys: [router_pattern]
+      - name: Type System
+        keys: [interface_extraction, type_alias_extraction, enum_extraction]
+      - name: Lifecycle
+        keys: [state_setter_emission]
+      - name: Testing
+        keys: [tests_linkage]
+
+  meta_framework:
+    display: "Meta Framework"
+    parent_category: http_framework
+    capabilities:
+      - server_components
+      - data_loaders
+      - route_extraction
+      - hydration_boundaries
+      - static_generation
+      - component_extraction
+      - hook_recognition
+      - router_pattern
+      - interface_extraction
+      - type_alias_extraction
+      - enum_extraction
+      - state_setter_emission
+      - tests_linkage
+    groups:
+      - name: Structure
+        keys: [component_extraction, hook_recognition]
+      - name: Data Flow
+        keys: [data_loaders]
+      - name: Server
+        keys: [server_components, hydration_boundaries]
+      - name: Routing
+        keys: [route_extraction, router_pattern]
+      - name: Build
+        keys: [static_generation]
+      - name: Type System
+        keys: [interface_extraction, type_alias_extraction, enum_extraction]
+      - name: Lifecycle
+        keys: [state_setter_emission]
+      - name: Testing
+        keys: [tests_linkage]
+
+  mobile:
+    display: "Mobile"
+    parent_category: http_framework
+    capabilities:
+      - navigation_extraction
+      - native_module_imports
+      - platform_branching
+      - screen_detection
+      - deep_link_extraction
+      - state_management
+      - context_extraction
+      - hoc_wrapper_recognition
+      - branch_conditions
+      - interface_extraction
+      - type_alias_extraction
+      - enum_extraction
+      - state_setter_emission
+      - tests_linkage
+    groups:
+      - name: Structure
+        keys: [context_extraction, hoc_wrapper_recognition]
+      - name: Navigation
+        keys: [navigation_extraction, deep_link_extraction, screen_detection]
+      - name: Platform
+        keys: [platform_branching]
+      - name: Native Bridge
+        keys: [native_module_imports]
+      - name: Data Flow
+        keys: [state_management, branch_conditions]
+      - name: Type System
+        keys: [interface_extraction, type_alias_extraction, enum_extraction]
+      - name: Lifecycle
+        keys: [state_setter_emission]
+      - name: Testing
+        keys: [tests_linkage]
+
+  desktop:
+    display: "Desktop"
+    parent_category: http_framework
+    capabilities:
+      - ipc_extraction
+      - main_renderer_split
+      - native_module_imports
+    groups:
+      - name: Process
+        keys: [ipc_extraction, main_renderer_split]
+      - name: Native
+        keys: [native_module_imports]
+      - name: Updates
+        keys: []
+
+  rpc_framework:
+    display: "RPC Framework"
+    parent_category: http_framework
+    capabilities:
+      - procedure_extraction
+      - schema_extraction
+      - client_codegen
+    groups:
+      - name: Schema
+        keys: [schema_extraction, procedure_extraction]
+      - name: Codegen
+        keys: [client_codegen]
+      - name: Transport
+        keys: []
+
+  static_site:
+    display: "Static Site"
+    parent_category: http_framework
+    capabilities:
+      - build_extraction
+      - template_extraction
+    # No group taxonomy yet — the subcategory falls back to per-capability
+    # columns until one is declared.
+    groups: []
+
+  ai_integration:
+    display: "AI Integration"
+    parent_category: http_framework
+    capabilities:
+      - prompt_template_extraction
+      - chain_composition
+      - tool_use_detection
+    groups:
+      - name: Prompts
+        keys: [prompt_template_extraction]
+      - name: Composition
+        keys: [chain_composition, tool_use_detection]
+      - name: Tracking
+        keys: []
