@@ -1810,6 +1810,144 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			}
 		}
 		rels = append(rels, rel)
+		// Issue #2554 — React Query / TanStack Query hook calls pass inline
+		// arrow functions as queryFn / mutationFn / onSuccess / etc. The
+		// extractor recognized the outer hook call but didn't follow into
+		// those arrow bodies — so the chain useFoo → svc.foo → callApi was
+		// broken. When the callee is a React hook (matches /^use[A-Z]/),
+		// traverse the config object's callback values and emit CALLS edges
+		// from the outer hook site to anything called inside.
+		if isReactHookCallee(x, call) {
+			hookRels := x.extractReactQueryHookCalls(call, callerName, frame, seen)
+			rels = append(rels, hookRels...)
+		}
+	}
+	return rels
+}
+
+// reactQueryConfigKeys is the set of React Query / TanStack Query config object
+// property keys whose values are callbacks (arrow functions or function
+// expressions). When the extractor encounters a call to a React hook
+// (callee matching /^use[A-Z]/) with an object-literal argument containing
+// one of these keys, it traverses the callback body to emit CALLS edges
+// from the outer hook call site. Issue #2554.
+var reactQueryConfigKeys = map[string]bool{
+	"queryFn":         true,
+	"mutationFn":      true,
+	"onSuccess":       true,
+	"onError":         true,
+	"onSettled":       true,
+	"select":          true,
+	"enabled":         true,
+	"initialData":     true,
+	"placeholderData": true,
+	"onMutate":        true,
+}
+
+// isReactHookCallee returns true when the call_expression's callee name
+// matches the React hook naming convention: starts with "use" followed by
+// an uppercase letter (e.g. useQuery, useMutation, useInspections).
+func isReactHookCallee(x *extractor, call *sitter.Node) bool {
+	fn := call.ChildByFieldName("function")
+	if fn == nil {
+		return false
+	}
+	var leaf string
+	switch fn.Type() {
+	case "identifier":
+		leaf = x.nodeText(fn)
+	case "member_expression":
+		if prop := fn.ChildByFieldName("property"); prop != nil {
+			leaf = x.nodeText(prop)
+		}
+	}
+	return len(leaf) > 3 && strings.HasPrefix(leaf, "use") && leaf[3] >= 'A' && leaf[3] <= 'Z'
+}
+
+// extractReactQueryHookCalls looks into the arguments of a React hook call_expression
+// for any object-literal with React Query config keys (queryFn, mutationFn, etc.).
+// For each such key whose value is an arrow_function or function_expression,
+// it emits CALLS edges from callerName to every call inside the callback body,
+// marking them with Properties["via"]="react_query_hook". Issue #2554.
+func (x *extractor) extractReactQueryHookCalls(call *sitter.Node, callerName string, frame *classBindings, seen map[string]bool) []types.RelationshipRecord {
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return nil
+	}
+	var rels []types.RelationshipRecord
+	// Walk argument list for object expressions.
+	for i := 0; i < int(args.ChildCount()); i++ {
+		arg := args.Child(i)
+		if arg == nil {
+			continue
+		}
+		nodeType := arg.Type()
+		if nodeType != "object" && nodeType != "object_expression" {
+			continue
+		}
+		// Scan object properties for React Query config keys.
+		for j := 0; j < int(arg.ChildCount()); j++ {
+			prop := arg.Child(j)
+			if prop == nil {
+				continue
+			}
+			propType := prop.Type()
+			if propType != "pair" && propType != "property" && propType != "method_definition" {
+				continue
+			}
+			keyNode := prop.ChildByFieldName("key")
+			if keyNode == nil {
+				continue
+			}
+			key := x.nodeText(keyNode)
+			if !reactQueryConfigKeys[key] {
+				continue
+			}
+			// Found a React Query config key. Get the value node.
+			valNode := prop.ChildByFieldName("value")
+			if valNode == nil {
+				continue
+			}
+			// Unwrap parenthesized expressions.
+			if valNode.Type() == "parenthesized_expression" && valNode.ChildCount() > 0 {
+				valNode = valNode.Child(1)
+			}
+			// Only traverse arrow_function and function_expression values.
+			var callbackBody *sitter.Node
+			switch valNode.Type() {
+			case "arrow_function":
+				callbackBody = valNode.ChildByFieldName("body")
+			case "function", "function_expression":
+				callbackBody = valNode.ChildByFieldName("body")
+			default:
+				continue
+			}
+			if callbackBody == nil {
+				continue
+			}
+			// Extract all calls inside the callback body.
+			innerCalls := findAllNodes(callbackBody, "call_expression", "new_expression")
+			for _, ic := range innerCalls {
+				target := x.callTarget(ic, frame)
+				if target == "" || target == "require" {
+					continue
+				}
+				if !strings.Contains(target, ":") && target == callerName {
+					continue
+				}
+				if seen[target] {
+					continue
+				}
+				seen[target] = true
+				rels = append(rels, types.RelationshipRecord{
+					ToID: target,
+					Kind: "CALLS",
+					Properties: map[string]string{
+						"via": "react_query_hook",
+					},
+				})
+			}
+		}
 	}
 	return rels
 }
