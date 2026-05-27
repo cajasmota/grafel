@@ -94,8 +94,26 @@ func buildDocTerms(e *graph.Entity) docTerms {
 			d.length += weight
 		}
 	}
-	// label
-	add(e.Name, weightLabel, false)
+	// label — index with subtokenization so prose queries can match identifiers.
+	// The full lowercased identifier is added at full weightLabel; sub-tokens
+	// are added at subtokenWeight (0.5×) so full-token matches outrank partials.
+	addIdentifier := func(name string) {
+		toks := tokenizeIdentifier(name)
+		if len(toks) == 0 {
+			return
+		}
+		// toks[0] is always the full lowercased identifier.
+		full := toks[0]
+		d.tf[full] += weightLabel
+		d.length += weightLabel
+		// Sub-tokens (toks[1:]) get reduced weight.
+		subW := weightLabel * subtokenWeight
+		for _, sub := range toks[1:] {
+			d.tf[sub] += subW
+			d.length += subW
+		}
+	}
+	addIdentifier(e.Name)
 	// file stem
 	if e.SourceFile != "" {
 		stem := strings.TrimSuffix(filepath.Base(e.SourceFile), filepath.Ext(e.SourceFile))
@@ -119,6 +137,53 @@ func buildDocTerms(e *graph.Entity) docTerms {
 		}
 	}
 	return d
+}
+
+// subtokenWeight is the TF multiplier applied to sub-tokens produced by
+// tokenizeIdentifier. Full-token matches are always weighted at 1×; partial
+// sub-token matches get 0.5× so they rank below exact-name matches.
+const subtokenWeight = 0.5
+
+// tokenizeIdentifier splits an identifier into its component sub-tokens and
+// returns them deduplicated and lowercased, with the full lowercased identifier
+// prepended so that exact-name queries can still outrank partial matches.
+//
+// Splitting rules (applied left-to-right in order):
+//   - camelCase: uppercase letter NOT preceded by uppercase → word boundary
+//     e.g. "unlockWithBiometrics" → ["unlock", "with", "biometrics"]
+//   - snake_case: underscore separator
+//     e.g. "soft_logout" → ["soft", "logout"]
+//   - kebab-case: hyphen separator
+//     e.g. "unlock-with-biometrics" → ["unlock", "with", "biometrics"]
+//   - dot.case: period separator
+//     e.g. "core.helper" → ["core", "helper"]
+//   - digit boundaries: transition letter↔digit counts as a boundary
+//     e.g. "oauth2Client" → ["oauth", "2", "client"]
+//
+// The full lowercased identifier is always the first element; sub-tokens are
+// appended only if they differ from the full token and have length ≥ 2.
+// Tokens are deduplicated; order is: full first, then sub-tokens in split order.
+func tokenizeIdentifier(s string) []string {
+	if s == "" {
+		return nil
+	}
+	full := strings.ToLower(s)
+
+	// Use the existing tokenize function which already handles camelCase,
+	// snake_case, kebab-case, dot.case, and digit boundaries via the
+	// non-letter/non-digit splitter after camelCase expansion.
+	subs := tokenize(s)
+
+	// Deduplicate: start with the full token, then append unique sub-tokens.
+	seen := map[string]bool{full: true}
+	out := []string{full}
+	for _, sub := range subs {
+		if !seen[sub] && len(sub) >= 2 {
+			seen[sub] = true
+			out = append(out, sub)
+		}
+	}
+	return out
 }
 
 // tokenize lowercases, strips diacritics, and splits camelCase + snake_case
