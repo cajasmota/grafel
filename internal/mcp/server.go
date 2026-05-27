@@ -6,12 +6,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/version"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 	mcpsrv "github.com/mark3labs/mcp-go/server"
 )
+
+// reloadDebounceInterval is the minimum wall-clock gap between consecutive
+// reloadBeforeCall() executions. Any call arriving within this window is
+// served from the already-loaded in-memory state without re-statting disk
+// or forking git subprocesses. 200ms matches the watcher debounce granularity
+// so no real index update is silenced, but N rapid-fire tool calls (e.g.
+// 100×whoami in a benchmark) pay the reload cost at most once per interval.
+//
+// Env override: ARCHIGRAPH_RELOAD_DEBOUNCE_MS (0 = disabled, unlimited re-check).
+const reloadDebounceInterval = 200 * time.Millisecond
 
 // mcpInstructions is the handshake text returned to MCP clients on initialize.
 // It tells agents to call archigraph_whoami first and act on suggested_action.
@@ -46,6 +58,15 @@ type Server struct {
 	// activityBroker fans MCP tool call events to SSE subscribers (epic #1157).
 	// Optional: when nil, events are silently dropped.
 	activityBroker *MCPActivityBroker
+
+	// reloadDebounceMu / reloadLastAt implement the per-call reload debounce
+	// (#2550). reloadLastAt is the Unix-nano timestamp of the most recent
+	// reloadBeforeCall() that actually ran. Subsequent calls within
+	// reloadDebounceInterval are skipped. atomic int64 for the fast-path
+	// read; mu serialises the slow path so exactly one goroutine enters
+	// reloadLocked() when the window expires.
+	reloadDebounceMu sync.Mutex
+	reloadLastAt     atomic.Int64 // Unix nano; 0 = never run
 }
 
 // SetActivityBroker wires the MCP activity broker into the server so that
@@ -124,11 +145,36 @@ func (s *Server) Stop() {
 //
 // #1772: when the registry signature (group→repo set) mutated since the
 // previous reload, emit notifications/tools/list_changed so MCP clients
-// re-issue tools/list. Debounce is implicit — the signature only flips when
-// the on-disk registry actually changes, so back-to-back identical reloads
-// do not spam clients.
+// re-issue tools/list.
+//
+// #2550: debounce — skip the reload if one completed within the last
+// reloadDebounceInterval. The debounce eliminates the per-call overhead
+// of stat'ing every repo's graph file and forking git subprocesses via
+// gitmeta.Capture (called transitively from daemon.FindGraphFile →
+// daemon.StateDirForRepo → gitmeta.Capture). Before this fix every tool
+// — including trivial ones like whoami — paid ~500ms because the
+// reloadLocked scan ran on every call.
 func (s *Server) reloadBeforeCall() {
+	now := time.Now().UnixNano()
+	last := s.reloadLastAt.Load()
+	if last != 0 && time.Duration(now-last) < reloadDebounceInterval {
+		// Fast path: within debounce window — skip reload entirely.
+		return
+	}
+
+	// Slow path: at most one goroutine runs reloadLocked() per window.
+	// We re-check after acquiring the mutex in case another goroutine
+	// already updated reloadLastAt while we were waiting.
+	s.reloadDebounceMu.Lock()
+	defer s.reloadDebounceMu.Unlock()
+	now = time.Now().UnixNano()
+	last = s.reloadLastAt.Load()
+	if last != 0 && time.Duration(now-last) < reloadDebounceInterval {
+		return
+	}
+
 	n, surfaceChanged, _ := s.State.ReloadAndSurfaceChanged()
+	s.reloadLastAt.Store(time.Now().UnixNano())
 	s.Tel.MarkReload(n)
 	if surfaceChanged && s.MCP != nil {
 		// Best-effort: failures are silently ignored. The notification carries

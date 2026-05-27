@@ -3226,3 +3226,85 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		}
 	}
 }
+
+// TestMCP_WhoamiP50Under50ms is the regression test for #2550.
+//
+// Before the fix every tool call paid ~500ms because reloadBeforeCall() ran
+// on every invocation: reloadLocked() → daemon.FindGraphFile() →
+// daemon.StateDirForRepo() → gitmeta.Capture() → 4 git subprocesses per repo.
+//
+// After the fix the reload is debounced to at most once per 200ms. 100
+// back-to-back whoami calls on an empty registry should have p50 < 50ms.
+//
+// Notes on test setup:
+//  - Empty registry: no graph stats() or git subprocess in reloadLocked().
+//  - Config.CWD set to a temp dir (non-git): prevents ResolveCWD step 2 from
+//    calling gitmeta.Capture; git exits immediately for non-repo paths but even
+//    that subprocess overhead is eliminated by pointing CWD at an isolated dir.
+//  - ARCHIGRAPH_WHOAMI_NUDGE=quiet: suppresses the doc-state block (no disk I/O).
+//
+// archigraph_mcp_metrics is also validated as a "zero-handler-work" baseline.
+func TestMCP_WhoamiP50Under50ms(t *testing.T) {
+	dir := t.TempDir()
+	regPath := filepath.Join(dir, "registry.json")
+	if err := os.WriteFile(regPath, []byte(`{"groups":{}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Suppress whoami doc-state I/O and point CWD at a temp dir that has no
+	// git repo, so ResolveCWD → gitmeta.Capture is a fast no-op.
+	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "quiet")
+	srv, err := NewServer(Config{
+		RegistryPath: regPath,
+		CWD:          dir, // isolated non-git directory
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	percentileInt64 := func(data []int64, pct int) int64 {
+		cp := make([]int64, len(data))
+		copy(cp, data)
+		for i := 0; i < len(cp); i++ {
+			for j := i + 1; j < len(cp); j++ {
+				if cp[i] > cp[j] {
+					cp[i], cp[j] = cp[j], cp[i]
+				}
+			}
+		}
+		return cp[(len(cp)-1)*pct/100]
+	}
+
+	const iterations = 100
+
+	// ── archigraph_whoami ──────────────────────────────────────────────────
+	// Warm up: first call may pay cold-start cost (registry load, git HEAD).
+	callTool(t, srv, "archigraph_whoami", map[string]any{"group": "g", "cwd": dir})
+	samples := make([]int64, 0, iterations)
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		callTool(t, srv, "archigraph_whoami", map[string]any{"group": "g", "cwd": dir})
+		samples = append(samples, time.Since(start).Milliseconds())
+	}
+	p50 := percentileInt64(samples, 50)
+
+	// ── archigraph_mcp_metrics ─────────────────────────────────────────────
+	callTool(t, srv, "archigraph_mcp_metrics", map[string]any{"days": 1}) // warm up
+	metricsSamples := make([]int64, 0, iterations)
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		callTool(t, srv, "archigraph_mcp_metrics", map[string]any{"days": 1})
+		metricsSamples = append(metricsSamples, time.Since(start).Milliseconds())
+	}
+	metricsP50 := percentileInt64(metricsSamples, 50)
+
+	const p50LimitMS = 50
+	if p50 > p50LimitMS {
+		t.Errorf("whoami p50=%dms exceeds %dms limit (#2550 regression) — debounce may be broken",
+			p50, p50LimitMS)
+	}
+	if metricsP50 > p50LimitMS {
+		t.Errorf("archigraph_mcp_metrics p50=%dms exceeds %dms limit (#2550 regression)",
+			metricsP50, p50LimitMS)
+	}
+	t.Logf("whoami p50=%dms (limit %dms), archigraph_mcp_metrics p50=%dms", p50, p50LimitMS, metricsP50)
+}

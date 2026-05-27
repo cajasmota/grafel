@@ -423,21 +423,40 @@ func (s *State) reloadLocked() (int, bool, error) {
 		seen := map[string]bool{}
 		for rName, rEntry := range gEntry.Repos {
 			seen[rName] = true
-			// Use FindGraphFile to discover graph.fb (preferred) or graph.json,
-			// fixing issue #1374 item #1: repos that only have graph.fb were
-			// silently dropped because the old os.Stat always targeted graph.json.
-			graphPath, modtimeNs := daemon.FindGraphFile(rEntry.Path)
+
+			lr, ok := grp.Repos[rName]
+
+			// #2550: short-circuit graph discovery when we already know the path.
+			// daemon.FindGraphFile → daemon.StateDirForRepo → gitmeta.Capture forks
+			// up to 4 git subprocesses per repo per call (each ~50-200ms on a cold
+			// PATH cache). When lr.GraphFile is already set from a previous reload,
+			// stat the file directly — no git subprocesses needed. Only fall through
+			// to FindGraphFile on first load or when the cached path disappears.
+			var graphPath string
+			var modtimeNs int64
+			if ok && lr.GraphFile != "" {
+				if fi, statErr := os.Stat(lr.GraphFile); statErr == nil {
+					graphPath = lr.GraphFile
+					modtimeNs = fi.ModTime().UnixNano()
+				}
+				// If stat failed (file removed) fall through to full discovery below.
+			}
+			if graphPath == "" {
+				// Use FindGraphFile to discover graph.fb (preferred) or graph.json,
+				// fixing issue #1374 item #1: repos that only have graph.fb were
+				// silently dropped because the old os.Stat always targeted graph.json.
+				graphPath, modtimeNs = daemon.FindGraphFile(rEntry.Path)
+			}
+
 			if graphPath == "" {
 				// Neither graph.fb nor graph.json exists yet; skip without error.
-				lr, exists := grp.Repos[rName]
-				if !exists {
+				if !ok {
 					lr = &LoadedRepo{Repo: rName, Path: rEntry.Path}
 					grp.Repos[rName] = lr
 				}
 				lr.loadErr = "no graph file found (graph.fb or graph.json)"
 				continue
 			}
-			lr, ok := grp.Repos[rName]
 			if !ok {
 				lr = &LoadedRepo{Repo: rName, Path: rEntry.Path, GraphFile: graphPath}
 				grp.Repos[rName] = lr
