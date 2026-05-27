@@ -227,6 +227,20 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	emit := makeEmit("http_endpoint_synthesis", "source_handler")
 	emitClient := makeEmit("http_endpoint_client_synthesis", "source_caller")
 
+	// emitDef wraps emit and stamps StartLine on the just-appended entity.
+	// Used by decorator-based python frameworks (Flask, FastAPI) where the
+	// handler def lives in the same file as the decorator: source_file is
+	// already correct, but source_line was previously left at 0. Issue
+	// #2678 requires the line to point at the `def <handler>` line, not
+	// the decorator line and not the default 0.
+	emitDef := func(method, canonicalPath, framework, refKind, refName string, defLine int) {
+		before := len(entities)
+		emit(method, canonicalPath, framework, refKind, refName)
+		if defLine > 0 && len(entities) > before {
+			entities[len(entities)-1].StartLine = defLine
+		}
+	}
+
 	// makeRuntimeEmit wraps the consumer-side emit with a FETCHES edge
 	// emission (#721). The edge's FromID is a kind-qualified reference
 	// (`<kind>:<name>`) that the downstream resolver binds to a stamped
@@ -306,8 +320,8 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// emitting a synthetic with `source_handler=Route:<path>`
 		// (Spring-style placeholder), which the resolver dropped and
 		// the response-shape extractor could not parse. #753.
-		synthesizeFlask(string(content), emit)
-		synthesizeFastAPI(string(content), emit)
+		synthesizeFlask(string(content), emitDef)
+		synthesizeFastAPI(string(content), emitDef)
 		// Producer side: Django composed Routes (from django_routes.go).
 		// Method is unknown statically, so emit with verb=ANY.
 		synthesizeDjangoFromComposed(entities, path, emit)
@@ -588,39 +602,43 @@ var flaskRouteRe = regexp.MustCompile(`@\w+\.route\s*\(\s*["']([^"'\n\r]+)["']([
 // accepted because both are idiomatic in the wild.
 var flaskMethodsArgRe = regexp.MustCompile(`methods\s*=\s*[\[\(]([^\]\)]+)[\]\)]`)
 
-func synthesizeFlask(content string, emit emitFn) {
+func synthesizeFlask(content string, emit emitDefFn) {
 	if !strings.Contains(content, ".route(") && !strings.Contains(content, ".get(") &&
 		!strings.Contains(content, ".post(") && !strings.Contains(content, ".put(") &&
 		!strings.Contains(content, ".patch(") && !strings.Contains(content, ".delete(") {
 		return
 	}
-	// Shorthand verbs first — they have an unambiguous verb.
-	for _, m := range flaskRouteVerbDecoratorRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
+	// Shorthand verbs first — they have an unambiguous verb. Use the
+	// SubmatchIndex variant so we can derive the 1-based line of the
+	// handler `def` (capture group 3) for issue #2678 attribution.
+	for _, idx := range flaskRouteVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
 			continue
 		}
-		verb := strings.ToUpper(m[1])
-		raw := m[2]
-		handler := m[3]
+		verb := strings.ToUpper(content[idx[2]:idx[3]])
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFlask, raw)
-		emit(verb, canonical, "flask", "Controller", handler)
+		defLine := lineOfOffset(content, idx[6])
+		emit(verb, canonical, "flask", "Controller", handler, defLine)
 	}
 	// Generic .route(...) form.
-	for _, m := range flaskRouteRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
+	for _, idx := range flaskRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
 			continue
 		}
-		raw := m[1]
-		extras := m[2]
-		handler := m[3]
+		raw := content[idx[2]:idx[3]]
+		extras := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFlask, raw)
+		defLine := lineOfOffset(content, idx[6])
 		methods := parseFlaskMethods(extras)
 		if len(methods) == 0 {
 			// Flask's default: no `methods` kwarg means GET only.
 			methods = []string{"GET"}
 		}
 		for _, verb := range methods {
-			emit(verb, canonical, "flask", "Controller", handler)
+			emit(verb, canonical, "flask", "Controller", handler, defLine)
 		}
 	}
 }
@@ -656,20 +674,23 @@ func parseFlaskMethods(args string) []string {
 // @Depends) are allowed.
 var fastapiVerbDecoratorRe = regexp.MustCompile(`@(?:app|router|api|\w+_router)\.(get|post|put|patch|delete|head|options|trace)\s*\(\s*["']([^"'\n\r]+)["'][^)]*\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
 
-func synthesizeFastAPI(content string, emit emitFn) {
+func synthesizeFastAPI(content string, emit emitDefFn) {
 	if !strings.Contains(content, "FastAPI") && !strings.Contains(content, "APIRouter") &&
 		!strings.Contains(content, "@app.") && !strings.Contains(content, "@router.") {
 		return
 	}
-	for _, m := range fastapiVerbDecoratorRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
+	// SubmatchIndex variant so the 1-based line of the handler `def`
+	// (capture group 3) can be recovered for issue #2678 attribution.
+	for _, idx := range fastapiVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
 			continue
 		}
-		verb := strings.ToUpper(m[1])
-		raw := m[2]
-		handler := m[3]
+		verb := strings.ToUpper(content[idx[2]:idx[3]])
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, raw)
-		emit(verb, canonical, "fastapi", "Controller", handler)
+		defLine := lineOfOffset(content, idx[6])
+		emit(verb, canonical, "fastapi", "Controller", handler, defLine)
 	}
 }
 
@@ -1039,6 +1060,26 @@ func synthesizeGraphQLResolvers(content string, emit emitFn) {
 // emitFn is the closure signature used by each per-framework synthesiser.
 // (method, canonicalPath, framework, handlerKind, handlerName)
 type emitFn func(method, canonicalPath, framework, handlerKind, handlerName string)
+
+// emitDefFn extends emitFn with a `defLine` argument carrying the 1-based
+// line of the handler's `def` statement. Used by per-framework synthesisers
+// (Flask, FastAPI) where the handler def lives in the same file as the
+// routing decorator and the line is recoverable from the match offset.
+// A defLine of 0 means "unknown" and leaves StartLine untouched.
+type emitDefFn func(method, canonicalPath, framework, handlerKind, handlerName string, defLine int)
+
+// lineOfOffset returns the 1-based line number containing byte offset `off`
+// in `content`. Newlines are counted up to (but not including) the offset,
+// so the very first line is line 1.
+func lineOfOffset(content string, off int) int {
+	if off < 0 {
+		return 0
+	}
+	if off > len(content) {
+		off = len(content)
+	}
+	return 1 + strings.Count(content[:off], "\n")
+}
 
 // joinPathFragments concatenates a class-level prefix with a method-level
 // path, mirroring the slash convention used by joinRoutePaths in
