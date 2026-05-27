@@ -325,6 +325,302 @@ var clientEnvConcatRe = regexp.MustCompile(
 	`(?:^|[^\w$.])(\$?[A-Za-z_$][\w$]*)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*(?:process\.env|import\.meta\.env)[^\s+]+\s*\+\s*['"]([^'"\n\r]+)['"]`,
 )
 
+// arrowFnTemplate captures a same-file arrow-function declaration whose
+// body is a single template literal. Used by #2708 to inline factory
+// callsites like `${base(companyType, branchId)}/contacts` into the
+// canonical URL path.
+//
+// Example source: `const base = (companyType, companyId) =>
+// `+"`"+`/${COMPANY_TYPE_MAPPING[companyType]}/${companyId}/branches`+"`"+`
+//
+//	→ Params: ["companyType", "companyId"]
+//	→ Body:   "/${COMPANY_TYPE_MAPPING[companyType]}/${companyId}/branches"
+type arrowFnTemplate struct {
+	Params []string
+	Body   string // raw template-literal content (between backticks)
+}
+
+// jsArrowFnTemplateRe matches an arrow-function declaration whose RHS is a
+// single template literal. We allow both the parenthesised parameter list
+// (`(a, b) => ...`) and the single-parameter bare form (`a => ...`).
+//
+// Capture groups:
+//
+//	1 = identifier name
+//	2 = parameter list (parenthesised body), or empty if single-param form
+//	3 = single-param identifier (when group 2 is empty)
+//	4 = template-literal body (between backticks)
+//
+// Whitespace and a newline are tolerated between `=>` and the opening
+// backtick (very common in real-world formatters — the upvate-frontend
+// branchService.js fixture splits the body across two lines).
+//
+// The body cannot contain backticks; multi-line templates and tagged
+// templates are out of scope per the issue.
+var jsArrowFnTemplateRe = regexp.MustCompile(
+	"(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(?:\\(([^)]*)\\)|([A-Za-z_$][\\w$]*))\\s*=>\\s*`([^`]*)`",
+)
+
+// buildJSArrowFnTemplateTable returns a map from identifier name →
+// arrowFnTemplate for every same-file arrow-function declaration whose
+// body is a template literal. Used by canonicalizeTemplateLiteralCore
+// (issue #2708) to inline factory callsites.
+//
+// Only the simple shape `const NAME = (a, b) => `+"`"+`...`+"`"+`` is captured.
+// Multi-statement bodies, conditional returns, async/await wrappers, and
+// tagged templates are NOT captured — those callsites keep their existing
+// `{param}` placeholder behaviour.
+func buildJSArrowFnTemplateTable(content string) map[string]arrowFnTemplate {
+	out := make(map[string]arrowFnTemplate)
+	for _, m := range jsArrowFnTemplateRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 10 {
+			continue
+		}
+		name := content[m[2]:m[3]]
+		var params []string
+		if m[4] >= 0 && m[5] > m[4] {
+			// Parenthesised form: split on commas, trim whitespace.
+			raw := content[m[4]:m[5]]
+			for _, p := range strings.Split(raw, ",") {
+				p = strings.TrimSpace(p)
+				// Strip any default value: `a = 1` → `a`.
+				if eq := strings.IndexByte(p, '='); eq >= 0 {
+					p = strings.TrimSpace(p[:eq])
+				}
+				// Strip TypeScript type annotation: `a: string` → `a`.
+				if colon := strings.IndexByte(p, ':'); colon >= 0 {
+					p = strings.TrimSpace(p[:colon])
+				}
+				if jsIdentRe.MatchString(p) {
+					params = append(params, p)
+				}
+			}
+		} else if m[6] >= 0 && m[7] > m[6] {
+			// Single-param bare form: `x => ...`.
+			params = []string{content[m[6]:m[7]]}
+		} else {
+			// No-param parenthesised form `() => ...` — body has no
+			// references to substitute; still capture it.
+			params = nil
+		}
+		body := content[m[8]:m[9]]
+		if _, dup := out[name]; !dup {
+			out[name] = arrowFnTemplate{Params: params, Body: body}
+		}
+	}
+	return out
+}
+
+// jsCallExprRe matches a function call shaped `ident(args)` where args is
+// the raw argument list (no nested parens). Used by the arrow-fn inliner
+// to detect `${base(companyType, branchId)}` interpolations.
+//
+// Capture groups: 1 = identifier; 2 = argument list (may be empty).
+var jsCallExprRe = regexp.MustCompile(`^([A-Za-z_$][\w$]*)\s*\(([^()]*)\)\s*$`)
+
+// splitTopLevelArgs splits a raw argument list on commas that are NOT
+// nested inside brackets / parens / quotes / template literals. Returns
+// the trimmed argument expressions.
+func splitTopLevelArgs(s string) []string {
+	var out []string
+	depth := 0
+	inSingle, inDouble, inBacktick := false, false, false
+	start := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inSingle:
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == '\'' {
+				inSingle = false
+			}
+		case inDouble:
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == '"' {
+				inDouble = false
+			}
+		case inBacktick:
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == '`' {
+				inBacktick = false
+			}
+		default:
+			switch c {
+			case '\'':
+				inSingle = true
+			case '"':
+				inDouble = true
+			case '`':
+				inBacktick = true
+			case '(', '[', '{':
+				depth++
+			case ')', ']', '}':
+				depth--
+			case ',':
+				if depth == 0 {
+					out = append(out, strings.TrimSpace(s[start:i]))
+					start = i + 1
+				}
+			}
+		}
+	}
+	if start < len(s) {
+		tail := strings.TrimSpace(s[start:])
+		if tail != "" || len(out) > 0 {
+			out = append(out, tail)
+		}
+	}
+	return out
+}
+
+// substituteArrowFnBody returns the arrow-fn body with each `${expr}`
+// interpolation rewritten according to the call-site arguments.
+//
+// For each `${innerExpr}` in body:
+//   - Determine which parameter is referenced. The parameter must appear
+//     as a top-level identifier in the expression (either bare, dotted, or
+//     as the subscript index of a member expression).
+//   - If the call-site arg for that parameter is a quoted string literal,
+//     substitute the literal value.
+//   - Otherwise emit `${paramName}` (the arrow fn's parameter name) so the
+//     outer canonicaliser produces a meaningful `{paramName}` placeholder.
+//
+// If an interpolation references zero or multiple parameters (e.g.
+// `${a + b}`), it is preserved verbatim — the outer canonicaliser will
+// fall back to `{param}` for it.
+//
+// Returns ("", false) if the body cannot be substituted (e.g. mismatched
+// argument count).
+func substituteArrowFnBody(fn arrowFnTemplate, args []string) (string, bool) {
+	if len(args) < len(fn.Params) {
+		// Missing trailing args → treat as `undefined`, expressed as the
+		// param-name placeholder.
+		for len(args) < len(fn.Params) {
+			args = append(args, "")
+		}
+	}
+	paramIdx := make(map[string]int, len(fn.Params))
+	for i, p := range fn.Params {
+		paramIdx[p] = i
+	}
+	out := templateSubstRe.ReplaceAllStringFunc(fn.Body, func(match string) string {
+		inner := strings.TrimSpace(match[2 : len(match)-1])
+		// Find which parameters are referenced in this expression.
+		// We scan for identifier tokens and pick the first one that
+		// matches a parameter name. Multiple distinct param refs in one
+		// interpolation → too complex, keep verbatim.
+		var referenced string
+		multiple := false
+		for ident := range identTokens(inner) {
+			if _, ok := paramIdx[ident]; !ok {
+				continue
+			}
+			if referenced != "" && referenced != ident {
+				multiple = true
+				break
+			}
+			referenced = ident
+		}
+		if referenced == "" || multiple {
+			return match
+		}
+		arg := strings.TrimSpace(args[paramIdx[referenced]])
+		// Literal string arg → substitute the literal value (no braces).
+		if lit, ok := unquoteJSString(arg); ok {
+			// If the original expr was the bare parameter, replace the
+			// whole `${param}` with the literal. If it was a more complex
+			// expression (subscript / dotted), the substitution is unsafe
+			// — fall back to `${paramName}`.
+			if inner == referenced {
+				return lit
+			}
+			return "${" + referenced + "}"
+		}
+		// Non-literal call-site arg → emit `${paramName}` so the outer
+		// canonicaliser turns it into `{paramName}`.
+		return "${" + referenced + "}"
+	})
+	return out, true
+}
+
+// identTokens returns the set of bare-identifier tokens that appear in s.
+// Used to detect which arrow-fn parameters an interpolation expression
+// references. Properties on the RHS of a dot (e.g. `id` in `user.id`) are
+// excluded because they cannot resolve to a parameter binding.
+func identTokens(s string) map[string]struct{} {
+	out := make(map[string]struct{})
+	i := 0
+	prevDot := false
+	for i < len(s) {
+		c := s[i]
+		if isJSIdentStart(c) {
+			j := i + 1
+			for j < len(s) && isJSIdentPart(s[j]) {
+				j++
+			}
+			if !prevDot {
+				out[s[i:j]] = struct{}{}
+			}
+			i = j
+			prevDot = false
+			continue
+		}
+		prevDot = c == '.'
+		i++
+	}
+	return out
+}
+
+func isJSIdentStart(c byte) bool {
+	return c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func isJSIdentPart(c byte) bool {
+	return isJSIdentStart(c) || (c >= '0' && c <= '9')
+}
+
+// unquoteJSString returns the string body if s is a quoted JS string
+// literal (single, double, or backtick with no `${}` interpolations).
+// Returns ("", false) otherwise.
+func unquoteJSString(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return "", false
+	}
+	first, last := s[0], s[len(s)-1]
+	if first != last {
+		return "", false
+	}
+	if first != '\'' && first != '"' && first != '`' {
+		return "", false
+	}
+	body := s[1 : len(s)-1]
+	// Reject template literals with interpolations.
+	if first == '`' && strings.Contains(body, "${") {
+		return "", false
+	}
+	// Reject any embedded unescaped quote of the same kind.
+	for i := 0; i < len(body); i++ {
+		if body[i] == '\\' {
+			i++
+			continue
+		}
+		if body[i] == first {
+			return "", false
+		}
+	}
+	return body, true
+}
+
 // buildJSConstantSymbolTable returns a map from identifier name → string
 // value for every simple string-literal const declaration in the file.
 // Used by canonicalizeTemplateLiteral for constant folding.
@@ -643,15 +939,19 @@ var stringLiteralRe = regexp.MustCompile(
 //
 // objSyms == nil disables subscript enumeration (back-compat for callers
 // that don't carry the object-literal table).
+//
+// arrowFns may be nil — when it is, the function degrades to the
+// pre-#2708 behaviour exactly (arrow-fn inlining is skipped).
 func canonicalizeTemplateLiteralExpand(
 	tmpl string,
 	syms map[string]string,
 	objSyms map[string]map[string]string,
+	arrowFns map[string]arrowFnTemplate,
 ) []templateExpansion {
 	// Fast path: no `[` in any interpolation means no subscripts to enumerate.
 	// Fall back to the scalar canonicaliser.
 	if len(objSyms) == 0 || !strings.Contains(tmpl, "[") {
-		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		path, ok := canonicalizeTemplateLiteralCore(tmpl, syms, arrowFns, 0)
 		if !ok {
 			return nil
 		}
@@ -683,7 +983,7 @@ func canonicalizeTemplateLiteralExpand(
 		break
 	}
 	if hitIdx < 0 {
-		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		path, ok := canonicalizeTemplateLiteralCore(tmpl, syms, arrowFns, 0)
 		if !ok {
 			return nil
 		}
@@ -708,7 +1008,7 @@ func canonicalizeTemplateLiteralExpand(
 			replacement = "{param}"
 		}
 		rewritten := tmpl[:matchStart] + replacement + tmpl[matchEnd:]
-		path, ok := canonicalizeTemplateLiteral(rewritten, syms)
+		path, ok := canonicalizeTemplateLiteralCore(rewritten, syms, arrowFns, 0)
 		if !ok {
 			return nil
 		}
@@ -720,7 +1020,7 @@ func canonicalizeTemplateLiteralExpand(
 	// anything more exotic falls back to the unknown-subscript `{param}`
 	// shape so we don't over-fire on call-expressions or arithmetic.
 	if !jsIdentRe.MatchString(hitKeyExpr) {
-		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		path, ok := canonicalizeTemplateLiteralCore(tmpl, syms, arrowFns, 0)
 		if !ok {
 			return nil
 		}
@@ -748,7 +1048,7 @@ func canonicalizeTemplateLiteralExpand(
 	for _, k := range keys {
 		v := entries[k]
 		rewritten := tmpl[:matchStart] + v + tmpl[matchEnd:]
-		path, ok := canonicalizeTemplateLiteral(rewritten, syms)
+		path, ok := canonicalizeTemplateLiteralCore(rewritten, syms, arrowFns, 0)
 		if !ok {
 			continue
 		}
@@ -764,7 +1064,7 @@ func canonicalizeTemplateLiteralExpand(
 	if len(expansions) == 0 {
 		// All enumerated values failed canonicalisation — fall back to
 		// the scalar path so we still emit something rather than nothing.
-		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		path, ok := canonicalizeTemplateLiteralCore(tmpl, syms, arrowFns, 0)
 		if !ok {
 			return nil
 		}
@@ -774,6 +1074,19 @@ func canonicalizeTemplateLiteralExpand(
 }
 
 func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, bool) {
+	return canonicalizeTemplateLiteralCore(tmpl, syms, nil, 0)
+}
+
+// canonicalizeTemplateLiteralCore is the core implementation of
+// canonicalizeTemplateLiteral. It additionally accepts an arrow-fn
+// template-literal symbol table (issue #2708) used to inline factory
+// callsites like `${base(companyType, branchId)}`. The depth argument
+// guards against unbounded recursion when an inlined body itself calls
+// another arrow-fn factory: depth >= 2 → skip the inlining step.
+//
+// arrowFns may be nil — when it is, the function degrades to the
+// pre-#2708 behaviour exactly.
+func canonicalizeTemplateLiteralCore(tmpl string, syms map[string]string, arrowFns map[string]arrowFnTemplate, depth int) (string, bool) {
 	// Whether the FIRST substitution was an env-var prefix (to be stripped).
 	firstSubst := true
 	// #2704 — Track whether the template begins with a ${var} interpolation
@@ -782,6 +1095,12 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 	// one so the path validates as URL-absolute (e.g. `${path}/${id}` with
 	// `const path = "companies"` → `/companies/{id}` instead of being rejected).
 	leadingConstResolved := false
+	// #2708 — Same logic for arrow-fn inlined values: when the FIRST
+	// substitution resolved to an arrow-fn body whose first segment is a
+	// path-shaped string, the resulting expansion may not start with `/`
+	// even though it should. We track resolution separately so we don't
+	// over-promote unresolved templates.
+	leadingArrowFnResolved := false
 
 	// Replace each ${expr} with its constant value or a named placeholder.
 	result := templateSubstRe.ReplaceAllStringFunc(tmpl, func(match string) string {
@@ -809,6 +1128,44 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 					leadingConstResolved = true
 				}
 				return val
+			}
+		}
+
+		// #2708 — Arrow-function template-literal factory inlining.
+		// If the inner expression is a call `ident(args)` and `ident` is a
+		// same-file arrow function whose body is a template literal, inline
+		// the body (substituting parameters) and recursively canonicalise.
+		// Depth-limited (max 2 levels) to prevent runaway expansion.
+		if depth < 2 && len(arrowFns) > 0 {
+			if cm := jsCallExprRe.FindStringSubmatch(inner); len(cm) == 3 {
+				if fn, ok := arrowFns[cm[1]]; ok {
+					args := splitTopLevelArgs(cm[2])
+					// Resolve identifier-shaped args against the const
+					// symbol table so `base(companyType, branchId)` where
+					// `companyType` is itself a const string is folded.
+					resolvedArgs := make([]string, len(args))
+					for i, a := range args {
+						a = strings.TrimSpace(a)
+						if val, ok := syms[a]; ok {
+							resolvedArgs[i] = "\"" + val + "\""
+						} else {
+							resolvedArgs[i] = a
+						}
+					}
+					if expanded, ok := substituteArrowFnBody(fn, resolvedArgs); ok {
+						// Recursively canonicalise the expanded body.
+						// Strip the outer `${...}` wrapper from the
+						// recursive call — we're returning the body that
+						// will replace the interpolation.
+						inlined, ok2 := canonicalizeTemplateLiteralCore(expanded, syms, arrowFns, depth+1)
+						if ok2 {
+							if isFirst {
+								leadingArrowFnResolved = true
+							}
+							return inlined
+						}
+					}
+				}
 			}
 		}
 
@@ -845,7 +1202,7 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 	// as URL-absolute. Guarded by `leadingConstResolved` so we don't accept
 	// bogus template literals like `not-a-path-${name}` whose leading literal
 	// chunk was never a constant reference.
-	if leadingConstResolved && len(result) > 0 && result[0] != '/' && result[0] != '{' {
+	if (leadingConstResolved || leadingArrowFnResolved) && len(result) > 0 && result[0] != '/' && result[0] != '{' {
 		result = "/" + result
 	}
 
@@ -938,6 +1295,10 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 	// #2709 — build same-file const-object-literal table (used by subscript
 	// enumeration in template-literal canonicalisation).
 	objSyms := buildJSConstantObjectTable(content)
+	// #2708 — Build the arrow-function template-literal table once. Used by
+	// canonicalizeTemplateLiteralCore to inline factory callsites like
+	// `${base(companyType, branchId)}/contacts`.
+	arrowFns := buildJSArrowFnTemplateTable(content)
 
 	// emitWithPoly stamps state.pendingPolySubscript for the next emit call
 	// when the expansion is polymorphic, then calls emit and clears the
@@ -992,7 +1353,7 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 			}
 		}
 		caller := enclosingJSFuncAt(funcs, m[0])
-		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms) {
+		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms, arrowFns) {
 			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
 			emitWithPoly(verb, canonical, "fetch", "Function", caller, exp.PolySubscript)
 		}
@@ -1024,7 +1385,7 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 				}
 			}
 			caller := enclosingJSFuncAt(funcs, m[0])
-			for _, exp := range canonicalizeTemplateLiteralExpand(tmplBody, syms, objSyms) {
+			for _, exp := range canonicalizeTemplateLiteralExpand(tmplBody, syms, objSyms, arrowFns) {
 				canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
 				emitWithPoly(verb, canonical, "fetch", "Function", caller, exp.PolySubscript)
 			}
@@ -1056,7 +1417,7 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		tmpl := content[m[4]:m[5]]
 		caller := enclosingJSFuncAt(funcs, m[0])
-		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms) {
+		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms, arrowFns) {
 			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
 			emitWithPoly(verb, canonical, "axios", "Function", caller, exp.PolySubscript)
 		}
@@ -1087,7 +1448,7 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 		verb := strings.ToUpper(content[m[4]:m[5]])
 		tmpl := content[m[6]:m[7]]
 		caller := enclosingJSFuncAt(funcs, m[0])
-		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms) {
+		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms, arrowFns) {
 			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
 			emitWithPoly(verb, canonical, "http_client", "Function", caller, exp.PolySubscript)
 		}
@@ -1328,6 +1689,8 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 	if wrapperIdx == nil {
 		wrapperIdx = WrapperConfigIndex{}
 	}
+	// #2708 — Build the arrow-fn template table for factory inlining.
+	arrowFns := buildJSArrowFnTemplateTable(content)
 	for _, m := range wrapperCallStartRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
@@ -1384,7 +1747,7 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 		// scalar shapes always yield a single expansion.
 		var expansions []templateExpansion
 		if isTemplate && strings.Contains(rawURL, "${") {
-			expansions = canonicalizeTemplateLiteralExpand(rawURL, syms, objSyms)
+			expansions = canonicalizeTemplateLiteralExpand(rawURL, syms, objSyms, arrowFns)
 		} else {
 			candidate := stripURLHost(rawURL)
 			if looksLikeURLPath(candidate) {
@@ -1675,10 +2038,13 @@ func synthesizeAxiosInstanceCalls(
 	emit emitFn,
 	state *clientSynthState,
 ) {
+	// #2708 — Arrow-fn template-literal factory table for inlining
+	// `${base(args)}` interpolations inside axios-instance call URLs.
+	arrowFns := buildJSArrowFnTemplateTable(content)
 	emitMatch := func(receiver, verb, path string, isTemplate bool, pos int) {
 		var expansions []templateExpansion
 		if isTemplate {
-			expansions = canonicalizeTemplateLiteralExpand(path, syms, objSyms)
+			expansions = canonicalizeTemplateLiteralExpand(path, syms, objSyms, arrowFns)
 		} else {
 			candidate := stripURLHost(path)
 			if looksLikeURLPath(candidate) {
