@@ -134,4 +134,4 @@ Back to [summary](../summary.md).
 | Name | Category | Status | Notes |
 |---|---|---|---|
 | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | [message_broker](../by-category/message_broker.md) | ⚠️ | |
-| [tsconfig.json](../detail/config.tsconfig.md) | [configuration](../by-category/configuration.md) | ⚠️ | |
+| [tsconfig.json](../detail/config.tsconfig.md) | [platform](../by-category/platform.md) | ⚠️ | |

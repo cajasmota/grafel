@@ -94,14 +94,32 @@ type recordView struct {
 // links; Display is the human-facing label rendered in the table cell
 // (they differ for slugs like "jsts" → "JS/TS").
 type pivotRow struct {
-	Name          string
-	Display       string
-	Frameworks    int
-	Tools         int
-	ORMs          int
-	Other         int
-	Uncategorized bool // true for the language-neutral "Uncategorized" row
-	Untracked     bool // true for supported-but-zero-record languages
+	Name       string
+	Display    string
+	Frameworks int
+	Tools      int
+	ORMs       int
+	Other      int
+}
+
+// crossCuttingRow is one row of the cross-cutting infrastructure pivot
+// table (rows = category, columns = status counts). Counts are derived
+// from registry records where language="multi" and category matches.
+type crossCuttingRow struct {
+	Slug    string // category slug, used in by-category/<slug>.md link
+	Display string // human-facing label
+	Records int
+	Full    int
+	Partial int
+	Missing int
+}
+
+// placeholderLanguage is one entry in the "languages with extractor
+// support but no records yet" section. Name is the file slug; Display
+// is the human-facing label.
+type placeholderLanguage struct {
+	Name    string
+	Display string
 }
 
 // bucketSection is one rendered section on a by-language page. When a
@@ -129,15 +147,34 @@ type subSection struct {
 }
 
 // summaryData feeds summary.md.tmpl.
+//
+// The summary is partitioned into three render sections:
+//
+//   - ActiveRows: languages with ≥1 ecosystem record, sorted by
+//     Frameworks count desc then name (the main language pivot).
+//   - CrossCutting: one row per cross-cutting category that has ≥1
+//     record (language="multi"). Categories with zero records appear
+//     in EmptyCrossCutting instead so the main table stays clean.
+//   - PlaceholderLangs: extractor-supported languages with zero records,
+//     sorted alphabetically by display name (the "not yet tracked"
+//     table at the bottom).
+//
+// ActiveLanguages and PlaceholderLanguages totals power the headline
+// banner ("16 active · 22 placeholder").
 type summaryData struct {
-	Marker           string
-	TotalLanguages   int
-	TotalFrameworks  int
-	TotalTools       int
-	TotalORMs        int
-	TotalOther       int
-	Rows             []pivotRow // sorted by language; Uncategorized last
-	UntrackedLangs   []string   // display labels for footnote, sorted
+	Marker             string
+	TotalLanguages     int
+	ActiveLanguages    int
+	PlaceholderCount   int
+	TotalFrameworks    int
+	TotalTools         int
+	TotalORMs          int
+	TotalOther         int
+	ActiveRows         []pivotRow
+	CrossCutting       []crossCuttingRow
+	CrossCuttingTotal  crossCuttingRow
+	EmptyCrossCutting  []crossCuttingRow
+	PlaceholderLangs   []placeholderLanguage
 }
 
 // languagePageData feeds by-language/<lang>.md.tmpl.
@@ -433,9 +470,16 @@ func generate(reg *Registry, outRoot string) error {
 		return err
 	}
 
+	// Build the main language pivot from languages with ≥1 record. The
+	// synthetic "multi" / unset-language slug is excluded — those records
+	// surface in the cross-cutting pivot instead, where each cell lives
+	// in exactly one place.
 	totals := pivotRow{}
-	rows := make([]pivotRow, 0, len(langNames)+1)
+	activeRows := make([]pivotRow, 0, len(langNames))
 	for _, n := range langNames {
+		if n == "multi" || n == "" {
+			continue
+		}
 		buckets := byLangBucket[n]
 		row := pivotRow{
 			Name:       n,
@@ -449,54 +493,62 @@ func generate(reg *Registry, outRoot string) error {
 		totals.Tools += row.Tools
 		totals.ORMs += row.ORMs
 		totals.Other += row.Other
-		if n == "multi" || n == "" {
-			row.Name = "Uncategorized"
-			row.Display = "Uncategorized"
-			row.Uncategorized = true
-		}
-		rows = append(rows, row)
+		activeRows = append(activeRows, row)
 	}
+	// Cross-cutting records (language="multi") still contribute to the
+	// global Frameworks/Tools/ORMs/Other counters in the headline banner
+	// — the partition only governs which table renders them.
+	if multiBuckets, ok := byLangBucket["multi"]; ok {
+		totals.Frameworks += len(multiBuckets[BucketFrameworks])
+		totals.Tools += len(multiBuckets[BucketTools])
+		totals.ORMs += len(multiBuckets[BucketORMs])
+		totals.Other += len(multiBuckets[BucketOther])
+	}
+	sort.SliceStable(activeRows, func(i, j int) bool {
+		if activeRows[i].Frameworks != activeRows[j].Frameworks {
+			return activeRows[i].Frameworks > activeRows[j].Frameworks
+		}
+		return activeRows[i].Name < activeRows[j].Name
+	})
 
-	// Union with extractor-supported languages so the summary reflects
-	// every language archigraph CAN extract, not just languages with at
-	// least one ecosystem record. Languages discovered on disk that have
-	// no record set get a zero-count row + an Untracked marker so the
-	// footnote can enumerate them.
+	// Cross-cutting pivot: one row per canonical category, populated from
+	// records tagged language="multi" so every cell lives in exactly one
+	// summary table. Categories with zero records render in the
+	// "tracked but no records" section instead (omitted when empty).
+	activeCC, emptyCC, ccTotal := buildCrossCuttingRows(byCat)
+
+	// Extractor-supported but record-free languages form the placeholder
+	// table at the bottom. Sorted by display name for human scanability.
 	supported := SupportedLanguages(outRoot)
-	untrackedDisplay := make([]string, 0, len(supported))
+	placeholderLangs := make([]placeholderLanguage, 0, len(supported))
 	for _, s := range supported {
 		if _, present := langSet[s]; present {
 			continue
 		}
-		display := languageDisplayName(s)
-		rows = append(rows, pivotRow{
-			Name:      s,
-			Display:   display,
-			Untracked: true,
+		placeholderLangs = append(placeholderLangs, placeholderLanguage{
+			Name:    s,
+			Display: languageDisplayName(s),
 		})
-		untrackedDisplay = append(untrackedDisplay, display)
 	}
-	sort.Strings(untrackedDisplay)
-
-	sort.SliceStable(rows, func(i, j int) bool {
-		if rows[i].Uncategorized != rows[j].Uncategorized {
-			return !rows[i].Uncategorized
-		}
-		if rows[i].Frameworks != rows[j].Frameworks {
-			return rows[i].Frameworks > rows[j].Frameworks
-		}
-		return rows[i].Name < rows[j].Name
+	sort.SliceStable(placeholderLangs, func(i, j int) bool {
+		return placeholderLangs[i].Display < placeholderLangs[j].Display
 	})
 
+	activeLangCount := len(activeRows)
 	if err := renderToFile(tmpls, "summary.md.tmpl", filepath.Join(root, "summary.md"), summaryData{
-		Marker:          doNotEditMarker,
-		TotalLanguages:  len(langNames) + len(untrackedDisplay),
-		TotalFrameworks: totals.Frameworks,
-		TotalTools:      totals.Tools,
-		TotalORMs:       totals.ORMs,
-		TotalOther:      totals.Other,
-		Rows:            rows,
-		UntrackedLangs:  untrackedDisplay,
+		Marker:            doNotEditMarker,
+		TotalLanguages:    activeLangCount + len(placeholderLangs),
+		ActiveLanguages:   activeLangCount,
+		PlaceholderCount:  len(placeholderLangs),
+		TotalFrameworks:   totals.Frameworks,
+		TotalTools:        totals.Tools,
+		TotalORMs:         totals.ORMs,
+		TotalOther:        totals.Other,
+		ActiveRows:        activeRows,
+		CrossCutting:      activeCC,
+		CrossCuttingTotal: ccTotal,
+		EmptyCrossCutting: emptyCC,
+		PlaceholderLangs:  placeholderLangs,
 	}); err != nil {
 		return err
 	}
@@ -626,6 +678,67 @@ func generate(reg *Registry, outRoot string) error {
 		}
 	}
 	return nil
+}
+
+// crossCuttingCategories is the canonical render order for the
+// cross-cutting infrastructure pivot table. Each entry pairs the
+// registry category slug (used in by-category links and as the lookup
+// key into per-category record sets) with its human-facing display
+// label. Adding a new cross-cutting category: append a row here and
+// declare its capability keys in categoryCapabilities (schema.go).
+var crossCuttingCategories = []struct {
+	Slug    string
+	Display string
+}{
+	{"databases", "Databases"},
+	{"platform", "Platform / k8s"},
+	{"message_broker", "Message Brokers"},
+	{"ci_cd", "CI/CD"},
+	{"security", "Security"},
+	{"observability", "Observability"},
+	{"protocol", "Protocols"},
+	{"build_system", "Build Systems"},
+}
+
+// buildCrossCuttingRows partitions the canonical cross-cutting
+// categories into rendered rows (≥1 record) and an "empty" tail
+// (zero records) so the summary template can drop the second section
+// entirely when nothing is tracked-but-empty. Counts come from records
+// in byCat tagged language="multi"; each record contributes once to
+// Records and once to whichever of Full/Partial/Missing its worst-cell
+// status maps to (StatusNotApplicable rolls into Full so empty-but-
+// declared records don't skew the missing column).
+func buildCrossCuttingRows(byCat map[string][]recordView) ([]crossCuttingRow, []crossCuttingRow, crossCuttingRow) {
+	active := make([]crossCuttingRow, 0, len(crossCuttingCategories))
+	empty := make([]crossCuttingRow, 0)
+	total := crossCuttingRow{Display: "Total"}
+	for _, c := range crossCuttingCategories {
+		row := crossCuttingRow{Slug: c.Slug, Display: c.Display}
+		for _, rv := range byCat[c.Slug] {
+			if rv.Language != "multi" {
+				continue
+			}
+			row.Records++
+			switch rv.Digest {
+			case StatusFull, StatusNotApplicable, "":
+				row.Full++
+			case StatusPartial:
+				row.Partial++
+			case StatusMissing:
+				row.Missing++
+			}
+		}
+		if row.Records == 0 {
+			empty = append(empty, row)
+			continue
+		}
+		active = append(active, row)
+		total.Records += row.Records
+		total.Full += row.Full
+		total.Partial += row.Partial
+		total.Missing += row.Missing
+	}
+	return active, empty, total
 }
 
 // buildBucketSection produces a bucketSection for a per-language page.

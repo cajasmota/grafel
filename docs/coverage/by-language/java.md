@@ -66,5 +66,5 @@ Back to [summary](../summary.md).
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [.properties (application.properties)](../detail/config.properties.md) | [configuration](../by-category/configuration.md) | ✅ | |
+| [.properties (application.properties)](../detail/config.properties.md) | [platform](../by-category/platform.md) | ✅ | |
 | [Auth policy resolver (Java/Kotlin — Phase 1 of #1942)](../detail/security.auth-java.md) | [security](../by-category/security.md) | ✅ | |

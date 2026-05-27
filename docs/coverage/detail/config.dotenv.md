@@ -4,7 +4,7 @@
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [multi](../by-language/multi.md)
-- **Category:** [configuration](../by-category/configuration.md)
+- **Category:** [platform](../by-category/platform.md)
 - **Capability cells:** 2
 
 ## Capabilities

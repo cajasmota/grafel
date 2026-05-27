@@ -105,7 +105,8 @@ type Registry struct {
 // JS/TS extractor is shared across .js, .ts, .jsx, .tsx, .mjs and .cjs
 // sources, so a single tag covers them all. Records that span multiple
 // language ecosystems (build systems, observability vendors, infra
-// resources) use "multi" and render under the "Uncategorized" pivot row.
+// resources) use "multi" and surface in the summary's cross-cutting
+// infrastructure pivot rather than the per-language one.
 //
 // Subcategory is an OPTIONAL refinement of Category. It carves a broad
 // category (e.g. http_framework) into honest narrower lanes (ui_frontend,
@@ -344,9 +345,15 @@ var categoryCapabilities = map[string][]string{
 		"manifest_parsing",
 		"lockfile_parsing",
 	},
-	"infrastructure": {
+	"databases": {
 		"resource_extraction",
 		"dependency_attribution",
+	},
+	"platform": {
+		"resource_extraction",
+		"dependency_attribution",
+		"file_parsing",
+		"env_resolution",
 	},
 	"security": {
 		"auth_policy",
@@ -358,7 +365,7 @@ var categoryCapabilities = map[string][]string{
 		"method_attribution",
 		"cross_repo_linkage",
 	},
-	"configuration": {
+	"ci_cd": {
 		"file_parsing",
 		"env_resolution",
 	},

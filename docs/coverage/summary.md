@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 38 · **Frameworks**: 165 · **ORMs**: 143 · **Tools**: 94 · **Other**: 99
+**Languages**: 37 (15 active · 22 placeholder) · **Frameworks**: 165 · **ORMs**: 143 · **Tools**: 94 · **Other**: 99
 
 ## Coverage by language
 
@@ -20,32 +20,50 @@
 | [ruby](by-language/ruby.md) | 8 | 6 | 13 | 1 |
 | [lua](by-language/lua.md) | 2 | 0 | 0 | 0 |
 | [swift](by-language/swift.md) | 1 | 1 | 0 | 0 |
-| [Astro](by-language/astro.md) † | 0 | 0 | 0 | 0 |
-| [Clojure](by-language/clojure.md) † | 0 | 0 | 0 | 0 |
-| [C++](by-language/cpp.md) † | 0 | 0 | 0 | 0 |
-| [Crystal](by-language/crystal.md) † | 0 | 0 | 0 | 0 |
 | [dart](by-language/dart.md) | 0 | 1 | 0 | 0 |
-| [Elm](by-language/elm.md) † | 0 | 0 | 0 | 0 |
-| [Erlang](by-language/erlang.md) † | 0 | 0 | 0 | 0 |
-| [F#](by-language/fsharp.md) † | 0 | 0 | 0 | 0 |
 | [groovy](by-language/groovy.md) | 0 | 1 | 0 | 0 |
-| [Haskell](by-language/haskell.md) † | 0 | 0 | 0 | 0 |
-| [Idris](by-language/idris.md) † | 0 | 0 | 0 | 0 |
-| [Lisp](by-language/lisp.md) † | 0 | 0 | 0 | 0 |
-| [Nim](by-language/nim.md) † | 0 | 0 | 0 | 0 |
-| [OCaml](by-language/ocaml.md) † | 0 | 0 | 0 | 0 |
-| [Pony](by-language/pony.md) † | 0 | 0 | 0 | 0 |
-| [ReasonML](by-language/reasonml.md) † | 0 | 0 | 0 | 0 |
-| [ReScript](by-language/rescript.md) † | 0 | 0 | 0 | 0 |
-| [Standard ML](by-language/sml.md) † | 0 | 0 | 0 | 0 |
-| [Solidity](by-language/solidity.md) † | 0 | 0 | 0 | 0 |
-| [Svelte](by-language/svelte.md) † | 0 | 0 | 0 | 0 |
-| [Verilog](by-language/verilog.md) † | 0 | 0 | 0 | 0 |
-| [VHDL](by-language/vhdl.md) † | 0 | 0 | 0 | 0 |
-| [Vue](by-language/vue.md) † | 0 | 0 | 0 | 0 |
-| [Zig](by-language/zig.md) † | 0 | 0 | 0 | 0 |
-| Uncategorized | 0 | 4 | 0 | 91 |
 
-† Extractor supported but no ecosystem records tracked yet: Astro, C++, Clojure, Crystal, Elm, Erlang, F#, Haskell, Idris, Lisp, Nim, OCaml, Pony, ReScript, ReasonML, Solidity, Standard ML, Svelte, VHDL, Verilog, Vue, Zig.
+## Cross-cutting infrastructure
+
+| Category | Records | Full | Partial | Missing |
+|---|---:|---:|---:|---:|
+| [Databases](by-category/databases.md) | 11 | 0 | 7 | 4 |
+| [Platform / k8s](by-category/platform.md) | 23 | 12 | 8 | 3 |
+| [Message Brokers](by-category/message_broker.md) | 20 | 9 | 9 | 2 |
+| [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
+| [Security](by-category/security.md) | 10 | 3 | 0 | 7 |
+| [Observability](by-category/observability.md) | 9 | 1 | 1 | 7 |
+| [Protocols](by-category/protocol.md) | 6 | 1 | 3 | 2 |
+| [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
+| **Total** | 95 | 30 | 36 | 29 |
+
+## Languages with extractor support, no records yet
+
+(archigraph has tree-sitter / extractor coverage for these but no framework/ORM/tool records tracked — contribute via `go run ./tools/coverage add`)
+
+| Language |
+|---|
+| [Astro](by-language/astro.md) |
+| [C++](by-language/cpp.md) |
+| [Clojure](by-language/clojure.md) |
+| [Crystal](by-language/crystal.md) |
+| [Elm](by-language/elm.md) |
+| [Erlang](by-language/erlang.md) |
+| [F#](by-language/fsharp.md) |
+| [Haskell](by-language/haskell.md) |
+| [Idris](by-language/idris.md) |
+| [Lisp](by-language/lisp.md) |
+| [Nim](by-language/nim.md) |
+| [OCaml](by-language/ocaml.md) |
+| [Pony](by-language/pony.md) |
+| [ReScript](by-language/rescript.md) |
+| [ReasonML](by-language/reasonml.md) |
+| [Solidity](by-language/solidity.md) |
+| [Standard ML](by-language/sml.md) |
+| [Svelte](by-language/svelte.md) |
+| [VHDL](by-language/vhdl.md) |
+| [Verilog](by-language/verilog.md) |
+| [Vue](by-language/vue.md) |
+| [Zig](by-language/zig.md) |
 
 Total: 165 frameworks · 94 tools · 143 ORMs · 99 other

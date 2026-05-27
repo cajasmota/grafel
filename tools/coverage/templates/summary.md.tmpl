@@ -1,22 +1,43 @@
 {{.Marker}}
 # archigraph capabilities
 
-**Languages**: {{.TotalLanguages}} · **Frameworks**: {{.TotalFrameworks}} · **ORMs**: {{.TotalORMs}} · **Tools**: {{.TotalTools}} · **Other**: {{.TotalOther}}
+**Languages**: {{.TotalLanguages}} ({{.ActiveLanguages}} active · {{.PlaceholderCount}} placeholder) · **Frameworks**: {{.TotalFrameworks}} · **ORMs**: {{.TotalORMs}} · **Tools**: {{.TotalTools}} · **Other**: {{.TotalOther}}
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-{{- range .Rows}}
-{{- if .Uncategorized}}
-| {{.Display}} | {{.Frameworks}} | {{.Tools}} | {{.ORMs}} | {{.Other}} |
-{{- else if .Untracked}}
-| [{{.Display}}](by-language/{{.Name}}.md) † | 0 | 0 | 0 | 0 |
-{{- else}}
+{{- range .ActiveRows}}
 | [{{.Display}}](by-language/{{.Name}}.md) | {{.Frameworks}} | {{.Tools}} | {{.ORMs}} | {{.Other}} |
 {{- end}}
+{{if .CrossCutting}}
+## Cross-cutting infrastructure
+
+| Category | Records | Full | Partial | Missing |
+|---|---:|---:|---:|---:|
+{{- range .CrossCutting}}
+| [{{.Display}}](by-category/{{.Slug}}.md) | {{.Records}} | {{.Full}} | {{.Partial}} | {{.Missing}} |
 {{- end}}
-{{if .UntrackedLangs}}
-† Extractor supported but no ecosystem records tracked yet: {{range $i, $l := .UntrackedLangs}}{{if $i}}, {{end}}{{$l}}{{end}}.
+| **Total** | {{.CrossCuttingTotal.Records}} | {{.CrossCuttingTotal.Full}} | {{.CrossCuttingTotal.Partial}} | {{.CrossCuttingTotal.Missing}} |
+{{end}}
+{{- if .PlaceholderLangs}}
+## Languages with extractor support, no records yet
+
+(archigraph has tree-sitter / extractor coverage for these but no framework/ORM/tool records tracked — contribute via `go run ./tools/coverage add`)
+
+| Language |
+|---|
+{{- range .PlaceholderLangs}}
+| [{{.Display}}](by-language/{{.Name}}.md) |
+{{- end}}
+{{end}}
+{{- if .EmptyCrossCutting}}
+## Cross-cutting categories tracked but with no records
+
+| Category |
+|---|
+{{- range .EmptyCrossCutting}}
+| [{{.Display}}](by-category/{{.Slug}}.md) |
+{{- end}}
 {{end}}
 Total: {{.TotalFrameworks}} frameworks · {{.TotalTools}} tools · {{.TotalORMs}} ORMs · {{.TotalOther}} other

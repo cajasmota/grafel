@@ -210,11 +210,11 @@ func TestGenSummaryIncludesExtractorSupportedLanguages(t *testing.T) {
 	if !bytes.Contains(summary, []byte("by-language/zig.md")) {
 		t.Errorf("expected summary to link zig.md, got:\n%s", summary)
 	}
-	if !bytes.Contains(summary, []byte("Extractor supported but no ecosystem records tracked yet")) {
-		t.Errorf("expected untracked footnote, got:\n%s", summary)
+	if !bytes.Contains(summary, []byte("## Languages with extractor support, no records yet")) {
+		t.Errorf("expected placeholder section, got:\n%s", summary)
 	}
-	if !bytes.Contains(summary, []byte("Zig")) {
-		t.Errorf("expected Zig in footnote list, got:\n%s", summary)
+	if !bytes.Contains(summary, []byte("| [Zig](by-language/zig.md) |")) {
+		t.Errorf("expected Zig row in placeholder table, got:\n%s", summary)
 	}
 	// Placeholder page must exist and cite the extractor dir.
 	pl, err := os.ReadFile(filepath.Join(root, "docs", "coverage", "by-language", "zig.md"))
