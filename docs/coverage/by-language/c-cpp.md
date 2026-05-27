@@ -12,20 +12,20 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | — | — | — | — | — | — | — | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | — | — | — | — | — | — | — | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | — | — | — | — | — | — | — | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | — | — | — | — | — | — | — | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | — | — | — | — | — | — | — | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | — | — | — | — | — | — | — | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | — | — | — | — | — | — | — | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | — | — | — | — | — | — | — | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | — | — | — | — | — | — | — | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | — | — | — | — | — | — | — | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | — | — | — | — | — | — | — | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | — | — | — | — | — | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | — | — | — | — | — | — | — | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | — | — | — | — | — | — | — | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
 
 
 ### UI Frontend
