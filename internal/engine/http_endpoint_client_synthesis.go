@@ -506,6 +506,16 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 		result = "/" + result
 	}
 
+	// #2710 — Strip query-string segment from the canonical path.
+	// After template substitution, any remaining `?` is a genuine query string
+	// separator (template params are already expanded above). Use only the
+	// pre-`?` portion as the canonical path. This normalizes both sides of the
+	// cross-repo match: backends rarely include query strings in route definitions,
+	// and frontends should match on the path component only.
+	if idx := strings.Index(result, "?"); idx >= 0 {
+		result = result[:idx]
+	}
+
 	// Validate that this looks like a URL path (absolute) or a
 	// template-parameter-prefixed path (starts with {<name>}).
 	if !looksLikeURLPathOrParam(result) {

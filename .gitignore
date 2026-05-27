@@ -78,3 +78,4 @@ graph-stats.json
 
 # External worktrees should be siblings of the repo, not nested inside it
 /archigraph-worktrees/
+/.archigraph/
