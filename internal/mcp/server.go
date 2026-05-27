@@ -474,6 +474,18 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_clusters", s.handleListCommunities))
 
+	// #2764 — Phase 1A effect classification. Returns the union of
+	// db/http/fs/mutation effects for the named entity, plus per-effect
+	// confidence (0..1) and sink primitive tags. Pure functions report
+	// effects=[] with effect_source="pure" and a low confidence floor.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_effects",
+		mcpapi.WithDescription("Effect set (db/http/fs/mutation) for entity + per-effect confidence + sinks."),
+		mcpapi.WithString("entity_id", mcpapi.Required()),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_effects", s.handleEffects))
+
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_stats",
 		mcpapi.WithDescription("Corpus-level metrics. breakdown=unresolved_imports adds edge taxonomy."),
 		mcpapi.WithAny("group"),

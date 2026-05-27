@@ -314,6 +314,18 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 	pCP.Candidates = applyResolverToConsumerHTTP(graphs, resolver)
 	res.Results = append(res.Results, pCP)
 
+	// #2764 — Phase 1A effect classification. Runs after constant
+	// propagation so it sees any consumer-side path rewrites; runs
+	// before the label / string / HTTP passes so downstream queries
+	// reading entity.Properties see the effect annotation. Mutates
+	// entity.Properties in-memory; emits a <group>-links-effects.json
+	// sidecar for the MCP archigraph_effects tool.
+	pEP, err := runEffectPropagationPass(graphs, paths, rejects)
+	if err != nil {
+		return nil, fmt.Errorf("effect propagation pass: %w", err)
+	}
+	res.Results = append(res.Results, pEP)
+
 	p2, err := runLabelPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("label pass: %w", err)

@@ -89,6 +89,10 @@ subcategories:
       - confidence_overlay
       - reachability_analysis
       - dead_code_detection
+      - db_effect
+      - http_effect
+      - fs_effect
+      - mutation_effect
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction]
@@ -105,7 +109,7 @@ subcategories:
       - name: Data
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
 
   ui_frontend:
     display: "UI Frontend"
@@ -132,6 +136,10 @@ subcategories:
       - confidence_overlay
       - reachability_analysis
       - dead_code_detection
+      - db_effect
+      - http_effect
+      - fs_effect
+      - mutation_effect
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition, jsx_template, context_extraction, hoc_wrapper_recognition]
@@ -146,7 +154,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
 
   meta_framework:
     display: "Meta Framework"
@@ -171,6 +179,10 @@ subcategories:
       - confidence_overlay
       - reachability_analysis
       - dead_code_detection
+      - db_effect
+      - http_effect
+      - fs_effect
+      - mutation_effect
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition]
@@ -189,7 +201,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
 
   mobile:
     display: "Mobile"
@@ -215,6 +227,10 @@ subcategories:
       - confidence_overlay
       - reachability_analysis
       - dead_code_detection
+      - db_effect
+      - http_effect
+      - fs_effect
+      - mutation_effect
     groups:
       - name: Structure
         keys: [context_extraction, hoc_wrapper_recognition]
@@ -233,7 +249,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
 
   desktop:
     display: "Desktop"
@@ -263,6 +279,10 @@ subcategories:
       - confidence_overlay
       - reachability_analysis
       - dead_code_detection
+      - db_effect
+      - http_effect
+      - fs_effect
+      - mutation_effect
     groups:
       - name: Schema
         keys: [schema_extraction, procedure_extraction]
@@ -271,7 +291,7 @@ subcategories:
       - name: Transport
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
 
   static_site:
     display: "Static Site"
