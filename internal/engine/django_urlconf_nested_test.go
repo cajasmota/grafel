@@ -186,7 +186,11 @@ urlpatterns = [
 }
 
 // TestApplyDjangoNestedURLConf_MissingChildFile verifies that a missing
-// included file is silently skipped (no panic, no spurious entities).
+// included file is silently skipped (no panic, no spurious child route
+// entities). Since #2677 the pass also emits a single `url_mount_point`
+// entity per include() call so the mount site stays discoverable even
+// when the child file is unreachable. Both the no-panic and the
+// no-child-route assertions remain.
 func TestApplyDjangoNestedURLConf_MissingChildFile(t *testing.T) {
 	files := fileMap{
 		"urls.py": `
@@ -201,8 +205,17 @@ urlpatterns = [
 	pyPaths := []string{"urls.py"}
 	// Should not panic.
 	got := ApplyDjangoNestedURLConf(pyPaths, files.reader)
-	if len(got) != 0 {
-		t.Errorf("expected no entities for missing child; got %d", len(got))
+	// Expect exactly one entity — the url_mount_point — and zero
+	// urlconf_nested_include child-route entries (the child file is missing).
+	if len(got) != 1 {
+		t.Fatalf("expected exactly 1 entity (url_mount_point); got %d", len(got))
+	}
+	if got[0].Properties["pattern_type"] != "url_mount_point" {
+		t.Errorf("expected pattern_type=url_mount_point; got %q",
+			got[0].Properties["pattern_type"])
+	}
+	if got[0].Properties["url_prefix"] != "/api" {
+		t.Errorf("expected url_prefix=/api; got %q", got[0].Properties["url_prefix"])
 	}
 }
 

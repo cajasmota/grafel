@@ -213,6 +213,14 @@ type drfViewSetClass struct {
 	lookupField string
 	// actions are the @action endpoints declared on the class.
 	actions []drfAction
+	// classDefLine is the 1-based line of `class <name>(...)` in the ViewSet's
+	// source file. Used as the fallback StartLine for inherited CRUD methods
+	// that have no `def` in this file (#2677).
+	classDefLine int
+	// methodLines maps a CRUD method name (e.g. "list") to the 1-based line of
+	// its explicit `def <method>(` declaration. Empty entry means the method is
+	// inherited from a mixin and has no body in this file (#2677).
+	methodLines map[string]int
 }
 
 // drfAction is a single @action-decorated method on a ViewSet.
@@ -225,6 +233,10 @@ type drfAction struct {
 	methods []string
 	// detail is true when detail=True (route includes {pk}/).
 	detail bool
+	// methodLine is the 1-based line of `def <methodName>(` in the ViewSet's
+	// source file. Captured so the emitted http_endpoint attributes to the
+	// decorated method body rather than routers.py (#2677).
+	methodLine int
 }
 
 // ApplyDjangoDRFRoutes expands DRF router.register() calls into the full
@@ -268,7 +280,13 @@ func ApplyDjangoDRFRoutes(
 	// property for downstream consumers.
 	var currentURLPrefix string
 
-	emit := func(verb, canonical, sourceFile, viewSet, methodName string) {
+	// emit is invoked for every (verb, path) endpoint to materialise. sourceFile
+	// is the file the handler lives in (typically the ViewSet's source file —
+	// e.g. core/views/building_viewset.py — and ONLY the routers/urlconf file
+	// when the ViewSet class cannot be resolved). sourceLine is the 1-based
+	// line of `def <handler>(` (for explicit / @action methods) or the class
+	// def line (for inherited mixin methods). #2677.
+	emit := func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string) {
 		if canonical == "" || canonical == "/" {
 			return
 		}
@@ -321,6 +339,7 @@ func ApplyDjangoDRFRoutes(
 			Name:               id,
 			Kind:               httpEndpointKind,
 			SourceFile:         sourceFile,
+			StartLine:          sourceLine,
 			Language:           "python",
 			Properties:         props,
 			EnrichmentRequired: false,
@@ -459,6 +478,17 @@ func ApplyDjangoDRFRoutes(
 			}
 			emitViewSetMethodEntities(&out, seenMethods, viewSetName, vc, handlerFile)
 
+			// #2677 — endpoint source attribution: when the ViewSet class was
+			// resolved successfully, emit entities pointing at the ViewSet's
+			// file (and method's def line) so `archigraph_inspect` on the
+			// endpoint surfaces the real handler, not the empty routers.py
+			// registration line. When resolution fails, fall back to relPath
+			// so the entity still has a valid source_file.
+			endpointSourceFile := viewFile
+			if endpointSourceFile == "" {
+				endpointSourceFile = relPath
+			}
+
 			// expandRegisterPrefixes produces composedPrefixes in the same
 			// order as effectivePrefixes, so we can zip them to recover the
 			// parent prefix that applies to each composed prefix. This lets
@@ -469,8 +499,8 @@ func ApplyDjangoDRFRoutes(
 				} else {
 					currentURLPrefix = ""
 				}
-				emitCRUDFamily(emit, fullPrefix, vc, relPath, viewSetName)
-				emitActionRoutes(emit, fullPrefix, vc, relPath, viewSetName)
+				emitCRUDFamily(emit, fullPrefix, vc, endpointSourceFile, viewSetName)
+				emitActionRoutes(emit, fullPrefix, vc, endpointSourceFile, viewSetName)
 			}
 			currentURLPrefix = "" // reset for safety
 		}
@@ -998,7 +1028,7 @@ func expandRegisterPrefixes(
 // exactly ONE canonical placeholder per detail route — the ViewSet's
 // declared lookup_field (defaulting to "pk").
 func emitCRUDFamily(
-	emit func(verb, canonical, sourceFile, viewSet, methodName string),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string),
 	fullPrefix string,
 	vc drfViewSetClass,
 	sourceFile string,
@@ -1007,12 +1037,23 @@ func emitCRUDFamily(
 	emitOneCRUDFamily(emit, fullPrefix, vc.lookupField, vc, sourceFile, viewSetName)
 }
 
+// crudMethodLine returns the 1-based line to attribute to a CRUD endpoint:
+// the explicit `def <method>(` line when the ViewSet overrides the method,
+// otherwise the `class <name>(...)` declaration line. Returns 0 when neither
+// is known so callers leave StartLine unset (#2677).
+func crudMethodLine(vc drfViewSetClass, method string) int {
+	if line, ok := vc.methodLines[method]; ok && line > 0 {
+		return line
+	}
+	return vc.classDefLine
+}
+
 // emitOneCRUDFamily emits the CRUD-route family for a single placeholder
 // shape (e.g. `{pk}` or `{id}`). The first call (with the canonical
 // `lookup_field`) is the source of truth; subsequent calls with alternate
 // placeholders widen the cross-repo match surface (#704 companion).
 func emitOneCRUDFamily(
-	emit func(verb, canonical, sourceFile, viewSet, methodName string),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string),
 	fullPrefix string,
 	placeholder string,
 	vc drfViewSetClass,
@@ -1022,26 +1063,26 @@ func emitOneCRUDFamily(
 	detailBase := fullPrefix + "/{" + placeholder + "}"
 
 	if vc.crudMethods["list"] {
-		emit("GET", canonicalDjango(fullPrefix), sourceFile, viewSetName, "list")
+		emit("GET", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "list"), viewSetName, "list")
 	}
 	if vc.crudMethods["create"] {
-		emit("POST", canonicalDjango(fullPrefix), sourceFile, viewSetName, "create")
+		emit("POST", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "create"), viewSetName, "create")
 	}
 	hasDetailVerb := false
 	if vc.crudMethods["retrieve"] {
-		emit("GET", canonicalDjango(detailBase), sourceFile, viewSetName, "retrieve")
+		emit("GET", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "retrieve"), viewSetName, "retrieve")
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["update"] {
-		emit("PUT", canonicalDjango(detailBase), sourceFile, viewSetName, "update")
+		emit("PUT", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "update"), viewSetName, "update")
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["partial_update"] {
-		emit("PATCH", canonicalDjango(detailBase), sourceFile, viewSetName, "partial_update")
+		emit("PATCH", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "partial_update"), viewSetName, "partial_update")
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["destroy"] {
-		emit("DELETE", canonicalDjango(detailBase), sourceFile, viewSetName, "destroy")
+		emit("DELETE", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "destroy"), viewSetName, "destroy")
 		hasDetailVerb = true
 	}
 	// Emit an ANY-verb detail fallback ONLY when no per-verb detail routes
@@ -1051,7 +1092,7 @@ func emitOneCRUDFamily(
 	// verb-aware matcher must skip, and it defeated the iter3 calibration
 	// top add-rec #2 (detail routes still showing method=ANY). Fix #1692.
 	if !hasDetailVerb {
-		emit("ANY", canonicalDjango(detailBase), sourceFile, viewSetName, "")
+		emit("ANY", canonicalDjango(detailBase), sourceFile, vc.classDefLine, viewSetName, "")
 	}
 }
 
@@ -1059,7 +1100,7 @@ func emitOneCRUDFamily(
 // ViewSet. For detail=True actions the route is
 // /<prefix>/{lookup}/<url_path>/; for detail=False it is /<prefix>/<url_path>/.
 func emitActionRoutes(
-	emit func(verb, canonical, sourceFile, viewSet, methodName string),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string),
 	fullPrefix string,
 	vc drfViewSetClass,
 	sourceFile string,
@@ -1099,8 +1140,12 @@ func emitActionRoutes(
 				actionPath = fullPrefix + "/" + segment
 			}
 			canonical := canonicalDjango(actionPath)
+			actionLine := act.methodLine
+			if actionLine == 0 {
+				actionLine = vc.classDefLine
+			}
 			for _, verb := range methods {
-				emit(verb, canonical, sourceFile, viewSetName, act.methodName)
+				emit(verb, canonical, sourceFile, actionLine, viewSetName, act.methodName)
 			}
 		}
 	}
@@ -1326,6 +1371,7 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 	// Locate the class declaration to determine the parent class.
 	classBase := ""
 	classBodyStart := -1
+	classDeclByte := -1
 	for _, m := range drfClassDefRe.FindAllStringSubmatchIndex(src, -1) {
 		// m[2:4] -> class name range, m[4:6] -> base list range.
 		name := src[m[2]:m[3]]
@@ -1334,11 +1380,16 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 		}
 		classBase = src[m[4]:m[5]]
 		classBodyStart = m[1] // end of the `class X(...):` line
+		classDeclByte = m[0]  // start of `class X(...)`  (#2677)
 		break
 	}
 	if classBodyStart == -1 {
 		return out
 	}
+
+	// 1-based line of the `class X(...)` declaration. Used as the fallback
+	// StartLine for inherited CRUD methods (#2677).
+	out.classDefLine = lineOfByteOffset(src, classDeclByte)
 
 	// Carve out the class body — from classBodyStart to end-of-file OR
 	// to the next top-level `class ` / `def ` (column 0). This bounds
@@ -1349,16 +1400,24 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 	if m := drfLookupFieldRe.FindStringSubmatch(classBody); len(m) >= 2 {
 		out.lookupField = m[1]
 	}
-	out.actions = extractActions(classBody)
+	// classBody starts at classBodyStart in src; pass that offset so
+	// extractActions can compute absolute (src-relative) line numbers for
+	// each @action's `def NAME(` line (#2677).
+	out.actions = extractActions(classBody, src, classBodyStart)
 
 	// Issue #699c — detect which CRUD methods are explicitly defined in
 	// the class body. Only methods with an explicit `def <name>(self` in
 	// the body are marked explicit; all others are inherited from a mixin
 	// or parent class and need a synthetic SCOPE.Operation entity.
 	out.explicitMethods = make(map[string]bool)
-	for _, m := range drfExplicitMethodRe.FindAllStringSubmatch(classBody, -1) {
-		if len(m) >= 2 {
-			out.explicitMethods[m[1]] = true
+	out.methodLines = make(map[string]int)
+	for _, m := range drfExplicitMethodRe.FindAllStringSubmatchIndex(classBody, -1) {
+		if len(m) >= 4 {
+			methodName := classBody[m[2]:m[3]]
+			out.explicitMethods[methodName] = true
+			// #2677 — capture the 1-based line of `def <method>(` in src so
+			// the emitted http_endpoint attributes to it.
+			out.methodLines[methodName] = lineOfByteOffset(src, classBodyStart+m[0])
 		}
 	}
 
@@ -1568,31 +1627,51 @@ func modelViewSetMethods() map[string]bool {
 
 // extractActions returns every @action / @detail_route / @list_route
 // declared inside the given class body.
-func extractActions(body string) []drfAction {
+//
+// `src` and `bodyOffsetInSrc` are passed so each returned drfAction can carry
+// the 1-based src-relative line number of its `def <method>(` line. Callers
+// that don't need line attribution may pass src="" and offset=0; methodLine
+// will then be 0 (#2677).
+func extractActions(body string, src string, bodyOffsetInSrc int) []drfAction {
 	var actions []drfAction
 	for _, hit := range scanDecoratorCalls(body, drfActionOpenRe) {
-		actions = append(actions, parseActionArgs(hit.args, hit.methodName, false))
+		act := parseActionArgs(hit.args, hit.methodName, false)
+		act.methodLine = decoratorLineInSrc(src, bodyOffsetInSrc, hit.methodOffset)
+		actions = append(actions, act)
 	}
 	for _, hit := range scanDecoratorCalls(body, drfLegacyDetailRouteOpenRe) {
 		act := parseActionArgs(hit.args, hit.methodName, true)
 		// detail_route always means detail=True.
 		act.detail = true
+		act.methodLine = decoratorLineInSrc(src, bodyOffsetInSrc, hit.methodOffset)
 		actions = append(actions, act)
 	}
 	for _, hit := range scanDecoratorCalls(body, drfLegacyListRouteOpenRe) {
 		act := parseActionArgs(hit.args, hit.methodName, false)
 		// list_route always means detail=False.
 		act.detail = false
+		act.methodLine = decoratorLineInSrc(src, bodyOffsetInSrc, hit.methodOffset)
 		actions = append(actions, act)
 	}
 	return actions
 }
 
+// decoratorLineInSrc maps a methodOffset returned by scanDecoratorCalls (a
+// byte index into `body`) to a 1-based src-relative line number. Returns 0
+// when src is empty (line tracking disabled).
+func decoratorLineInSrc(src string, bodyOffsetInSrc, methodOffsetInBody int) int {
+	if src == "" || methodOffsetInBody < 0 {
+		return 0
+	}
+	return lineOfByteOffset(src, bodyOffsetInSrc+methodOffsetInBody)
+}
+
 // decoratorCall is one parsed `@<name>(…)` decorator paired with the
 // method declared immediately below it.
 type decoratorCall struct {
-	args       string // body between the outer `(` and the matching `)`
-	methodName string // name from the `def <name>(` line that follows
+	args         string // body between the outer `(` and the matching `)`
+	methodName   string // name from the `def <name>(` line that follows
+	methodOffset int    // byte offset of `def` in the class body (#2677)
 }
 
 // scanDecoratorCalls walks `body` for every occurrence of `openRe` (which
@@ -1628,10 +1707,36 @@ func scanDecoratorCalls(body string, openRe *regexp.Regexp) []decoratorCall {
 		if tail == nil {
 			continue
 		}
-		methodName := body[afterClose+tail[2] : afterClose+tail[3]]
-		out = append(out, decoratorCall{args: args, methodName: methodName})
+		methodNameStart := afterClose + tail[2]
+		methodName := body[methodNameStart : afterClose+tail[3]]
+		// methodOffset points at `def` so the caller can compute its src-line
+		// for endpoint source-line attribution (#2677). The regex tail's
+		// group-0 begins at the whitespace/newline before `def`; scan forward
+		// to the `def` token to land on the meaningful character.
+		defOffset := afterClose + tail[0]
+		for defOffset < methodNameStart && body[defOffset] != 'd' {
+			defOffset++
+		}
+		out = append(out, decoratorCall{
+			args:         args,
+			methodName:   methodName,
+			methodOffset: defOffset,
+		})
 	}
 	return out
+}
+
+// lineOfByteOffset returns the 1-based line number of `src[offset]`. Returns
+// 1 when offset is out of range so callers always get a valid line for
+// downstream Properties storage (#2677).
+func lineOfByteOffset(src string, offset int) int {
+	if offset < 0 {
+		return 1
+	}
+	if offset > len(src) {
+		offset = len(src)
+	}
+	return 1 + strings.Count(src[:offset], "\n")
 }
 
 // scanBalancedClose returns the index of the `)` that balances the

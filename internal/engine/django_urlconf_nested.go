@@ -113,6 +113,51 @@ func ApplyDjangoNestedURLConf(
 		}
 		src := string(content)
 
+		// #2677 — emit one synthetic "URL mount point" http_endpoint per
+		// `path("prefix", include(...))` call so the answer to
+		// "where is /api/v1/ declared?" survives even after DRF/CBV expansion
+		// fully covers every concrete sub-path with per-verb entities (which
+		// triggers DeduplicateNestedURLConfDRF to remove the per-child ANY
+		// entries). The mount-point uses pattern_type=url_mount_point so dedup
+		// passes leave it alone, and a distinct synthetic ID suffix prevents
+		// collisions with concrete-verb entries on the same canonical path.
+		mountEmitted := map[string]bool{}
+		for _, idx := range djangoIncludeStringRe.FindAllStringSubmatchIndex(src, -1) {
+			parentPrefix := src[idx[2]:idx[3]]
+			if parentPrefix == "" {
+				continue
+			}
+			canonical := httproutes.Canonicalize(httproutes.FrameworkDjango,
+				joinDjangoRoutePaths(parentPrefix, ""))
+			if canonical == "" || canonical == "/" {
+				continue
+			}
+			mountID := httproutes.SyntheticID("ANY", canonical) + ":mount"
+			if mountEmitted[mountID] || seen[mountID] {
+				continue
+			}
+			mountEmitted[mountID] = true
+			seen[mountID] = true
+			out = append(out, types.EntityRecord{
+				ID:                 mountID,
+				Name:               mountID,
+				Kind:               httpEndpointKind,
+				SourceFile:         relPath,
+				StartLine:          1 + strings.Count(src[:idx[0]], "\n"),
+				Language:           "python",
+				EnrichmentRequired: false,
+				EnrichmentStatus:   types.StatusPending,
+				QualityScore:       0.5,
+				Properties: map[string]string{
+					"verb":         "ANY",
+					"path":         canonical,
+					"framework":    "django",
+					"pattern_type": "url_mount_point",
+					"url_prefix":   "/" + strings.Trim(parentPrefix, "/"),
+				},
+			})
+		}
+
 		// Find all `path("prefix", include("module.path"))` bindings.
 		for _, m := range djangoIncludeStringRe.FindAllStringSubmatch(src, -1) {
 			parentPrefix := m[1]
