@@ -87,6 +87,8 @@ subcategories:
       - env_fallback_recognition
       - import_resolution_quality
       - confidence_overlay
+      - reachability_analysis
+      - dead_code_detection
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction]
@@ -103,7 +105,7 @@ subcategories:
       - name: Data
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
 
   ui_frontend:
     display: "UI Frontend"
@@ -128,6 +130,8 @@ subcategories:
       - env_fallback_recognition
       - import_resolution_quality
       - confidence_overlay
+      - reachability_analysis
+      - dead_code_detection
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition, jsx_template, context_extraction, hoc_wrapper_recognition]
@@ -142,7 +146,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
 
   meta_framework:
     display: "Meta Framework"
@@ -165,6 +169,8 @@ subcategories:
       - env_fallback_recognition
       - import_resolution_quality
       - confidence_overlay
+      - reachability_analysis
+      - dead_code_detection
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition]
@@ -183,7 +189,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
 
   mobile:
     display: "Mobile"
@@ -207,6 +213,8 @@ subcategories:
       - env_fallback_recognition
       - import_resolution_quality
       - confidence_overlay
+      - reachability_analysis
+      - dead_code_detection
     groups:
       - name: Structure
         keys: [context_extraction, hoc_wrapper_recognition]
@@ -225,7 +233,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
 
   desktop:
     display: "Desktop"
@@ -253,6 +261,8 @@ subcategories:
       - env_fallback_recognition
       - import_resolution_quality
       - confidence_overlay
+      - reachability_analysis
+      - dead_code_detection
     groups:
       - name: Schema
         keys: [schema_extraction, procedure_extraction]
@@ -261,7 +271,7 @@ subcategories:
       - name: Transport
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
 
   static_site:
     display: "Static Site"

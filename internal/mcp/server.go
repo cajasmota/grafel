@@ -716,6 +716,21 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("archigraph_find_dead_code", s.handleFindDeadCode))
 
+	// archigraph_dead_code — reachability-based dead-code identification
+	// (#2766 Phase 1B). Reads <group>-links-reachability.json (sidecar
+	// written by internal/links/reachability.go); falls back to a live
+	// in-memory recompute when the sidecar is missing.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_dead_code",
+		mcpapi.WithDescription("Reachability dead-code: entities unreached by entry-points."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("kind_filter"),
+		mcpapi.WithAny("from"),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"),
+	), s.wrap("archigraph_dead_code", s.handleDeadCode))
+
 	// archigraph_quality_cycles — import cycle detection (#1312).
 	// Runs Tarjan SCC on IMPORTS edges; each SCC > 1 = circular dependency.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality_cycles",

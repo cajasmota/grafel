@@ -71,6 +71,8 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"constant_propagation",
 		"context_extraction",
 		"data_fetching",
+		// #2766 substrate Phase 1B reachability + dead-code keys.
+		"dead_code_detection",
 		"enum_extraction",
 		"env_fallback_recognition",
 		"hoc_wrapper_recognition",
@@ -79,6 +81,7 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"interface_extraction",
 		"jsx_template",
 		"prop_extraction",
+		"reachability_analysis",
 		"router_pattern",
 		"state_management",
 		"state_setter_emission",
@@ -104,6 +107,8 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"constant_propagation",
 		"context_extraction",
 		"data_fetching",
+		// #2766 substrate Phase 1B reachability + dead-code keys.
+		"dead_code_detection",
 		"endpoint_synthesis",
 		"enum_extraction",
 		"env_fallback_recognition",
@@ -115,6 +120,7 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"jsx_template",
 		"middleware_coverage",
 		"prop_extraction",
+		"reachability_analysis",
 		"router_pattern",
 		"state_management",
 		"state_setter_emission",

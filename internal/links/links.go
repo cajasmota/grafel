@@ -374,6 +374,16 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 	}
 	res.Results = append(res.Results, p8)
 
+	// #2766 — Phase 1B reachability + dead-code identification. Runs
+	// last so it observes the in-memory entity/edge state after every
+	// upstream pass has had a chance to mutate it (e.g. the constant
+	// propagation pass rewriting consumer-side HTTP endpoint paths).
+	pReach, err := runReachabilityPass(group, graphs, paths)
+	if err != nil {
+		return nil, fmt.Errorf("reachability pass: %w", err)
+	}
+	res.Results = append(res.Results, pReach)
+
 	for _, r := range res.Results {
 		res.TotalLinks += r.LinksAdded
 		res.TotalCandid += r.Candidates

@@ -186,6 +186,26 @@ records:
               functions: [indexFileForLookup]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_jsts.go
+              functions: [sniffJSTSEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2766"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2766"]
+          verified_at: "2026-05-28"
 
   lang.jsts.framework.react-native:
     capabilities:
@@ -307,6 +327,26 @@ records:
             - file: internal/links/constant_propagation.go
               functions: [indexFileForLookup]
           issues_implemented: ["2761"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_python.go
+              functions: [sniffPythonEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2766"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2766"]
           verified_at: "2026-05-28"
 
   lang.python.framework.flask:
@@ -523,6 +563,26 @@ records:
               functions: [indexFileForLookup]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_java.go
+              functions: [sniffJavaEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2766"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2766"]
+          verified_at: "2026-05-28"
 
   lang.go.framework.gin:
     capabilities:
@@ -573,6 +633,26 @@ records:
             - file: internal/links/constant_propagation.go
               functions: [indexFileForLookup]
           issues_implemented: ["2761"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_golang.go
+              functions: [sniffGoEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2766"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2766"]
           verified_at: "2026-05-28"
 
   lang.ruby.framework.rails:

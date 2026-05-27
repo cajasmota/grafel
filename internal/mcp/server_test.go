@@ -579,6 +579,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_mcp_metrics",
 		// #2658 NAVIGATES_TO query tool (Phase 2 of #2655)
 		"archigraph_navigates",
+		// #2766 Phase 1B reachability + dead-code identification
+		"archigraph_dead_code",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -661,8 +663,9 @@ func TestToolNameSurface(t *testing.T) {
 	// find_callees stay registered as deprecated aliases for one release.
 	// +1 archigraph_persona_event (#2474 persona lifecycle telemetry).
 	// +1 archigraph_navigates (#2658 NAVIGATES_TO Phase 2 query tool).
-	if got := len(allRegisteredTools); got != 45 {
-		t.Errorf("expected 45 registered tools, got %d — update this count if tools are added/removed (added archigraph_navigates #2658)", got)
+	// +1 archigraph_dead_code (#2766 Phase 1B reachability + dead-code).
+	if got := len(allRegisteredTools); got != 46 {
+		t.Errorf("expected 46 registered tools, got %d — update this count if tools are added/removed (added archigraph_dead_code #2766)", got)
 	}
 }
 
@@ -3159,6 +3162,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_mcp_metrics": {"days": float64(1)},
 		// #2658 NAVIGATES_TO Phase 2 query tool
 		"archigraph_navigates": {"group": "g"},
+		// #2766 Phase 1B reachability + dead-code identification
+		"archigraph_dead_code": {"group": "g"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3203,8 +3208,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 45 {
-		t.Errorf("expected 45 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_navigates #2658)", len(tools))
+	if len(tools) != 46 {
+		t.Errorf("expected 46 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_dead_code #2766)", len(tools))
 	}
 
 	for _, st := range tools {
