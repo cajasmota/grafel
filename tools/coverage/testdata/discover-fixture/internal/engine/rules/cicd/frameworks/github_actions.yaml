@@ -1,0 +1,4 @@
+name: GitHub Actions
+detection:
+  files:
+  - .github/workflows/*.yml
