@@ -403,7 +403,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_find", s.handleQueryGraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_inspect",
-		mcpapi.WithDescription("Look up entity by id/qname/label. verbose=true shows all fields."),
+		mcpapi.WithDescription("Look up entity by id/qname/label; line-precise calls+called_by. verbose=true."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// verbose=true (default false) read from request map to stay under token ceiling.
 		mcpapi.WithArray("repo_filter"),

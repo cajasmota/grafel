@@ -74,7 +74,7 @@ Output: BM25-scored entities with BFS expansion. Tail trimmed below `min_score`.
 
 Key parameters: `entity_id` (required; accepts id, qname, or label), `verbose` (bool), `repo_filter[]`, `fields[]`.
 
-Output: full entity record including all properties + attached findings.
+Output: full entity record including all properties + attached findings. Also returns `calls[]` and `called_by[]` arrays with line-precise edges: each `calls` entry carries `{target, target_path, line, via}` where `line` is the line in the inspected entity's source where the call appears; each `called_by` entry carries `{source, source_path, line, context}` where `line` is the line in the caller's source and `context` is a ~40-char snippet around the call site.
 
 #### `archigraph_get_source`
 

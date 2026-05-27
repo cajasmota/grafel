@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -892,6 +894,13 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				if agentEdges := agentResolvedEdgesForEntity(r, e.ID, scopeIsOne); len(agentEdges) > 0 {
 					out["agent_resolved_edges"] = agentEdges
 				}
+				// #2634: line-precise CALLS edges.
+				if calls := inspectOutboundCalls(r, e, scopeIsOne); len(calls) > 0 {
+					out["calls"] = calls
+				}
+				if calledBy := inspectInboundCalls(r, e, scopeIsOne); len(calledBy) > 0 {
+					out["called_by"] = calledBy
+				}
 				return jsonResult(out), nil
 			}
 		}
@@ -941,6 +950,13 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	}
 	if agentEdges := agentResolvedEdgesForEntity(m.repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
 		out["agent_resolved_edges"] = agentEdges
+	}
+	// #2634: line-precise CALLS edges.
+	if calls := inspectOutboundCalls(m.repo, m.ent, scopeIsOne); len(calls) > 0 {
+		out["calls"] = calls
+	}
+	if calledBy := inspectInboundCalls(m.repo, m.ent, scopeIsOne); len(calledBy) > 0 {
+		out["called_by"] = calledBy
 	}
 	return jsonResult(out), nil
 }
@@ -992,6 +1008,143 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 		out = append(out, entry)
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// #2634 — line-precise CALLS / called_by edges for archigraph_inspect
+// ---------------------------------------------------------------------------
+
+// inspectOutboundCalls returns outbound CALLS edges from entity e with line
+// numbers read from the edge Properties["line"] set by extractors.
+// Each entry: {target, target_path, line, via}.
+func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	if lr == nil || lr.Doc == nil {
+		return nil
+	}
+	var out []map[string]any
+	rels := lr.Doc.Relationships
+	for _, ed := range lr.Adjacency.Outgoing(e.ID) {
+		if !strings.EqualFold(ed.kind, "CALLS") {
+			continue
+		}
+		entry := map[string]any{
+			"target":      ed.target,
+			"target_path": "",
+		}
+		if !scopeIsOne {
+			entry["target"] = prefixedID(lr.Repo, ed.target)
+		}
+		// Resolve target path from entity index.
+		if tgt := lr.ByID[ed.target]; tgt != nil {
+			entry["target_path"] = tgt.SourceFile
+			entry["target"] = tgt.Name
+			if !scopeIsOne {
+				entry["target"] = prefixedID(lr.Repo, ed.target)
+			}
+		}
+		// Line number from relationship properties.
+		lineNum := 0
+		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
+			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					lineNum = n
+				}
+			}
+			if v := rels[ed.relIdx].Properties["via"]; v != "" {
+				entry["via"] = v
+			}
+		}
+		entry["line"] = lineNum
+		out = append(out, entry)
+	}
+	return out
+}
+
+// inspectInboundCalls returns inbound CALLS edges (callers of entity e) with
+// line numbers and a short context snippet from the caller's source.
+// Each entry: {source, source_path, line, context}.
+func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	if lr == nil || lr.Doc == nil {
+		return nil
+	}
+	// lineCache maps absolute source path → slice of trimmed line strings (0-indexed).
+	lineCache := map[string][]string{}
+
+	var out []map[string]any
+	rels := lr.Doc.Relationships
+	for _, ed := range lr.Adjacency.Incoming(e.ID) {
+		if !strings.EqualFold(ed.kind, "CALLS") {
+			continue
+		}
+		callerID := ed.target // Incoming: ed.target is the FromID (the caller)
+		callerEntity := lr.ByID[callerID]
+
+		sourceID := callerID
+		sourcePath := ""
+		if callerEntity != nil {
+			sourcePath = callerEntity.SourceFile
+			sourceID = callerEntity.Name
+		}
+		if !scopeIsOne {
+			sourceID = prefixedID(lr.Repo, callerID)
+		}
+
+		entry := map[string]any{
+			"source":      sourceID,
+			"source_path": sourcePath,
+		}
+
+		lineNum := 0
+		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
+			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					lineNum = n
+				}
+			}
+		}
+		entry["line"] = lineNum
+
+		// Context snippet: read line from disk lazily if we have a valid line
+		// and a resolvable source path.
+		ctx := ""
+		if lineNum > 0 && sourcePath != "" && lr.Path != "" {
+			abs := sourcePath
+			if !filepath.IsAbs(abs) {
+				abs = filepath.Join(lr.Path, sourcePath)
+			}
+			lines, cached := lineCache[abs]
+			if !cached {
+				lines = readSourceLines(abs)
+				lineCache[abs] = lines
+			}
+			if lineNum-1 < len(lines) {
+				raw := strings.TrimSpace(lines[lineNum-1])
+				if len(raw) > 40 {
+					raw = raw[:40]
+				}
+				ctx = raw
+			}
+		}
+		entry["context"] = ctx
+		out = append(out, entry)
+	}
+	return out
+}
+
+// readSourceLines opens path and returns all lines as a slice (0-indexed).
+// Returns nil on any error — callers treat nil as "no lines available".
+func readSourceLines(path string) []string {
+	f, err := openSourceFile(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var lines []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
+	}
+	return lines
 }
 
 // serializeEntity renders an entity as a map. When scopeIsOne, IDs are local;

@@ -330,9 +330,22 @@ Previously named `archigraph_describe` (renamed in #668).
   "qualified_name": "core.views.order.OrderViewSet",
   "kind": "Component",
   "file": "core/views/order.py",
-  "line": 42
+  "line": 42,
+  "calls": [
+    { "target": "validate_order", "target_path": "core/validators.py", "line": 55, "via": "" }
+  ],
+  "called_by": [
+    { "source": "create_order", "source_path": "core/views/create.py", "line": 73, "context": "viewset = OrderViewSet(request.data)" }
+  ]
 }
 ```
+
+`calls[].line` is the line in the **inspected entity's** source where the outbound call appears.
+`called_by[].line` is the line in the **caller's** source where this entity is invoked.
+`called_by[].context` is a ~40-char snippet around the call site (empty when the caller's source file is not on disk).
+`calls[].via` is the mechanism tag set by the extractor (e.g. `zustand_store`, `react_query_hook`) — empty string when not set.
+
+Both arrays are omitted entirely when no CALLS edges exist (additive, backward-compatible — consumers reading only `id`/`name`/`kind`/`file`/`line` are unaffected).
 
 With `verbose=true`, the response also includes `end_line`, `language`, `repo`,
 `pagerank`, `community_id`, and `properties`.

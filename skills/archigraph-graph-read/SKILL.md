@@ -10,7 +10,10 @@ Call `archigraph_whoami` first. Confirms the group name and which repos are inde
 
 ## Step 2 — inspect
 For each entity of interest (a class, function, file path the user named):
-- `archigraph_inspect entity_id=<id-or-path>` returns the entity + 1-hop neighbors
+- `archigraph_inspect entity_id=<id-or-path>` returns the entity + 1-hop neighbors with line-precise CALLS/called_by edges
+- `calls[].line` = line in the inspected entity's body where the outbound call appears
+- `called_by[].line` + `called_by[].context` = line and ~40-char snippet in the caller's body
+- Use these to pinpoint call sites without calling `get_source`
 - Look at the neighbors for ORIENTATION before drilling deeper
 
 ## Step 3 — expand

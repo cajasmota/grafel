@@ -152,6 +152,15 @@ label. Use when `archigraph_find` gave you an ID and you want the full
 structured record (file, line range, PageRank, community, properties). Also
 auto-attaches any saved findings that reference this entity.
 
+The response includes **line-precise edge arrays** (Pass-3 READ protocol):
+- `calls[]` — outbound CALLS edges: `{target, target_path, line, via}` where
+  `line` is the line in the inspected entity's body where the call appears.
+- `called_by[]` — inbound CALLS edges: `{source, source_path, line, context}`
+  where `line` is the line in the caller's body and `context` is a ~40-char
+  snippet around the call site (empty when source not on disk).
+
+Use these to answer "which line invokes what" without calling `get_source`.
+
 ```
 archigraph_inspect(label_or_id="OrderViewSet")
 archigraph_inspect(label_or_id="orders-api::a1b2c3d4e5f60718")
