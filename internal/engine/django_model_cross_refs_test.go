@@ -3,6 +3,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -163,8 +165,10 @@ def on_contract_deleted(sender, instance, **kwargs):
 	for _, r := range handlesSignal {
 		if r.ToID == "Class:GroupDeviceSettings" {
 			found = true
-			if r.FromID != "Function:replicate_signal" {
-				t.Errorf("GroupDeviceSettings listener: want FromID Function:replicate_signal, got %q", r.FromID)
+			// #2589: FromID must be "SCOPE.Operation:" (not "Function:") so the
+			// resolver rewrites it to the handler's hex entity ID.
+			if r.FromID != "SCOPE.Operation:replicate_signal" {
+				t.Errorf("GroupDeviceSettings listener: want FromID SCOPE.Operation:replicate_signal, got %q", r.FromID)
 			}
 			if r.Properties["pattern_type"] != "receiver_sender_model" {
 				t.Errorf("GroupDeviceSettings listener: want pattern_type receiver_sender_model, got %q",
@@ -179,12 +183,12 @@ def on_contract_deleted(sender, instance, **kwargs):
 	// Confirm Contract delete handler.
 	foundContract := false
 	for _, r := range handlesSignal {
-		if r.ToID == "Class:Contract" && r.FromID == "Function:on_contract_deleted" {
+		if r.ToID == "Class:Contract" && r.FromID == "SCOPE.Operation:on_contract_deleted" {
 			foundContract = true
 		}
 	}
 	if !foundContract {
-		t.Error("expected HANDLES_SIGNAL from on_contract_deleted to Class:Contract, not found")
+		t.Error("expected HANDLES_SIGNAL from SCOPE.Operation:on_contract_deleted to Class:Contract, not found")
 	}
 }
 
@@ -311,8 +315,8 @@ def replicate_building(sender, instance, created, **kwargs):
 		t.Fatalf("expected 1 HANDLES_SIGNAL edge, got %d: %v", len(handlesSignal), handlesSignal)
 	}
 	r := handlesSignal[0]
-	if r.FromID != "Function:replicate_building" {
-		t.Errorf("FromID: want Function:replicate_building, got %q", r.FromID)
+	if r.FromID != "SCOPE.Operation:replicate_building" {
+		t.Errorf("FromID: want SCOPE.Operation:replicate_building, got %q", r.FromID)
 	}
 	if r.ToID != "Class:Building" {
 		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
@@ -341,8 +345,8 @@ def on_building_deleted(sender, instance, **kwargs):
 		t.Fatalf("expected 1 HANDLES_SIGNAL edge, got %d: %v", len(handlesSignal), handlesSignal)
 	}
 	r := handlesSignal[0]
-	if r.FromID != "Function:on_building_deleted" {
-		t.Errorf("FromID: want Function:on_building_deleted, got %q", r.FromID)
+	if r.FromID != "SCOPE.Operation:on_building_deleted" {
+		t.Errorf("FromID: want SCOPE.Operation:on_building_deleted, got %q", r.FromID)
 	}
 	if r.ToID != "Class:Building" {
 		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
@@ -369,14 +373,110 @@ def on_building_saved(sender, instance, created, **kwargs):
 		t.Fatalf("expected 1 HANDLES_SIGNAL edge, got %d: %v", len(handlesSignal), handlesSignal)
 	}
 	r := handlesSignal[0]
-	if r.FromID != "Function:on_building_saved" {
-		t.Errorf("FromID: want Function:on_building_saved, got %q", r.FromID)
+	if r.FromID != "SCOPE.Operation:on_building_saved" {
+		t.Errorf("FromID: want SCOPE.Operation:on_building_saved, got %q", r.FromID)
 	}
 	if r.ToID != "Class:Building" {
 		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
 	}
 	if r.Properties["via"] != "@receiver(sender=apps.get_model())" {
 		t.Errorf("via: want @receiver(sender=apps.get_model()), got %q", r.Properties["via"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #2589 — integration test: exact upvate_core replicate_to_datalake.py pattern
+// ---------------------------------------------------------------------------
+
+// TestReceiverDecorator_UpvateRealPattern exercises the EXACT content of
+// upvate_core/core/signals/replicate_to_datalake.py — 11 stacked @receiver
+// decorators all pointing at the same def replicate_signal.
+//
+// This test was added because unit tests for #2584 passed on simple 4-sender
+// fixtures but real upvate data produced zero HANDLES_SIGNAL edges: the
+// FromID was emitted as "Function:replicate_signal" (DispositionDynamic in
+// the resolver — not rewritten to hex), while the actual entity lives under
+// "SCOPE.Operation:replicate_signal". The fix changes all FromIDs to
+// "SCOPE.Operation:..." which the resolver correctly rewrites to hex IDs.
+// Closes #2589.
+func TestReceiverDecorator_UpvateRealPattern(t *testing.T) {
+	// Verbatim copy of the real upvate file (imports trimmed to one line for brevity).
+	files := map[string]string{
+		"core/signals/replicate_to_datalake.py": `import logging
+from django.dispatch import receiver
+from django.db.models.signals import post_save
+from core.models.device import DeviceEquipmentType
+from core.models import Client, Device, Building, Group, Jurisdiction, Contract, ContractDevice, BuildingAlternateAddress, GroupDeviceSettings, GroupBuildingSettings
+from core.tasks.replicate_to_datalake import replicate_instance_data
+from core.helper.replicate_to_datalake_helper import COLLECTIONS_MAPPING
+
+
+logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Group)
+@receiver(post_save, sender=Client)
+@receiver(post_save, sender=Device)
+@receiver(post_save, sender=Building)
+@receiver(post_save, sender=Jurisdiction)
+@receiver(post_save, sender=DeviceEquipmentType)
+@receiver(post_save, sender=Contract)
+@receiver(post_save, sender=ContractDevice)
+@receiver(post_save, sender=BuildingAlternateAddress)
+@receiver(post_save, sender=GroupDeviceSettings)
+@receiver(post_save, sender=GroupBuildingSettings)
+def replicate_signal(sender, instance, created, **kwargs):
+    instance_name = sender.__name__.lower()
+    try:
+        model_path = f"core.{instance_name}"
+        collection_name = COLLECTIONS_MAPPING.get(instance_name, None)
+        instance_id = instance.id
+        if not collection_name:
+            logger.error(f"No collection name found for {instance_name}")
+            return
+        replicate_instance_data.delay(model_path=model_path, instance_id=instance_id, collection_name=collection_name)
+    except Exception as e:
+        logger.error(f"Error replicating {instance_name} to MongoDB: {e}")
+`,
+	}
+	paths := []string{"core/signals/replicate_to_datalake.py"}
+	rels := ApplyReceiverSenderEdges(paths, fileMapReader2578(files))
+
+	handlesSignal := relsOfKind(rels, "HANDLES_SIGNAL")
+
+	wantSenders := []string{
+		"Group", "Client", "Device", "Building", "Jurisdiction",
+		"DeviceEquipmentType", "Contract", "ContractDevice",
+		"BuildingAlternateAddress", "GroupDeviceSettings", "GroupBuildingSettings",
+	}
+	if len(handlesSignal) != len(wantSenders) {
+		t.Fatalf("expected %d HANDLES_SIGNAL edges (one per stacked @receiver), got %d: %v",
+			len(wantSenders), len(handlesSignal), handlesSignal)
+	}
+
+	// Build a lookup: ToID → edge for easy assertion.
+	byTarget := make(map[string]types.RelationshipRecord, len(handlesSignal))
+	for _, r := range handlesSignal {
+		byTarget[r.ToID] = r
+	}
+
+	for _, sender := range wantSenders {
+		wantToID := "Class:" + sender
+		r, ok := byTarget[wantToID]
+		if !ok {
+			t.Errorf("missing HANDLES_SIGNAL edge to %q", wantToID)
+			continue
+		}
+		// #2589: FromID MUST be SCOPE.Operation so the resolver can rewrite it to
+		// the handler's hex entity ID. "Function:" prefix stays as an unresolved
+		// stub and makes the edge invisible to graph queries.
+		wantFromID := "SCOPE.Operation:replicate_signal"
+		if r.FromID != wantFromID {
+			t.Errorf("edge to %q: want FromID %q, got %q", wantToID, wantFromID, r.FromID)
+		}
+		if r.Properties["framework"] != "django_signals" {
+			t.Errorf("edge to %q: want framework django_signals, got %q", wantToID, r.Properties["framework"])
+		}
 	}
 }
 

@@ -256,7 +256,17 @@ func ApplyReceiverSenderEdges(
 		}
 		seen[key] = true
 		out = append(out, types.RelationshipRecord{
-			FromID: "Function:" + handlerFunc,
+			// Use the same entity-kind prefix as the Django per-file extractor
+			// (django.go) which registers signal handler functions as
+			// SCOPE.Operation entities. The resolver rewrites "SCOPE.Operation:name"
+			// stubs to the corresponding hex entity ID in the graph, so the
+			// HANDLES_SIGNAL edge is queryable via find_callers / archigraph_expand.
+			//
+			// Previously this used "Function:" which the resolver classifies as
+			// DispositionDynamic and does NOT rewrite to a hex ID, leaving the
+			// FromID as an unresolved stub that graph queries on the entity's hex
+			// ID never match. This was root cause of #2589.
+			FromID: "SCOPE.Operation:" + handlerFunc,
 			ToID:   "Class:" + senderModel,
 			Kind:   string(types.RelationshipKindHandlesSignal),
 			Properties: map[string]string{
