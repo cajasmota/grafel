@@ -7,23 +7,51 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | — | — | ⚠️ | — | |
-| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ❌ | ✅ | ✅ | ⚠️ | |
-| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | — | — | ⚠️ | — | |
-| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | — | ❌ | — | — | |
-| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | — | — | ⚠️ | — | |
-| [Carter](../detail/lang.csharp.framework.carter.md) | ❌ | ❌ | ❌ | ❌ | |
-| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | ❌ | ❌ | ❌ | ❌ | |
-| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | ❌ | ❌ | ❌ | ❌ | |
-| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Uno Platform](../detail/lang.csharp.framework.uno.md) | — | — | ⚠️ | — | |
-| [WPF](../detail/lang.csharp.framework.wpf.md) | — | — | ⚠️ | — | |
-| [Windows Forms](../detail/lang.csharp.framework.winforms.md) | — | — | ⚠️ | — | |
-| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | — | — | ⚠️ | — | |
-| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | — | — | — | — | — | — | — | |
+| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | — | — | — | — | — | — | — | |
+| [Carter](../detail/lang.csharp.framework.carter.md) | — | — | — | — | — | — | — | |
+| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | — | — | — | — | — | — | — | |
+| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | — | — | — | — | — | — | — | |
+| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | — | — | — | — | — | — | — | |
+
+
+### UI Frontend
+
+| Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|
+| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+
+
+### Mobile
+
+| Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+
+
+### Desktop
+
+| Name | Process | Native | Updates | Notes |
+|---|---|---|---|---|
+| [Uno Platform](../detail/lang.csharp.framework.uno.md) | ❌ 0/2 | ❌ 0/1 | — | |
+| [WPF](../detail/lang.csharp.framework.wpf.md) | ❌ 0/2 | ❌ 0/1 | — | |
+| [Windows Forms](../detail/lang.csharp.framework.winforms.md) | ❌ 0/2 | ❌ 0/1 | — | |
+
+
+### RPC Framework
+
+| Name | Schema | Codegen | Transport | Notes |
+|---|---|---|---|---|
+| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ 0/2 | ❌ 0/1 | — | |
+
 
 ## Tools
 

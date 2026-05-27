@@ -7,20 +7,24 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [CakePHP](../detail/lang.php.framework.cakephp.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Drupal](../detail/lang.php.framework.drupal.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Laravel](../detail/lang.php.framework.laravel.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Lumen](../detail/lang.php.framework.lumen.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Magento](../detail/lang.php.framework.magento.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Phalcon](../detail/lang.php.framework.phalcon.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Slim](../detail/lang.php.framework.slim.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Symfony](../detail/lang.php.framework.symfony.md) | ❌ | ✅ | ✅ | ❌ | |
-| [WordPress](../detail/lang.php.framework.wordpress.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Yii](../detail/lang.php.framework.yii.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [CakePHP](../detail/lang.php.framework.cakephp.md) | — | — | — | — | — | — | — | |
+| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | — | — | — | — | — | — | — | |
+| [Drupal](../detail/lang.php.framework.drupal.md) | — | — | — | — | — | — | — | |
+| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | — | — | — | — | — | — | — | |
+| [Laravel](../detail/lang.php.framework.laravel.md) | — | — | — | — | — | — | — | |
+| [Lumen](../detail/lang.php.framework.lumen.md) | — | — | — | — | — | — | — | |
+| [Magento](../detail/lang.php.framework.magento.md) | — | — | — | — | — | — | — | |
+| [Phalcon](../detail/lang.php.framework.phalcon.md) | — | — | — | — | — | — | — | |
+| [Slim](../detail/lang.php.framework.slim.md) | — | — | — | — | — | — | — | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | — | — | — | — | — | — | — | |
+| [WordPress](../detail/lang.php.framework.wordpress.md) | — | — | — | — | — | — | — | |
+| [Yii](../detail/lang.php.framework.yii.md) | — | — | — | — | — | — | — | |
+
 
 ## Tools
 

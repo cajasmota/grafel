@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
+- **Subcategory:** Backend HTTP
 - **Capability cells:** 4
 
 ## Capabilities

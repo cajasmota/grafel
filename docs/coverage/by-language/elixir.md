@@ -7,17 +7,27 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Ash Framework](../detail/lang.elixir.framework.ash.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Bandit](../detail/lang.elixir.framework.bandit.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | — | — | ⚠️ | — | |
-| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | — | — | ⚠️ | — | |
-| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Plug](../detail/lang.elixir.framework.plug.md) | ❌ | ❌ | ❌ | ❌ | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | — | — | — | — | — | — | — | |
+| [Ash Framework](../detail/lang.elixir.framework.ash.md) | — | — | — | — | — | — | — | |
+| [Bandit](../detail/lang.elixir.framework.bandit.md) | — | — | — | — | — | — | — | |
+| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | — | — | — | — | — | — | — | |
+| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | — | — | — | — | — | — | — | |
+| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | — | — | — | — | — | — | — | |
+| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | — | — | — | — | — | — | — | |
+| [Plug](../detail/lang.elixir.framework.plug.md) | — | — | — | — | — | — | — | |
+
+
+### Meta Framework
+
+| Name | Structure | Data Flow | Server | Routing | Build | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+
 
 ## Tools
 

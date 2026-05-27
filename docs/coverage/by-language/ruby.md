@@ -7,16 +7,20 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Cuba](../detail/lang.ruby.framework.cuba.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Grape](../detail/lang.ruby.framework.grape.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Hanami](../detail/lang.ruby.framework.hanami.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Padrino](../detail/lang.ruby.framework.padrino.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Roda](../detail/lang.ruby.framework.roda.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ❌ | ✅ | ✅ | ❌ | |
-| [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | — | — | ⚠️ | — | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Cuba](../detail/lang.ruby.framework.cuba.md) | — | — | — | — | — | — | — | |
+| [Grape](../detail/lang.ruby.framework.grape.md) | — | — | — | — | — | — | — | |
+| [Hanami](../detail/lang.ruby.framework.hanami.md) | — | — | — | — | — | — | — | |
+| [Padrino](../detail/lang.ruby.framework.padrino.md) | — | — | — | — | — | — | — | |
+| [Roda](../detail/lang.ruby.framework.roda.md) | — | — | — | — | — | — | — | |
+| [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | — | — | — | — | — | — | — | |
+| [Sinatra](../detail/lang.ruby.framework.sinatra.md) | — | — | — | — | — | — | — | |
+| [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | — | — | — | — | — | — | — | |
+
 
 ## Tools
 

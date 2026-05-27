@@ -7,27 +7,55 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | — | — | ⚠️ | — | |
-| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | — | — | ⚠️ | — | |
-| [Apache Struts](../detail/lang.java.framework.struts.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Helidon](../detail/lang.java.framework.helidon.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | ⚠️ | ✅ | ✅ | ❌ | |
-| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Javalin](../detail/lang.java.framework.javalin.md) | ❌ | ❌ | ❌ | ❌ | |
-| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | — | — | ⚠️ | — | |
-| [Micronaut](../detail/lang.java.framework.micronaut.md) | ⚠️ | ✅ | ✅ | ❌ | |
-| [Play Framework](../detail/lang.java.framework.play.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Quarkus](../detail/lang.java.framework.quarkus.md) | ⚠️ | ✅ | ✅ | ❌ | |
-| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ✅ | ✅ | ✅ | ⚠️ | |
-| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ⚠️ | ✅ | ✅ | ❌ | |
-| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Vert.x](../detail/lang.java.framework.vertx.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | — | — | — | — | — | — | — | |
+| [Apache Struts](../detail/lang.java.framework.struts.md) | — | — | — | — | — | — | — | |
+| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | — | — | — | — | — | — | — | |
+| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | — | — | — | — | — | — | — | |
+| [Helidon](../detail/lang.java.framework.helidon.md) | — | — | — | — | — | — | — | |
+| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | — | — | — | — | — | — | — | |
+| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | — | — | — | — | — | — | — | |
+| [Javalin](../detail/lang.java.framework.javalin.md) | — | — | — | — | — | — | — | |
+| [Micronaut](../detail/lang.java.framework.micronaut.md) | — | — | — | — | — | — | — | |
+| [Quarkus](../detail/lang.java.framework.quarkus.md) | — | — | — | — | — | — | — | |
+| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | — | — | — | — | — | — | — | |
+| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | — | — | — | — | — | — | — | |
+| [Vert.x](../detail/lang.java.framework.vertx.md) | — | — | — | — | — | — | — | |
+
+
+### UI Frontend
+
+| Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|
+| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+
+
+### Meta Framework
+
+| Name | Structure | Data Flow | Server | Routing | Build | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+
+
+### Mobile
+
+| Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+
+
+### AI Integration
+
+| Name | Prompts | Composition | Tracking | Notes |
+|---|---|---|---|---|
+| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ❌ 0/1 | ❌ 0/2 | — | |
+
 
 ## Tools
 

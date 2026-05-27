@@ -5,16 +5,29 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** Desktop
+- **Capability cells:** 3
 
 ## Capabilities
 
+
+### Process
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/go/frameworks/fyne.yaml` | — |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — | — |
+| `ipc_extraction` | ❌ `missing` | — | — | — | — | — |
+| `main_renderer_split` | ❌ `missing` | — | — | — | — | — |
+
+### Native
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `native_module_imports` | ❌ `missing` | — | — | — | — | — |
+
+### Updates
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
 
 ## Provenance
 

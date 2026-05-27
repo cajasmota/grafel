@@ -7,9 +7,13 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Vapor](../detail/lang.swift.framework.vapor.md) | — | ❌ | — | — | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Vapor](../detail/lang.swift.framework.vapor.md) | — | — | — | — | — | — | — | |
+
 
 ## Tools
 

@@ -5,16 +5,56 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** UI Frontend
+- **Capability cells:** 15
 
 ## Capabilities
 
+
+### Structure
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — | — |
-| `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/frameworks/vaadin.yaml` | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/frameworks/vaadin.yaml` | — |
-| `middleware_coverage` | ❌ `missing` | — | — | — | — | — |
+| `component_extraction` | ❌ `missing` | — | — | — | — | — |
+| `context_extraction` | ❌ `missing` | — | — | — | — | — |
+| `hoc_wrapper_recognition` | ❌ `missing` | — | — | — | — | — |
+| `hook_recognition` | ❌ `missing` | — | — | — | — | — |
+| `jsx_template` | ❌ `missing` | — | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `branch_conditions` | ❌ `missing` | — | — | — | — | — |
+| `data_fetching` | ❌ `missing` | — | — | — | — | — |
+| `prop_extraction` | ❌ `missing` | — | — | — | — | — |
+| `state_management` | ❌ `missing` | — | — | — | — | — |
+
+### Navigation
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `enum_extraction` | ❌ `missing` | — | — | — | — | — |
+| `interface_extraction` | ❌ `missing` | — | — | — | — | — |
+| `type_alias_extraction` | ❌ `missing` | — | — | — | — | — |
+
+### Lifecycle
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `state_setter_emission` | ❌ `missing` | — | — | — | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `tests_linkage` | ❌ `missing` | — | — | — | — | — |
 
 ## Provenance
 

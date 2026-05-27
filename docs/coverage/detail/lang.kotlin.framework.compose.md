@@ -5,16 +5,65 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** Mobile
+- **Capability cells:** 14
 
 ## Capabilities
 
+
+### Structure
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/kotlin/frameworks/android_jetpack_compose.yaml` | — |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — | — |
+| `context_extraction` | ❌ `missing` | — | — | — | — | — |
+| `hoc_wrapper_recognition` | ❌ `missing` | — | — | — | — | — |
+
+### Navigation
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `deep_link_extraction` | ❌ `missing` | — | — | — | — | — |
+| `navigation_extraction` | ❌ `missing` | — | — | — | — | — |
+| `screen_detection` | ❌ `missing` | — | — | — | — | — |
+
+### Platform
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `platform_branching` | ❌ `missing` | — | — | — | — | — |
+
+### Native Bridge
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `native_module_imports` | ❌ `missing` | — | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `branch_conditions` | ❌ `missing` | — | — | — | — | — |
+| `state_management` | ❌ `missing` | — | — | — | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `enum_extraction` | ❌ `missing` | — | — | — | — | — |
+| `interface_extraction` | ❌ `missing` | — | — | — | — | — |
+| `type_alias_extraction` | ❌ `missing` | — | — | — | — | — |
+
+### Lifecycle
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `state_setter_emission` | ❌ `missing` | — | — | — | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `tests_linkage` | ❌ `missing` | — | — | — | — | — |
 
 ## Provenance
 

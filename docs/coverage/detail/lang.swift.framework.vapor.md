@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
+- **Subcategory:** Backend HTTP
 - **Capability cells:** 1
 
 ## Capabilities

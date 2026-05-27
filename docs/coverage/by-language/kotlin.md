@@ -7,20 +7,36 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
-|---|---|---|---|---|---|
-| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | — | — | ⚠️ | — | |
-| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | — | — | ⚠️ | — | |
-| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | — | — | ⚠️ | — | |
-| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | ❌ | ❌ | ❌ | ❌ | |
-| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | — | — | ⚠️ | — | |
-| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | — | — | ⚠️ | — | |
-| [Ktor](../detail/lang.kotlin.framework.ktor.md) | ❌ | ✅ | ✅ | ❌ | |
-| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ⚠️ | ✅ | ✅ | ❌ | |
-| [http4k](../detail/lang.kotlin.framework.http4k.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | — | — | ⚠️ | — | |
+
+### Backend HTTP
+
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | — | — | — | — | — | — | — | |
+| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | — | — | — | — | — | — | — | |
+| [Ktor](../detail/lang.kotlin.framework.ktor.md) | — | — | — | — | — | — | — | |
+| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | — | — | — | — | — | — | — | |
+| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | — | — | — | — | — | — | — | |
+| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | — | — | — | — | — | — | — | |
+| [http4k](../detail/lang.kotlin.framework.http4k.md) | — | — | — | — | — | — | — | |
+| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | — | — | — | — | — | — | — | |
+
+
+### Mobile
+
+| Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | |
+
+
+### Desktop
+
+| Name | Process | Native | Updates | Notes |
+|---|---|---|---|---|
+| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ❌ 0/2 | ❌ 0/1 | — | |
+| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ❌ 0/2 | ❌ 0/1 | — | |
+
 
 ## ORMs
 
