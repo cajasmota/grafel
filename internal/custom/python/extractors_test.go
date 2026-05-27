@@ -502,6 +502,75 @@ def replicate_invoice(sender, instance, **kwargs):
 	}
 }
 
+// TestDjango_SignalReceiver_StackedDecorators verifies that multiple stacked
+// @receiver decorators on a single function are ALL captured, emitting one
+// HANDLES_SIGNAL edge per @receiver (per sender model).
+// Fixes #2599: upvate's replicate_to_datalake.py has 11 @receiver decorators
+// on one function; the old regex only captured the last one per file.
+func TestDjango_SignalReceiver_StackedDecorators(t *testing.T) {
+	src := `@receiver(post_save, sender=Contract)
+@receiver(post_delete, sender=Contract)
+@receiver(post_save, sender=Invoice)
+@receiver(post_delete, sender=Invoice)
+@receiver(post_save, sender=Payment)
+def replicate_to_datalake(sender, instance, **kwargs):
+    pass
+`
+	ents := extract(t, "python_django", src)
+
+	// Must have exactly one handler entity (not 5).
+	var handler *extractResult
+	handlerCount := 0
+	for i := range ents {
+		if ents[i].Name == "replicate_to_datalake" && ents[i].Props["pattern_type"] == "signal" {
+			handler = &ents[i]
+			handlerCount++
+		}
+	}
+	if handlerCount != 1 {
+		t.Fatalf("expected 1 handler entity for stacked @receiver, got %d", handlerCount)
+	}
+	if handler == nil {
+		t.Fatal("expected entity named 'replicate_to_datalake'")
+	}
+
+	// Must have exactly 5 HANDLES_SIGNAL edges (one per @receiver).
+	handleCount := 0
+	for _, r := range handler.Rels {
+		if r.Kind == "HANDLES_SIGNAL" {
+			handleCount++
+		}
+	}
+	if handleCount != 5 {
+		t.Fatalf("expected 5 HANDLES_SIGNAL edges for 5 stacked @receiver decorators, got %d", handleCount)
+	}
+
+	// Verify all senders are represented.
+	senderSet := make(map[string]bool)
+	for _, r := range handler.Rels {
+		if r.Kind == "HANDLES_SIGNAL" {
+			senderSet[r.ToID] = true
+		}
+	}
+	expectedSenders := map[string]bool{
+		"Class:Contract": true,
+		"Class:Invoice":  true,
+		"Class:Payment":  true,
+	}
+	for expected := range expectedSenders {
+		if !senderSet[expected] {
+			t.Errorf("expected HANDLES_SIGNAL edge to %s, not found in rels: %+v", expected, handler.Rels)
+		}
+	}
+
+	// No phantom model entities.
+	for _, e := range ents {
+		if e.Name == "Contract" || e.Name == "Invoice" || e.Name == "Payment" {
+			t.Fatalf("phantom entity emitted for model %q", e.Name)
+		}
+	}
+}
+
 // ---- #1411: duplicate-kind node regression tests ----
 
 // TestDjango_ViewSet_SingleNode verifies that a DRF ViewSet class is emitted

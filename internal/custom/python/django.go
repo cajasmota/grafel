@@ -33,6 +33,7 @@ var (
 	djangoCBVClassRe      = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\(([^)]*(?:View|Mixin|APIView|ViewSet)[^)]*)\)\s*:`)
 	djangoCBVMethodRe     = regexp.MustCompile(`(?m)^\s{4,}def\s+(get|post|put|patch|delete|head|options|trace)\s*\(\s*self`)
 	djangoReceiverRe      = regexp.MustCompile(`(?m)@receiver\s*\(\s*([\w.]+)(?:\s*,\s*sender\s*=\s*(\w+))?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoReceiverOnlyRe  = regexp.MustCompile(`(?m)@receiver\s*\(\s*([\w.]+)(?:\s*,\s*sender\s*=\s*(\w+))?[^)]*\)`)
 	djangoAdminRegRe      = regexp.MustCompile(`(?m)admin\.site\.register\s*\(\s*(\w+)(?:\s*,\s*(\w+))?\s*\)`)
 	djangoAdminDecorRe    = regexp.MustCompile(`(?m)@admin\.register\s*\(\s*(\w+)\s*\)\s*\n\s*class\s+(\w+)\s*\(`)
 	djangoDRFSerializerRe = regexp.MustCompile(
@@ -131,26 +132,111 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	// of a HANDLES_SIGNAL edge — not a new entity.  This avoids the
 	// Service:<ModelName> phantom orphans introduced by the old YAML pattern
 	// (issue #1374 item 3).
-	for _, idx := range allMatchesIndex(djangoReceiverRe, source) {
-		signalType := source[idx[2]:idx[3]]
-		handlerName := source[idx[6]:idx[7]]
-		line := lineOf(source, idx[0])
-		props := map[string]string{"framework": "django", "pattern_type": "signal", "signal_type": signalType}
-		var senderModel string
-		if idx[4] != -1 {
-			senderModel = source[idx[4]:idx[5]]
-			props["sender"] = senderModel
+	//
+	// #2599: Walk upward from each `def` to collect ALL stacked @receiver decorators,
+	// emitting one HANDLES_SIGNAL edge per @receiver (one per sender).
+
+	// Find all @receiver decorators in the file (without requiring a def to follow).
+	receiverMatches := allMatchesIndex(djangoReceiverOnlyRe, source)
+
+	// Find all function definitions in the file.
+	defRe := regexp.MustCompile(`(?m)^\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	defMatches := allMatchesIndex(defRe, source)
+
+	// Track handler functions we've already emitted (to avoid duplicates).
+	handledFuncs := map[string]bool{}
+
+	// For each function, collect its associated @receiver decorators.
+	for _, defIdx := range defMatches {
+		defStart := defIdx[0]
+		handlerName := source[defIdx[2]:defIdx[3]]
+
+		// Skip if we've already emitted this handler.
+		if handledFuncs[handlerName] {
+			continue
 		}
-		ent := entity(handlerName, "SCOPE.Operation", "function", file.Path, line, props)
-		// Emit HANDLES_SIGNAL → sender model so the handler is connected to
-		// the existing model entity instead of leaving it as an orphan.
-		if senderModel != "" {
-			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
-				ToID:       djangoModelRef(senderModel),
-				Kind:       string(types.RelationshipKindHandlesSignal),
-				Properties: map[string]string{"signal_type": signalType, "framework": "django"},
-			})
+
+		// Collect all @receiver decorators that immediately precede this def.
+		var decorators []struct {
+			signalType  string
+			senderModel string
+			line        int
 		}
+
+		// Walk backward through decorators to find those immediately before def.
+		nextCheckPos := defStart
+		for i := len(receiverMatches) - 1; i >= 0; i-- {
+			rIdx := receiverMatches[i]
+			rStart := rIdx[0]
+			rEnd := rIdx[1]
+
+			// Only consider receivers that come before the next check position.
+			if rStart >= nextCheckPos {
+				continue
+			}
+
+			// Check if there's only whitespace/comments between @receiver and next pos.
+			between := source[rEnd:nextCheckPos]
+			if !isOnlyWhitespaceAndComments(between) {
+				break // Reached a non-contiguous decorator; stop walking backward.
+			}
+
+			signalType := source[rIdx[2]:rIdx[3]]
+			var senderModel string
+			if rIdx[4] != -1 {
+				senderModel = source[rIdx[4]:rIdx[5]]
+			}
+			rLine := lineOf(source, rStart)
+
+			decorators = append(decorators, struct {
+				signalType  string
+				senderModel string
+				line        int
+			}{signalType, senderModel, rLine})
+
+			// Update position to check next decorator is immediately before current one.
+			nextCheckPos = rStart
+		}
+
+		// If no receivers found, skip this function.
+		if len(decorators) == 0 {
+			continue
+		}
+
+		// Reverse the decorators since we collected them backward.
+		for i, j := 0, len(decorators)-1; i < j; i, j = i+1, j-1 {
+			decorators[i], decorators[j] = decorators[j], decorators[i]
+		}
+
+		handledFuncs[handlerName] = true
+
+		// Use the first (highest) decorator's line for the entity.
+		entityLine := decorators[0].line
+
+		// Build properties: include signal_type and sender from first receiver (for backward compatibility).
+		props := map[string]string{"framework": "django", "pattern_type": "signal"}
+		if len(decorators) > 0 {
+			props["signal_type"] = decorators[0].signalType
+			if decorators[0].senderModel != "" {
+				props["sender"] = decorators[0].senderModel
+			}
+		}
+
+		// Emit one entity per distinct handler function.
+		// We'll aggregate all HANDLES_SIGNAL edges onto it.
+		ent := entity(handlerName, "SCOPE.Operation", "function", file.Path, entityLine, props)
+
+		// Add one HANDLES_SIGNAL edge per @receiver decorator.
+		for _, decorator := range decorators {
+			if decorator.senderModel != "" {
+				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+					ToID:       djangoModelRef(decorator.senderModel),
+					Kind:       string(types.RelationshipKindHandlesSignal),
+					Properties: map[string]string{"signal_type": decorator.signalType, "framework": "django"},
+				})
+			}
+		}
+
 		out = append(out, ent)
 	}
 
@@ -306,6 +392,19 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
+}
+
+// isOnlyWhitespaceAndComments returns true if text contains only whitespace and
+// Python comments (lines starting with #). Used to detect if @receiver decorators
+// immediately precede a def.
+func isOnlyWhitespaceAndComments(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			return false
+		}
+	}
+	return true
 }
 
 // djangoModelRef returns the structural reference ID used as the ToID for
