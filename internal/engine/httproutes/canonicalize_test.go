@@ -100,6 +100,57 @@ func TestCanonicalize_SlashNormalisation(t *testing.T) {
 	}
 }
 
+// TestCanonicalize_PythonNamedGroups covers Python regex named-group syntax
+// `(?P<name>charclass)` that appears in Django `re_path` and DRF
+// `@action(url_path=…)` strings. Fixes #2669: without this rewrite the
+// embedded `(?P<…>…)` survived into the canonical path and broke byPath
+// bucketing across producer and consumer sides.
+func TestCanonicalize_PythonNamedGroups(t *testing.T) {
+	cases := []struct {
+		framework, in, want string
+	}{
+		// The triggering upvate case: DRF @action(url_path=…) on NoteViewSet.
+		{
+			FrameworkDjango,
+			`group/(?P<group_id>[^/.]+)/entity/(?P<entity>[^/.]+)/(?P<entity_id>[^/.]+)`,
+			"/group/{group_id}/entity/{entity}/{entity_id}",
+		},
+		{
+			FrameworkDjango,
+			`entity/(?P<entity>[^/.]+)/(?P<entity_id>[^/.]+)`,
+			"/entity/{entity}/{entity_id}",
+		},
+		{
+			FrameworkDjango,
+			`catalogs/entity-types/(?P<entity>[^/.]+)`,
+			"/catalogs/entity-types/{entity}",
+		},
+		// Numeric charclass.
+		{FrameworkDjango, `(?P<id>\d+)`, "/{id}"},
+		// Mixed with normal angle-bracket converters.
+		{
+			FrameworkDjango,
+			`users/<int:user_id>/notes/(?P<note_id>[^/.]+)`,
+			"/users/{user_id}/notes/{note_id}",
+		},
+		// Nested group inside the body — the outer `(?P<…>…)` must still
+		// strip cleanly even when its body contains balanced inner parens.
+		{FrameworkDjango, `(?P<a>(?:\d+))/x`, "/{a}/x"},
+		// Flask `re_path` analogue (Flask doesn't ship one but the
+		// canonicaliser shares the angle-bracket walker, so cover it).
+		{FrameworkFlask, `things/(?P<thing_id>[^/.]+)`, "/things/{thing_id}"},
+		// Pass-through: paths without any `(?P<` must remain identical
+		// to the pre-#2669 output.
+		{FrameworkDjango, "users/<int:id>/posts/<int:post_id>", "/users/{id}/posts/{post_id}"},
+	}
+	for _, tc := range cases {
+		got := Canonicalize(tc.framework, tc.in)
+		if got != tc.want {
+			t.Errorf("Canonicalize(%s, %q) = %q, want %q", tc.framework, tc.in, got, tc.want)
+		}
+	}
+}
+
 // TestSyntheticID verifies the http:<METHOD>:<path> format and method
 // upper-casing.
 func TestSyntheticID(t *testing.T) {

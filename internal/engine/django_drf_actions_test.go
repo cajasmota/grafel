@@ -2443,3 +2443,115 @@ urlpatterns = [
 		t.Errorf("expected 2 matching entities, found %d", foundCount)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #2669 — @action(url_path=) regex-named-group extraction
+// ---------------------------------------------------------------------------
+
+// TestDRF_ActionDecorator_RegexUrlPath_NamedGroups verifies that
+// @action(url_path="…(?P<name>regex)…") decorators are parsed correctly
+// after the balanced-paren scanner replaced the pre-#2669 regex that
+// truncated at the first inner `)`. The url_path is also canonicalised
+// to {name} form so the producer-side synthetic ID lines up with what
+// consumer-side clients (frontend/mobile) emit for the same logical
+// endpoint.
+//
+// Failure mode prior to the fix: NoteViewSet's three @action declarations
+// silently disappeared from the index, cascading into 7 unresolved mobile
+// orphans in the upvate group quality bench.
+func TestDRF_ActionDecorator_RegexUrlPath_NamedGroups(t *testing.T) {
+	files := fileMap{
+		"core/routers.py": `
+from rest_framework import routers
+from core.views import NoteViewSet
+
+router = routers.DefaultRouter()
+router.register(r"notes", NoteViewSet)
+
+urlpatterns = [
+    path("", include(router.urls)),
+]
+`,
+		"upvate_core/urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path("api/v1/", include("core.routers")),
+]
+`,
+		"core/views.py": `
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action
+
+class NoteViewSet(ModelViewSet):
+    @action(detail=False, methods=['get', 'post'], url_path='group/(?P<group_id>[^/.]+)/entity/(?P<entity>[^/.]+)/(?P<entity_id>[^/.]+)')
+    def notes_by_group_and_entity(self, request, group_id, entity, entity_id):
+        pass
+
+    @action(detail=False, methods=['get', 'post'], url_path='entity/(?P<entity>[^/.]+)/(?P<entity_id>[^/.]+)')
+    def notes_by_entity(self, request, entity, entity_id):
+        pass
+
+    @action(detail=False, methods=['get'], url_path='catalogs/entity-types/(?P<entity>[^/.]+)')
+    def entity_type_catalogs(self, request, entity):
+        pass
+`,
+	}
+
+	pyPaths := []string{"upvate_core/urls.py", "core/routers.py", "core/views.py"}
+	got := ApplyDjangoDRFRoutes(pyPaths, files.reader)
+
+	// Every @action above must emit a canonicalised endpoint whose path
+	// uses `{name}` (not the raw `(?P<name>charclass)` substring).
+	assertHasAllIDs(t, got, []string{
+		"http:GET:/api/v1/notes/group/{group_id}/entity/{entity}/{entity_id}",
+		"http:POST:/api/v1/notes/group/{group_id}/entity/{entity}/{entity_id}",
+		"http:GET:/api/v1/notes/entity/{entity}/{entity_id}",
+		"http:POST:/api/v1/notes/entity/{entity}/{entity_id}",
+		"http:GET:/api/v1/notes/catalogs/entity-types/{entity}",
+	})
+
+	// Negative: the raw regex form must not leak into any emitted ID.
+	for _, r := range got {
+		if strings.Contains(r.ID, "(?P<") || strings.Contains(r.ID, "[^/.]") {
+			t.Errorf("entity %q leaked raw regex syntax — canonicalisation incomplete", r.ID)
+		}
+	}
+}
+
+// TestScanBalancedClose covers the balanced-paren scanner directly so the
+// edge cases — string literals containing `)`, triple-quoted blocks,
+// nested function calls — are exercised independently of the full
+// extraction pipeline.
+func TestScanBalancedClose(t *testing.T) {
+	cases := []struct {
+		body       string
+		start      int
+		wantClose  int
+		wantOK     bool
+	}{
+		// Simple balanced pair.
+		{"abc(xy)z", 4, 6, true},
+		// Nested parens.
+		{"(a(b)c)", 1, 6, true},
+		// String literal containing `)`.
+		{`(url_path='(?P<id>[^/.]+)')`, 1, 26, true},
+		// Double-quoted string literal containing `)`.
+		{`(x="a)b")`, 1, 8, true},
+		// Escape inside string.
+		{`(x='\\')`, 1, 7, true},
+		// Triple-quoted block containing `)`.
+		{`(x="""a)b""")`, 1, 12, true},
+		// Unbalanced — returns ok=false.
+		{`(abc`, 1, 0, false},
+	}
+	for _, tc := range cases {
+		gotClose, gotOK := scanBalancedClose(tc.body, tc.start)
+		if gotOK != tc.wantOK {
+			t.Errorf("scanBalancedClose(%q, %d) ok=%v want %v", tc.body, tc.start, gotOK, tc.wantOK)
+			continue
+		}
+		if gotOK && gotClose != tc.wantClose {
+			t.Errorf("scanBalancedClose(%q, %d) close=%d want %d", tc.body, tc.start, gotClose, tc.wantClose)
+		}
+	}
+}
