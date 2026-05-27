@@ -1395,3 +1395,112 @@ FIXTURE = 1
 		t.Errorf("expected 0, got %d", len(recs))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #2604 — tests/ directory path hint for pytest (the root cause of the meta-bug)
+// ---------------------------------------------------------------------------
+
+// TestPytest_TestsDirWithoutPrefix_IsIndexed exercises the root cause of #2604:
+// Django projects (including upvate) place test files under a tests/ directory
+// without requiring a test_ prefix in the basename (e.g. core/tests/schedule.py,
+// api/tests/views.py). Before this fix, selectFramework returned nil for these
+// files because the pytest filenameHints only matched test_*.py / *_test.py
+// basenames. The testmap extractor then returned 0 entities for the whole tests/
+// directory, causing ~107 test entities indexed instead of ~1,406 on upvate.
+//
+// The fix adds a pathHints regex (/tests?/.*\.py$) that matches the full
+// repo-relative path, so files in tests/ or test/ are recognised without
+// needing a test_ prefix.
+func TestPytest_TestsDirWithoutPrefix_IsIndexed(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+		src  string
+	}{
+		{
+			name: "bare_tests_dir_no_prefix",
+			path: "core/tests/schedule.py",
+			src: `from django.test import TestCase
+from core.views import ScheduleViewSet
+
+class ScheduleTests(TestCase):
+    def test_import_csv(self):
+        resp = self.client.post('/api/v1/schedule/import', {})
+        self.assertEqual(resp.status_code, 200)
+`,
+		},
+		{
+			name: "nested_tests_dir_views",
+			path: "api/tests/views.py",
+			src: `from django.test import TestCase
+
+class ViewTests(TestCase):
+    def test_list(self):
+        resp = self.client.get('/api/v1/items/')
+        self.assertEqual(resp.status_code, 200)
+`,
+		},
+		{
+			name: "test_dir_singular",
+			path: "app/test/integration.py",
+			src: `from django.test import TestCase
+
+class IntegrationSuite(TestCase):
+    def test_flow(self):
+        pass
+`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recs := runExtract(t, tc.path, "python", tc.src)
+			if len(recs) == 0 {
+				t.Errorf("path %q: expected ≥1 entity from tests/ dir without test_ prefix, got 0 — "+
+					"this is root cause of #2604: pytest pathHints not matching tests/ directories", tc.path)
+			}
+		})
+	}
+}
+
+// TestPytest_TestsDirMatchesAnyPath verifies that matchesAnyPath correctly
+// matches the pathHints for the pytest entry across typical Django layouts.
+func TestPytest_TestsDirMatchesAnyPath(t *testing.T) {
+	// Locate the pytest entry in frameworkOrder.
+	var pytestEntry *frameworkEntry
+	for i := range frameworkOrder {
+		if frameworkOrder[i].name == "pytest" {
+			pytestEntry = &frameworkOrder[i]
+			break
+		}
+	}
+	if pytestEntry == nil {
+		t.Fatal("pytest entry not found in frameworkOrder")
+	}
+
+	yes := []string{
+		"tests/schedule.py",
+		"core/tests/views.py",
+		"api/tests/serializers.py",
+		"app/tests/__init__.py",
+		"test/integration.py",
+		"core/test/models.py",
+	}
+	no := []string{
+		"views.py",
+		"models.py",
+		"tests_helpers/utils.go", // not a .py file
+		"notests/foo.py",         // "notests" is not "tests" or "test"
+	}
+
+	for _, p := range yes {
+		if !matchesAnyPath(p, pytestEntry.pathHints) {
+			t.Errorf("matchesAnyPath(%q): want true (tests/ dir), got false", p)
+		}
+	}
+	for _, p := range no {
+		if matchesAnyPath(p, pytestEntry.pathHints) {
+			t.Errorf("matchesAnyPath(%q): want false, got true", p)
+		}
+	}
+}

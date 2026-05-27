@@ -35,7 +35,8 @@ type frameworkDetector func(source string) []testFunction
 type frameworkEntry struct {
 	name          string
 	importHints   []string          // substring match against import token set
-	filenameHints []*regexp.Regexp  // alternative: filename-only detection
+	filenameHints []*regexp.Regexp  // alternative: filename-only detection (matched against basename)
+	pathHints     []*regexp.Regexp  // alternative: full-path detection (matched against slash-normalised full path)
 	detect        frameworkDetector // returns all test functions found in the file
 }
 
@@ -102,6 +103,22 @@ func matchesAnyFilename(path string, patterns []*regexp.Regexp) bool {
 	base := filepath.Base(path)
 	for _, re := range patterns {
 		if re.MatchString(base) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesAnyPath reports whether the slash-normalised full path matches any of
+// the provided path regexes. Unlike matchesAnyFilename, patterns here run
+// against the entire repo-relative path, so directory-segment matches like
+// `/tests/` work regardless of the file's basename.
+func matchesAnyPath(path string, patterns []*regexp.Regexp) bool {
+	// Normalise to forward slashes and ensure a leading "/" so that a pattern
+	// like "/tests/" matches at the start of the path too.
+	norm := "/" + filepath.ToSlash(path)
+	for _, re := range patterns {
+		if re.MatchString(norm) {
 			return true
 		}
 	}
@@ -539,6 +556,15 @@ var frameworkOrder = []frameworkEntry{
 			regexp.MustCompile(`^test_[\w]+\.py$`),
 			regexp.MustCompile(`^[\w]+_test\.py$`),
 		},
+		// #2604: Django/pytest projects place test files under a tests/ or
+		// test/ directory without requiring a test_ prefix on every file
+		// (e.g. core/tests/schedule.py, api/tests/views.py). Match the full
+		// repo-relative path so files like tests/foo.py or app/tests/bar.py
+		// are recognised as Python test files even when their basename has no
+		// test_ prefix. The \.py$ guard prevents matching non-Python files.
+		pathHints: []*regexp.Regexp{
+			regexp.MustCompile(`/tests?/.*\.py$`),
+		},
 		detect: detectPytest,
 	},
 	{
@@ -650,6 +676,7 @@ func selectFramework(tokens map[string]bool, filePath string) *frameworkEntry {
 		fe := &frameworkOrder[i]
 		importMatch := len(fe.importHints) > 0 && matchesAnyImport(tokens, fe.importHints)
 		fileMatch := matchesAnyFilename(filePath, fe.filenameHints)
+		pathMatch := len(fe.pathHints) > 0 && matchesAnyPath(filePath, fe.pathHints)
 
 		switch fe.name {
 		case "rust_test":
@@ -665,7 +692,7 @@ func selectFramework(tokens map[string]bool, filePath string) *frameworkEntry {
 			// optimistically; Extract() filters zero-result files downstream.
 			return fe
 		default:
-			if importMatch || fileMatch {
+			if importMatch || fileMatch || pathMatch {
 				return fe
 			}
 		}
