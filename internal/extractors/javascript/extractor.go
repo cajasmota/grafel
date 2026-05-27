@@ -2452,6 +2452,7 @@ func (x *extractor) buildDispatchMaps(root *sitter.Node) map[string]*dispatchMap
 			var handlers []string
 			byKey := make(map[string]string)
 			allIdentifiers := true
+			hasInlineArrows := false
 			for k := 0; k < int(valueNode.ChildCount()); k++ {
 				pair := valueNode.Child(k)
 				if pair == nil {
@@ -2477,8 +2478,27 @@ func (x *extractor) buildDispatchMaps(root *sitter.Node) map[string]*dispatchMap
 						keyText = strings.Trim(keyText, `"'`+"`")
 						byKey[keyText] = handler
 					}
+				} else if valNode.Type() == "arrow_function" || valNode.Type() == "function_expression" {
+					// Gap (1) — inline arrow/function handler: `{ foo: () => svc.foo() }`.
+					// Extract the call targets from the function body so that
+					// X[k]() fans out to the actual callee rather than a synthetic name.
+					// Issue #2565.
+					innerTargets := x.callTargetsInFunctionNode(valNode)
+					if len(innerTargets) > 0 {
+						handlers = append(handlers, innerTargets...)
+						hasInlineArrows = true
+						if keyNode != nil {
+							keyText := x.nodeText(keyNode)
+							keyText = strings.Trim(keyText, `"'`+"`")
+							// For literal-key resolution, map the key to the first
+							// (and most common) inner call target.
+							byKey[keyText] = innerTargets[0]
+						}
+					}
+					// Inline function value — not a pure identifier reference map.
+					allIdentifiers = false
 				} else {
-					// Value is a function literal or something else — not
+					// Value is something else (primitive, object, etc.) — not
 					// a pure reference map. Still count the entry for
 					// Record-annotated maps; otherwise disqualify.
 					allIdentifiers = false
@@ -2489,8 +2509,10 @@ func (x *extractor) buildDispatchMaps(root *sitter.Node) map[string]*dispatchMap
 			}
 			// Accept when the type annotation is Record<...> OR when all
 			// values are plain identifier references (high-confidence
-			// heuristic for dispatch-map shape without explicit typing).
-			if hasRecordAnnotation || allIdentifiers {
+			// heuristic for dispatch-map shape without explicit typing) OR
+			// when at least one inline arrow handler was resolved (Gap (1),
+			// issue #2565).
+			if hasRecordAnnotation || allIdentifiers || hasInlineArrows {
 				result[varName] = &dispatchMapInfo{
 					handlers: handlers,
 					byKey:    byKey,
@@ -2502,6 +2524,54 @@ func (x *extractor) buildDispatchMaps(root *sitter.Node) map[string]*dispatchMap
 		return nil
 	}
 	return result
+}
+
+// callTargetsInFunctionNode extracts the callee names of top-level
+// call_expressions found in the body of an arrow_function or
+// function_expression node. Used by buildDispatchMaps to resolve inline
+// arrow handlers (Gap (1), issue #2565).
+//
+// Only direct call targets (identifier or member_expression property) are
+// returned; nested call chains are not traversed to avoid over-approximation.
+// Deduplication is applied so each target appears at most once.
+func (x *extractor) callTargetsInFunctionNode(fn *sitter.Node) []string {
+	if fn == nil {
+		return nil
+	}
+	// arrow_function: body is the "body" field — either a statement_block or
+	// a single expression (parenthesized_expression, call_expression, etc.).
+	// function_expression: body is always a statement_block.
+	body := fn.ChildByFieldName("body")
+	if body == nil {
+		return nil
+	}
+	calls := findAllNodes(body, "call_expression")
+	if len(calls) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(calls))
+	var targets []string
+	for _, call := range calls {
+		callee := call.ChildByFieldName("function")
+		if callee == nil {
+			continue
+		}
+		var name string
+		switch callee.Type() {
+		case "identifier", "type_identifier", "property_identifier":
+			name = x.nodeText(callee)
+		case "member_expression":
+			if prop := callee.ChildByFieldName("property"); prop != nil {
+				name = x.nodeText(prop)
+			}
+		}
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		targets = append(targets, name)
+	}
+	return targets
 }
 
 // isComponentName returns true when name starts with an ASCII uppercase
