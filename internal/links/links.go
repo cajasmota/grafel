@@ -96,6 +96,13 @@ type Link struct {
 
 	// Resolution is populated only on rejection entries.
 	Resolution *Resolution `json:"resolution,omitempty"`
+
+	// Properties carries optional key/value annotations set by specific
+	// matching passes. Currently used by the HTTP pass to record
+	// prefix_normalized when a cross-repo consumer path was resolved by
+	// prepending a well-known API/version prefix (e.g. "/api/v1") to the
+	// consumer's raw path. Empty for all other passes.
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 // Resolution annotates a rejected link.

@@ -141,6 +141,18 @@ func stripAPIPrefix(normalizedPath string) (string, bool) {
 	return stripped, stripped != normalizedPath
 }
 
+// crossRepoPrefixCandidates is the ordered list of well-known API mount
+// prefixes tried when a consumer path has no prefix of its own and the
+// standard byPath probing misses (#2569). This mirrors prefixCandidates in
+// internal/engine/http_endpoint_match.go (PR #2557) and is applied at the
+// cross-repo linking level so that a frontend consumer emitting a raw path
+// such as `/searchBuildings` can be matched to a backend producer mounted
+// at `/api/v1/searchBuildings`.
+//
+// Order matters: more-specific (longer) prefixes are tried first so
+// `/api/v1` is preferred over `/api` when both would match.
+var crossRepoPrefixCandidates = []string{"/api/v1", "/api/v2", "/api", "/v1"}
+
 // MethodHTTP identifies this pass's emissions in links.json.
 const MethodHTTP = "http"
 
@@ -529,6 +541,52 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				// less() above, so picking the first match is
 				// deterministic.
 				p, quality := pickProducerForConsumer(c, producersByRepo[pRepo])
+
+				// Prefix-injection retry (#2569): mirrors Tier 2 of
+				// resolveCallByPath in internal/engine/http_endpoint_match.go
+				// (#2557). When the standard byPath match missed AND the
+				// consumer path carries no API/version prefix of its own,
+				// retry by prepending each well-known prefix candidate to the
+				// consumer's normalized path and probing byPath. This handles
+				// the upvate pattern where the frontend extractor emits a raw
+				// path (e.g. `/searchBuildings`) while the backend mounts the
+				// route at `/api/v1/searchBuildings`.
+				//
+				// First match wins; edge is stamped with
+				// Properties["prefix_normalized"] (e.g. "api/v1") so the
+				// resolution is traceable in the graph.
+				var prefixNormalized string
+				if p == nil {
+					consumerPath := c.canonicalPath
+					if consumerPath == "" {
+						if _, parsed, ok := parseHTTPName(c.name); ok {
+							consumerPath = parsed
+						}
+					}
+					normConsumerPath := normalizePathForIndex(consumerPath)
+					// Only attempt when the consumer path has no API/version
+					// prefix itself — a double-prefixed path would be invalid.
+					if _, hasPrefix := stripAPIPrefix(normConsumerPath); !hasPrefix && normConsumerPath != "" {
+						for _, pfx := range crossRepoPrefixCandidates {
+							prefixedKey := pfx + normConsumerPath
+							pfxCandidates := make([]*httpEndpointHit, 0)
+							for _, h := range byPath[prefixedKey] {
+								if h.repo == pRepo && h.side == sideProducer {
+									pfxCandidates = appendUnique(pfxCandidates, h)
+								}
+							}
+							if len(pfxCandidates) > 0 {
+								sort.SliceStable(pfxCandidates, func(i, j int) bool { return less(pfxCandidates[i], pfxCandidates[j]) })
+								p, quality = pickProducerForConsumer(c, pfxCandidates)
+								if p != nil {
+									prefixNormalized = strings.TrimPrefix(pfx, "/")
+									break
+								}
+							}
+						}
+					}
+				}
+
 				if p == nil {
 					continue
 				}
@@ -570,6 +628,9 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						{p.sourceFile},
 					},
 					MatchQuality: quality,
+				}
+				if prefixNormalized != "" {
+					link.Properties = map[string]string{"prefix_normalized": prefixNormalized}
 				}
 				fresh = append(fresh, link)
 			}
