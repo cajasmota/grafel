@@ -47,6 +47,8 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return cmdStats(rest, stdout)
 	case "validate":
 		return cmdValidate(rest, stdout, stderr)
+	case "gen":
+		return cmdGen(rest, stdout)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -67,7 +69,8 @@ subcommands:
   remove    delete a record by id
   gaps      list missing/partial records (--language, --category, --json)
   stats     counters across the registry (--json)
-  validate  schema + cite-exists + duplicate-id + stale checks`)
+  validate  schema + cite-exists + duplicate-id + stale checks
+  gen       regenerate docs/coverage/*.md from docs/coverage.json (--out, --file)`)
 }
 
 // registryFlag adds a shared --file flag for overriding the registry

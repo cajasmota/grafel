@@ -264,3 +264,20 @@ func TestUnknownSubcommand(t *testing.T) {
 		t.Fatal("expected error for unknown subcommand")
 	}
 }
+
+// TestGenDispatch exercises the gen subcommand through the top-level
+// run() dispatcher so the wiring in main.go is covered alongside the
+// generator itself. Deeper rendering behaviour lives in gen_test.go.
+func TestGenDispatch(t *testing.T) {
+	root := t.TempDir()
+	out, _, err := runCmd(t, "gen", "--file", fixturePath(t), "--out", root)
+	if err != nil {
+		t.Fatalf("gen: %v", err)
+	}
+	if !strings.Contains(out, "generated") {
+		t.Errorf("expected confirmation, got: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "docs", "coverage", "summary.md")); err != nil {
+		t.Errorf("summary.md missing: %v", err)
+	}
+}

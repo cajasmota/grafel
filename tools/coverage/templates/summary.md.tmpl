@@ -1,0 +1,38 @@
+{{.Marker}}
+# Coverage Registry — Summary
+
+Auto-generated from `docs/coverage.json` by `go run ./tools/coverage gen`.
+Each capability cell is one of: `full`, `partial`, `missing`, `not_applicable`.
+
+## Totals
+
+- Records: **{{.Stats.Total}}**
+- Capability cells: **{{.Stats.Capabilities}}**
+- Full: **{{index .Stats.ByStatus "full"}}**
+- Partial: **{{index .Stats.ByStatus "partial"}}**
+- Missing: **{{index .Stats.ByStatus "missing"}}**
+- Not applicable: **{{index .Stats.ByStatus "not_applicable"}}**
+
+## By language
+
+| Language | Records | Full | Partial | Missing | N/A | % Full |
+|----------|---------|------|---------|---------|-----|--------|
+{{- range .Languages}}
+| [{{.Name}}](by-language/{{.Name}}.md) | {{.Stats.Records}} | {{.Stats.Full}} | {{.Stats.Partial}} | {{.Stats.Missing}} | {{.Stats.NotAppl}} | {{.PctFull}} |
+{{- end}}
+
+## By category
+
+| Category | Records |
+|----------|---------|
+{{- range .Categories}}
+| [{{.Name}}](by-category/{{.Name}}.md) | {{.Count}} |
+{{- end}}
+
+## All records
+
+| ID | Language | Category | Label |
+|----|----------|----------|-------|
+{{- range .Records}}
+| [{{.ID}}](detail/{{.ID}}.md) | {{.Language}} | {{.Category}} | {{.Label}} |
+{{- end}}

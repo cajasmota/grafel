@@ -1,0 +1,15 @@
+{{.Marker}}
+# Coverage — language: `{{.Language}}`
+
+Auto-generated. Back to [summary](../summary.md).
+
+- Records: **{{.Stats.Records}}**
+- Full: **{{.Stats.Full}}** · Partial: **{{.Stats.Partial}}** · Missing: **{{.Stats.Missing}}** · N/A: **{{.Stats.NotAppl}}**
+
+## Records
+
+| ID | Category | Label | Capabilities |
+|----|----------|-------|--------------|
+{{- range .Records}}
+| [{{.ID}}](../detail/{{.ID}}.md) | [{{.Category}}](../by-category/{{.Category}}.md) | {{.Label}} | {{range $i, $c := .CapList}}{{if $i}}, {{end}}{{$c.Key}}={{$c.Cap.Status}}{{end}} |
+{{- end}}

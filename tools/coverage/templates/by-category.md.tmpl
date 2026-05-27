@@ -1,0 +1,15 @@
+{{.Marker}}
+# Coverage — category: `{{.Category}}`
+
+Auto-generated. Back to [summary](../summary.md).
+
+- Records: **{{.Count}}**
+- Valid capability keys: {{range $i, $k := .CapabilityKeys}}{{if $i}}, {{end}}`{{$k}}`{{end}}
+
+## Records
+
+| ID | Language | Label | Capabilities |
+|----|----------|-------|--------------|
+{{- range .Records}}
+| [{{.ID}}](../detail/{{.ID}}.md) | [{{.Language}}](../by-language/{{.Language}}.md) | {{.Label}} | {{range $i, $c := .CapList}}{{if $i}}, {{end}}{{$c.Key}}={{$c.Cap.Status}}{{end}} |
+{{- end}}

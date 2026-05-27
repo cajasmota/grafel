@@ -1,0 +1,25 @@
+<!-- DO NOT EDIT — generated from docs/coverage.json by 'go run ./tools/coverage gen' -->
+# `lang.javascript.framework.trpc` — tRPC
+
+Auto-generated. Back to [summary](../summary.md).
+
+- **Language:** [javascript](../by-language/javascript.md)
+- **Category:** [http_framework](../by-category/http_framework.md)
+- **Capability cells:** 2
+
+## Capabilities
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `endpoint_synthesis` | `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_trpc.go` |
+| `handler_attribution` | `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_trpc.go` |
+
+## Provenance
+
+This record is sourced from `docs/coverage.json`. To update it, edit the JSON
+(or use `go run ./tools/coverage update lang.javascript.framework.trpc ...`) then regenerate:
+
+```
+go run ./tools/coverage validate
+go run ./tools/coverage gen
+```

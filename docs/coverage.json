@@ -2,6 +2,168 @@
   "$schema_version": 1,
   "records": [
     {
+      "id": "infra.observability.opentelemetry",
+      "category": "observability",
+      "language": "multi",
+      "label": "OpenTelemetry instrumentation",
+      "capabilities": {
+        "trace_extraction": {
+          "status": "missing"
+        },
+        "metric_extraction": {
+          "status": "missing"
+        },
+        "log_extraction": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.csharp.framework.aspnet-core",
+      "category": "http_framework",
+      "language": "csharp",
+      "label": "ASP.NET Core",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/aspnet_core_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/aspnet_core_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "auth_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.elixir.framework.phoenix",
+      "category": "http_framework",
+      "language": "elixir",
+      "label": "Phoenix",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/phoenix_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/phoenix_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "auth_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.go.framework.gorilla-mux",
+      "category": "http_framework",
+      "language": "go",
+      "label": "gorilla/mux",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_go_trio.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/go_routes.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.go.framework.net-http",
+      "category": "http_framework",
+      "language": "go",
+      "label": "Go net/http stdlib",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_go_trio.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/go_routes.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.go.orm.gorm",
+      "category": "orm",
+      "language": "go",
+      "label": "GORM",
+      "capabilities": {
+        "model_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/cross/ormlink/extractor.go"],
+          "verified_at": "2026-05-28"
+        },
+        "query_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_queries_other.go"],
+          "verified_at": "2026-05-28"
+        },
+        "migration_parsing": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.java.framework.jaxrs",
+      "category": "http_framework",
+      "language": "java",
+      "label": "JAX-RS / Jakarta EE",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go", "internal/engine/java_annotation_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/java_annotation_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "auth_coverage": {
+          "status": "full",
+          "cites": ["internal/engine/java_auth_policy.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.java.framework.spring-boot",
+      "category": "http_framework",
+      "language": "java",
+      "label": "Spring Boot / Spring MVC",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go", "internal/engine/spring_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/spring_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "auth_coverage": {
+          "status": "full",
+          "cites": ["internal/engine/java_auth_policy.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
       "id": "lang.javascript.framework.express",
       "category": "http_framework",
       "language": "javascript",
@@ -11,6 +173,27 @@
           "status": "full",
           "cites": ["internal/engine/http_endpoint_synthesis.go"],
           "verified_at": "2026-05-27"
+        },
+        "auth_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.javascript.framework.fastify",
+      "category": "http_framework",
+      "language": "javascript",
+      "label": "Fastify",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_jsts_extra.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_jsts_extra.go"],
+          "verified_at": "2026-05-28"
         }
       }
     },
@@ -24,6 +207,111 @@
           "status": "full",
           "cites": ["internal/engine/http_endpoint_synthesis.go"],
           "verified_at": "2026-05-27"
+        },
+        "auth_coverage": {
+          "status": "partial",
+          "cites": ["internal/engine/java_auth_policy.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/1942",
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.javascript.framework.next-api",
+      "category": "http_framework",
+      "language": "javascript",
+      "label": "Next.js API routes",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_jsts_extra.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_jsts_extra.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.javascript.framework.trpc",
+      "category": "http_framework",
+      "language": "javascript",
+      "label": "tRPC",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_trpc.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_trpc.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.javascript.orm.prisma",
+      "category": "orm",
+      "language": "javascript",
+      "label": "Prisma",
+      "capabilities": {
+        "model_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/cross/ormlink/extractor.go"],
+          "verified_at": "2026-05-28"
+        },
+        "query_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_queries_jsts.go"],
+          "verified_at": "2026-05-28"
+        },
+        "migration_parsing": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.javascript.orm.typeorm",
+      "category": "orm",
+      "language": "javascript",
+      "label": "TypeORM",
+      "capabilities": {
+        "model_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/cross/ormlink/extractor.go"],
+          "verified_at": "2026-05-28"
+        },
+        "query_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_queries_jsts.go"],
+          "verified_at": "2026-05-28"
+        },
+        "migration_parsing": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.php.framework.laravel",
+      "category": "http_framework",
+      "language": "php",
+      "label": "Laravel",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_php_producer.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_php_producer.go"],
+          "verified_at": "2026-05-28"
+        },
+        "auth_coverage": {
+          "status": "missing"
         }
       }
     },
@@ -41,7 +329,7 @@
         },
         "endpoint_synthesis": {
           "status": "full",
-          "cites": ["internal/engine/django_drf_actions.go","internal/engine/http_endpoint_synthesis.go"],
+          "cites": ["internal/engine/django_drf_actions.go", "internal/engine/http_endpoint_synthesis.go"],
           "verified_at": "2026-05-27"
         },
         "handler_attribution": {
@@ -61,6 +349,9 @@
           "status": "full",
           "cites": ["internal/engine/http_endpoint_synthesis.go"],
           "verified_at": "2026-05-27"
+        },
+        "auth_coverage": {
+          "status": "missing"
         }
       }
     },
@@ -74,6 +365,275 @@
           "status": "full",
           "cites": ["internal/engine/http_endpoint_synthesis.go"],
           "verified_at": "2026-05-27"
+        },
+        "auth_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.pyramid",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Pyramid",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.starlette",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Starlette",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.tornado",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Tornado",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.python.orm.django",
+      "category": "orm",
+      "language": "python",
+      "label": "Django ORM",
+      "capabilities": {
+        "model_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/python/extractor.go"],
+          "verified_at": "2026-05-28"
+        },
+        "migration_parsing": {
+          "status": "full",
+          "cites": ["internal/extractors/python/extractor.go"],
+          "verified_at": "2026-05-28"
+        },
+        "query_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_queries_python.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.python.orm.sqlalchemy",
+      "category": "orm",
+      "language": "python",
+      "label": "SQLAlchemy",
+      "capabilities": {
+        "model_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/cross/ormlink/extractor.go"],
+          "verified_at": "2026-05-28"
+        },
+        "query_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_queries_python.go"],
+          "verified_at": "2026-05-28"
+        },
+        "migration_parsing": {
+          "status": "partial",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2720"
+        }
+      }
+    },
+    {
+      "id": "lang.ruby.framework.rails",
+      "category": "http_framework",
+      "language": "ruby",
+      "label": "Ruby on Rails",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_ruby_producer.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_ruby_producer.go"],
+          "verified_at": "2026-05-28"
+        },
+        "auth_coverage": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.ruby.framework.sinatra",
+      "category": "http_framework",
+      "language": "ruby",
+      "label": "Sinatra",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_ruby_producer.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_ruby_producer.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.rust.framework.axum",
+      "category": "http_framework",
+      "language": "rust",
+      "label": "Axum",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_axum.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_axum.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.rust.framework.rocket",
+      "category": "http_framework",
+      "language": "rust",
+      "label": "Rocket",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/rocket_routes.go"],
+          "verified_at": "2026-05-28"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/rocket_routes.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "msg.broker.kafka",
+      "category": "message_broker",
+      "language": "multi",
+      "label": "Apache Kafka",
+      "capabilities": {
+        "producer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/kafka_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "consumer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/kafka_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "topic_attribution": {
+          "status": "full",
+          "cites": ["internal/links/topic_pass.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "msg.broker.rabbitmq",
+      "category": "message_broker",
+      "language": "multi",
+      "label": "RabbitMQ",
+      "capabilities": {
+        "producer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/rabbitmq_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "consumer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/rabbitmq_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "topic_attribution": {
+          "status": "full",
+          "cites": ["internal/links/topic_pass.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "msg.broker.sqs",
+      "category": "message_broker",
+      "language": "multi",
+      "label": "AWS SQS",
+      "capabilities": {
+        "producer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/sqs_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "consumer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/sqs_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "topic_attribution": {
+          "status": "full",
+          "cites": ["internal/links/topic_pass.go"],
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "protocol.grpc",
+      "category": "protocol",
+      "language": "multi",
+      "label": "gRPC services",
+      "capabilities": {
+        "service_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/grpc_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "method_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/grpc_edges.go"],
+          "verified_at": "2026-05-28"
+        },
+        "cross_repo_linkage": {
+          "status": "full",
+          "cites": ["internal/links/grpc_pass.go"],
+          "verified_at": "2026-05-28"
         }
       }
     }
