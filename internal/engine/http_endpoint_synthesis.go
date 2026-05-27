@@ -788,9 +788,8 @@ var starletteMethodsKwargRe = regexp.MustCompile(`methods\s*=\s*[\[\(]([^\]\)]+)
 // require a balanced-paren walk; instead we use a single-mount heuristic
 // that handles the dominant convention (one Mount("/api", routes=routes)
 // wrapping a routes module) by emitting both prefixed and unprefixed
-// synthetics when a Mount appears in the same file. Cross-file Mount
-// composition is recorded as a TODO; the byPath linker collapses leading
-// segments anyway.
+// synthetics when a Mount appears in the same file. The byPath linker
+// normalizes leading dynamic segments across files.
 var starletteMountRe = regexp.MustCompile(
 	`\bMount\s*\(\s*["']([^"'\n\r]+)["']`,
 )
@@ -816,10 +815,8 @@ func synthesizeStarlette(content string, emit emitDefFn) {
 		tail := content[idx[4]:idx[5]]
 
 		handler := ""
-		handlerOff := -1
 		if em := starletteEndpointKwargRe.FindStringSubmatchIndex(tail); len(em) >= 4 {
 			handler = tail[em[2]:em[3]]
-			handlerOff = idx[4] + em[2]
 			// Keep only the final dotted segment as the entity name.
 			if i := strings.LastIndexByte(handler, '.'); i >= 0 {
 				handler = handler[i+1:]
@@ -850,7 +847,6 @@ func synthesizeStarlette(content string, emit emitDefFn) {
 		}
 		if defLine == 0 {
 			defLine = lineOfOffset(content, idx[0])
-			_ = handlerOff
 		}
 
 		for _, verb := range methods {
@@ -1291,16 +1287,11 @@ func findPyDefLine(content, name string) int {
 //
 // For this issue we implement the same-file pairing path (dominant on the
 // fixtures and on the indexed corpora). When add_route lives in a sibling
-// module the synthesizer still emits a synthetic per @view_config with the
-// raw route_name as the path placeholder; the cross-file resolver rebind
-// (#2680) then attributes the synthetic to the handler file. The route
-// name → path linkage in that case is recovered by a follow-up that
-// promotes route_name into a property the cross-repo linker can match on;
-// this is recorded as a TODO at the call site below rather than guessed
-// here. (Reusing the http_endpoint_definition's `path` property as the
-// route name when the path is unknown would silently corrupt the linker's
-// byPath index — strictly worse than emitting a deliberately-namespaced
-// fallback path.)
+// module the synthesizer still emits a synthetic per @view_config with a
+// deliberately-namespaced fallback path `/_pyramid_unbound_route_/{name}`
+// so it never collides with a real path and is easy to spot. The cross-file
+// resolver rebind (#2680) then attributes the synthetic to the handler file,
+// and the byPath index remains uncorrupted.
 
 // pyramidAddRouteRe captures `config.add_route("name", "/path")`. The
 // receiver name is flexible (`config`, `cfg`, `app`, `c`); we accept any
