@@ -45,6 +45,7 @@ package engine
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -144,6 +145,9 @@ func ApplyCeleryDispatchEdges(
 				continue
 			}
 			seen[key] = true
+			// Line: no tree-sitter node here; derive from regex byte offset.
+			// strings.Count counts '\n' before idx[0] → 0-based row → +1 → 1-based.
+			dispatchLine := strconv.Itoa(strings.Count(s[:idx[0]], "\n") + 1)
 			out = append(out, types.RelationshipRecord{
 				FromID: "SCOPE.Operation:" + caller,
 				ToID:   "Function:" + taskName,
@@ -152,6 +156,7 @@ func ApplyCeleryDispatchEdges(
 					"framework":    "celery",
 					"pattern_type": "celery_dispatch_synthesis",
 					"dispatch":     "async",
+					"line":         dispatchLine,
 				},
 			})
 		}

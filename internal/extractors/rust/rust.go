@@ -14,6 +14,7 @@ package rust
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -219,9 +220,12 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerNa
 			continue
 		}
 		seen[target] = true
+		// Line is 1-based: tree-sitter StartPoint().Row is 0-based.
+		callLine := strconv.Itoa(int(call.StartPoint().Row) + 1)
 		rels = append(rels, types.RelationshipRecord{
-			ToID: target,
-			Kind: "CALLS",
+			ToID:       target,
+			Kind:       "CALLS",
+			Properties: map[string]string{"line": callLine},
 		})
 	}
 	return rels

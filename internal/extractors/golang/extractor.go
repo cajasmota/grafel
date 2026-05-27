@@ -32,6 +32,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -1183,11 +1184,15 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 				mvKey := mvTarget + "?mv"
 				if !seen[mvKey] {
 					seen[mvKey] = true
+					// Line comes from the selector_expression node (n), which
+					// is the method-value reference site. StartPoint().Row is
+					// 0-based; +1 converts to 1-based line number.
+					mvLine := strconv.Itoa(int(n.StartPoint().Row) + 1)
 					mvRec := types.RelationshipRecord{
 						FromID:     callerName,
 						ToID:       mvTarget,
 						Kind:       "CALLS",
-						Properties: map[string]string{"via_value": "true"},
+						Properties: map[string]string{"via_value": "true", "line": mvLine},
 					}
 					if mvRecvMatch && recvType != "" {
 						mvRec.Properties["receiver_type"] = recvType
@@ -1212,6 +1217,9 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 			isSelfCall := target == callerName && (isSelfReceiver || recvType == "")
 			if target != "" && !isSelfCall && !seen[target] {
 				seen[target] = true
+				// Line is the 1-based line of the call_expression node (n).
+				// StartPoint().Row is 0-based per tree-sitter convention.
+				callLine := strconv.Itoa(int(n.StartPoint().Row) + 1)
 				rec := types.RelationshipRecord{
 					FromID: callerName,
 					ToID:   target,
@@ -1219,11 +1227,15 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 				}
 				switch {
 				case isSelfReceiver && recvType != "":
-					rec.Properties = map[string]string{"receiver_type": recvType}
+					rec.Properties = map[string]string{"receiver_type": recvType, "line": callLine}
 				case operand != "":
 					if ty := lookup(operand); ty != "" {
-						rec.Properties = map[string]string{"receiver_type": ty}
+						rec.Properties = map[string]string{"receiver_type": ty, "line": callLine}
+					} else {
+						rec.Properties = map[string]string{"line": callLine}
 					}
+				default:
+					rec.Properties = map[string]string{"line": callLine}
 				}
 				// Issue #614 — interface-field dispatch detection. When the
 				// call is `<recvVarName>.<Field>.<method>(...)` (a 2-level

@@ -61,6 +61,7 @@ package engine
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -230,6 +231,17 @@ func azureFunctionID(name string) string {
 	return "azure-function:" + name
 }
 
+// serverlessLineFromOffset returns the 1-based line number for a byte offset
+// within a source file. Used to populate Properties["line"] on synthetic CALLS
+// edges emitted by the serverless pass; no tree-sitter node is available at
+// engine-pass time, so we count newlines in the preceding bytes instead.
+func serverlessLineFromOffset(src string, offset int) string {
+	if offset <= 0 || offset > len(src) {
+		return "0"
+	}
+	return strconv.Itoa(strings.Count(src[:offset], "\n") + 1)
+}
+
 // looksLikeFunctionName validates that s is a plausible serverless function name
 // (no path separators, whitespace, or template-literal content).
 func looksLikeFunctionName(s string) bool {
@@ -300,7 +312,7 @@ func synthesizePyServerless(
 			id := lambdaFunctionID(name)
 			emitFn(id, name, "aws-lambda", nil)
 			caller := enclosing(m[0])
-			emitCalls("SCOPE.Function", caller, id, "aws-lambda", map[string]string{"sdk": "boto3"})
+			emitCalls("SCOPE.Function", caller, id, "aws-lambda", map[string]string{"sdk": "boto3", "line": serverlessLineFromOffset(src, m[0])})
 		}
 
 		// AWS Lambda — consumer: def lambda_handler(event, context)
@@ -338,7 +350,7 @@ func synthesizePyServerless(
 			}
 			id := azureFunctionID(name)
 			emitFn(id, name, "azure-function", map[string]string{"trigger": "activity"})
-			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "azure-durable-functions"})
+			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "azure-durable-functions", "line": serverlessLineFromOffset(src, m[0])})
 		}
 		for _, m := range pyAzureStartNewRe.FindAllStringSubmatchIndex(src, -1) {
 			name := src[m[2]:m[3]]
@@ -347,7 +359,7 @@ func synthesizePyServerless(
 			}
 			id := azureFunctionID(name)
 			emitFn(id, name, "azure-function", map[string]string{"trigger": "orchestration"})
-			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "azure-durable-functions"})
+			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "azure-durable-functions", "line": serverlessLineFromOffset(src, m[0])})
 		}
 
 		// Azure — consumer: @app.function_name(name='X')
@@ -487,7 +499,7 @@ func synthesizeNodeServerless(
 			}
 			id := lambdaFunctionID(name)
 			emitFn(id, name, "aws-lambda", nil)
-			emitCalls("SCOPE.Function", enclosing(m[0]), id, "aws-lambda", map[string]string{"sdk": "aws-sdk-v3"})
+			emitCalls("SCOPE.Function", enclosing(m[0]), id, "aws-lambda", map[string]string{"sdk": "aws-sdk-v3", "line": serverlessLineFromOffset(src, m[0])})
 		}
 
 		// AWS SDK v2 — lambda.invoke({ FunctionName: 'X' })
@@ -501,7 +513,7 @@ func synthesizeNodeServerless(
 				}
 				id := lambdaFunctionID(name)
 				emitFn(id, name, "aws-lambda", nil)
-				emitCalls("SCOPE.Function", enclosing(m[0]), id, "aws-lambda", map[string]string{"sdk": "aws-sdk-v2"})
+				emitCalls("SCOPE.Function", enclosing(m[0]), id, "aws-lambda", map[string]string{"sdk": "aws-sdk-v2", "line": serverlessLineFromOffset(src, m[0])})
 			}
 		}
 
@@ -548,7 +560,7 @@ func synthesizeNodeServerless(
 			}
 			id := azureFunctionID(name)
 			emitFn(id, name, "azure-function", map[string]string{"trigger": "activity"})
-			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "durable-functions"})
+			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "durable-functions", "line": serverlessLineFromOffset(src, m[0])})
 		}
 		for _, m := range nodeAzureStartNewRe.FindAllStringSubmatchIndex(src, -1) {
 			name := src[m[2]:m[3]]
@@ -557,7 +569,7 @@ func synthesizeNodeServerless(
 			}
 			id := azureFunctionID(name)
 			emitFn(id, name, "azure-function", map[string]string{"trigger": "orchestration"})
-			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "durable-functions"})
+			emitCalls("SCOPE.Function", enclosing(m[0]), id, "azure-function", map[string]string{"sdk": "durable-functions", "line": serverlessLineFromOffset(src, m[0])})
 		}
 
 		// Azure — consumer: module.exports = async function(context, req)
@@ -644,7 +656,7 @@ func synthesizeGoServerless(
 		}
 		id := lambdaFunctionID(name)
 		emitFn(id, name, "aws-lambda", nil)
-		emitCalls("SCOPE.Function", enclosing(m[0]), id, "aws-lambda", map[string]string{"sdk": "aws-sdk-go-v2"})
+		emitCalls("SCOPE.Function", enclosing(m[0]), id, "aws-lambda", map[string]string{"sdk": "aws-sdk-go-v2", "line": serverlessLineFromOffset(src, m[0])})
 	}
 
 	// Consumer: lambda.Start(handler)
@@ -727,7 +739,7 @@ func synthesizeJavaServerless(
 			if caller == "" {
 				caller = "unknown"
 			}
-			emitCalls("SCOPE.Class", caller, id, "aws-lambda", map[string]string{"sdk": "aws-sdk-java-v2"})
+			emitCalls("SCOPE.Class", caller, id, "aws-lambda", map[string]string{"sdk": "aws-sdk-java-v2", "line": serverlessLineFromOffset(src, m[0])})
 		}
 	}
 }
@@ -787,7 +799,7 @@ func synthesizeCSharpServerless(
 		id := azureFunctionID(name)
 		emitFn(id, name, "azure-function", map[string]string{"trigger": "orchestration"})
 		callerMethod := findEnclosingCSharpMethod(src, m[0])
-		emitCalls("SCOPE.Function", callerMethod, id, "azure-function", map[string]string{"sdk": "azure-durable-functions-dotnet"})
+		emitCalls("SCOPE.Function", callerMethod, id, "azure-function", map[string]string{"sdk": "azure-durable-functions-dotnet", "line": serverlessLineFromOffset(src, m[0])})
 	}
 
 	// Producer: CallActivityAsync<T>("FnName", ...)
@@ -799,7 +811,7 @@ func synthesizeCSharpServerless(
 		id := azureFunctionID(name)
 		emitFn(id, name, "azure-function", map[string]string{"trigger": "activity"})
 		callerMethod := findEnclosingCSharpMethod(src, m[0])
-		emitCalls("SCOPE.Function", callerMethod, id, "azure-function", map[string]string{"sdk": "azure-durable-functions-dotnet"})
+		emitCalls("SCOPE.Function", callerMethod, id, "azure-function", map[string]string{"sdk": "azure-durable-functions-dotnet", "line": serverlessLineFromOffset(src, m[0])})
 	}
 }
 

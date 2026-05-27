@@ -12,6 +12,7 @@ package ruby
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -157,7 +158,9 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	}
 	seen := make(map[string]bool)
 	var rels []types.RelationshipRecord
-	add := func(target string) {
+	// addAt appends a CALLS edge with a 1-based line number sourced from the
+	// tree-sitter node that represents the call site.
+	addAt := func(target string, callNode *sitter.Node) {
 		if target == "" || target == callerName {
 			return
 		}
@@ -165,14 +168,17 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 			return
 		}
 		seen[target] = true
+		// Line is 1-based: tree-sitter StartPoint().Row is 0-based.
+		callLine := strconv.Itoa(int(callNode.StartPoint().Row) + 1)
 		rels = append(rels, types.RelationshipRecord{
-			ToID: target,
-			Kind: "CALLS",
+			ToID:       target,
+			Kind:       "CALLS",
+			Properties: map[string]string{"line": callLine},
 		})
 	}
 	// Pass 1: explicit call / command / method_call / yield / super.
 	for _, n := range findAllNodes(body, "call", "command", "method_call") {
-		add(rubyCallTarget(n, src))
+		addAt(rubyCallTarget(n, src), n)
 	}
 	// Pass 2: bare identifier statements inside body_statement / then / else
 	// blocks. These are method invocations like `helper` with no args.
@@ -185,7 +191,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 		if pt != "body_statement" && pt != "then" && pt != "else" && pt != "begin" && pt != "ensure" {
 			continue
 		}
-		add(string(src[ident.StartByte():ident.EndByte()]))
+		addAt(string(src[ident.StartByte():ident.EndByte()]), ident)
 	}
 	return rels
 }
