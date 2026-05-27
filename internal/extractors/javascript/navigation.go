@@ -18,6 +18,19 @@
 //   - Template-literal routes: router.push(`/users/${id}`) → route='/users/{*}'
 //   - Hook-rename binding: const nav = useNavigation(); nav.navigate('X')
 //     detected via hookVarToNavModule table scanned alongside hookVarToModule.
+//
+// Phase 3 additions (#2671) — react-router-dom v6+ and Next.js coverage:
+//   - const navigate = useNavigate(); navigate('/path', {state: {...}})
+//     direct-call navigator (no member expression); the route is the first
+//     argument and params_keys are extracted from the optional `state`/options
+//     object's second argument.
+//   - navigate({pathname, search, hash}) — single object form.
+//   - <Link to="/path">, <NavLink to="/path">, <Navigate to="/path">,
+//     <Redirect to="/path"> — react-router-dom v6+ JSX components.
+//   - <Link href="/path"> — next/link JSX component (href prop).
+//   - Programmatic redirects via window.location.assign('/x') and
+//     `window.location.href = '/x'` are intentionally NOT handled here — they
+//     are too noisy to gate on receiver name alone.
 package javascript
 
 import (
@@ -62,9 +75,22 @@ func normalizeTemplateLiteralRoute(raw string) string {
 //
 // Phase 2 of #2658 — hook-rename binding detection.
 var navigationHookNames = map[string]bool{
-	"useNavigation": true,
-	"useRouter":     true,
-	"useNavigate":   true,
+	"useNavigation": true, // React Navigation (Expo / RN)
+	"useRouter":     true, // Next.js / Expo Router
+	"useNavigate":   true, // react-router-dom v6 (also tracked separately for direct-call form)
+	"useHistory":    true, // react-router-dom v5 (history.push, history.replace)
+}
+
+// directNavigatorHookNames is the subset of navigation hooks whose return value
+// is itself a callable navigator function — invoked directly as `nav('/path')`
+// rather than via a method on a receiver object. Currently react-router-dom's
+// useNavigate is the canonical case.
+//
+// Bindings detected against this set populate `navigatorFnVars` (see
+// buildNavigatorFnVarTable) and are matched by extractDirectNavigatorCall.
+// Phase 3 of navigation extraction (#2671).
+var directNavigatorHookNames = map[string]bool{
+	"useNavigate": true,
 }
 
 // navigationMethodNames is the set of method names recognised as navigation
@@ -527,7 +553,6 @@ func (x *extractor) findVariableBinding(root *sitter.Node, varName string, refNo
 				}
 			}
 		}
-
 		count := int(n.ChildCount())
 		for i := count - 1; i >= 0; i-- {
 			stack = append(stack, n.Child(i))
@@ -654,4 +679,361 @@ func (x *extractor) updateNavigatesEdgeParamKeys(varName string, keys []string) 
 			}
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 (#2671) — react-router-dom direct-call navigator + JSX components
+// ---------------------------------------------------------------------------
+
+// isNavigatorFnVar reports whether varName is bound to a direct-call navigator
+// function — currently only react-router-dom's `useNavigate()` return value.
+// Populated by buildNavigatorFnVarTable in Extract().
+func (x *extractor) isNavigatorFnVar(varName string) bool {
+	return x.navigatorFnVars[varName]
+}
+
+// buildNavigatorFnVarTable scans the AST for variable declarations of the form
+// `const <varName> = <hookName>(...)` where <hookName> ∈ directNavigatorHookNames.
+// Returns a map varName → true for every variable that holds a direct-call
+// navigator function. Phase 3 of navigation extraction (#2671).
+//
+// Mirrors buildNavigationHookVarTable but with a separate map because the
+// receiver-method form (`nav.push`) and direct-call form (`nav('/x')`) have
+// disjoint receiver semantics — conflating them would cause `useNavigate()`'s
+// return value (a function, not an object) to be matched against
+// receiver-method patterns it cannot satisfy.
+func buildNavigatorFnVarTable(x *extractor, root *sitter.Node) map[string]bool {
+	if root == nil {
+		return nil
+	}
+	out := make(map[string]bool)
+	stack := make([]*sitter.Node, 0, 64)
+	stack = append(stack, root)
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n == nil {
+			continue
+		}
+		if n.Type() == "variable_declarator" {
+			nameNode := n.ChildByFieldName("name")
+			valNode := n.ChildByFieldName("value")
+			if nameNode != nil && valNode != nil && valNode.Type() == "call_expression" {
+				localName := x.nodeText(nameNode)
+				if localName != "" && !strings.ContainsAny(localName, "{}[].,") {
+					fnNode := valNode.ChildByFieldName("function")
+					if fnNode != nil {
+						hookName := x.nodeText(fnNode)
+						if directNavigatorHookNames[hookName] {
+							out[localName] = true
+						}
+					}
+				}
+			}
+		}
+		count := int(n.ChildCount())
+		for i := count - 1; i >= 0; i-- {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// extractDirectNavigatorCall inspects a call_expression whose callee is a bare
+// identifier (not a member expression) and, if that identifier is bound to a
+// direct-call navigator (react-router-dom's useNavigate), returns the
+// destination route plus any param keys extracted from the second argument
+// (the options/state object).
+//
+// Three argument shapes are handled:
+//
+//  1. String literal first arg:
+//     navigate('/foo')           → route='/foo'
+//     navigate('/foo', {state: {a, b}})
+//                                → route='/foo', params=['a','b']
+//
+//  2. Template literal first arg (dynamic):
+//     navigate(`/users/${id}`)   → route='/users/{*}'
+//
+//  3. Object-form first arg (react-router supports
+//     navigate({pathname, search, hash})):
+//     navigate({pathname: '/x', search: '?q=1'})
+//                                → route='/x', params=['search']
+func extractDirectNavigatorCall(x *extractor, call *sitter.Node) (route string, params []string, ok bool) {
+	if call == nil {
+		return "", nil, false
+	}
+	fn := call.ChildByFieldName("function")
+	if fn == nil || fn.Type() != "identifier" {
+		return "", nil, false
+	}
+	name := x.nodeText(fn)
+	if !x.isNavigatorFnVar(name) {
+		return "", nil, false
+	}
+
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return "", nil, false
+	}
+	firstArg, secondArg := firstTwoMeaningfulArgs(args)
+	if firstArg == nil {
+		return "", nil, false
+	}
+
+	switch firstArg.Type() {
+	case "string":
+		raw := x.nodeText(firstArg)
+		route = strings.Trim(raw, `"'`+"`")
+	case "template_string":
+		route = normalizeTemplateLiteralRoute(x.nodeText(firstArg))
+	case "object", "object_expression":
+		// react-router v6 supports navigate({pathname, search, hash}) — a
+		// single object form, similar to expo-router. Reuse the object-form
+		// parser but fall back to a key-set extraction when `pathname` is
+		// absent.
+		r, p, _, parsed := extractObjectFormRoute(x, firstArg)
+		if parsed {
+			return r, p, true
+		}
+		// No pathname key — capture the literal key set as params so callers
+		// can still introspect the call shape. Route is unresolvable in that
+		// case; emit no edge.
+		return "", nil, false
+	default:
+		return "", nil, false
+	}
+
+	if route == "" {
+		return "", nil, false
+	}
+
+	// Second argument: react-router v6 navigate(to, {state, replace, relative})
+	// The `state` value, when an object literal, surfaces a useful set of keys
+	// for downstream "who passes <key>?" diff queries — mirrors params_keys on
+	// router.push({params: {...}}). When the second arg is an object literal
+	// without a `state` key, fall back to the object's own keys as the
+	// params_keys set so options like `replace`, `relative` are visible.
+	if secondArg != nil && (secondArg.Type() == "object" || secondArg.Type() == "object_expression") {
+		params = extractNavigateOptionsKeys(x, secondArg)
+	}
+	return route, params, true
+}
+
+// firstTwoMeaningfulArgs returns the first and second non-punctuation children
+// of an arguments node. Either return may be nil when fewer args are present.
+func firstTwoMeaningfulArgs(args *sitter.Node) (first, second *sitter.Node) {
+	count := 0
+	for i := 0; i < int(args.ChildCount()); i++ {
+		ch := args.Child(i)
+		if ch == nil {
+			continue
+		}
+		t := ch.Type()
+		if t == "(" || t == ")" || t == "," {
+			continue
+		}
+		count++
+		if count == 1 {
+			first = ch
+		} else if count == 2 {
+			second = ch
+			return
+		}
+	}
+	return
+}
+
+// extractNavigateOptionsKeys parses the options object passed as the second
+// argument to react-router's navigate(to, opts). When the object has a
+// `state:` key whose value is itself an object literal, returns that nested
+// object's keys (the most informative case). Otherwise returns the top-level
+// option keys — useful for surfacing `replace`, `relative`, etc.
+func extractNavigateOptionsKeys(x *extractor, obj *sitter.Node) []string {
+	if obj == nil {
+		return nil
+	}
+	// Look for a `state:` pair with an object-literal value first.
+	for i := 0; i < int(obj.ChildCount()); i++ {
+		child := obj.Child(i)
+		if child == nil || child.Type() != "pair" {
+			continue
+		}
+		keyNode := child.ChildByFieldName("key")
+		valNode := child.ChildByFieldName("value")
+		if keyNode == nil || valNode == nil {
+			continue
+		}
+		key := strings.Trim(x.nodeText(keyNode), `"'`+"`")
+		if key == "state" && (valNode.Type() == "object" || valNode.Type() == "object_expression") {
+			if keys, _ := extractParamKeys(x, valNode); keys != nil {
+				return keys
+			}
+			return []string{}
+		}
+	}
+	// Fall back to the options object's own keys.
+	keys, _ := extractParamKeys(x, obj)
+	return keys
+}
+
+// jsxNavTagToProp lists JSX components recognised as navigation entry points
+// together with the prop name that carries the destination route literal.
+//
+//   - react-router-dom v6+: <Link to>, <NavLink to>, <Navigate to>, <Redirect to>
+//   - next/link:            <Link href>
+//
+// Both `to` and `href` are checked on every recognised tag so a single Link
+// import resolves whether the surrounding code is react-router or Next.js.
+var jsxNavTagToProp = map[string][]string{
+	"Link":     {"to", "href"},
+	"NavLink":  {"to"},
+	"Navigate": {"to"},
+	"Redirect": {"to"},
+}
+
+// extractJSXNavigationRelationships scans body for JSX nav components
+// (<Link to=...>, <NavLink to=...>, <Navigate to=...>, <Redirect to=...>,
+// <Link href=...>) and emits one NAVIGATES_TO edge per recognised element.
+//
+// The destination route comes from a string-literal or template-literal value
+// on the matched prop; non-literal values (e.g. expression containers like
+// {`/users/${id}`} or {path}) are normalised when possible (template) or
+// dropped otherwise — we do not perform data-flow analysis.
+//
+// Properties set mirror emitNavigationEdge:
+//   - route, line, via="jsx_nav"
+//   - tag — the JSX tag name (Link / NavLink / Navigate / Redirect)
+//   - params_keys — omitted (JSX components do not carry a `state` arg in
+//     a uniform position; future work).
+//
+// Self-renders are not a concern here: navigation tags are imported components
+// from react-router-dom / next-link, never the enclosing component itself.
+func (x *extractor) extractJSXNavigationRelationships(body *sitter.Node) []types.RelationshipRecord {
+	if body == nil {
+		return nil
+	}
+	jsxNodes := findAllNodes(body,
+		"jsx_opening_element",
+		"jsx_self_closing_element",
+	)
+	if len(jsxNodes) == 0 {
+		return nil
+	}
+	var rels []types.RelationshipRecord
+	seen := make(map[string]bool, len(jsxNodes))
+	for _, jx := range jsxNodes {
+		nameNode := jx.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		tag := x.nodeText(nameNode)
+		propNames, ok := jsxNavTagToProp[tag]
+		if !ok {
+			continue
+		}
+		route, line := jsxNavRouteFromAttrs(x, jx, propNames)
+		if route == "" {
+			continue
+		}
+		// Dedupe per (tag,route,line) so a list-like render that draws the
+		// same Link many times doesn't inflate the edge count, but distinct
+		// destinations on different lines all survive.
+		key := tag + "|" + route + "|" + strconv.Itoa(line)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		props := map[string]string{
+			"route": route,
+			"line":  strconv.Itoa(line),
+			"via":   "jsx_nav",
+			"tag":   tag,
+		}
+		rels = append(rels, types.RelationshipRecord{
+			ToID:       "route:" + route,
+			Kind:       "NAVIGATES_TO",
+			Properties: props,
+		})
+	}
+	return rels
+}
+
+// jsxNavRouteFromAttrs walks the attributes of a JSX opening/self-closing
+// element and returns the first string-literal or template-literal value of
+// any attribute whose name matches one of propNames. Line is the 1-indexed
+// source line of the JSX element.
+//
+// Supports:
+//   - <Link to="/x">         (string literal)
+//   - <Link to={"/x"}>       (jsx_expression wrapping a string)
+//   - <Link to={`/x/${id}`}> (template literal, normalised to /x/{*})
+//
+// Non-literal expressions (identifiers, member expressions, function calls)
+// return "" — they require runtime evaluation we don't do.
+func jsxNavRouteFromAttrs(x *extractor, jx *sitter.Node, propNames []string) (string, int) {
+	line := int(jx.StartPoint().Row) + 1
+	for i := 0; i < int(jx.ChildCount()); i++ {
+		attr := jx.Child(i)
+		if attr == nil || attr.Type() != "jsx_attribute" {
+			continue
+		}
+		// First child is the attribute name (property_identifier).
+		var nameChild *sitter.Node
+		for j := 0; j < int(attr.ChildCount()); j++ {
+			c := attr.Child(j)
+			if c != nil && (c.Type() == "property_identifier" || c.Type() == "identifier") {
+				nameChild = c
+				break
+			}
+		}
+		if nameChild == nil {
+			continue
+		}
+		attrName := x.nodeText(nameChild)
+		match := false
+		for _, p := range propNames {
+			if p == attrName {
+				match = true
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+		// The attribute value follows the name; look for a string,
+		// template_string, or jsx_expression child.
+		for j := 0; j < int(attr.ChildCount()); j++ {
+			val := attr.Child(j)
+			if val == nil || val == nameChild {
+				continue
+			}
+			switch val.Type() {
+			case "string":
+				raw := x.nodeText(val)
+				return strings.Trim(raw, `"'`+"`"), line
+			case "template_string":
+				return normalizeTemplateLiteralRoute(x.nodeText(val)), line
+			case "jsx_expression":
+				// Unwrap a single child string / template literal.
+				for k := 0; k < int(val.ChildCount()); k++ {
+					inner := val.Child(k)
+					if inner == nil {
+						continue
+					}
+					switch inner.Type() {
+					case "string":
+						raw := x.nodeText(inner)
+						return strings.Trim(raw, `"'`+"`"), line
+					case "template_string":
+						return normalizeTemplateLiteralRoute(x.nodeText(inner)), line
+					}
+				}
+			}
+		}
+	}
+	return "", line
 }

@@ -213,6 +213,12 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// `const nav = useNavigation(); nav.navigate('X')`.
 	x.navHookVars = buildNavigationHookVarTable(x, root)
 
+	// Phase 3 of #2671 — react-router-dom direct-call navigator binding.
+	// `const navigate = useNavigate()` binds `navigate` to a callable
+	// function; extractDirectNavigatorCall consults this table to emit
+	// NAVIGATES_TO edges from bare `navigate('/path')` call sites.
+	x.navigatorFnVars = buildNavigatorFnVarTable(x, root)
+
 	// Issue #2553 — build the dispatch-map registry before walk() so that
 	// callTarget can synthesise CALLS edges when it sees RESOLVERS[k](args).
 	x.dispatchMaps = x.buildDispatchMaps(root)
@@ -374,6 +380,13 @@ type extractor struct {
 	// calls are recognised as navigation edges even when the receiver name
 	// is not in the static navigationReceiverNames allowlist.
 	navHookVars map[string]bool
+
+	// navigatorFnVars — Phase 3 of #2671 (react-router direct-call form).
+	// Built alongside navHookVars in Extract(); maps local variable names
+	// bound to a direct-call navigator hook (currently react-router-dom's
+	// useNavigate) to true. extractDirectNavigatorCall consults this map to
+	// recognise `navigate('/path', {state: ...})` as a NAVIGATES_TO edge.
+	navigatorFnVars map[string]bool
 
 	// dispatchMaps — Issue #2553. Built once per file in buildDispatchMaps
 	// (called from Extract before walk). Maps variable names that hold a
@@ -1875,7 +1888,12 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 		return nil
 	}
 	calls := findAllNodes(body, "call_expression", "new_expression")
-	if len(calls) == 0 {
+	// Issue #2671 — JSX navigation components (<Link>, <NavLink>, <Navigate>,
+	// <Redirect>, next/link's <Link href=...>) are emitted from any body that
+	// renders them; they do not depend on a call_expression being present.
+	// Collect them up-front so a JSX-only body (no calls) still yields edges.
+	jsxNavRels := x.extractJSXNavigationRelationships(body)
+	if len(calls) == 0 && len(jsxNavRels) == 0 {
 		return nil
 	}
 	seen := make(map[string]bool, len(calls))
@@ -1950,6 +1968,20 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			}
 		}
 
+		// Issue #2671 — react-router-dom direct-call navigator. The function
+		// child is a bare identifier (no member expression), and the
+		// identifier was bound to useNavigate() earlier in the file. Emit a
+		// NAVIGATES_TO edge alongside (not instead of) the bare CALLS edge so
+		// callTarget's normal path can still emit the underlying call.
+		if navRoute, navParams, navOK := extractDirectNavigatorCall(x, call); navOK {
+			navEdge := emitNavigationEdge(navRoute, navParams, "", call)
+			navKey := "nav:" + navEdge.ToID
+			if !seen[navKey] {
+				seen[navKey] = true
+				rels = append(rels, navEdge)
+			}
+		}
+
 		target := x.callTarget(call, frame)
 		if target == "" || target == "require" {
 			continue
@@ -2014,6 +2046,22 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			hookRels := x.extractReactQueryHookCalls(call, callerName, frame, seen)
 			rels = append(rels, hookRels...)
 		}
+	}
+
+	// Issue #2671 — append JSX-navigation edges collected at the top of the
+	// function. Dedupe against the call-derived NAVIGATES_TO edges by ToID +
+	// line so a route reached via both `navigate('/x')` and `<Link to="/x">`
+	// on the same line is not double-counted (rare, but cheap to guard).
+	for _, jr := range jsxNavRels {
+		key := "nav:" + jr.ToID
+		if line, ok := jr.Properties["line"]; ok {
+			key += ":" + line
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		rels = append(rels, jr)
 	}
 	return rels
 }

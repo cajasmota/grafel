@@ -158,7 +158,14 @@ Output: nodes+edges JSON (`raw`) or human-readable Markdown summary (`markdown`)
 
 #### `archigraph_navigates`
 
-Query NAVIGATES_TO edges emitted by the JS/TS navigation extractor (router.push, navigation.navigate, etc.). Phase 2 of #2655 (#2658).
+Query NAVIGATES_TO edges emitted by the JS/TS navigation extractor. Coverage spans:
+
+- Expo Router / React Navigation: `router.push`, `router.replace`, `router.navigate`, `navigation.navigate`, `navigation.push`, `Linking.openURL` (#2655 / #2658 / #2665).
+- react-router-dom v6+: direct-call navigators (`const navigate = useNavigate(); navigate('/path', {state: {...}})`), JSX components (`<Link to>`, `<NavLink to>`, `<Navigate to>`, `<Redirect to>`) (#2671).
+- react-router-dom v5: `useHistory().push` / `.replace` (#2671).
+- Next.js: `useRouter().push` / `.replace`, `<Link href>` from `next/link` (#2671).
+
+Edges carry `Properties[line]`, `Properties[route]`, and `Properties[params_keys]` (sorted, deduped JSON array of static key names from `{params: {...}}` / `{state: {...}}` object literals).
 
 Key parameters:
 - `entity_id` — source (outgoing) or destination (incoming) entity, as `repo::id`.
@@ -184,7 +191,7 @@ Key parameters: `action` (required: `definitions`/`calls`/`stats`), `path_contai
 
 Filters (`path_contains`, `method`) are applied **before** `limit`.
 
-**Navigation surface (#2665).** Two new params fold in-app NAVIGATES_TO routes (Expo Router, React Navigation, Next.js, etc.) into the same tool surface so agents don't need to remember `archigraph_navigates`:
+**Navigation surface (#2665, expanded #2671).** Two params fold in-app NAVIGATES_TO routes (Expo Router, React Navigation, react-router-dom v5+v6 — including `<Link>` / `<NavLink>` / `<Navigate>` JSX components — and Next.js `useRouter`/`<Link href>`) into the same tool surface so agents don't need to remember `archigraph_navigates`:
 
 - `kind="navigation"` — short-circuits any `action` and returns aggregated navigation routes only. Each entry carries `route`, `to_id`, `call_sites`, `params_keys` (sorted, deduped JSON array merged across call-sites), and a `sample_*` locator pointing at the first push-site.
 - `include_navigation=true` (with `action=definitions`) — preserves the HTTP-definitions payload and appends a `navigation_routes` array + `navigation_count` for side-by-side comparison.
