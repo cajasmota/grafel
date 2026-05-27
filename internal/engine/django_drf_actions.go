@@ -85,15 +85,25 @@ var drfClassDefRe = regexp.MustCompile(
 	`class\s+(\w+)\s*\(([^)]*)\)\s*:`,
 )
 
-// drfActionDecoratorRe captures `@action(...)` decorators applied to a
-// method. Group 1 captures the entire argument list (we then parse out
-// `detail`, `methods`, `url_path` substrings); group 2 captures the method
-// name (the `def <name>(` that follows after optional further decorators).
+// drfActionOpenRe locates the OPEN `@action(` token only. The argument list
+// is then walked with a balanced-paren scanner (scanActionDecorator) so
+// `@action(...)` calls whose arguments embed `)` characters — e.g.
+// `url_path='(?P<id>[^/.]+)'` — are captured intact. Group 1 is unused;
+// the scanner returns both the argument body and the def-name itself.
 //
-// The regex tolerates one or more inner decorators between the @action
-// line and the def line, plus the multi-line action arg form.
-var drfActionDecoratorRe = regexp.MustCompile(
-	`@action\s*\(([^)]*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)\s*\(`,
+// Pre-#2669 this was a single `@action\s*\(([^)]*)\)…def\s+(\w+)\s*\(` regex
+// whose `[^)]*` capture truncated at the first inner `)`, silently dropping
+// every @action whose url_path embedded Python named-group regex syntax.
+// The bug manifested as missing endpoint definitions for NoteViewSet's
+// `notes_by_group_and_entity`, `notes_by_entity`, and `entity_type_catalogs`,
+// which cascaded into 7 unresolved mobile orphans on upvate/core-mobile.
+var drfActionOpenRe = regexp.MustCompile(`@action\s*\(`)
+
+// drfActionPostArgsRe matches the post-arguments tail of an @action: zero or
+// more decorator lines followed by `def NAME(`. Anchored at the index just
+// after the closing `)` returned by scanActionDecorator.
+var drfActionPostArgsRe = regexp.MustCompile(
+	`^\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)\s*\(`,
 )
 
 // drfActionMethodsRe pulls the `methods=[...]` or `methods=(...)` clause out
@@ -131,15 +141,12 @@ var drfLookupFieldRe = regexp.MustCompile(
 	`lookup_field\s*=\s*["'](\w+)["']`,
 )
 
-// drfLegacyDetailRouteRe and drfLegacyListRouteRe handle the pre-DRF-3.8
-// `@detail_route(...)` and `@list_route(...)` decorators. They behave like
-// `@action(detail=True, ...)` and `@action(detail=False, ...)` respectively.
-var drfLegacyDetailRouteRe = regexp.MustCompile(
-	`@detail_route\s*\(([^)]*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)\s*\(`,
-)
-var drfLegacyListRouteRe = regexp.MustCompile(
-	`@list_route\s*\(([^)]*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)\s*\(`,
-)
+// drfLegacyDetailRouteOpenRe / drfLegacyListRouteOpenRe locate the OPEN
+// tokens of the pre-DRF-3.8 `@detail_route(` / `@list_route(` decorators.
+// The argument body is walked by scanActionDecorator for the same
+// nested-paren-safety reason as drfActionOpenRe (#2669).
+var drfLegacyDetailRouteOpenRe = regexp.MustCompile(`@detail_route\s*\(`)
+var drfLegacyListRouteOpenRe = regexp.MustCompile(`@list_route\s*\(`)
 
 // drfNestedRouterRe captures `routers.NestedSimpleRouter(parent_router,
 // r"prefix", lookup="parent")` style declarations from drf-nested-routers.
@@ -1563,28 +1570,138 @@ func modelViewSetMethods() map[string]bool {
 // declared inside the given class body.
 func extractActions(body string) []drfAction {
 	var actions []drfAction
-	for _, m := range drfActionDecoratorRe.FindAllStringSubmatch(body, -1) {
-		args := m[1]
-		methodName := m[2]
-		actions = append(actions, parseActionArgs(args, methodName, false))
+	for _, hit := range scanDecoratorCalls(body, drfActionOpenRe) {
+		actions = append(actions, parseActionArgs(hit.args, hit.methodName, false))
 	}
-	for _, m := range drfLegacyDetailRouteRe.FindAllStringSubmatch(body, -1) {
-		args := m[1]
-		methodName := m[2]
-		act := parseActionArgs(args, methodName, true)
+	for _, hit := range scanDecoratorCalls(body, drfLegacyDetailRouteOpenRe) {
+		act := parseActionArgs(hit.args, hit.methodName, true)
 		// detail_route always means detail=True.
 		act.detail = true
 		actions = append(actions, act)
 	}
-	for _, m := range drfLegacyListRouteRe.FindAllStringSubmatch(body, -1) {
-		args := m[1]
-		methodName := m[2]
-		act := parseActionArgs(args, methodName, false)
+	for _, hit := range scanDecoratorCalls(body, drfLegacyListRouteOpenRe) {
+		act := parseActionArgs(hit.args, hit.methodName, false)
 		// list_route always means detail=False.
 		act.detail = false
 		actions = append(actions, act)
 	}
 	return actions
+}
+
+// decoratorCall is one parsed `@<name>(…)` decorator paired with the
+// method declared immediately below it.
+type decoratorCall struct {
+	args       string // body between the outer `(` and the matching `)`
+	methodName string // name from the `def <name>(` line that follows
+}
+
+// scanDecoratorCalls walks `body` for every occurrence of `openRe` (which
+// MUST anchor on `@<name>(` — i.e. include the opening paren) and pairs
+// each occurrence with the balanced argument list and the trailing
+// `def <name>(` line.
+//
+// The balanced-paren scanner respects Python string-literal boundaries
+// (`'…'`, `"…"`, with `\` escapes) so a `url_path='(?P<id>[^/.]+)'`
+// argument is consumed atomically rather than terminating the scan at
+// the first inner `)`. This is the structural fix for #2669: prior code
+// used `@action\s*\(([^)]*)\)…` whose negated-class capture silently
+// truncated at the first embedded `)`, dropping every @action whose
+// url_path embedded Python named-group regex.
+func scanDecoratorCalls(body string, openRe *regexp.Regexp) []decoratorCall {
+	var out []decoratorCall
+	for _, m := range openRe.FindAllStringIndex(body, -1) {
+		openParen := m[1] - 1 // openRe is anchored to include the `(`
+		if openParen < 0 || openParen >= len(body) || body[openParen] != '(' {
+			continue
+		}
+		argsStart := openParen + 1
+		closeIdx, ok := scanBalancedClose(body, argsStart)
+		if !ok {
+			continue
+		}
+		args := body[argsStart:closeIdx]
+		afterClose := closeIdx + 1
+		// Match the `\s*\n…def NAME(` tail. We re-run a small regex on the
+		// suffix so the indentation / extra-decorator tolerance is shared
+		// with the pre-#2669 behaviour.
+		tail := drfActionPostArgsRe.FindStringSubmatchIndex(body[afterClose:])
+		if tail == nil {
+			continue
+		}
+		methodName := body[afterClose+tail[2] : afterClose+tail[3]]
+		out = append(out, decoratorCall{args: args, methodName: methodName})
+	}
+	return out
+}
+
+// scanBalancedClose returns the index of the `)` that balances the
+// implicit opening `(` immediately before `start`, and true. Returns
+// (0, false) if the close is missing. The scanner is aware of:
+//   - Python `'…'` / `"…"` string literals (with `\` escapes inside)
+//   - Triple-quoted `'''…'''` / `"""…"""` blocks (commonly used in
+//     `serializer_class` defaults but harmless to handle here)
+//
+// Nested `(` / `)` outside string literals increment / decrement the
+// depth counter so a `url_path='(?P<id>[^/.]+)'` argument body is
+// traversed without falsely closing at the inner `)`.
+func scanBalancedClose(body string, start int) (int, bool) {
+	depth := 1
+	i := start
+	for i < len(body) {
+		c := body[i]
+		switch c {
+		case '\\':
+			// Outside a string literal a backslash has no special meaning,
+			// but allow it through. (Inside literals the string-literal
+			// branches handle escapes themselves.)
+			i++
+		case '\'', '"':
+			// Detect triple-quote first so `"""x"""` doesn't get consumed as
+			// three empty strings.
+			if i+2 < len(body) && body[i+1] == c && body[i+2] == c {
+				end := strings.Index(body[i+3:], string([]byte{c, c, c}))
+				if end < 0 {
+					return 0, false
+				}
+				i = i + 3 + end + 3
+				continue
+			}
+			// Single-line string literal — walk until the matching quote,
+			// honouring backslash escapes.
+			j := i + 1
+			for j < len(body) {
+				if body[j] == '\\' && j+1 < len(body) {
+					j += 2
+					continue
+				}
+				if body[j] == c {
+					break
+				}
+				if body[j] == '\n' {
+					// Unterminated string on this line — bail and treat
+					// as a malformed decorator.
+					return 0, false
+				}
+				j++
+			}
+			if j >= len(body) {
+				return 0, false
+			}
+			i = j + 1
+		case '(':
+			depth++
+			i++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i, true
+			}
+			i++
+		default:
+			i++
+		}
+	}
+	return 0, false
 }
 
 // parseActionArgs parses the comma-separated argument list of an @action

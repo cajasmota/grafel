@@ -552,6 +552,14 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	matchedConsumers := map[string]bool{} // repo::stampedID → matched
 	allConsumers := map[string]bool{}     // repo::stampedID → seen
 
+	// #2669: resolve-strategy telemetry. attempts is incremented once per
+	// (consumer, producer-repo) probe in the main loop; hitsByStrategy is
+	// incremented exactly once per emitted link (keyed by the strategy that
+	// produced the match). The taxonomy is documented on PassResult.
+	resolveAttempts := 0
+	hitsByStrategy := map[string]int{}
+	missesByReason := map[string]int{}
+
 	// Deterministic iteration order: sort names.
 	names := make([]string, 0, len(hits))
 	for n := range hits {
@@ -658,6 +666,14 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 			for _, pRepo := range producerRepoNames {
 				intraRepo := cRepo == pRepo
 				for _, c := range consumersByRepo[cRepo] {
+					// #2669: every (consumer, producer-repo) candidacy counts as
+					// one resolution attempt, regardless of whether a link is
+					// ultimately emitted. Intra-repo pairs are excluded because
+					// they're segregated into MethodHTTPSelf and don't reflect
+					// the cross-repo orphan health metric this counter feeds.
+					if !intraRepo {
+						resolveAttempts++
+					}
 					// Verb-aware producer selection (#747):
 					//   Tier 1 — producer with the SAME specific verb as the
 					//            consumer (exact_verb).
@@ -791,6 +807,20 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// the per-pass counter. One consumer may link to multiple
 					// producer repos; we count it resolved once it has any link.
 					matchedConsumers[entityKey(c.repo, c.stampedID)] = true
+					// #2669: bucket the hit by the strategy that resolved it.
+					// Order matters: url_pattern + prefix_stripped are checked
+					// before the default "exact" bucket because the main loop
+					// reuses the same `p` variable across retry stages.
+					if !intraRepo {
+						switch {
+						case urlPatternNormAnnotation != "":
+							hitsByStrategy["url_pattern"]++
+						case prefixNormalized != "":
+							hitsByStrategy["prefix_stripped"]++
+						default:
+							hitsByStrategy["exact"]++
+						}
+					}
 
 					ident := canonicalIdentifier(c, p)
 					ch := httpChannel
@@ -923,6 +953,11 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					}
 					emitted[id] = true
 					matchedConsumers[cKey] = true
+					// #2669: orphan-retry sweep matches are by definition the
+					// url_pattern strategy (the byNormPattern index is built
+					// from normalizeURLPattern keys; main loop already tried
+					// the byPath + prefix strategies).
+					hitsByStrategy["url_pattern"]++
 					ident := canonicalIdentifier(c, p)
 					ch := httpChannel
 					link := Link{
@@ -948,6 +983,30 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		}
 	}
 
+	// #2669: classify every unmatched consumer hit by likely miss reason.
+	// We re-walk allConsumers (set in both the main loop and the retry sweep)
+	// and exclude matchedConsumers to find the residual orphans.
+	for _, byRepo := range hits {
+		for _, perRepo := range byRepo {
+			for _, c := range perRepo {
+				if c.side != sideConsumer {
+					continue
+				}
+				cKey := entityKey(c.repo, c.stampedID)
+				if !allConsumers[cKey] || matchedConsumers[cKey] {
+					continue
+				}
+				consumerPath := c.canonicalPath
+				if consumerPath == "" {
+					if _, p, ok := parseHTTPName(c.name); ok {
+						consumerPath = p
+					}
+				}
+				missesByReason[classifyOrphanReason(consumerPath)]++
+			}
+		}
+	}
+
 	// #2585: replace both cross-repo (http) and intra-repo (http_self) entries
 	// atomically so that removing all client calls from a repo cleans both sets.
 	added, skipped, err := replaceByMethod(paths.Links, newMethodSet(MethodHTTP, MethodHTTPSelf), fresh, rejects)
@@ -967,6 +1026,18 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	// matched ones, ensuring orphan_calls ≤ total consumer entity count.
 	res.CrossRepoResolved = len(matchedConsumers)
 	res.OrphanCalls = len(allConsumers) - len(matchedConsumers)
+
+	// #2669: surface the resolve-strategy telemetry. Empty maps are kept
+	// as nil so JSON serialisation omits them rather than emitting `{}`,
+	// which keeps the link-pass-stats payload compact in the common case
+	// where the HTTP pass had no work to do (single-repo group, etc.).
+	res.CrossRepoResolveAttempts = resolveAttempts
+	if len(hitsByStrategy) > 0 {
+		res.CrossRepoResolveHitsByStrategy = hitsByStrategy
+	}
+	if len(missesByReason) > 0 {
+		res.CrossRepoResolveMissesByReason = missesByReason
+	}
 
 	// Diagnostic logging: #2558 tracking of empty canonicalPath handling.
 	// These counters help identify if the fallback path resolution is covering
@@ -1130,6 +1201,47 @@ func pickProducerForConsumer(c *httpEndpointHit, candidates []*httpEndpointHit) 
 		}
 	}
 	return candidates[0], matchQualityWildcard
+}
+
+// dynamicBaseURLRe matches a leading `/{ident}` segment whose name doesn't
+// canonically belong to a path-parameter position. Used by classifyOrphanReason
+// to detect consumer paths like `/{apiUrl}/things` or `/{base_url.rstrip(`
+// where the entire base of the URL is a template expression — these can
+// never resolve without the runtime binding context that flowed into the
+// template. (#2669)
+var dynamicBaseURLRe = regexp.MustCompile(`^/\{[^}]*\}(?:/|$)`)
+
+// classifyOrphanReason returns the stable miss-reason taxonomy key for a
+// consumer path that the HTTP pass could not resolve. Two buckets are
+// recognised today:
+//
+//   - "dynamic_baseurl"  — first segment is a `{template}` expression
+//                          (e.g. `/{apiUrl}/things`, `/{base_url.rstrip(`)
+//                          or the path is otherwise malformed by a partial
+//                          string-template extraction.
+//   - "no_endpoint_match" — the path looks well-formed but no producer in
+//                           any other repo serves it. The dominant case for
+//                           upvate is calls to external services (third-
+//                           party APIs, Cognito JWKS, NYC OpenData, etc.).
+//
+// The classification is deliberately conservative: anything ambiguous falls
+// into "no_endpoint_match" so the bucket reflects what an operator can act
+// on (add the producer, fix the prefix) versus what's structurally outside
+// the group's resolution domain.
+func classifyOrphanReason(consumerPath string) string {
+	if consumerPath == "" {
+		return "no_endpoint_match"
+	}
+	// Anything containing an unclosed `{` (e.g. partial template extraction
+	// like `/{base_url.rstrip(`) is a dynamic_baseurl miss.
+	if strings.ContainsRune(consumerPath, '{') &&
+		strings.Count(consumerPath, "{") != strings.Count(consumerPath, "}") {
+		return "dynamic_baseurl"
+	}
+	if dynamicBaseURLRe.MatchString(consumerPath) {
+		return "dynamic_baseurl"
+	}
+	return "no_endpoint_match"
 }
 
 // splitKindNameRef parses "<Kind>:<Name>" into (kind, name). The Kind

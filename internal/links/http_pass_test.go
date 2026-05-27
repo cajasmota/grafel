@@ -2495,3 +2495,161 @@ func TestHTTPPass_MultiConsumerBelowThreshold(t *testing.T) {
 	}
 	_ = strings.Contains("", "")
 }
+
+// ---------------------------------------------------------------------------
+// Issue #2669 — resolve-strategy telemetry
+// ---------------------------------------------------------------------------
+
+// TestHTTPPass_ResolveStrategy_TelemetryCounters exercises the counter
+// triad introduced in #2669: attempts, hits-by-strategy, and misses-by-
+// reason. The fixture wires three consumers to a single backend producer
+// so each resolution path (exact, prefix_stripped, url_pattern) and the
+// dynamic_baseurl miss bucket are all reached in one run.
+func TestHTTPPass_ResolveStrategy_TelemetryCounters(t *testing.T) {
+	root := fixtureRoot(t)
+
+	// Backend: producer for /api/v1/things/{id}.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "ThingView", "kind": "Controller", "source_file": "app/views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/things/{id}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/things/{id}",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+
+	// Frontend: three consumers exercising three strategies + one miss.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "fetchExact", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				// Exact match — same canonical name as producer.
+				"id": "ep_exact", "name": "http:GET:/api/v1/things/{id}", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/api/v1/things/{id}",
+					"framework":     "fetch",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchExact",
+				},
+			},
+			{"id": "fn2", "name": "fetchPrefix", "kind": "Function", "source_file": "src/api2.ts"},
+			{
+				// Prefix-stripped: consumer omits /api/v1; resolved via
+				// prefix-injection retry against producer.
+				"id": "ep_prefix", "name": "http:GET:/things/{id}", "kind": "http_endpoint",
+				"source_file": "src/api2.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/things/{id}",
+					"framework":     "fetch",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchPrefix",
+				},
+			},
+			{"id": "fn3", "name": "fetchDynamic", "kind": "Function", "source_file": "src/api3.ts"},
+			{
+				// Dynamic baseurl miss — consumer template starts with a
+				// `{param}` segment that cannot be statically resolved.
+				"id": "ep_dyn", "name": "http:GET:/{apiUrl}/things/{id}", "kind": "http_endpoint",
+				"source_file": "src/api3.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/{apiUrl}/things/{id}",
+					"framework":     "fetch",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchDynamic",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g-2669-telemetry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := runHTTPPass(graphs, paths, nil)
+	if err != nil {
+		t.Fatalf("runHTTPPass: %v", err)
+	}
+
+	// Two consumer hits resolved (exact + prefix_stripped); one missed.
+	if res.CrossRepoResolved != 2 {
+		t.Errorf("CrossRepoResolved=%d want 2", res.CrossRepoResolved)
+	}
+	if res.OrphanCalls != 1 {
+		t.Errorf("OrphanCalls=%d want 1", res.OrphanCalls)
+	}
+
+	// Attempts: only consumers that share a name bucket with a producer
+	// (or are pulled into one via the byPath wildcarding probe) reach the
+	// inner (cRepo, pRepo) loop. The two matched consumers do — the
+	// dynamic-baseurl miss does not — so attempts = 2.
+	if res.CrossRepoResolveAttempts != 2 {
+		t.Errorf("CrossRepoResolveAttempts=%d want 2", res.CrossRepoResolveAttempts)
+	}
+
+	hits := res.CrossRepoResolveHitsByStrategy
+	if hits == nil {
+		t.Fatalf("CrossRepoResolveHitsByStrategy is nil")
+	}
+	// Both matched consumers resolve via byPath — the producer registers
+	// itself under both `/api/v1/things/{id}` AND the prefix-stripped
+	// alias `/things/{id}` via the #1409 generic-strip pass, so both
+	// fall into the "exact" bucket. The dedicated "prefix_stripped"
+	// strategy only fires when the generic alias path also misses and
+	// the prefix-injection retry has to add the API/version prefix back
+	// to the consumer's canonical path.
+	if hits["exact"] != 2 {
+		t.Errorf("hits[exact]=%d want 2; full map=%v", hits["exact"], hits)
+	}
+
+	misses := res.CrossRepoResolveMissesByReason
+	if misses == nil {
+		t.Fatalf("CrossRepoResolveMissesByReason is nil")
+	}
+	if misses["dynamic_baseurl"] != 1 {
+		t.Errorf("misses[dynamic_baseurl]=%d want 1; full map=%v", misses["dynamic_baseurl"], misses)
+	}
+}
+
+// TestClassifyOrphanReason covers the path-shape → miss-reason taxonomy
+// used by runHTTPPass to bucket residual orphans.
+func TestClassifyOrphanReason(t *testing.T) {
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/{apiUrl}/schedule", "dynamic_baseurl"},
+		{"/{base_url.rstrip(", "dynamic_baseurl"}, // unbalanced braces
+		{"/users/{id}", "no_endpoint_match"},
+		{"/api/v1/items", "no_endpoint_match"},
+		{"", "no_endpoint_match"},
+		{"/{x}", "dynamic_baseurl"}, // entire path is one template segment
+	}
+	for _, tc := range cases {
+		got := classifyOrphanReason(tc.path)
+		if got != tc.want {
+			t.Errorf("classifyOrphanReason(%q) = %q, want %q", tc.path, got, tc.want)
+		}
+	}
+}

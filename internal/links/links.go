@@ -25,6 +25,7 @@ package links
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -139,6 +140,34 @@ type PassResult struct {
 	// This is the single source of truth; endpoint_tools derives its
 	// cross_repo_resolved counter from this value via the links file.
 	CrossRepoResolved int
+
+	// CrossRepoResolveAttempts is the total number of (consumer, producer-repo)
+	// match attempts the HTTP pass made — i.e. the size of the search space
+	// for cross-repo resolution. CrossRepoResolveHitsByStrategy + the
+	// no-match misses sum to this value. (#2669)
+	CrossRepoResolveAttempts int
+
+	// CrossRepoResolveHitsByStrategy reports how many consumer→producer
+	// resolutions each strategy contributed. Keys (stable):
+	//   - "exact"            byPath bucket hit with a same-name producer
+	//   - "prefix_stripped"  prefix-injection retry (#2569)
+	//   - "url_pattern"      normalizeURLPattern fallback (#2588)
+	//   - "graphql_root"     consumer pointed at /graphql root, producer
+	//                        per-field synthetic registered there (#1496)
+	// (#2669)
+	CrossRepoResolveHitsByStrategy map[string]int
+
+	// CrossRepoResolveMissesByReason reports why consumer hits remained
+	// orphaned. Keys (stable):
+	//   - "no_endpoint_match"  byPath / prefix / url_pattern all missed —
+	//                          no producer with a compatible (verb, path)
+	//                          exists in any other repo
+	//   - "dynamic_baseurl"    consumer path is a template-only string
+	//                          (e.g. "/{apiUrl}/things") whose canonical
+	//                          form collapses to a single param and cannot
+	//                          be matched without runtime context
+	// (#2669)
+	CrossRepoResolveMissesByReason map[string]int
 }
 
 // RunResult is the aggregate of all three passes from RunAllPasses.
@@ -194,6 +223,11 @@ type Paths struct {
 	Candidates string
 	Rejections string
 	ScanCache  string
+	// LinkPassStats is the JSON file where RunAllPasses writes the
+	// PassResult counter snapshot at the end of every run. Picked up by
+	// archigraph_stats so MCP callers can read the resolve-strategy
+	// telemetry (#2669) without re-running the pass pipeline.
+	LinkPassStats string
 }
 
 // PathsFor returns the canonical paths under archigraphHome ("" → ~/.archigraph)
@@ -216,10 +250,11 @@ func PathsFor(archigraphHome, group string) (Paths, error) {
 		cacheDir = filepath.Join(archigraphHome, "cache", group, "string-scan")
 	}
 	return Paths{
-		Links:      filepath.Join(groupsDir, group+"-links.json"),
-		Candidates: filepath.Join(groupsDir, group+"-link-candidates.json"),
-		Rejections: filepath.Join(groupsDir, group+"-link-rejections.json"),
-		ScanCache:  cacheDir,
+		Links:         filepath.Join(groupsDir, group+"-links.json"),
+		Candidates:    filepath.Join(groupsDir, group+"-link-candidates.json"),
+		Rejections:    filepath.Join(groupsDir, group+"-link-rejections.json"),
+		LinkPassStats: filepath.Join(groupsDir, group+"-link-pass-stats.json"),
+		ScanCache:     cacheDir,
 	}, nil
 }
 
@@ -319,7 +354,110 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 		res.TotalLinks += r.LinksAdded
 		res.TotalCandid += r.Candidates
 	}
+
+	// #2669: persist the resolve-strategy telemetry to a small sidecar JSON.
+	// MCP's archigraph_stats reads this file so callers see the counters
+	// without re-running the link pipeline. Write failure is non-fatal — the
+	// link emission itself succeeded and the stats file is purely advisory.
+	if err := writeLinkPassStats(paths.LinkPassStats, res); err != nil {
+		// Surface as a warning but do not fail the whole run; downstream
+		// consumers gracefully degrade to absent telemetry.
+		fmt.Fprintf(os.Stderr, "archigraph: warning: write link pass stats: %v\n", err)
+	}
 	return res, nil
+}
+
+// LinkPassStatsDocument is the on-disk shape of <group>-link-pass-stats.json.
+// Mirrors the per-pass counters that PassResult carries, plus a wall-clock
+// timestamp so MCP responses can tell callers when the snapshot was taken.
+// (#2669)
+type LinkPassStatsDocument struct {
+	Version     int                    `json:"version"`
+	Group       string                 `json:"group"`
+	WrittenAt   string                 `json:"written_at"`
+	Passes      []LinkPassStatsEntry   `json:"passes"`
+	HTTPSummary *HTTPResolveStats      `json:"http_resolve,omitempty"`
+}
+
+// LinkPassStatsEntry is one per-pass counter snapshot.
+type LinkPassStatsEntry struct {
+	Pass              string `json:"pass"`
+	LinksAdded        int    `json:"links_added"`
+	Candidates        int    `json:"candidates"`
+	Skipped           int    `json:"skipped"`
+	OrphanCalls       int    `json:"orphan_calls,omitempty"`
+	CrossRepoResolved int    `json:"cross_repo_resolved,omitempty"`
+}
+
+// HTTPResolveStats is the structured resolve-strategy telemetry surfaced
+// at the document root so MCP can return it without descending into the
+// per-pass list. (#2669)
+type HTTPResolveStats struct {
+	Attempts        int            `json:"cross_repo_resolve_attempts"`
+	HitsByStrategy  map[string]int `json:"cross_repo_resolve_hits_by_strategy,omitempty"`
+	MissesByReason  map[string]int `json:"cross_repo_resolve_misses_by_reason,omitempty"`
+}
+
+// writeLinkPassStats serialises every PassResult counter on res to the
+// given path. The function is idempotent — overwriting the previous run's
+// stats — and atomic via os.WriteFile (rename-on-write under the hood).
+func writeLinkPassStats(path string, res *RunResult) error {
+	if path == "" {
+		return nil
+	}
+	doc := LinkPassStatsDocument{
+		Version:   1,
+		Group:     res.Group,
+		WrittenAt: discoveredAt(),
+	}
+	for _, r := range res.Results {
+		doc.Passes = append(doc.Passes, LinkPassStatsEntry{
+			Pass:              r.Pass,
+			LinksAdded:        r.LinksAdded,
+			Candidates:        r.Candidates,
+			Skipped:           r.Skipped,
+			OrphanCalls:       r.OrphanCalls,
+			CrossRepoResolved: r.CrossRepoResolved,
+		})
+		if r.Pass == "http" {
+			doc.HTTPSummary = &HTTPResolveStats{
+				Attempts:       r.CrossRepoResolveAttempts,
+				HitsByStrategy: r.CrossRepoResolveHitsByStrategy,
+				MissesByReason: r.CrossRepoResolveMissesByReason,
+			}
+		}
+	}
+	buf, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf, 0o644)
+}
+
+// ReadLinkPassStats loads the persisted resolve-strategy telemetry written
+// by writeLinkPassStats. Returns (nil, nil) — i.e. silently absent — when
+// the file does not exist, so callers can treat missing telemetry as
+// "pass has not run yet for this group" without distinguishing it from a
+// real I/O error. (#2669)
+func ReadLinkPassStats(path string) (*LinkPassStatsDocument, error) {
+	if path == "" {
+		return nil, nil
+	}
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var doc LinkPassStatsDocument
+	if err := json.Unmarshal(buf, &doc); err != nil {
+		return nil, err
+	}
+	return &doc, nil
 }
 
 // repoGraph is a small projection of graph.Document used by passes.

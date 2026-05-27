@@ -43,6 +43,7 @@ const (
 //
 // Recognised input forms:
 //   - Django:   `<int:user_id>`, `<str:slug>`, `<uuid:pk>`, `<name>` -> `{user_id}` / `{slug}` / `{pk}` / `{name}`
+//   - Django re_path / DRF @action(url_path=…): `(?P<name>regex)` -> `{name}`
 //   - Flask:    `<int:id>`, `<float:x>`, `<path:rest>`, `<uuid:u>`, `<id>` -> `{id}` / `{x}` / `{rest}` / `{u}` / `{id}`
 //   - FastAPI / JAX-RS / Spring: `{id}`, `{id:regex}` -> `{id}` (regex constraint stripped)
 //   - Express:  `:id`, `:id?` -> `{id}` (optional marker dropped — phase 1)
@@ -54,7 +55,14 @@ func Canonicalize(framework, raw string) string {
 	var out string
 	switch framework {
 	case FrameworkDjango, FrameworkFlask:
-		out = canonicalizeAngleBrackets(raw)
+		// #2669 — Django re_path and DRF @action(url_path=…) frequently embed
+		// Python named-group regex `(?P<name>charclass)` inside the URL. Pre-strip
+		// these to `<name>` so the angle-bracket walker can canonicalise them
+		// uniformly with normal `<int:id>` converters. Without this the embedded
+		// `(?P<…>)` survives into the canonical path and breaks byPath bucketing
+		// across the producer and consumer sides.
+		out = stripPythonNamedGroups(raw)
+		out = canonicalizeAngleBrackets(out)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi:
@@ -65,6 +73,102 @@ func Canonicalize(framework, raw string) string {
 	}
 
 	return normaliseSlashes(out)
+}
+
+// stripPythonNamedGroups rewrites Python regex named-group syntax
+// `(?P<name>charclass)` (and the rarer `(?P<name>literal)`) found inside
+// Django `re_path` patterns and DRF `@action(url_path=…)` strings into the
+// canonical angle-bracket form `<name>`. The wrapping `(?P<` and `>…)` are
+// removed so the angle-bracket walker downstream sees a plain `<name>`
+// token. Group bodies (anything between `>` and the matching `)`) are
+// balanced-aware: nested `(` / `)` are tracked so a group such as
+// `(?P<id>(\d+))` still strips cleanly. Character classes `[…]` are
+// treated as opaque so `[^/.)]+` doesn't terminate the scan early.
+//
+// Examples:
+//
+//	"group/(?P<group_id>[^/.]+)/x"           → "group/<group_id>/x"
+//	"(?P<a>\\d+)/(?P<b>[a-z]+)"              → "<a>/<b>"
+//	"(?P<a>(?:\\d+))"                        → "<a>"
+//
+// Inputs without any `(?P<` substring are returned unchanged so this is
+// safe to call unconditionally on every Django / Flask path.
+func stripPythonNamedGroups(raw string) string {
+	const marker = "(?P<"
+	if !strings.Contains(raw, marker) {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		// Locate the next `(?P<` opening from i.
+		idx := strings.Index(raw[i:], marker)
+		if idx < 0 {
+			b.WriteString(raw[i:])
+			break
+		}
+		// Copy everything up to the marker verbatim.
+		b.WriteString(raw[i : i+idx])
+		// Parse the group: (?P<NAME>BODY) where BODY may contain nested
+		// parens (depth-tracked) and character classes (opaque).
+		nameStart := i + idx + len(marker)
+		nameEnd := strings.IndexByte(raw[nameStart:], '>')
+		if nameEnd < 0 {
+			// Malformed — bail and copy the rest as-is.
+			b.WriteString(raw[i+idx:])
+			break
+		}
+		name := raw[nameStart : nameStart+nameEnd]
+		// Walk the body to find the balanced closing `)`.
+		bodyStart := nameStart + nameEnd + 1
+		depth := 1
+		j := bodyStart
+		for j < len(raw) && depth > 0 {
+			c := raw[j]
+			switch c {
+			case '\\':
+				// Skip an escaped char so `\)` doesn't decrement depth.
+				j += 2
+				continue
+			case '[':
+				// Character class — find its matching `]`. Inside a class,
+				// a leading `]` is literal, and `\` still escapes.
+				j++
+				if j < len(raw) && raw[j] == ']' {
+					j++
+				}
+				for j < len(raw) && raw[j] != ']' {
+					if raw[j] == '\\' && j+1 < len(raw) {
+						j += 2
+						continue
+					}
+					j++
+				}
+				if j < len(raw) {
+					j++ // consume the closing `]`
+				}
+				continue
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					j++ // consume closing `)`
+				} else {
+					j++
+				}
+				continue
+			}
+			j++
+		}
+		// Emit `<name>` and advance past the closing `)`.
+		b.WriteByte('<')
+		b.WriteString(name)
+		b.WriteByte('>')
+		i = j
+	}
+	return b.String()
 }
 
 // canonicalizeAngleBrackets rewrites `<converter:name>` and `<name>` to

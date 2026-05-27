@@ -18,6 +18,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/links"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -2102,18 +2103,18 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	}
 	// Filter cross-repo links to those that touch the considered repos
 	// when an explicit repo_filter is supplied.
-	links := len(lg.Links)
+	linkCount := len(lg.Links)
 	if !all {
-		links = 0
+		linkCount = 0
 		for _, l := range lg.Links {
 			sr, _ := splitPrefixed(l.Source)
 			tr, _ := splitPrefixed(l.Target)
 			if wanted[sr] || wanted[tr] {
-				links++
+				linkCount++
 			}
 		}
 	}
-	totals["cross_repo_links"] = links
+	totals["cross_repo_links"] = linkCount
 	if len(unavailable) > 0 {
 		totals["unavailable"] = unavailable
 	}
@@ -2126,7 +2127,41 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		totals["unresolved_imports_top_roots"] = bd.TopRoots
 	}
 
+	// #2669: surface the HTTP-pass resolve-strategy telemetry persisted to
+	// <group>-link-pass-stats.json next to <group>-links.json. Missing file
+	// is silently elided (group has not been indexed since the counters
+	// shipped, or the link pass hasn't run yet).
+	if lg.LinksFile != "" {
+		statsPath := linkPassStatsPathForLinksFile(lg.LinksFile)
+		if doc, err := links.ReadLinkPassStats(statsPath); err == nil && doc != nil && doc.HTTPSummary != nil {
+			http := map[string]any{
+				"cross_repo_resolve_attempts": doc.HTTPSummary.Attempts,
+			}
+			if len(doc.HTTPSummary.HitsByStrategy) > 0 {
+				http["cross_repo_resolve_hits_by_strategy"] = doc.HTTPSummary.HitsByStrategy
+			}
+			if len(doc.HTTPSummary.MissesByReason) > 0 {
+				http["cross_repo_resolve_misses_by_reason"] = doc.HTTPSummary.MissesByReason
+			}
+			totals["http_resolve"] = http
+		}
+	}
+
 	return jsonResult(totals), nil
+}
+
+// linkPassStatsPathForLinksFile derives the link-pass-stats sidecar path
+// from the canonical links.json path. The convention is
+// `<group>-link-pass-stats.json` next to `<group>-links.json`, matching
+// PathsFor in internal/links. (#2669)
+func linkPassStatsPathForLinksFile(linksFile string) string {
+	const linksSuffix = "-links.json"
+	base := filepath.Base(linksFile)
+	if !strings.HasSuffix(base, linksSuffix) {
+		return ""
+	}
+	group := strings.TrimSuffix(base, linksSuffix)
+	return filepath.Join(filepath.Dir(linksFile), group+"-link-pass-stats.json")
 }
 
 func (s *Server) handleGetTelemetry(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
