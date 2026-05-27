@@ -214,7 +214,7 @@ func TestStatsJSON(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	_, errout, err := runCmd(t, "validate", "--file", fixturePath(t), "--repo-root", repoRoot(t))
+	_, errout, err := runCmd(t, "validate", "--file", fixturePath(t), "--repo-root", repoRoot(t), "--skip-map")
 	if err != nil {
 		t.Fatalf("validate: %v\nstderr:\n%s", err, errout)
 	}
@@ -230,7 +230,7 @@ func TestValidateRejectsBadCite(t *testing.T) {
 		"lang.python.framework.flask"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	_, _, err := runCmd(t, "validate", "--file", tmp, "--repo-root", repoRoot(t))
+	_, _, err := runCmd(t, "validate", "--file", tmp, "--repo-root", repoRoot(t), "--skip-map")
 	if err == nil {
 		t.Fatal("expected validate to fail on missing cite path")
 	}

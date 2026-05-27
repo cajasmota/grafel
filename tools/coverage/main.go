@@ -51,6 +51,8 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return cmdGen(rest, stdout)
 	case "discover":
 		return cmdDiscover(rest, stdout)
+	case "map-status":
+		return cmdMapStatus(rest, stdout)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -73,7 +75,11 @@ subcommands:
   stats     counters across the registry (--json)
   validate  schema + cite-exists + duplicate-id + stale checks
   gen       regenerate docs/coverage/*.md from docs/coverage/registry.json (--out, --file)
-  discover  catalog capabilities from repo signals; emit proposal + orphans + drift (--registry, --repo-root, --json, --include-orphans, --include-drift)`)
+  discover  catalog capabilities from repo signals; emit proposal + orphans + drift (--registry, --repo-root, --json, --include-orphans, --include-drift)
+  map-status show the capability-map.yaml entry for one capability:
+              map-status <record-id>/<capability>             (flat)
+              map-status <record-id>/<group>/<capability>     (grouped)
+            (--repo-root, --json)`)
 }
 
 // registryFlag adds a shared --file flag for overriding the registry
@@ -333,6 +339,7 @@ func cmdValidate(args []string, out, errw io.Writer) error {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	path := registryFlag(fs)
 	repoRoot := fs.String("repo-root", ".", "repository root used to resolve cite paths")
+	skipMap := fs.Bool("skip-map", false, "skip capability-map.yaml integrity checks")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -341,16 +348,37 @@ func cmdValidate(args []string, out, errw io.Writer) error {
 		return err
 	}
 	res := validateRegistry(reg, *repoRoot)
+	var cm *CapabilityMap
+	if !*skipMap {
+		cm, err = LoadCapabilityMap(*repoRoot)
+		if err != nil {
+			return err
+		}
+	}
+	mapRes := validateCapabilityMap(cm, reg, *repoRoot)
 	for _, w := range res.Warnings {
+		fmt.Fprintf(errw, "warning: %s\n", w)
+	}
+	for _, w := range mapRes.Warnings {
 		fmt.Fprintf(errw, "warning: %s\n", w)
 	}
 	for _, e := range res.Errors {
 		fmt.Fprintf(errw, "error: %s\n", e)
 	}
-	if res.HasErrors() {
-		return fmt.Errorf("validation failed: %d error(s)", len(res.Errors))
+	for _, e := range mapRes.Errors {
+		fmt.Fprintf(errw, "error: %s\n", e)
 	}
-	fmt.Fprintf(out, "ok: %d record(s), %d warning(s)\n", len(reg.Records), len(res.Warnings))
+	totalErrors := len(res.Errors) + len(mapRes.Errors)
+	totalWarnings := len(res.Warnings) + len(mapRes.Warnings)
+	if totalErrors > 0 {
+		return fmt.Errorf("validation failed: %d error(s)", totalErrors)
+	}
+	if cm == nil {
+		fmt.Fprintf(out, "ok: %d record(s), %d warning(s) [no capability-map.yaml]\n", len(reg.Records), totalWarnings)
+		return nil
+	}
+	fmt.Fprintf(out, "ok: %d record(s), %d warning(s); mapping: %d record(s), %d symbol(s), %d function(s), %d test(s) checked\n",
+		len(reg.Records), totalWarnings, mapRes.RecordsChecked, mapRes.SymbolsChecked, mapRes.FunctionsChecked, mapRes.TestsChecked)
 	return nil
 }
 

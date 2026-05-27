@@ -1,0 +1,408 @@
+# Capability-mapping file for the archigraph coverage registry.
+#
+# Maps each registry capability cell to the code that implements it:
+#   - symbols.file        the source file
+#   - symbols.functions   the specific functions inside that file
+#   - tests.file          the test file backing the capability
+#   - issues_implemented  PR / issue numbers that landed the work
+#   - verified_at         last manual cross-check date
+#
+# Validated by `go run ./tools/coverage validate` (see #2741 Phase 1).
+# When a cited file or function no longer exists, validation fails.
+#
+# Shape mirrors registry.json: records.<id>.capabilities.<key> for flat
+# records, records.<id>.capabilities.<group>.<key> for grouped records.
+#
+# This file is hand-curated and intentionally INCOMPLETE — entries land
+# as the team writes them. The validator warns (not errors) when a
+# full/partial registry cell lacks a mapping entry, so coverage grows
+# incrementally without blocking unrelated work.
+
+records:
+
+  lang.jsts.framework.react:
+    capabilities:
+      Structure:
+        component_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/extractor.go
+              functions: [extractJSXRendersRelationships]
+            - file: internal/engine/rules/javascript_typescript/frameworks/react.yaml
+          issues_implemented: ["2735"]
+          verified_at: "2026-05-28"
+        hook_recognition:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/destructure_bindings.go
+              functions: [isZustandHookName, isReactQueryHook]
+            - file: internal/engine/rules/javascript_typescript/frameworks/react.yaml
+          issues_implemented: ["2735"]
+          verified_at: "2026-05-28"
+        jsx_template:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/extractor.go
+              functions: [extractJSXRendersRelationships]
+          tests:
+            - file: internal/extractors/javascript/issue610_jsx_renders_test.go
+          issues_implemented: ["2665", "2735"]
+          verified_at: "2026-05-28"
+      Data Flow:
+        state_management:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/zustand_store.go
+              functions:
+                - emitStoreActionEntities
+                - extractFactoryFromMiddlewareCall
+                - buildZustandTracker
+                - extractStoreActionsWithNodes
+                - zustandSelectorActionEdges
+            - file: internal/extractors/javascript/destructure_bindings.go
+              functions:
+                - buildDestructureBindings
+                - parseSelectorArrowFn
+                - isZustandHookName
+          tests:
+            - file: internal/extractors/javascript/issue2590_zustand_store_test.go
+            - file: internal/extractors/javascript/issue2632_zustand_selector_test.go
+            - file: internal/extractors/javascript/issue2631_zustand_id_collision_test.go
+          issues_implemented: ["2632", "2656", "2661"]
+          verified_at: "2026-05-28"
+        data_fetching:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/extractor.go
+              functions: [extractReactQueryHookCalls]
+            - file: internal/extractors/javascript/destructure_bindings.go
+              functions: [isReactQueryHook]
+          tests:
+            - file: internal/extractors/javascript/issue2554_react_query_test.go
+          issues_implemented: ["2554"]
+          verified_at: "2026-05-28"
+        prop_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/navigation.go
+              functions: [jsxNavRouteFromAttrs, extractParamKeys]
+          issues_implemented: ["2665"]
+          verified_at: "2026-05-28"
+      Navigation:
+        router_pattern:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/navigation.go
+              functions:
+                - extractNavigationCall
+                - emitNavigationEdge
+                - buildNavigationHookVarTable
+                - extractObjectFormRoute
+                - extractParamKeys
+          tests:
+            - file: internal/extractors/javascript/issue2655_navigation_test.go
+            - file: internal/extractors/javascript/issue2658_navigation_phase2_test.go
+            - file: internal/extractors/javascript/issue2671_react_router_nav_test.go
+            - file: internal/extractors/javascript/issue2665_navigation_params_keys_test.go
+          issues_implemented: ["2657", "2658", "2664", "2665", "2671"]
+          verified_at: "2026-05-28"
+
+  lang.jsts.framework.react-native:
+    capabilities:
+      Navigation:
+        navigation_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/navigation.go
+              functions:
+                - extractNavigationCall
+                - emitNavigationEdge
+                - buildNavigationHookVarTable
+            - file: internal/engine/rules/javascript_typescript/frameworks/react_native.yaml
+            - file: internal/engine/rules/javascript_typescript/frameworks/expo.yaml
+          tests:
+            - file: internal/extractors/javascript/issue2655_navigation_test.go
+            - file: internal/extractors/javascript/issue2658_navigation_phase2_test.go
+          issues_implemented: ["2657", "2658", "2664"]
+          verified_at: "2026-05-28"
+        screen_detection:
+          status: full
+          symbols:
+            - file: internal/engine/rules/javascript_typescript/frameworks/react_native.yaml
+            - file: internal/engine/rules/javascript_typescript/frameworks/expo.yaml
+          issues_implemented: ["2657", "2658"]
+          verified_at: "2026-05-28"
+      Platform:
+        platform_branching:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/platform_variants.go
+              functions:
+                - isPlatformVariantFile
+                - emitPlatformVariantRelationships
+                - stripOnePlatformSuffix
+          tests:
+            - file: internal/extractors/javascript/platform_variants_test.go
+          issues_implemented: ["2666"]
+          verified_at: "2026-05-28"
+      Data Flow:
+        state_management:
+          status: partial
+          symbols:
+            - file: internal/extractors/javascript/zustand_store.go
+              functions: [emitStoreActionEntities, buildZustandTracker]
+            - file: internal/extractors/javascript/destructure_bindings.go
+              functions: [buildDestructureBindings, parseSelectorArrowFn]
+          issues_implemented: ["2632", "2656", "2661"]
+          verified_at: "2026-05-28"
+
+  lang.python.framework.django-drf:
+    capabilities:
+      endpoint_synthesis:
+        status: full
+        symbols:
+          - file: internal/engine/django_drf_actions.go
+            functions:
+              - ApplyDjangoDRFRoutes
+              - DeduplicateNestedURLConfDRF
+              - DeduplicateHTTPSynthesisANY
+              - parseViewSetClass
+              - emitOneCRUDFamily
+          - file: internal/extractors/python/django_drf_actions.go
+            functions:
+              - emitDRFActionProperties
+              - walkDRFAction
+              - scanClassBodyForActions
+          - file: internal/extractors/python/router_register.go
+            functions: [emitRouterRegisterEdges]
+        tests:
+          - file: internal/extractors/python/django_drf_actions_test.go
+        issues_implemented: ["2549", "2570", "2579", "2677"]
+        verified_at: "2026-05-28"
+      handler_attribution:
+        status: full
+        symbols:
+          - file: internal/engine/django_drf_actions.go
+            functions: [ApplyDjangoDRFRoutes, parseViewSetClass]
+          - file: internal/extractors/python/drf_serializer_fields.go
+            functions:
+              - emitDRFSerializerFieldRefs
+              - extractRelatedFieldTarget
+              - appendUsesEdge
+        tests:
+          - file: internal/extractors/python/drf_serializer_fields_test.go
+        issues_implemented: ["2677"]
+        verified_at: "2026-05-28"
+      auth_coverage:
+        status: partial
+        symbols:
+          - file: internal/extractors/python/django_drf_actions.go
+            functions: [parseActionKwargs, scanClassBodyForActions]
+        issues_implemented: []
+        verified_at: "2026-05-28"
+
+  lang.python.framework.flask:
+    capabilities:
+      endpoint_synthesis:
+        status: full
+        symbols:
+          - file: internal/engine/http_endpoint_synthesis.go
+            functions: [synthesizeFlask, parseFlaskMethods]
+          - file: internal/engine/rules/python/frameworks/flask.yaml
+        issues_implemented: ["2681"]
+        verified_at: "2026-05-28"
+      handler_attribution:
+        status: full
+        symbols:
+          - file: internal/engine/http_endpoint_synthesis.go
+            functions: [synthesizeFlask]
+          - file: internal/engine/rules/python/frameworks/flask.yaml
+        issues_implemented: ["2681"]
+        verified_at: "2026-05-28"
+
+  lang.python.framework.fastapi:
+    capabilities:
+      endpoint_synthesis:
+        status: full
+        symbols:
+          - file: internal/engine/http_endpoint_synthesis.go
+            functions: [synthesizeFastAPI]
+          - file: internal/engine/rules/python/frameworks/fastapi.yaml
+        issues_implemented: ["2681"]
+        verified_at: "2026-05-28"
+      handler_attribution:
+        status: full
+        symbols:
+          - file: internal/engine/http_endpoint_synthesis.go
+            functions: [synthesizeFastAPI]
+          - file: internal/engine/rules/python/frameworks/fastapi.yaml
+        issues_implemented: ["2681"]
+        verified_at: "2026-05-28"
+      auth_coverage:
+        status: partial
+        symbols:
+          - file: internal/engine/rules/python/frameworks/fastapi.yaml
+        issues_implemented: []
+        verified_at: "2026-05-28"
+
+  lang.jsts.framework.express:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/framework_dsl.go
+              functions:
+                - buildFrameworkDSLTracker
+                - isExpressFactoryCall
+                - isRequireExpressCall
+            - file: internal/engine/rules/javascript_typescript/frameworks/express.yaml
+          tests:
+            - file: internal/extractors/javascript/framework_dsl_test.go
+          issues_implemented: ["2687"]
+          verified_at: "2026-05-28"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/framework_dsl.go
+              functions: [buildFrameworkDSLTracker, isExpressFactoryCall]
+            - file: internal/engine/rules/javascript_typescript/frameworks/express.yaml
+          issues_implemented: ["2687"]
+          verified_at: "2026-05-28"
+      Middleware:
+        middleware_coverage:
+          status: partial
+          symbols:
+            - file: internal/engine/rules/javascript_typescript/frameworks/express.yaml
+          issues_implemented: []
+          verified_at: "2026-05-28"
+
+  lang.jsts.framework.nestjs:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/framework_dsl.go
+              functions: [isNestFactoryCreateCall, buildFrameworkDSLTracker]
+            - file: internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml
+          issues_implemented: ["2687"]
+          verified_at: "2026-05-28"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml
+          issues_implemented: ["2687"]
+          verified_at: "2026-05-28"
+      Security:
+        auth_coverage:
+          status: partial
+          symbols:
+            - file: internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml
+          issues_implemented: []
+          verified_at: "2026-05-28"
+      Middleware:
+        middleware_coverage:
+          status: partial
+          symbols:
+            - file: internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml
+          issues_implemented: []
+          verified_at: "2026-05-28"
+
+  lang.jsts.framework.next-api:
+    capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/rules/javascript_typescript/frameworks/next_js.yaml
+          issues_implemented: ["2687"]
+          verified_at: "2026-05-28"
+        router_pattern:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/navigation.go
+              functions: [extractNavigationCall, emitNavigationEdge]
+            - file: internal/engine/rules/javascript_typescript/frameworks/next_js.yaml
+          issues_implemented: ["2671", "2687"]
+          verified_at: "2026-05-28"
+
+  lang.java.framework.spring-boot:
+    capabilities:
+      endpoint_synthesis:
+        status: full
+        symbols:
+          - file: internal/engine/http_endpoint_synthesis.go
+            functions: [synthesizeSpringFromComposed]
+          - file: internal/engine/spring_routes.go
+            functions:
+              - applySpringRouteComposition
+              - extractSpringComposedRoutes
+              - walkSpringClasses
+              - processSpringClass
+              - annotationNameAndPath
+              - joinRoutePaths
+              - httpMethodForAnnotation
+          - file: internal/engine/rules/java/frameworks/spring_boot.yaml
+          - file: internal/engine/rules/java/frameworks/spring_mvc.yaml
+        issues_implemented: ["2680"]
+        verified_at: "2026-05-28"
+      handler_attribution:
+        status: full
+        symbols:
+          - file: internal/engine/spring_routes.go
+            functions: [extractSpringComposedRoutes, processSpringClass]
+          - file: internal/engine/java_annotation_routes.go
+            functions:
+              - ApplyJavaAnnotationRoutesWithContext
+              - ApplyJavaAnnotationRoutes
+              - extractJavaEndpoints
+              - containsAnyHTTPAnnotation
+        issues_implemented: ["2680"]
+        verified_at: "2026-05-28"
+      auth_coverage:
+        status: full
+        symbols:
+          - file: internal/engine/java_auth_policy.go
+            functions:
+              - ResolveJavaAuthPolicy
+              - matchAnnotationPolicy
+              - parsePreAuthorizeRoles
+              - EncodeAuthPolicy
+              - DecodeAuthPolicy
+              - BuildJavaAuthContext
+        issues_implemented: ["2680"]
+        verified_at: "2026-05-28"
+      middleware_coverage:
+        status: partial
+        symbols:
+          - file: internal/engine/java_annotation_params.go
+            functions:
+              - extractJavaParameters
+              - classifyJavaParam
+              - paramRecord
+        issues_implemented: []
+        verified_at: "2026-05-28"
+
+  lang.go.framework.gin:
+    capabilities:
+      endpoint_synthesis:
+        status: full
+        symbols:
+          - file: internal/engine/go_routes.go
+            functions:
+              - applyGoRouteComposition
+              - extractGoHandlerBindings
+              - buildGoVarTypeMap
+              - inferGoExprType
+              - typeNameFromExpr
+          - file: internal/engine/rules/go/frameworks/gin.yaml
+        issues_implemented: ["2679"]
+        verified_at: "2026-05-28"
+      handler_attribution:
+        status: full
+        symbols:
+          - file: internal/engine/go_routes.go
+            functions: [applyGoRouteComposition, extractGoHandlerBindings]
+        issues_implemented: ["2679"]
+        verified_at: "2026-05-28"
