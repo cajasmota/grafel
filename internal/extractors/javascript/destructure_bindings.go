@@ -46,6 +46,12 @@ import (
 // edges resolved through the destructure-binding table.
 const PropViaDestructuredBinding = "destructured_binding"
 
+// PropViaZustandSelector is the Properties["via"] value stamped on CALLS edges
+// resolved through a single-property arrow-selector binding (issue #2632):
+//
+//	const softLogout = useAuthStore(s => s.softLogout);
+const PropViaZustandSelector = "zustand_selector"
+
 // destructureBinding describes one local binding introduced by an object-pattern
 // destructuring statement.
 type destructureBinding struct {
@@ -127,13 +133,43 @@ func (x *extractor) buildDestructureBindings(scope *sitter.Node) map[string]*des
 // scanDestructureDeclarator processes a single variable_declarator node.
 // If the LHS is an object_pattern and the RHS matches a known source pattern,
 // it registers one destructureBinding per property in the object pattern.
+//
+// This also handles the single-property selector form (issue #2632):
+//
+//	const softLogout = useAuthStore(s => s.softLogout);
+//	softLogout();  ← needs CALLS edge
+//
+// When the LHS is a plain identifier and the RHS is a Zustand hook call whose
+// first argument is a simple member-expression arrow (s => s.action or s => s?.action),
+// one binding is registered: localName → actionName via=zustand_selector.
 func (x *extractor) scanDestructureDeclarator(decl *sitter.Node, out map[string]*destructureBinding) {
 	nameNode := decl.ChildByFieldName("name")
-	if nameNode == nil || nameNode.Type() != "object_pattern" {
+	if nameNode == nil {
 		return
 	}
 	valueNode := decl.ChildByFieldName("value")
 	if valueNode == nil {
+		return
+	}
+
+	// ── Single-property selector form (issue #2632) ──────────────────────────
+	// const softLogout = useAuthStore(s => s.softLogout);
+	if nameNode.Type() == "identifier" {
+		if actionName := x.parseSelectorArrowFn(valueNode); actionName != "" {
+			localName := x.nodeText(nameNode)
+			if localName != "" {
+				out[localName] = &destructureBinding{
+					localName:    localName,
+					sourceTarget: actionName,
+					via:          PropViaZustandSelector,
+				}
+				return
+			}
+		}
+	}
+
+	// ── Object-pattern destructuring form (issue #2625) ──────────────────────
+	if nameNode.Type() != "object_pattern" {
 		return
 	}
 
@@ -267,6 +303,99 @@ func (x *extractor) classifyDestructureRHS(value *sitter.Node) (via, calleeBase 
 	}
 
 	return "", ""
+}
+
+// parseSelectorArrowFn detects the single-property Zustand selector pattern (issue #2632):
+//
+//	useAuthStore(s => s.softLogout)          → "softLogout"
+//	useAuthStore((s) => s.softLogout)        → "softLogout"  (parenthesised param)
+//	useAuthStore(state => state.softLogout)  → "softLogout"  (any param name)
+//	useAuthStore(s => s?.softLogout)         → "softLogout"  (optional chain)
+//
+// Derived-value selectors like useAuthStore(s => Boolean(s.user)) return "" so
+// no spurious CALLS edge is emitted for non-callable selected values.
+//
+// Returns the action name on success or "" when the node does not match.
+func (x *extractor) parseSelectorArrowFn(value *sitter.Node) string {
+	if value == nil || value.Type() != "call_expression" {
+		return ""
+	}
+	// Callee must be a Zustand hook (useXxxStore).
+	fnNode := value.ChildByFieldName("function")
+	if fnNode == nil {
+		return ""
+	}
+	callee := x.calleeLeafName(fnNode)
+	if !isZustandHookName(callee) {
+		return ""
+	}
+	// First argument must be an arrow_function.
+	argsNode := value.ChildByFieldName("arguments")
+	if argsNode == nil {
+		return ""
+	}
+	// Find the first non-punctuation child of the arguments node.
+	var arrowNode *sitter.Node
+	for i := 0; i < int(argsNode.ChildCount()); i++ {
+		child := argsNode.Child(i)
+		if child == nil {
+			continue
+		}
+		t := child.Type()
+		if t == "(" || t == ")" || t == "," {
+			continue
+		}
+		arrowNode = child
+		break
+	}
+	if arrowNode == nil || arrowNode.Type() != "arrow_function" {
+		return ""
+	}
+	// Arrow body must be a simple member_expression (s.action) or
+	// optional member_expression (s?.action).  Anything else (call, binary,
+	// sequence, etc.) is a derived value — skip it.
+	bodyNode := arrowNode.ChildByFieldName("body")
+	if bodyNode == nil {
+		return ""
+	}
+	if bodyNode.Type() != "member_expression" && bodyNode.Type() != "optional_chain" {
+		return ""
+	}
+
+	// For optional_chain (s?.x) the grammar nests differently; normalise by
+	// accepting either member_expression or optional_chain and extracting the
+	// rightmost property identifier.
+	var propNode *sitter.Node
+	switch bodyNode.Type() {
+	case "member_expression":
+		// Verify that the object side is the arrow param — prevents chained
+		// access like s.nested.action from being treated as a single action.
+		objNode := bodyNode.ChildByFieldName("object")
+		if objNode == nil {
+			return ""
+		}
+		// Allow only a bare identifier (the selector parameter).
+		if objNode.Type() != "identifier" {
+			return ""
+		}
+		propNode = bodyNode.ChildByFieldName("property")
+	case "optional_chain":
+		// tree-sitter-javascript encodes `s?.x` as:
+		//   optional_chain → member_expression{object=s, property=x}
+		// or in some versions as a flat optional chain node. Walk children to
+		// find the trailing property_identifier.
+		for i := int(bodyNode.ChildCount()) - 1; i >= 0; i-- {
+			child := bodyNode.Child(i)
+			if child != nil && (child.Type() == "property_identifier" || child.Type() == "identifier") {
+				propNode = child
+				break
+			}
+		}
+	}
+	if propNode == nil {
+		return ""
+	}
+	return x.nodeText(propNode)
 }
 
 // calleeLeafName extracts the trailing identifier name from a function expression node.
