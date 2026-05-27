@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ | ❌ | ❌ | ❌ | |
 | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | — | — | ⚠️ | — | |
@@ -31,7 +31,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [AssertJ](../detail/test.assertj.md) | ❌ | — | — | ❌ | |
 | [Gradle (Groovy + Kotlin DSL)](../detail/build.gradle.md) | ✅ | — | — | ✅ | |
@@ -46,7 +46,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | — | ⚠️ | ⚠️ | |
 | [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ | ❌ | ❌ | |

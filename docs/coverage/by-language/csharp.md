@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | — | — | ⚠️ | — | |
 | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ❌ | ✅ | ✅ | ⚠️ | |
@@ -27,7 +27,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [.csproj / packages.config](../detail/pkg.csproj.md) | — | ❌ | ❌ | — | |
 | [FluentAssertions](../detail/test.fluentassertions.md) | ❌ | — | — | ❌ | |
@@ -39,7 +39,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | — | — | ⚠️ | |
 | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | — | — | ⚠️ | |

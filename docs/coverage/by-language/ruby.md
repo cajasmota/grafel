@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Cuba](../detail/lang.ruby.framework.cuba.md) | ❌ | ❌ | ❌ | ❌ | |
 | [Grape](../detail/lang.ruby.framework.grape.md) | ❌ | ✅ | ✅ | ❌ | |
@@ -20,7 +20,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [Bundler (Gemfile)](../detail/build.bundler.md) | ✅ | — | — | ✅ | |
 | [Cucumber](../detail/test.cucumber.md) | ❌ | — | — | ❌ | |
@@ -31,7 +31,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | — | — | ⚠️ | |
 | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | ❌ | ✅ | ✅ | |

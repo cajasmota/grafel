@@ -46,6 +46,12 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 		} else if _, ok := categoryCapabilities[rec.Category]; !ok {
 			res.Errors = append(res.Errors, fmt.Sprintf("%s: unknown category %q (known: %v)", prefix, rec.Category, knownCategories()))
 		}
+		if rec.Subcategory != "" {
+			if !validSubcategory(rec.Category, rec.Subcategory) {
+				known := knownSubcategories(rec.Category)
+				res.Errors = append(res.Errors, fmt.Sprintf("%s: unknown subcategory %q for category %q (known: %v)", prefix, rec.Subcategory, rec.Category, known))
+			}
+		}
 		if rec.Language == "" {
 			res.Errors = append(res.Errors, prefix+": language is empty")
 		}
@@ -58,8 +64,22 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 		for _, k := range keys {
 			cap := rec.Capabilities[k]
 			capPrefix := fmt.Sprintf("%s.capabilities[%s]", prefix, k)
-			if !validCapabilityKey(rec.Category, k) {
-				res.Errors = append(res.Errors, fmt.Sprintf("%s: invalid capability key for category %q", capPrefix, rec.Category))
+			// When a record opts in to a subcategory, accept either the
+			// subcategory's keys or the category-wide keys (subcategories
+			// extend, they do not replace). Without a subcategory, fall
+			// back to the legacy category-only allow-list.
+			validKey := false
+			if rec.Subcategory != "" && validSubcategory(rec.Category, rec.Subcategory) {
+				validKey = validCapabilityKeyForSubcategory(rec.Category, rec.Subcategory, k)
+			} else {
+				validKey = validCapabilityKey(rec.Category, k)
+			}
+			if !validKey {
+				if rec.Subcategory != "" {
+					res.Errors = append(res.Errors, fmt.Sprintf("%s: invalid capability key for category %q subcategory %q", capPrefix, rec.Category, rec.Subcategory))
+				} else {
+					res.Errors = append(res.Errors, fmt.Sprintf("%s: invalid capability key for category %q", capPrefix, rec.Category))
+				}
 			}
 			if _, ok := validStatuses[cap.Status]; !ok {
 				res.Errors = append(res.Errors, fmt.Sprintf("%s: invalid status %q", capPrefix, cap.Status))

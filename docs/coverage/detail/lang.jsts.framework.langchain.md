@@ -5,16 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** AI Integration
+- **Capability cells:** 3
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/langchain.yaml` |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — |
+| `chain_composition` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/langchain.yaml` |
+| `prompt_template_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/langchain.yaml` |
+| `tool_use_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
 
 ## Provenance
 

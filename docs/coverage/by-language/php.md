@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [CakePHP](../detail/lang.php.framework.cakephp.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
 | [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
@@ -24,7 +24,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [Behat](../detail/test.behat.md) | ❌ | — | — | ❌ | |
 | [Codeception](../detail/test.codeception.md) | ❌ | — | — | ❌ | |
@@ -35,7 +35,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | — | — | ⚠️ | |
 | [CycleORM](../detail/lang.php.orm.cycleorm.md) | ❌ | ❌ | ❌ | |

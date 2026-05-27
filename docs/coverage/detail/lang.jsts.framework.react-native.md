@@ -5,16 +5,19 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** Mobile
+- **Capability cells:** 6
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/react_native.yaml` |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — |
+| `deep_link_extraction` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `native_module_imports` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `navigation_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/react_native.yaml` |
+| `platform_branching` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2666) | `internal/engine/rules/javascript_typescript/frameworks/react_native.yaml` |
+| `screen_detection` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/react_native.yaml` |
+| `state_management` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2632) | `internal/engine/rules/javascript_typescript/frameworks/react_native.yaml` |
 
 ## Provenance
 

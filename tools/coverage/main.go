@@ -66,7 +66,7 @@ func printUsage(w io.Writer) {
 subcommands:
   list      list records (filters: --status, --by-language, --by-category, --stale-days, --json)
   get       show one record by id (--json)
-  add       insert a new record (--id, --category, --language, --label)
+  add       insert a new record (--id, --category, [--subcategory], --language, --label)
   update    update one capability cell (id positional, --capability, --status, --cites, --verified-now, --issue)
   remove    delete a record by id
   gaps      list missing/partial records (--language, --category, --json)
@@ -136,6 +136,7 @@ func cmdAdd(args []string, out io.Writer) error {
 	path := registryFlag(fs)
 	id := fs.String("id", "", "record ID (required)")
 	cat := fs.String("category", "", "category (required)")
+	sub := fs.String("subcategory", "", "subcategory (optional; must be declared for --category)")
 	lang := fs.String("language", "", "language (required)")
 	label := fs.String("label", "", "human-readable label (required)")
 	if err := fs.Parse(args); err != nil {
@@ -150,6 +151,9 @@ func cmdAdd(args []string, out io.Writer) error {
 	if _, ok := categoryCapabilities[*cat]; !ok {
 		return fmt.Errorf("add: unknown category %q (known: %v)", *cat, knownCategories())
 	}
+	if *sub != "" && !validSubcategory(*cat, *sub) {
+		return fmt.Errorf("add: unknown subcategory %q for category %q (known: %v)", *sub, *cat, knownSubcategories(*cat))
+	}
 	reg, err := loadRegistry(*path)
 	if err != nil {
 		return err
@@ -160,6 +164,7 @@ func cmdAdd(args []string, out io.Writer) error {
 	reg.Records = append(reg.Records, Record{
 		ID:           *id,
 		Category:     *cat,
+		Subcategory:  *sub,
 		Language:     *lang,
 		Label:        *label,
 		Capabilities: map[string]Capability{},
@@ -200,7 +205,11 @@ func cmdUpdate(args []string, out io.Writer) error {
 	if rec == nil {
 		return fmt.Errorf("update: id %q not found", id)
 	}
-	if !validCapabilityKey(rec.Category, *cap) {
+	if rec.Subcategory != "" && validSubcategory(rec.Category, rec.Subcategory) {
+		if !validCapabilityKeyForSubcategory(rec.Category, rec.Subcategory, *cap) {
+			return fmt.Errorf("update: capability %q not valid for category %q subcategory %q", *cap, rec.Category, rec.Subcategory)
+		}
+	} else if !validCapabilityKey(rec.Category, *cap) {
 		return fmt.Errorf("update: capability %q not valid for category %q", *cap, rec.Category)
 	}
 	if rec.Capabilities == nil {

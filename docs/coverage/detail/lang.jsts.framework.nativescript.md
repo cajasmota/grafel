@@ -5,16 +5,19 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** Mobile
+- **Capability cells:** 6
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/nativescript.yaml` |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — |
+| `deep_link_extraction` | ❌ `missing` | — | — | — | — |
+| `native_module_imports` | ❌ `missing` | — | — | — | — |
+| `navigation_extraction` | ❌ `missing` | — | — | — | — |
+| `platform_branching` | ❌ `missing` | — | — | — | — |
+| `screen_detection` | ❌ `missing` | — | — | — | — |
+| `state_management` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

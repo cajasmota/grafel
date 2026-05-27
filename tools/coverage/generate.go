@@ -59,12 +59,13 @@ type capEntry struct {
 
 // recordView wraps a Record with a pre-sorted CapList for templates.
 type recordView struct {
-	ID       string
-	Category string
-	Language string
-	Label    string
-	Bucket   string
-	CapList  []capEntry
+	ID          string
+	Category    string
+	Subcategory string
+	Language    string
+	Label       string
+	Bucket      string
+	CapList     []capEntry
 	// CapByKey lets templates look up a capability cell by key without
 	// re-ranging CapList. Empty (missing) keys return the zero Capability;
 	// templates pair this with the Glyph helper to render "—".
@@ -89,11 +90,26 @@ type pivotRow struct {
 	Uncategorized bool // true for the language-neutral "Uncategorized" row
 }
 
-// bucketSection is one rendered section on a by-language page.
+// bucketSection is one rendered section on a by-language page. When a
+// bucket contains records with subcategories the section is split into
+// Subsections (one per subcategory, ordered by subcategoryOrder) and a
+// final Records list holds the un-subcategorized tail. Records without
+// any subcategorised siblings fall through to the legacy single-table
+// rendering where Subsections is empty and CapabilityKeys carries the
+// bucket-wide union.
 type bucketSection struct {
 	Name           string   // bucket display name (Frameworks/Tools/ORMs/Other)
 	CapabilityKeys []string // capability columns; empty for Other
 	Records        []recordView
+	Subsections    []subSection
+}
+
+// subSection is one subcategory-scoped table inside a bucketSection.
+type subSection struct {
+	Subcategory    string       // raw slug, used in IDs
+	Heading        string       // display heading (e.g. "UI Frontend")
+	CapabilityKeys []string     // columns specific to this subcategory
+	Records        []recordView // pre-sorted (label, ID)
 }
 
 // summaryData feeds summary.md.tmpl.
@@ -127,15 +143,19 @@ type categoryLanguageCount struct {
 // categoryRow is one row in the by-category table (Language column +
 // capability glyphs + Notes).
 type categoryRow struct {
-	Language string
-	Label    string
-	ID       string
-	CapList  []capEntry
-	CapByKey map[string]Capability
-	Digest   string
+	Language    string
+	Label       string
+	ID          string
+	Subcategory string
+	CapList     []capEntry
+	CapByKey    map[string]Capability
+	Digest      string
 }
 
-// categoryPageData feeds by-category/<cat>.md.tmpl.
+// categoryPageData feeds by-category/<cat>.md.tmpl. Subsections holds
+// per-subcategory tables when the category exposes them; the legacy
+// single-table render uses Records + CapabilityKeys with Subsections
+// empty.
 type categoryPageData struct {
 	Marker         string
 	Category       string
@@ -143,6 +163,17 @@ type categoryPageData struct {
 	Total          int
 	ByLanguage     []categoryLanguageCount
 	CapabilityKeys []string // capability columns for this category's bucket
+	Records        []categoryRow
+	Subsections    []categorySubSection
+}
+
+// categorySubSection is one subcategory-scoped table on a by-category
+// page (mirrors subSection for by-language, but uses categoryRow rows
+// because by-category tables include a Language column).
+type categorySubSection struct {
+	Subcategory    string
+	Heading        string
+	CapabilityKeys []string
 	Records        []categoryRow
 }
 
@@ -164,14 +195,15 @@ func recordToView(rec Record) recordView {
 		byKey[k] = rec.Capabilities[k]
 	}
 	return recordView{
-		ID:       rec.ID,
-		Category: rec.Category,
-		Language: rec.Language,
-		Label:    rec.Label,
-		Bucket:   bucketOf(rec.Category),
-		CapList:  list,
-		CapByKey: byKey,
-		Digest:   digestStatus(rec.Capabilities),
+		ID:          rec.ID,
+		Category:    rec.Category,
+		Subcategory: rec.Subcategory,
+		Language:    rec.Language,
+		Label:       rec.Label,
+		Bucket:      bucketOf(rec.Category),
+		CapList:     list,
+		CapByKey:    byKey,
+		Digest:      digestStatus(rec.Capabilities),
 	}
 }
 
@@ -190,8 +222,10 @@ func languageDisplay(slug string) string {
 // templateFuncs are the helpers exposed to templates. Kept minimal so
 // most rendering logic lives in Go where it can be tested.
 var templateFuncs = template.FuncMap{
-	"glyph":   statusGlyph,
-	"langDsp": languageDisplay,
+	"glyph":       statusGlyph,
+	"langDsp":     languageDisplay,
+	"prettyKey":   prettyKey,
+	"subHeading":  subcategoryHeading,
 }
 
 // generate writes the full markdown tree under outRoot/docs/coverage.
@@ -331,11 +365,7 @@ func generate(reg *Registry, outRoot string) error {
 			if len(recs) == 0 {
 				continue
 			}
-			sections = append(sections, bucketSection{
-				Name:           b,
-				CapabilityKeys: bucketCapabilityKeys(b),
-				Records:        recs,
-			})
+			sections = append(sections, buildBucketSection(b, recs))
 		}
 		displayLang := languageDisplay(n)
 		if n == "multi" || n == "" {
@@ -392,12 +422,13 @@ func generate(reg *Registry, outRoot string) error {
 		rows := make([]categoryRow, 0, len(recs))
 		for _, r := range recs {
 			rows = append(rows, categoryRow{
-				Language: r.Language,
-				Label:    r.Label,
-				ID:       r.ID,
-				CapList:  r.CapList,
-				CapByKey: r.CapByKey,
-				Digest:   r.Digest,
+				Language:    r.Language,
+				Label:       r.Label,
+				ID:          r.ID,
+				Subcategory: r.Subcategory,
+				CapList:     r.CapList,
+				CapByKey:    r.CapByKey,
+				Digest:      r.Digest,
 			})
 		}
 		sort.SliceStable(rows, func(i, j int) bool {
@@ -406,6 +437,10 @@ func generate(reg *Registry, outRoot string) error {
 			}
 			return rows[i].Label < rows[j].Label
 		})
+		// Group by subcategory when the category supports them and at
+		// least one record opts in. Records without a subcategory fall
+		// through to the legacy flat table at the bottom of the page.
+		subSecs, flatRows := splitCategoryRowsBySubcategory(n, rows)
 		if err := renderToFile(tmpls, "by-category.md.tmpl",
 			filepath.Join(root, "by-category", n+".md"),
 			categoryPageData{
@@ -415,7 +450,8 @@ func generate(reg *Registry, outRoot string) error {
 				Total:          len(recs),
 				ByLanguage:     banner,
 				CapabilityKeys: keys,
-				Records:        rows,
+				Records:        flatRows,
+				Subsections:    subSecs,
 			}); err != nil {
 			return err
 		}
@@ -435,6 +471,136 @@ func generate(reg *Registry, outRoot string) error {
 		}
 	}
 	return nil
+}
+
+// buildBucketSection produces a bucketSection for a per-language page.
+// When any record in recs declares a subcategory, the section is split
+// into one subSection per subcategory (ordered by subcategoryOrder)
+// plus a final flat Records list for legacy un-subcategorised entries.
+// Buckets whose records all live at the category level keep the
+// original single-table render with CapabilityKeys = bucket union.
+func buildBucketSection(bucket string, recs []recordView) bucketSection {
+	bySub := map[string][]recordView{}
+	var flat []recordView
+	subCat := ""
+	for _, r := range recs {
+		if r.Subcategory == "" {
+			flat = append(flat, r)
+			continue
+		}
+		// All records in a bucket share the same category? Not strictly:
+		// the bucket maps multiple categories. But subcategoryCapabilities
+		// is category-scoped, so we route subcategory rendering by the
+		// record's own category. Track the dominant category for ordering
+		// — when multiple categories appear in one bucket we union their
+		// subcategoryOrder lists.
+		bySub[r.Subcategory] = append(bySub[r.Subcategory], r)
+		if subCat == "" {
+			subCat = r.Category
+		}
+	}
+	if len(bySub) == 0 {
+		return bucketSection{
+			Name:           bucket,
+			CapabilityKeys: bucketCapabilityKeys(bucket),
+			Records:        recs,
+		}
+	}
+	// Collect ordered subcategory slugs across all categories represented
+	// in this bucket. categoriesInBucket is small (1–5) so the nested
+	// loop is fine and keeps ordering deterministic.
+	cats := map[string]bool{}
+	for _, r := range recs {
+		if r.Subcategory != "" {
+			cats[r.Category] = true
+		}
+	}
+	catList := make([]string, 0, len(cats))
+	for c := range cats {
+		catList = append(catList, c)
+	}
+	sort.Strings(catList)
+	seen := map[string]bool{}
+	merged := map[string]bool{}
+	for s := range bySub {
+		merged[s] = true
+	}
+	ordered := make([]string, 0, len(merged))
+	for _, c := range catList {
+		for _, s := range subcategoryOrder[c] {
+			if merged[s] && !seen[s] {
+				ordered = append(ordered, s)
+				seen[s] = true
+			}
+		}
+	}
+	// Any leftover subcategories (declared on records but not in
+	// subcategoryOrder for their category) sort alphabetically.
+	extras := make([]string, 0)
+	for s := range merged {
+		if !seen[s] {
+			extras = append(extras, s)
+		}
+	}
+	sort.Strings(extras)
+	ordered = append(ordered, extras...)
+
+	subs := make([]subSection, 0, len(ordered))
+	for _, s := range ordered {
+		recsForSub := bySub[s]
+		// Pick a representative category to source the capability key
+		// union. When multiple categories share a subcategory slug we
+		// pick the first record's category (deterministic because recs
+		// is pre-sorted by label/ID).
+		cat := recsForSub[0].Category
+		subs = append(subs, subSection{
+			Subcategory:    s,
+			Heading:        subcategoryHeading(s),
+			CapabilityKeys: subcategoryRenderKeys(cat, s),
+			Records:        recsForSub,
+		})
+	}
+	return bucketSection{
+		Name:           bucket,
+		CapabilityKeys: bucketCapabilityKeys(bucket),
+		Records:        flat,
+		Subsections:    subs,
+	}
+}
+
+// splitCategoryRowsBySubcategory partitions by-category rows into
+// per-subcategory subsections plus a tail of un-subcategorised rows.
+// When no row carries a subcategory, the subsection slice is nil and
+// all rows are returned verbatim so the legacy single-table template
+// path takes over.
+func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]categorySubSection, []categoryRow) {
+	bySub := map[string][]categoryRow{}
+	var flat []categoryRow
+	for _, r := range rows {
+		if r.Subcategory == "" {
+			flat = append(flat, r)
+			continue
+		}
+		bySub[r.Subcategory] = append(bySub[r.Subcategory], r)
+	}
+	if len(bySub) == 0 {
+		return nil, rows
+	}
+	present := map[string]bool{}
+	for s := range bySub {
+		present[s] = true
+	}
+	ordered := orderedSubcategories(category, present)
+	subs := make([]categorySubSection, 0, len(ordered))
+	for _, s := range ordered {
+		subs = append(subs, categorySubSection{
+			Subcategory:    s,
+			Heading:        subcategoryHeading(s),
+			CapabilityKeys: subcategoryRenderKeys(category, s),
+			Records:        bySub[s],
+		})
+	}
+	return subs, flat
 }
 
 // renderToFile executes the named template into a buffer and writes it

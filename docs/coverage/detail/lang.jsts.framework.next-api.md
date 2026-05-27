@@ -5,16 +5,21 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** Meta Framework
+- **Capability cells:** 8
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` |
-| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` |
-| `middleware_coverage` | ❌ `missing` | — | — | — | — |
+| `component_extraction` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `data_loaders` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `hook_recognition` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `hydration_boundaries` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `route_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` |
+| `router_pattern` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` |
+| `server_components` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `static_generation` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
 
 ## Provenance
 

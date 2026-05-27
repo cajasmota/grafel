@@ -5,16 +5,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** RPC Framework
+- **Capability cells:** 3
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_trpc.go`<br>`internal/engine/rules/javascript_typescript/frameworks/trpc.yaml` |
-| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_trpc.go` |
-| `middleware_coverage` | ❌ `missing` | — | — | — | — |
+| `client_codegen` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+| `procedure_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_trpc.go`<br>`internal/engine/rules/javascript_typescript/frameworks/trpc.yaml` |
+| `schema_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/http_endpoint_trpc.go` |
 
 ## Provenance
 

@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [Bazel / BUCK / WORKSPACE](../detail/build.bazel.md) | ✅ | — | — | ✅ | |
 | [Dockerfile](../detail/build.dockerfile.md) | ✅ | — | — | ✅ | |

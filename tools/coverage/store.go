@@ -116,6 +116,15 @@ func writeRecord(buf *bytes.Buffer, rec Record, indent string) error {
 	if err := writeJSONField(buf, inner, "category", rec.Category, false); err != nil {
 		return err
 	}
+	// Subcategory is optional (omitempty in the struct tag); preserve
+	// the same on-disk behaviour by only emitting when set. Placement
+	// between category and language keeps the field grouping intuitive
+	// and matches the schema doc comment.
+	if rec.Subcategory != "" {
+		if err := writeJSONField(buf, inner, "subcategory", rec.Subcategory, false); err != nil {
+			return err
+		}
+	}
 	if err := writeJSONField(buf, inner, "language", rec.Language, false); err != nil {
 		return err
 	}

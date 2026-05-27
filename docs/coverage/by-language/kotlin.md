@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | — | — | ⚠️ | — | |
 | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | — | — | ⚠️ | — | |
@@ -24,7 +24,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | ❌ | ✅ | ✅ | |
 | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | ❌ | ⚠️ | ⚠️ | |

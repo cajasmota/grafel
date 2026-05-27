@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ⚠️ | ✅ | ✅ | — | |
 | [FastAPI](../detail/lang.python.framework.fastapi.md) | — | ✅ | — | — | |

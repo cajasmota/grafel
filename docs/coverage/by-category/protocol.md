@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | cross_repo_linkage | method_attribution | service_extraction | Status | Notes |
+| Language | Name | Cross Repo Linkage | Method Attribution | Service Extraction | Status | Notes |
 |---|---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [GraphQL](../detail/protocol.graphql.md) | ⚠️ | ✅ | ✅ | ⚠️ | |
 | [multi](../by-language/multi.md) | [JSON-RPC](../detail/protocol.jsonrpc.md) | ❌ | ❌ | ❌ | ❌ | |

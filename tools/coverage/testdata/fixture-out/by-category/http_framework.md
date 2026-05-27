@@ -5,7 +5,8 @@
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
-| Language | Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+
+| Language | Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|---|
 | [JS/TS](../by-language/jsts.md) | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | — | |
 | [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | — | ✅ | — | — | |

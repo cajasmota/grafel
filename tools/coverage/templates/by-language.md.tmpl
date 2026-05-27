@@ -13,12 +13,39 @@ Back to [summary](../summary.md).
 | [{{.Label}}](../detail/{{.ID}}.md) | [{{.Category}}](../by-category/{{.Category}}.md) | {{glyph .Digest}} | |
 {{- end}}
 {{else}}
-| Name |{{range .CapabilityKeys}} {{.}} |{{end}} Notes |
+{{- if .Subsections}}
+{{- range .Subsections}}
+
+### {{.Heading}}
+
+| Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
 |---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
 {{- $rec := .}}
 | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
+{{- end}}
+{{- end}}
+{{- if .Records}}
+
+### Other
+
+| Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+|---|{{range .CapabilityKeys}}---|{{end}}---|
+{{- $caps := .CapabilityKeys}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
+{{- end}}
+{{- end}}
+{{- else}}
+| Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+|---|{{range .CapabilityKeys}}---|{{end}}---|
+{{- $caps := .CapabilityKeys}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
+{{- end}}
 {{- end}}
 {{end}}
 {{- end}}

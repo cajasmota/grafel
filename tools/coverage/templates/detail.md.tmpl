@@ -4,7 +4,8 @@
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [{{langDsp .Record.Language}}](../by-language/{{.Record.Language}}.md)
-- **Category:** [{{.Record.Category}}](../by-category/{{.Record.Category}}.md)
+- **Category:** [{{.Record.Category}}](../by-category/{{.Record.Category}}.md){{if .Record.Subcategory}}
+- **Subcategory:** {{subHeading .Record.Subcategory}}{{end}}
 - **Capability cells:** {{len .CapList}}
 
 ## Capabilities

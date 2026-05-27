@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Lapis](../detail/lang.lua.framework.lapis.md) | — | ❌ | — | — | |
 | [OpenResty](../detail/lang.lua.framework.openresty.md) | — | ❌ | — | — | |

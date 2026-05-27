@@ -5,7 +5,76 @@
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
-| Language | Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+
+
+## Backend HTTP
+
+| Language | Name | Auth Coverage | DTO Extraction | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Request Validation | Route Extraction | Tests Linkage | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ❌ | — | ✅ | ✅ | ⚠️ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ | — | ✅ | ✅ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | ❌ | — | ✅ | ✅ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | ❌ | — | ✅ | ✅ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ⚠️ | — | ✅ | ✅ | ⚠️ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+| [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+
+## UI Frontend
+
+| Language | Name | Component Extraction | Data Fetching | Hook Recognition | JSX Template | Prop Extraction | Router Pattern | State Management | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ❌ | ❌ | — | — | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ✅ | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ❌ | ❌ | — | — | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ❌ | ❌ | ❌ | — | ❌ | ❌ | ❌ | |
+
+## Meta Framework
+
+| Language | Name | Component Extraction | Data Loaders | Hook Recognition | Hydration Boundaries | Route Extraction | Router Pattern | Server Components | Static Generation | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ❌ | ❌ | — | ❌ | ✅ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ❌ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ❌ | ❌ | — | ❌ | ✅ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ❌ | ❌ | — | ❌ | ✅ | ❌ | ❌ | ❌ | |
+
+## Mobile
+
+| Language | Name | Deep Link Extraction | Native Module Imports | Navigation Extraction | Platform Branching | Screen Detection | State Management | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ❌ | ❌ | ✅ | ⚠️ | ✅ | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ❌ | ❌ | ✅ | ⚠️ | ✅ | ⚠️ | |
+
+## Desktop
+
+| Language | Name | IPC Extraction | Main Renderer Split | Native Module Imports | Notes |
+|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | ❌ | ⚠️ | ❌ | |
+
+## RPC Framework
+
+| Language | Name | Client Codegen | Procedure Extraction | Schema Extraction | Notes |
+|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ❌ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ❌ | ✅ | ⚠️ | |
+
+## AI Integration
+
+| Language | Name | Chain Composition | Prompt Template Extraction | Tool Use Detection | Notes |
+|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ | ⚠️ | ❌ | |
+
+## Other
+
+| Language | Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|---|
 | [csharp](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | — | — | ⚠️ | — | |
 | [csharp](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ❌ | ✅ | ✅ | ⚠️ | |
@@ -67,36 +136,6 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ⚠️ | ✅ | ✅ | ❌ | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
 | [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | — | — | ✅ | — | |
-| [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ❌ | ✅ | ✅ | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ⚠️ | ✅ | ✅ | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | ❌ | ❌ | ❌ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ❌ | ✅ | ✅ | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | — | — | ⚠️ | — | |
-| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ❌ | ✅ | ✅ | ❌ | |
 | [kotlin](../by-language/kotlin.md) | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | — | — | ⚠️ | — | |
 | [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | — | — | ⚠️ | — | |
 | [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | — | — | ⚠️ | — | |

@@ -5,7 +5,8 @@
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
-| Language | Name | migration_parsing | model_extraction | query_attribution | Notes |
+
+| Language | Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|---|
 | [csharp](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | — | — | ⚠️ | |
 | [csharp](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | — | — | ⚠️ | |

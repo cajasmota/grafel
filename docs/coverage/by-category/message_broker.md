@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | consumer_extraction | producer_extraction | topic_attribution | Status | Notes |
+| Language | Name | Consumer Extraction | Producer Extraction | Topic Attribution | Status | Notes |
 |---|---|---|---|---|---|---|
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ⚠️ | ⚠️ | |
 | [multi](../by-language/multi.md) | [AMQP (generic)](../detail/msg.broker.amqp.md) | ⚠️ | ⚠️ | ⚠️ | ⚠️ | |

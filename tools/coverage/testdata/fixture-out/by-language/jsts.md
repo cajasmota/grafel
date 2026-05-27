@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | — | |
 | [NestJS](../detail/lang.jsts.framework.nestjs.md) | — | ✅ | — | — | |

@@ -5,16 +5,21 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** Meta Framework
+- **Capability cells:** 8
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml` |
-| `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml` |
-| `middleware_coverage` | ❌ `missing` | — | — | — | — |
+| `component_extraction` | ❌ `missing` | — | — | — | — |
+| `data_loaders` | ❌ `missing` | — | — | — | — |
+| `hook_recognition` | — `not_applicable` | — | — | — | — |
+| `hydration_boundaries` | ❌ `missing` | — | — | — | — |
+| `route_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml` |
+| `router_pattern` | ❌ `missing` | — | — | — | — |
+| `server_components` | ❌ `missing` | — | — | — | — |
+| `static_generation` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

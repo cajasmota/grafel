@@ -5,7 +5,8 @@
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
-| Language | Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+
+| Language | Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|---|
 | [csharp](../by-language/csharp.md) | [.csproj / packages.config](../detail/pkg.csproj.md) | — | ❌ | ❌ | — | |
 | [dart](../by-language/dart.md) | [pubspec.yaml](../detail/pkg.pubspec.md) | — | ❌ | ✅ | — | |

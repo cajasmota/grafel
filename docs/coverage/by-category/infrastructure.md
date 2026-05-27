@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | dependency_attribution | resource_extraction | Status | Notes |
+| Language | Name | Dependency Attribution | Resource Extraction | Status | Notes |
 |---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.iac.cdk.md) | ⚠️ | ⚠️ | ⚠️ | |
 | [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.resource.aws-cdk.md) | — | ✅ | ✅ | |

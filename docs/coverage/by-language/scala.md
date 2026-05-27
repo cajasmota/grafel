@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
 | [Cask](../detail/lang.scala.framework.cask.md) | ❌ | ❌ | ❌ | ❌ | |
@@ -21,7 +21,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [Mill](../detail/build.mill.md) | ❌ | — | — | ❌ | |
 | [SBT](../detail/build.sbt.md) | ✅ | — | — | ✅ | |
@@ -29,7 +29,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [Doobie](../detail/lang.scala.orm.doobie.md) | ❌ | ⚠️ | ⚠️ | |
 | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | — | ⚠️ | ⚠️ | |

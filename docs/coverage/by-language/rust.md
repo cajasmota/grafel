@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Actix Web](../detail/lang.rust.framework.actix.md) | ❌ | ✅ | ✅ | ❌ | |
 | [Axum](../detail/lang.rust.framework.axum.md) | ❌ | ✅ | ✅ | ❌ | |
@@ -23,7 +23,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [Cargo (Cargo.toml)](../detail/build.cargo.md) | ✅ | — | — | ✅ | |
 | [Cargo.toml](../detail/pkg.cargo.md) | — | ❌ | ✅ | — | |
@@ -34,7 +34,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [Diesel](../detail/lang.rust.orm.diesel.md) | ❌ | ✅ | ✅ | |
 | [Rbatis](../detail/lang.rust.orm.rbatis.md) | ❌ | ❌ | ❌ | |

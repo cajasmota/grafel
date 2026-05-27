@@ -5,16 +5,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Capability cells:** 4
+- **Subcategory:** UI Frontend
+- **Capability cells:** 7
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
-| `auth_coverage` | — `not_applicable` | — | — | — | — |
-| `endpoint_synthesis` | — `not_applicable` | — | — | — | — |
-| `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/svelte.yaml` |
-| `middleware_coverage` | — `not_applicable` | — | — | — | — |
+| `component_extraction` | ❌ `missing` | — | — | — | — |
+| `data_fetching` | ❌ `missing` | — | — | — | — |
+| `hook_recognition` | — `not_applicable` | — | — | — | — |
+| `jsx_template` | — `not_applicable` | — | — | — | — |
+| `prop_extraction` | ❌ `missing` | — | — | — | — |
+| `router_pattern` | ❌ `missing` | — | — | — | — |
+| `state_management` | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

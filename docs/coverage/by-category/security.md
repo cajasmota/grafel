@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | auth_policy | secret_detection | sql_injection | Status | Notes |
+| Language | Name | Auth Policy | Secret Detection | Sql Injection | Status | Notes |
 |---|---|---|---|---|---|---|
 | [java](../by-language/java.md) | [Auth policy resolver (Java/Kotlin — Phase 1 of #1942)](../detail/security.auth-java.md) | ✅ | — | — | ✅ | |
 | [multi](../by-language/multi.md) | [Auth policy resolver (Python / NestJS / Go / Ruby / ASP.NET — Phases 2-4 of #1942)](../detail/security.auth-other.md) | ❌ | — | — | ❌ | |

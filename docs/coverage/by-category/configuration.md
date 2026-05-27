@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | env_resolution | file_parsing | Status | Notes |
+| Language | Name | Env Resolution | File Parsing | Status | Notes |
 |---|---|---|---|---|---|
 | [java](../by-language/java.md) | [.properties (application.properties)](../detail/config.properties.md) | — | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [tsconfig.json](../detail/config.tsconfig.md) | — | ⚠️ | ⚠️ | |

@@ -4176,6 +4176,7 @@
     {
       "id": "lang.jsts.framework.adonisjs",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "AdonisJS",
       "capabilities": {
@@ -4196,45 +4197,64 @@
     {
       "id": "lang.jsts.framework.angular",
       "category": "http_framework",
+      "subcategory": "ui_frontend",
       "language": "jsts",
       "label": "Angular",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
+          "status": "missing"
+        },
+        "data_fetching": {
+          "status": "missing"
+        },
+        "hook_recognition": {
           "status": "not_applicable"
         },
-        "endpoint_synthesis": {
+        "jsx_template": {
           "status": "not_applicable"
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/angular.yaml"],
-          "verified_at": "2026-05-28"
+        "prop_extraction": {
+          "status": "missing"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "router_pattern": {
+          "status": "missing"
+        },
+        "state_management": {
+          "status": "missing"
         }
       }
     },
     {
       "id": "lang.jsts.framework.astro",
       "category": "http_framework",
+      "subcategory": "meta_framework",
       "language": "jsts",
       "label": "Astro",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
           "status": "missing"
         },
-        "endpoint_synthesis": {
+        "data_loaders": {
+          "status": "missing"
+        },
+        "hook_recognition": {
+          "status": "not_applicable"
+        },
+        "hydration_boundaries": {
+          "status": "missing"
+        },
+        "route_extraction": {
           "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/astro.yaml"],
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/astro.yaml"],
-          "verified_at": "2026-05-28"
+        "router_pattern": {
+          "status": "missing"
         },
-        "middleware_coverage": {
+        "server_components": {
+          "status": "missing"
+        },
+        "static_generation": {
           "status": "missing"
         }
       }
@@ -4242,50 +4262,68 @@
     {
       "id": "lang.jsts.framework.electron",
       "category": "http_framework",
+      "subcategory": "desktop",
       "language": "jsts",
       "label": "Electron",
       "capabilities": {
-        "auth_coverage": {
-          "status": "not_applicable"
+        "ipc_extraction": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
-        },
-        "handler_attribution": {
+        "main_renderer_split": {
           "status": "partial",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/electron.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
           "verified_at": "2026-05-28"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "native_module_imports": {
+          "status": "missing"
         }
       }
     },
     {
       "id": "lang.jsts.framework.expo",
       "category": "http_framework",
+      "subcategory": "mobile",
       "language": "jsts",
       "label": "Expo",
       "capabilities": {
-        "auth_coverage": {
-          "status": "not_applicable"
+        "deep_link_extraction": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
+        "native_module_imports": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "handler_attribution": {
-          "status": "partial",
+        "navigation_extraction": {
+          "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
           "verified_at": "2026-05-28"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "platform_branching": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2666",
+          "verified_at": "2026-05-28"
+        },
+        "screen_detection": {
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
+          "verified_at": "2026-05-28"
+        },
+        "state_management": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+          "verified_at": "2026-05-28"
         }
       }
     },
     {
       "id": "lang.jsts.framework.express",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Express",
       "capabilities": {
@@ -4312,6 +4350,7 @@
     {
       "id": "lang.jsts.framework.fastify",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Fastify",
       "capabilities": {
@@ -4336,6 +4375,7 @@
     {
       "id": "lang.jsts.framework.feathers",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Feathers",
       "capabilities": {
@@ -4356,23 +4396,35 @@
     {
       "id": "lang.jsts.framework.gatsby",
       "category": "http_framework",
+      "subcategory": "meta_framework",
       "language": "jsts",
       "label": "Gatsby",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
           "status": "missing"
         },
-        "endpoint_synthesis": {
+        "data_loaders": {
+          "status": "missing"
+        },
+        "hook_recognition": {
+          "status": "missing"
+        },
+        "hydration_boundaries": {
+          "status": "missing"
+        },
+        "route_extraction": {
           "status": "partial",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/gatsby.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/gatsby.yaml"],
-          "verified_at": "2026-05-28"
+        "router_pattern": {
+          "status": "missing"
         },
-        "middleware_coverage": {
+        "server_components": {
+          "status": "missing"
+        },
+        "static_generation": {
           "status": "missing"
         }
       }
@@ -4380,30 +4432,30 @@
     {
       "id": "lang.jsts.framework.graphql-resolvers",
       "category": "http_framework",
+      "subcategory": "rpc_framework",
       "language": "jsts",
       "label": "GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "client_codegen": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "endpoint_synthesis": {
+        "procedure_extraction": {
           "status": "full",
           "cites": ["internal/engine/rules/graphql/frameworks/apollo_server.yaml","internal/engine/rules/graphql/frameworks/graphql_yoga.yaml"],
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
+        "schema_extraction": {
           "status": "full",
           "cites": ["internal/engine/rules/graphql/frameworks/graphql_schema.yaml"],
           "verified_at": "2026-05-28"
-        },
-        "middleware_coverage": {
-          "status": "missing"
         }
       }
     },
     {
       "id": "lang.jsts.framework.hapi",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Hapi",
       "capabilities": {
@@ -4424,6 +4476,7 @@
     {
       "id": "lang.jsts.framework.hono",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Hono",
       "capabilities": {
@@ -4448,28 +4501,34 @@
     {
       "id": "lang.jsts.framework.ionic",
       "category": "http_framework",
+      "subcategory": "mobile",
       "language": "jsts",
       "label": "Ionic",
       "capabilities": {
-        "auth_coverage": {
-          "status": "not_applicable"
+        "deep_link_extraction": {
+          "status": "missing"
         },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
+        "native_module_imports": {
+          "status": "missing"
         },
-        "handler_attribution": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/ionic.yaml"],
-          "verified_at": "2026-05-28"
+        "navigation_extraction": {
+          "status": "missing"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "platform_branching": {
+          "status": "missing"
+        },
+        "screen_detection": {
+          "status": "missing"
+        },
+        "state_management": {
+          "status": "missing"
         }
       }
     },
     {
       "id": "lang.jsts.framework.koa",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Koa",
       "capabilities": {
@@ -4494,28 +4553,32 @@
     {
       "id": "lang.jsts.framework.langchain",
       "category": "http_framework",
+      "subcategory": "ai_integration",
       "language": "jsts",
       "label": "LangChain.js",
       "capabilities": {
-        "auth_coverage": {
-          "status": "not_applicable"
-        },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
-        },
-        "handler_attribution": {
+        "chain_composition": {
           "status": "partial",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
           "verified_at": "2026-05-28"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "prompt_template_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+          "verified_at": "2026-05-28"
+        },
+        "tool_use_detection": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         }
       }
     },
     {
       "id": "lang.jsts.framework.marblejs",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Marble.js",
       "capabilities": {
@@ -4536,28 +4599,34 @@
     {
       "id": "lang.jsts.framework.nativescript",
       "category": "http_framework",
+      "subcategory": "mobile",
       "language": "jsts",
       "label": "NativeScript",
       "capabilities": {
-        "auth_coverage": {
-          "status": "not_applicable"
+        "deep_link_extraction": {
+          "status": "missing"
         },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
+        "native_module_imports": {
+          "status": "missing"
         },
-        "handler_attribution": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/nativescript.yaml"],
-          "verified_at": "2026-05-28"
+        "navigation_extraction": {
+          "status": "missing"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "platform_branching": {
+          "status": "missing"
+        },
+        "screen_detection": {
+          "status": "missing"
+        },
+        "state_management": {
+          "status": "missing"
         }
       }
     },
     {
       "id": "lang.jsts.framework.nestjs",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "NestJS",
       "capabilities": {
@@ -4586,47 +4655,77 @@
     {
       "id": "lang.jsts.framework.next-api",
       "category": "http_framework",
+      "subcategory": "meta_framework",
       "language": "jsts",
       "label": "Next.js API Routes / App Router",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "component_extraction": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "endpoint_synthesis": {
+        "data_loaders": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        },
+        "hook_recognition": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        },
+        "hydration_boundaries": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        },
+        "route_extraction": {
           "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/next_js.yaml"],
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
+        "router_pattern": {
           "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/next_js.yaml"],
           "verified_at": "2026-05-28"
         },
-        "middleware_coverage": {
-          "status": "missing"
+        "server_components": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        },
+        "static_generation": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         }
       }
     },
     {
       "id": "lang.jsts.framework.nuxt",
       "category": "http_framework",
+      "subcategory": "meta_framework",
       "language": "jsts",
       "label": "Nuxt",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
           "status": "missing"
         },
-        "endpoint_synthesis": {
+        "data_loaders": {
+          "status": "missing"
+        },
+        "hook_recognition": {
+          "status": "not_applicable"
+        },
+        "hydration_boundaries": {
+          "status": "missing"
+        },
+        "route_extraction": {
           "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/nuxt.yaml"],
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/nuxt.yaml"],
-          "verified_at": "2026-05-28"
+        "router_pattern": {
+          "status": "missing"
         },
-        "middleware_coverage": {
+        "server_components": {
+          "status": "missing"
+        },
+        "static_generation": {
           "status": "missing"
         }
       }
@@ -4634,6 +4733,7 @@
     {
       "id": "lang.jsts.framework.polka",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Polka",
       "capabilities": {
@@ -4654,67 +4754,123 @@
     {
       "id": "lang.jsts.framework.react",
       "category": "http_framework",
+      "subcategory": "ui_frontend",
       "language": "jsts",
       "label": "React",
       "capabilities": {
-        "auth_coverage": {
-          "status": "not_applicable"
-        },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
-        },
-        "handler_attribution": {
+        "component_extraction": {
           "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+          "verified_at": "2026-05-28"
+        },
+        "data_fetching": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2554",
+          "verified_at": "2026-05-28"
+        },
+        "hook_recognition": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+          "verified_at": "2026-05-28"
+        },
+        "jsx_template": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+          "verified_at": "2026-05-28"
+        },
+        "prop_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2665",
+          "verified_at": "2026-05-28"
+        },
+        "router_pattern": {
+          "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
           "verified_at": "2026-05-28"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "state_management": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+          "verified_at": "2026-05-28"
         }
       }
     },
     {
       "id": "lang.jsts.framework.react-native",
       "category": "http_framework",
+      "subcategory": "mobile",
       "language": "jsts",
       "label": "React Native",
       "capabilities": {
-        "auth_coverage": {
-          "status": "not_applicable"
+        "deep_link_extraction": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
+        "native_module_imports": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "handler_attribution": {
-          "status": "partial",
+        "navigation_extraction": {
+          "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
           "verified_at": "2026-05-28"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "platform_branching": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2666",
+          "verified_at": "2026-05-28"
+        },
+        "screen_detection": {
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
+          "verified_at": "2026-05-28"
+        },
+        "state_management": {
+          "status": "partial",
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+          "verified_at": "2026-05-28"
         }
       }
     },
     {
       "id": "lang.jsts.framework.remix",
       "category": "http_framework",
+      "subcategory": "meta_framework",
       "language": "jsts",
       "label": "Remix",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
           "status": "missing"
         },
-        "endpoint_synthesis": {
+        "data_loaders": {
+          "status": "missing"
+        },
+        "hook_recognition": {
+          "status": "missing"
+        },
+        "hydration_boundaries": {
+          "status": "missing"
+        },
+        "route_extraction": {
           "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/remix.yaml"],
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/remix.yaml"],
-          "verified_at": "2026-05-28"
+        "router_pattern": {
+          "status": "missing"
         },
-        "middleware_coverage": {
+        "server_components": {
+          "status": "missing"
+        },
+        "static_generation": {
           "status": "missing"
         }
       }
@@ -4722,6 +4878,7 @@
     {
       "id": "lang.jsts.framework.restify",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Restify",
       "capabilities": {
@@ -4742,6 +4899,7 @@
     {
       "id": "lang.jsts.framework.sails",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "Sails",
       "capabilities": {
@@ -4762,45 +4920,64 @@
     {
       "id": "lang.jsts.framework.svelte",
       "category": "http_framework",
+      "subcategory": "ui_frontend",
       "language": "jsts",
       "label": "Svelte",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
+          "status": "missing"
+        },
+        "data_fetching": {
+          "status": "missing"
+        },
+        "hook_recognition": {
           "status": "not_applicable"
         },
-        "endpoint_synthesis": {
+        "jsx_template": {
           "status": "not_applicable"
         },
-        "handler_attribution": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/svelte.yaml"],
-          "verified_at": "2026-05-28"
+        "prop_extraction": {
+          "status": "missing"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "router_pattern": {
+          "status": "missing"
+        },
+        "state_management": {
+          "status": "missing"
         }
       }
     },
     {
       "id": "lang.jsts.framework.sveltekit",
       "category": "http_framework",
+      "subcategory": "meta_framework",
       "language": "jsts",
       "label": "SvelteKit",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
           "status": "missing"
         },
-        "endpoint_synthesis": {
+        "data_loaders": {
+          "status": "missing"
+        },
+        "hook_recognition": {
+          "status": "not_applicable"
+        },
+        "hydration_boundaries": {
+          "status": "missing"
+        },
+        "route_extraction": {
           "status": "full",
           "cites": ["internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml"],
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml"],
-          "verified_at": "2026-05-28"
+        "router_pattern": {
+          "status": "missing"
         },
-        "middleware_coverage": {
+        "server_components": {
+          "status": "missing"
+        },
+        "static_generation": {
           "status": "missing"
         }
       }
@@ -4808,46 +4985,54 @@
     {
       "id": "lang.jsts.framework.trpc",
       "category": "http_framework",
+      "subcategory": "rpc_framework",
       "language": "jsts",
       "label": "tRPC",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "client_codegen": {
+          "status": "missing",
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
         },
-        "endpoint_synthesis": {
+        "procedure_extraction": {
           "status": "full",
           "cites": ["internal/engine/http_endpoint_trpc.go","internal/engine/rules/javascript_typescript/frameworks/trpc.yaml"],
           "verified_at": "2026-05-28"
         },
-        "handler_attribution": {
-          "status": "full",
+        "schema_extraction": {
+          "status": "partial",
           "cites": ["internal/engine/http_endpoint_trpc.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
           "verified_at": "2026-05-28"
-        },
-        "middleware_coverage": {
-          "status": "missing"
         }
       }
     },
     {
       "id": "lang.jsts.framework.vue",
       "category": "http_framework",
+      "subcategory": "ui_frontend",
       "language": "jsts",
       "label": "Vue",
       "capabilities": {
-        "auth_coverage": {
+        "component_extraction": {
+          "status": "missing"
+        },
+        "data_fetching": {
+          "status": "missing"
+        },
+        "hook_recognition": {
+          "status": "missing"
+        },
+        "jsx_template": {
           "status": "not_applicable"
         },
-        "endpoint_synthesis": {
-          "status": "not_applicable"
+        "prop_extraction": {
+          "status": "missing"
         },
-        "handler_attribution": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/vue.yaml"],
-          "verified_at": "2026-05-28"
+        "router_pattern": {
+          "status": "missing"
         },
-        "middleware_coverage": {
-          "status": "not_applicable"
+        "state_management": {
+          "status": "missing"
         }
       }
     },

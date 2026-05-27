@@ -7,7 +7,7 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
-| Name | auth_coverage | endpoint_synthesis | handler_attribution | middleware_coverage | Notes |
+| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Beego](../detail/lang.go.framework.beego.md) | ❌ | ✅ | ✅ | ❌ | |
 | [Buffalo](../detail/lang.go.framework.buffalo.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
@@ -29,7 +29,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | dependency_graph | lockfile_parsing | manifest_parsing | target_extraction | Notes |
+| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [Ginkgo](../detail/test.ginkgo.md) | ❌ | — | — | ❌ | |
 | [Gomega](../detail/test.gomega.md) | ❌ | — | — | ❌ | |
@@ -42,7 +42,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | migration_parsing | model_extraction | query_attribution | Notes |
+| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | — | — | ⚠️ | |
 | [Bun (uptrace)](../detail/lang.go.orm.bun.md) | ❌ | ⚠️ | ⚠️ | |
