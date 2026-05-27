@@ -322,6 +322,17 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// the response-shape extractor could not parse. #753.
 		synthesizeFlask(string(content), emitDef)
 		synthesizeFastAPI(string(content), emitDef)
+		// #2690 — Starlette / Tornado / Pyramid endpoint synthesis.
+		// Starlette and Pyramid use emitDef because the handler def lives in
+		// the same file as the routing site in the common case; when the
+		// handler is referenced symbolically and lives elsewhere, the
+		// resolver's cross-file rebind (#2680) takes over.
+		// Tornado handlers are classes with verb-named methods (`get`, `post`,
+		// ...); the synthesizer enumerates those methods from the same-file
+		// class body and stamps the def line of each method.
+		synthesizeStarlette(string(content), emitDef)
+		synthesizeTornado(string(content), emitDef)
+		synthesizePyramid(string(content), emitDef)
 		// Producer side: Django composed Routes (from django_routes.go).
 		// Method is unknown statically, so emit with verb=ANY.
 		synthesizeDjangoFromComposed(entities, path, emit)
@@ -700,6 +711,678 @@ func synthesizeFastAPI(content string, emit emitDefFn) {
 		defLine := lineOfOffset(content, idx[6])
 		emit(verb, canonical, "fastapi", "Controller", handler, defLine)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Starlette (Python) — #2690
+// ---------------------------------------------------------------------------
+//
+// Starlette declares routes as a flat list of `Route(...)` instances and
+// optional `Mount("/prefix", routes=[...])` blocks that nest a sub-list under
+// a path prefix. The canonical shape is:
+//
+//	Route("/users/{id}", endpoint=get_user, methods=["GET"])
+//
+// `endpoint=` is the handler reference (a function or class). `methods=` is
+// the verb list — when omitted Starlette defaults to GET. We emit one
+// http_endpoint_definition per (verb, path) tuple. The handler reference is
+// forwarded as `SCOPE.Operation:<name>` so the cross-file resolver rebind
+// (#2680) can attribute the endpoint to the handler file when the routes
+// module and the handler module are split.
+
+// starletteRouteRe captures Route("/path", endpoint=<handler>, methods=[...]).
+// The `endpoint=` and `methods=` kwargs may appear in either order, and either
+// may be absent. We match the path argument positionally (first string
+// literal) and then scan the remainder of the call for `endpoint=` and
+// `methods=` separately so kwarg ordering does not affect extraction.
+//
+// Capture groups: 1 = path literal.
+var starletteRouteRe = regexp.MustCompile(
+	`\bRoute\s*\(\s*["']([^"'\n\r]+)["']([^)]*)\)`,
+)
+
+// starletteEndpointKwargRe captures `endpoint=<identifier>` inside the tail
+// of a Route(...) call. The handler may be a dotted name (`mod.handler`); we
+// keep the final segment because that is the entity name the SCOPE.Operation
+// extractor uses.
+var starletteEndpointKwargRe = regexp.MustCompile(`endpoint\s*=\s*([A-Za-z_][\w.]*)`)
+
+// starletteMethodsKwargRe captures the methods=[...] list. Both list and
+// tuple literals are accepted, matching the Flask methods extractor.
+var starletteMethodsKwargRe = regexp.MustCompile(`methods\s*=\s*[\[\(]([^\]\)]+)[\]\)]`)
+
+// starletteMountRe captures Mount("/prefix", routes=...) so we can join the
+// prefix onto each Route inside. Tracking the mount span via braces would
+// require a balanced-paren walk; instead we use a single-mount heuristic
+// that handles the dominant convention (one Mount("/api", routes=routes)
+// wrapping a routes module) by emitting both prefixed and unprefixed
+// synthetics when a Mount appears in the same file. Cross-file Mount
+// composition is recorded as a TODO; the byPath linker collapses leading
+// segments anyway.
+var starletteMountRe = regexp.MustCompile(
+	`\bMount\s*\(\s*["']([^"'\n\r]+)["']`,
+)
+
+func synthesizeStarlette(content string, emit emitDefFn) {
+	if !strings.Contains(content, "Route(") {
+		return
+	}
+	// Detect a single same-file Mount prefix (dominant convention). Multiple
+	// Mounts in one file fall back to no-prefix attribution; the cross-repo
+	// linker tolerates that because the byPath index normalises leading
+	// dynamic segments.
+	mountPrefix := ""
+	if mm := starletteMountRe.FindStringSubmatch(content); len(mm) >= 2 {
+		mountPrefix = strings.TrimRight(mm[1], "/")
+	}
+
+	for _, idx := range starletteRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
+			continue
+		}
+		raw := content[idx[2]:idx[3]]
+		tail := content[idx[4]:idx[5]]
+
+		handler := ""
+		handlerOff := -1
+		if em := starletteEndpointKwargRe.FindStringSubmatchIndex(tail); len(em) >= 4 {
+			handler = tail[em[2]:em[3]]
+			handlerOff = idx[4] + em[2]
+			// Keep only the final dotted segment as the entity name.
+			if i := strings.LastIndexByte(handler, '.'); i >= 0 {
+				handler = handler[i+1:]
+			}
+		}
+
+		methods := parseStarletteMethods(tail)
+		if len(methods) == 0 {
+			// Starlette default: GET only.
+			methods = []string{"GET"}
+		}
+
+		fullPath := raw
+		if mountPrefix != "" {
+			fullPath = joinPathFragments(mountPrefix, raw)
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkStarlette, fullPath)
+
+		// Def-line: when the handler is defined in this file the line of
+		// `def <handler>` is recoverable; otherwise the synthesiser falls
+		// back to the Route(...) line so the integration test still has a
+		// non-zero anchor. The resolver rebind (#2680) replaces both file
+		// and line at handler-resolution time when a SCOPE.Operation match
+		// exists in another file.
+		defLine := 0
+		if handler != "" {
+			defLine = findPyDefLine(content, handler)
+		}
+		if defLine == 0 {
+			defLine = lineOfOffset(content, idx[0])
+			_ = handlerOff
+		}
+
+		for _, verb := range methods {
+			emit(verb, canonical, "starlette", "SCOPE.Operation", handler, defLine)
+		}
+	}
+}
+
+// parseStarletteMethods returns the verbs declared in a `methods=[...]`
+// kwarg inside a Route(...) call. Mirrors parseFlaskMethods; kept separate
+// so future Starlette-specific quirks (Starlette accepts `methods=None`
+// meaning "all verbs") can be folded in without disturbing Flask.
+func parseStarletteMethods(args string) []string {
+	mm := starletteMethodsKwargRe.FindStringSubmatch(args)
+	if len(mm) < 2 {
+		return nil
+	}
+	body := mm[1]
+	var out []string
+	for _, tok := range strings.Split(body, ",") {
+		tok = strings.TrimSpace(tok)
+		tok = strings.Trim(tok, `"'`)
+		if tok == "" {
+			continue
+		}
+		out = append(out, strings.ToUpper(tok))
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Tornado (Python) — #2690
+// ---------------------------------------------------------------------------
+//
+// Tornado registers routes via `Application([...])` where each tuple is
+// `(pattern, HandlerClass)` and the verbs come from the HTTP-method-named
+// methods present on the class (e.g. `def get(self):`, `def post(self):`).
+// The class typically inherits from `tornado.web.RequestHandler`.
+//
+// In the dominant convention the Application(...) list and the handler
+// class live in the same file. We extract:
+//
+//	1. Application(...) entries — pairs of (regex pattern, ClassName).
+//	2. RequestHandler subclasses defined in the same file and their HTTP
+//	   verb methods.
+//
+// For each registration we look up the class and emit one synthetic per
+// verb method present, stamped at that method's `def` line. When the class
+// is not in this file, we emit a single ANY synthetic with the class name
+// as `SCOPE.Class:<Name>` so the cross-file resolver rebind (#2680) can
+// retarget the synthetic to the handler file. The verb-per-method
+// expansion is deferred to the same-file path; cross-file Tornado is rare
+// enough that ANY is acceptable.
+
+// tornadoAppEntryRe matches a single (pattern, Handler) tuple inside an
+// Application([...]) constructor. We do not match the surrounding
+// Application(...) call because it may span many lines; instead we anchor
+// on the tuple shape directly. The Tornado-specific signals that gate this
+// pass (RequestHandler subclass or Application( ) call elsewhere in the
+// file) prevent it from firing on generic Python tuples.
+//
+// Capture groups: 1 = pattern (raw), 2 = HandlerClass name (last dotted
+// segment retained).
+var tornadoAppEntryRe = regexp.MustCompile(
+	`\(\s*r?["']([^"'\n\r]+)["']\s*,\s*([A-Za-z_][\w.]*)\s*\)`,
+)
+
+// tornadoHandlerClassRe matches a class declaration that inherits from
+// something containing "RequestHandler" (covers `tornado.web.RequestHandler`,
+// `web.RequestHandler`, bare `RequestHandler`, and project-internal base
+// classes that themselves end with `RequestHandler`).
+//
+// Capture groups: 1 = class name.
+var tornadoHandlerClassRe = regexp.MustCompile(
+	`(?m)^class\s+([A-Za-z_][\w]*)\s*\([^)]*RequestHandler[^)]*\)\s*:`,
+)
+
+// tornadoVerbMethodRe matches an HTTP-verb-named method declaration. Used
+// to enumerate the verbs implemented on a RequestHandler subclass.
+//
+// Capture groups: 1 = verb (lowercase).
+var tornadoVerbMethodRe = regexp.MustCompile(
+	`(?m)^[ \t]+(?:async\s+)?def\s+(get|post|put|patch|delete|head|options)\s*\(`,
+)
+
+func synthesizeTornado(content string, emit emitDefFn) {
+	if !strings.Contains(content, "RequestHandler") && !strings.Contains(content, "Application(") {
+		return
+	}
+
+	// Build a same-file class index: ClassName → {verbs, defLines}.
+	type classInfo struct {
+		verbs    []string
+		defLines map[string]int // upper-case verb → 1-based def line
+	}
+	classes := map[string]*classInfo{}
+	for _, cm := range tornadoHandlerClassRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(cm) < 4 {
+			continue
+		}
+		name := content[cm[2]:cm[3]]
+		bodyStart := cm[1]
+		bodyEnd := findPyClassBodyEnd(content, bodyStart)
+		body := content[bodyStart:bodyEnd]
+		info := &classInfo{defLines: map[string]int{}}
+		for _, vm := range tornadoVerbMethodRe.FindAllStringSubmatchIndex(body, -1) {
+			if len(vm) < 4 {
+				continue
+			}
+			verb := strings.ToUpper(body[vm[2]:vm[3]])
+			if _, dup := info.defLines[verb]; dup {
+				continue
+			}
+			info.verbs = append(info.verbs, verb)
+			info.defLines[verb] = lineOfOffset(content, bodyStart+vm[0])
+		}
+		classes[name] = info
+	}
+
+	// Walk every (pattern, Handler) tuple in the file.
+	for _, m := range tornadoAppEntryRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		raw := content[m[2]:m[3]]
+		handler := content[m[4]:m[5]]
+		// Keep only the final dotted segment.
+		if i := strings.LastIndexByte(handler, '.'); i >= 0 {
+			handler = handler[i+1:]
+		}
+		// Convert the Python regex pattern into the canonical {name} form
+		// before passing it to the canonicaliser.
+		pyPath := tornadoRewritePattern(raw)
+		canonical := httproutes.Canonicalize(httproutes.FrameworkTornado, pyPath)
+		if canonical == "" {
+			continue
+		}
+
+		info, sameFile := classes[handler]
+		if sameFile && len(info.verbs) > 0 {
+			// Forward the per-verb method as the handler reference. The
+			// Python extractor emits class methods as
+			// SCOPE.Operation:<ClassName>.<method> (verified against the
+			// indexed corpus); using that exact (kind, name) lets the
+			// resolver rebind source_file/start_line/end_line to the
+			// method entity directly, which is what the #2678 audit
+			// requires (def-line attribution, never the registration site).
+			for _, verb := range info.verbs {
+				methodName := handler + "." + strings.ToLower(verb)
+				emit(verb, canonical, "tornado", "SCOPE.Operation", methodName, info.defLines[verb])
+			}
+			continue
+		}
+		// Cross-file: emit a single ANY synthetic referencing the handler
+		// class. SCOPE.Component is the Python extractor's class kind; the
+		// resolver rebind retargets file/line when the class is found in
+		// another module. (SCOPE.Class is included as a fallback in
+		// resolverKindEquivalents, so the rebind still works if a future
+		// extractor change moves classes back to SCOPE.Class.)
+		emit("ANY", canonical, "tornado", "SCOPE.Component", handler, lineOfOffset(content, m[0]))
+	}
+}
+
+// tornadoRewritePattern rewrites a Tornado regex URL pattern into the
+// canonical `{name}` form used across all synthesizers. Three forms are
+// recognised:
+//
+//	(?P<name>regex)  → {name}
+//	(regex)          → {}
+//	other characters → passed through
+//
+// The output is then handed to httproutes.Canonicalize(FrameworkTornado, ...)
+// which strips any residual `:regex` constraints and normalises slashes.
+// We delegate `(?P<...)` handling to stripPythonNamedGroups via a small
+// wrapper rather than re-implementing the balanced-paren walker.
+func tornadoRewritePattern(raw string) string {
+	// Trim Tornado's common anchors so the canonicaliser sees the path.
+	raw = strings.TrimPrefix(raw, "^")
+	raw = strings.TrimSuffix(raw, "$")
+	// Strip Python named groups first.
+	out := stripPythonNamedGroupsExported(raw)
+	// Rewrite remaining bare capture groups `(...)` to `{}`.
+	var b strings.Builder
+	b.Grow(len(out))
+	depth := 0
+	i := 0
+	for i < len(out) {
+		c := out[i]
+		switch c {
+		case '\\':
+			// Keep escape sequences verbatim.
+			if i+1 < len(out) {
+				b.WriteByte(c)
+				b.WriteByte(out[i+1])
+				i += 2
+				continue
+			}
+		case '[':
+			// Character classes are opaque — copy until matching ']'.
+			j := i + 1
+			if j < len(out) && out[j] == ']' {
+				j++
+			}
+			for j < len(out) && out[j] != ']' {
+				if out[j] == '\\' && j+1 < len(out) {
+					j += 2
+					continue
+				}
+				j++
+			}
+			if j < len(out) {
+				j++
+			}
+			// Replace the whole character class with `{}` only if it is
+			// the body of a capture group we are inside. Otherwise emit
+			// it verbatim. The depth-aware logic below handles the inner
+			// case by skipping content when depth > 0.
+			if depth == 0 {
+				b.WriteString(out[i:j])
+			}
+			i = j
+			continue
+		case '(':
+			depth++
+			if depth == 1 {
+				b.WriteString("{}")
+			}
+			i++
+			continue
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+			i++
+			continue
+		}
+		if depth == 0 {
+			b.WriteByte(c)
+		}
+		i++
+	}
+	// Convert angle-bracket placeholders left by stripPythonNamedGroups
+	// (`<name>`) into the curly-brace canonical form.
+	res := b.String()
+	res = canonicaliseAngleBracketLite(res)
+	return res
+}
+
+// stripPythonNamedGroupsExported is a thin wrapper around the unexported
+// httproutes.stripPythonNamedGroups so the tornado rewriter can reuse the
+// balanced-paren walker without re-implementing it. We keep the alias here
+// (rather than exporting the original) because the httproutes package's
+// contract is "framework path → canonical path"; the rewrite here is a
+// pre-canonicalisation regex transform that does not belong in that API.
+func stripPythonNamedGroupsExported(raw string) string {
+	const marker = "(?P<"
+	if !strings.Contains(raw, marker) {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		idx := strings.Index(raw[i:], marker)
+		if idx < 0 {
+			b.WriteString(raw[i:])
+			break
+		}
+		b.WriteString(raw[i : i+idx])
+		nameStart := i + idx + len(marker)
+		nameEnd := strings.IndexByte(raw[nameStart:], '>')
+		if nameEnd < 0 {
+			b.WriteString(raw[i+idx:])
+			break
+		}
+		name := raw[nameStart : nameStart+nameEnd]
+		bodyStart := nameStart + nameEnd + 1
+		depth := 1
+		j := bodyStart
+		for j < len(raw) && depth > 0 {
+			c := raw[j]
+			switch c {
+			case '\\':
+				j += 2
+				continue
+			case '[':
+				j++
+				if j < len(raw) && raw[j] == ']' {
+					j++
+				}
+				for j < len(raw) && raw[j] != ']' {
+					if raw[j] == '\\' && j+1 < len(raw) {
+						j += 2
+						continue
+					}
+					j++
+				}
+				if j < len(raw) {
+					j++
+				}
+				continue
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					j++
+				} else {
+					j++
+				}
+				continue
+			}
+			j++
+		}
+		b.WriteByte('<')
+		b.WriteString(name)
+		b.WriteByte('>')
+		i = j
+	}
+	return b.String()
+}
+
+// canonicaliseAngleBracketLite rewrites `<name>` placeholders left by
+// stripPythonNamedGroupsExported into `{name}`. This is a Tornado-local
+// helper kept distinct from httproutes.canonicalizeAngleBrackets so the
+// surrounding regex anchors (`\d+`, `[^/]+`) embedded inside Tornado's
+// named groups are not interpreted as Django/Flask converter prefixes.
+func canonicaliseAngleBracketLite(raw string) string {
+	if !strings.ContainsAny(raw, "<>") {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		if raw[i] != '<' {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		end := strings.IndexByte(raw[i+1:], '>')
+		if end < 0 {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		name := strings.TrimSpace(raw[i+1 : i+1+end])
+		if name == "" {
+			b.WriteString("{}")
+		} else {
+			b.WriteByte('{')
+			b.WriteString(name)
+			b.WriteByte('}')
+		}
+		i += 1 + end + 1
+	}
+	return b.String()
+}
+
+// findPyClassBodyEnd returns the byte offset of the end of a Python class
+// body that opens immediately after `start`. The body is the contiguous
+// run of lines whose indentation is strictly greater than the class
+// declaration's. Returns len(content) when the body extends to EOF.
+func findPyClassBodyEnd(content string, start int) int {
+	// Skip to the start of the next line (after the `:` and newline).
+	nl := strings.IndexByte(content[start:], '\n')
+	if nl < 0 {
+		return len(content)
+	}
+	pos := start + nl + 1
+	for pos < len(content) {
+		// Read one line.
+		lineEnd := strings.IndexByte(content[pos:], '\n')
+		var line string
+		if lineEnd < 0 {
+			line = content[pos:]
+		} else {
+			line = content[pos : pos+lineEnd]
+		}
+		// A blank or whitespace-only line is part of the body.
+		trimmed := strings.TrimRight(line, " \t\r")
+		if trimmed == "" {
+			if lineEnd < 0 {
+				return len(content)
+			}
+			pos += lineEnd + 1
+			continue
+		}
+		// A line that starts with no leading whitespace ends the class body.
+		if line[0] != ' ' && line[0] != '\t' {
+			return pos
+		}
+		if lineEnd < 0 {
+			return len(content)
+		}
+		pos += lineEnd + 1
+	}
+	return len(content)
+}
+
+// findPyDefLine returns the 1-based line of `def <name>(` or `async def
+// <name>(` in content, or 0 when not present. Used by the Starlette and
+// Pyramid synthesizers to attribute the synthetic at the handler def line
+// when the handler is defined in the same file as the routing site.
+func findPyDefLine(content, name string) int {
+	if name == "" {
+		return 0
+	}
+	// Anchor on `def <name>(`; allow `async def` and arbitrary leading
+	// whitespace. Search the whole file — multiple defs with the same name
+	// are uncommon and the first match is the desired one in practice.
+	pat := regexp.MustCompile(`(?m)^[ \t]*(?:async\s+)?def\s+` + regexp.QuoteMeta(name) + `\s*\(`)
+	loc := pat.FindStringIndex(content)
+	if loc == nil {
+		return 0
+	}
+	return lineOfOffset(content, loc[0])
+}
+
+// ---------------------------------------------------------------------------
+// Pyramid (Python) — #2690
+// ---------------------------------------------------------------------------
+//
+// Pyramid's URL ↔ handler binding is two-step:
+//
+//	1. config.add_route("route_name", "/path/{id}") declares the URL and
+//	   names it.
+//	2. @view_config(route_name="route_name", request_method="GET") on a
+//	   handler function/class binds the URL name to a handler + verb.
+//
+// The two declarations frequently live in different modules: a routes /
+// __init__.py module calls add_route, while views.py declares the handler
+// with @view_config. The synthesizer recovers the linkage in two passes:
+//
+//	Pass A (corpus-wide concern, deferred): scan add_route calls per file.
+//	Pass B (per-file): scan @view_config decorators and, when the matching
+//	  add_route lives in the same file, emit the resolved (verb, path) pair.
+//
+// For this issue we implement the same-file pairing path (dominant on the
+// fixtures and on the indexed corpora). When add_route lives in a sibling
+// module the synthesizer still emits a synthetic per @view_config with the
+// raw route_name as the path placeholder; the cross-file resolver rebind
+// (#2680) then attributes the synthetic to the handler file. The route
+// name → path linkage in that case is recovered by a follow-up that
+// promotes route_name into a property the cross-repo linker can match on;
+// this is recorded as a TODO at the call site below rather than guessed
+// here. (Reusing the http_endpoint_definition's `path` property as the
+// route name when the path is unknown would silently corrupt the linker's
+// byPath index — strictly worse than emitting a deliberately-namespaced
+// fallback path.)
+
+// pyramidAddRouteRe captures `config.add_route("name", "/path")`. The
+// receiver name is flexible (`config`, `cfg`, `app`, `c`); we accept any
+// identifier so projects using their own conventions still match.
+//
+// Capture groups: 1 = route name, 2 = raw path.
+var pyramidAddRouteRe = regexp.MustCompile(
+	`\b\w+\.add_route\s*\(\s*["']([^"'\n\r]+)["']\s*,\s*["']([^"'\n\r]+)["']`,
+)
+
+// pyramidViewConfigRe captures the @view_config(...) decorator and the
+// following function/class name. The kwargs may appear in any order; we
+// extract route_name and request_method via separate regexes from the
+// captured kwarg blob.
+//
+// Capture groups: 1 = kwarg blob, 2 = decorated function/class name.
+var pyramidViewConfigRe = regexp.MustCompile(
+	`@view_config\s*\(([^)]*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*` +
+		`\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_][\w]*)`,
+)
+
+// pyramidRouteNameRe extracts route_name="..." from a view_config kwarg blob.
+var pyramidRouteNameRe = regexp.MustCompile(`route_name\s*=\s*["']([^"'\n\r]+)["']`)
+
+// pyramidRequestMethodRe extracts request_method="..." from a view_config
+// kwarg blob. Pyramid also accepts a list/tuple form
+// (`request_method=("GET","POST")`); both shapes are recognised.
+var pyramidRequestMethodRe = regexp.MustCompile(
+	`request_method\s*=\s*(?:["']([^"'\n\r]+)["']|[\[\(]([^\]\)]+)[\]\)])`,
+)
+
+func synthesizePyramid(content string, emit emitDefFn) {
+	if !strings.Contains(content, "view_config") && !strings.Contains(content, "add_route") {
+		return
+	}
+
+	// Build the same-file route_name → raw path map.
+	routes := map[string]string{}
+	for _, m := range pyramidAddRouteRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		routes[m[1]] = m[2]
+	}
+
+	for _, idx := range pyramidViewConfigRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
+			continue
+		}
+		kwargs := content[idx[2]:idx[3]]
+		handler := content[idx[4]:idx[5]]
+
+		var routeName string
+		if rm := pyramidRouteNameRe.FindStringSubmatch(kwargs); len(rm) >= 2 {
+			routeName = rm[1]
+		}
+		if routeName == "" {
+			// view_config without a route_name is registered via a
+			// traversal or a context predicate — out of scope for the
+			// REST-style HTTP endpoint pass.
+			continue
+		}
+
+		// Same-file add_route lookup. When absent we still emit a
+		// synthetic so the resolver can rebind to the handler file; the
+		// canonical path is the unknown-route placeholder
+		// `/{route_name}` so it never collides with a real path and is
+		// easy to spot in the dashboard. A follow-up will widen this to
+		// a cross-module add_route scan.
+		raw, known := routes[routeName]
+		if !known {
+			raw = "/_pyramid_unbound_route_/" + routeName
+		}
+
+		methods := parsePyramidMethods(kwargs)
+		if len(methods) == 0 {
+			// Pyramid's default: when request_method is unset the view
+			// matches any verb. We emit ANY rather than a list of every
+			// HTTP method.
+			methods = []string{"ANY"}
+		}
+
+		canonical := httproutes.Canonicalize(httproutes.FrameworkPyramid, raw)
+		defLine := findPyDefLine(content, handler)
+		if defLine == 0 {
+			defLine = lineOfOffset(content, idx[0])
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "pyramid", "SCOPE.Operation", handler, defLine)
+		}
+	}
+}
+
+// parsePyramidMethods returns the verbs declared on a `request_method=`
+// kwarg, accepting either a single string or a list/tuple of strings.
+func parsePyramidMethods(kwargs string) []string {
+	mm := pyramidRequestMethodRe.FindStringSubmatch(kwargs)
+	if len(mm) < 3 {
+		return nil
+	}
+	body := mm[1]
+	if body == "" {
+		body = mm[2]
+	}
+	var out []string
+	for _, tok := range strings.Split(body, ",") {
+		tok = strings.TrimSpace(tok)
+		tok = strings.Trim(tok, `"'`)
+		if tok == "" {
+			continue
+		}
+		out = append(out, strings.ToUpper(tok))
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------

@@ -35,6 +35,19 @@ const (
 	// FrameworkAxum (#1420) uses {param} curly-brace syntax identical to
 	// FastAPI/JAX-RS; canonicalisation reuses canonicalizeCurlyBraces.
 	FrameworkAxum = "axum"
+	// FrameworkStarlette (#2690) — Route("/users/{id}", endpoint=..., methods=[...])
+	// uses {name} curly-brace placeholders identical to FastAPI / JAX-RS.
+	FrameworkStarlette = "starlette"
+	// FrameworkPyramid (#2690) — config.add_route("name", "/users/{id}") +
+	// @view_config(route_name="name", request_method="GET"). Path syntax is
+	// {name} curly-brace, same as Starlette.
+	FrameworkPyramid = "pyramid"
+	// FrameworkTornado (#2690) — Application([(r"/users/([0-9]+)", Handler)]).
+	// Tornado paths are raw Python regex; the synthesizer pre-rewrites
+	// `(?P<name>...)` named groups and bare capture groups before this
+	// function sees the path, so canonicalisation here is identity +
+	// normaliseSlashes (default case).
+	FrameworkTornado = "tornado"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -63,7 +76,14 @@ func Canonicalize(framework, raw string) string {
 		// across the producer and consumer sides.
 		out = stripPythonNamedGroups(raw)
 		out = canonicalizeAngleBrackets(out)
-	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum:
+	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
+		FrameworkStarlette, FrameworkPyramid:
+		out = canonicalizeCurlyBraces(raw)
+	case FrameworkTornado:
+		// Tornado paths arrive already pre-processed by the synthesizer
+		// (named-group → {name}, bare group → {}). Curly-brace pass
+		// strips any stray `:regex` constraints, mirroring the other
+		// curly-brace frameworks.
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi:
 		out = canonicalizeColonParams(raw)
