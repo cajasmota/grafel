@@ -3,7 +3,7 @@
 
 Auto-generated. Back to [summary](../summary.md).
 
-- **Language:** [javascript](../by-language/javascript.md)
+- **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [configuration](../by-category/configuration.md)
 - **Capability cells:** 1
 

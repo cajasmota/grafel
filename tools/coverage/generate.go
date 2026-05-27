@@ -76,14 +76,17 @@ type recordView struct {
 }
 
 // pivotRow is one row of the summary pivot table (rows = language,
-// columns = bucket counts).
+// columns = bucket counts). Name is the slug used in filenames and
+// links; Display is the human-facing label rendered in the table cell
+// (they differ for slugs like "jsts" → "JS/TS").
 type pivotRow struct {
-	Name           string
-	Frameworks     int
-	Tools          int
-	ORMs           int
-	Other          int
-	Uncategorized  bool // true for the language-neutral "Uncategorized" row
+	Name          string
+	Display       string
+	Frameworks    int
+	Tools         int
+	ORMs          int
+	Other         int
+	Uncategorized bool // true for the language-neutral "Uncategorized" row
 }
 
 // bucketSection is one rendered section on a by-language page.
@@ -172,10 +175,23 @@ func recordToView(rec Record) recordView {
 	}
 }
 
+// languageDisplay maps a language slug to its human-facing label. Slugs
+// without an entry render verbatim. "jsts" expands to "JS/TS" because
+// the registry collapses JavaScript and TypeScript under one tag (see
+// the Record.Language docstring).
+func languageDisplay(slug string) string {
+	switch slug {
+	case "jsts":
+		return "JS/TS"
+	}
+	return slug
+}
+
 // templateFuncs are the helpers exposed to templates. Kept minimal so
 // most rendering logic lives in Go where it can be tested.
 var templateFuncs = template.FuncMap{
-	"glyph": statusGlyph,
+	"glyph":   statusGlyph,
+	"langDsp": languageDisplay,
 }
 
 // generate writes the full markdown tree under outRoot/docs/coverage.
@@ -266,6 +282,7 @@ func generate(reg *Registry, outRoot string) error {
 		buckets := byLangBucket[n]
 		row := pivotRow{
 			Name:       n,
+			Display:    languageDisplay(n),
 			Frameworks: len(buckets[BucketFrameworks]),
 			Tools:      len(buckets[BucketTools]),
 			ORMs:       len(buckets[BucketORMs]),
@@ -280,6 +297,7 @@ func generate(reg *Registry, outRoot string) error {
 		// alphabetical list (per #2725 spec).
 		if n == "multi" || n == "" {
 			row.Name = "Uncategorized"
+			row.Display = "Uncategorized"
 			row.Uncategorized = true
 		}
 		rows = append(rows, row)
@@ -319,7 +337,7 @@ func generate(reg *Registry, outRoot string) error {
 				Records:        recs,
 			})
 		}
-		displayLang := n
+		displayLang := languageDisplay(n)
 		if n == "multi" || n == "" {
 			displayLang = "Uncategorized"
 		}

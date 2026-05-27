@@ -9,9 +9,9 @@
 |---|---:|---:|---:|---:|
 {{- range .Rows}}
 {{- if .Uncategorized}}
-| {{.Name}} | {{.Frameworks}} | {{.Tools}} | {{.ORMs}} | {{.Other}} |
+| {{.Display}} | {{.Frameworks}} | {{.Tools}} | {{.ORMs}} | {{.Other}} |
 {{- else}}
-| [{{.Name}}](by-language/{{.Name}}.md) | {{.Frameworks}} | {{.Tools}} | {{.ORMs}} | {{.Other}} |
+| [{{.Display}}](by-language/{{.Name}}.md) | {{.Frameworks}} | {{.Tools}} | {{.ORMs}} | {{.Other}} |
 {{- end}}
 {{- end}}
 

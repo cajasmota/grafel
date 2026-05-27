@@ -84,10 +84,10 @@ func TestGenSmokeFixturePaths(t *testing.T) {
 	want := []string{
 		"docs/coverage/summary.md",
 		"docs/coverage/by-language/python.md",
-		"docs/coverage/by-language/javascript.md",
+		"docs/coverage/by-language/jsts.md",
 		"docs/coverage/by-category/http_framework.md",
 		"docs/coverage/detail/lang.python.framework.flask.md",
-		"docs/coverage/detail/lang.javascript.framework.express.md",
+		"docs/coverage/detail/lang.jsts.framework.express.md",
 	}
 	for _, rel := range want {
 		full := filepath.Join(root, rel)

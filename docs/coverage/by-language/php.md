@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # php
 
-**Frameworks**: 12 · **Tools**: 6 · **ORMs**: 14 · **Other**: 1
+**Frameworks**: 12 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -51,9 +51,3 @@ Back to [summary](../summary.md).
 | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | — | — | ⚠️ | |
 | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | — | — | ⚠️ | |
 | [phpredis / Predis](../detail/lang.php.driver.redis.md) | — | — | ⚠️ | |
-
-## Other
-
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [PHP](../detail/lang.php.md) | [language](../by-category/language.md) | ❌ | |

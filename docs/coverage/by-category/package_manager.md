@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 15 records · **csharp**: 1 · **dart**: 1 · **elixir**: 1 · **go**: 1 · **java**: 2 · **javascript**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
+**Total**: 15 records · **csharp**: 1 · **dart**: 1 · **elixir**: 1 · **go**: 1 · **java**: 2 · **JS/TS**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -13,7 +13,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | ⚠️ | ✅ | — | |
 | [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | ❌ | ❌ | — | |
 | [java](../by-language/java.md) | [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | — | |
-| [javascript](../by-language/javascript.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ❌ | ✅ | — | |
+| [JS/TS](../by-language/jsts.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ❌ | ✅ | — | |
 | [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ❌ | ❌ | — | |
 | [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | ❌ | ❌ | — | |
 | [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | ❌ | ✅ | — | |

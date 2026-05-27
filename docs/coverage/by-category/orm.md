@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 143 records · **csharp**: 14 · **elixir**: 10 · **go**: 17 · **java**: 13 · **javascript**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 14 · **scala**: 6
+**Total**: 143 records · **csharp**: 14 · **elixir**: 10 · **go**: 17 · **java**: 13 · **JS/TS**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 14 · **scala**: 6
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -61,24 +61,24 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [java](../by-language/java.md) | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ | ⚠️ | ⚠️ | |
 | [java](../by-language/java.md) | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ | ⚠️ | ⚠️ | |
 | [java](../by-language/java.md) | [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ | ⚠️ | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [@elastic/elasticsearch](../detail/lang.javascript.driver.elastic.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [AWS SDK DynamoDB (JS)](../detail/lang.javascript.driver.dynamodb.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [Drizzle](../detail/lang.javascript.orm.drizzle.md) | ❌ | ✅ | ✅ | |
-| [javascript](../by-language/javascript.md) | [Knex (query builder)](../detail/lang.javascript.orm.knex.md) | ❌ | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [MikroORM](../detail/lang.javascript.orm.mikro-orm.md) | ❌ | ⚠️ | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [MongoDB Node.js driver](../detail/lang.javascript.driver.mongodb.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [Mongoose](../detail/lang.javascript.orm.mongoose.md) | — | ✅ | ✅ | |
-| [javascript](../by-language/javascript.md) | [Objection.js](../detail/lang.javascript.orm.objection.md) | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Prisma](../detail/lang.javascript.orm.prisma.md) | ⚠️ | ✅ | ✅ | |
-| [javascript](../by-language/javascript.md) | [Sequelize](../detail/lang.javascript.orm.sequelize.md) | ❌ | ✅ | ✅ | |
-| [javascript](../by-language/javascript.md) | [TypeORM](../detail/lang.javascript.orm.typeorm.md) | ❌ | ✅ | ✅ | |
-| [javascript](../by-language/javascript.md) | [better-sqlite3 / sqlite3](../detail/lang.javascript.driver.sqlite.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [cassandra-driver (JS)](../detail/lang.javascript.driver.cassandra.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [ioredis / node-redis](../detail/lang.javascript.driver.redis.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [mysql / mysql2](../detail/lang.javascript.driver.mysql.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [neo4j-driver (JS)](../detail/lang.javascript.driver.neo4j.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [node-postgres / pg](../detail/lang.javascript.driver.postgres.md) | — | — | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [supabase-js](../detail/lang.javascript.driver.supabase.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ❌ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ❌ | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ❌ | ⚠️ | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | — | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [Objection.js](../detail/lang.jsts.orm.objection.md) | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Prisma](../detail/lang.jsts.orm.prisma.md) | ⚠️ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ❌ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ❌ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [supabase-js](../detail/lang.jsts.driver.supabase.md) | — | — | ⚠️ | |
 | [kotlin](../by-language/kotlin.md) | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | ❌ | ✅ | ✅ | |
 | [kotlin](../by-language/kotlin.md) | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | ❌ | ⚠️ | ⚠️ | |
 | [kotlin](../by-language/kotlin.md) | [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | ❌ | ⚠️ | ⚠️ | |

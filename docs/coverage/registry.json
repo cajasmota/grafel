@@ -22,7 +22,7 @@
     {
       "id": "build.bun",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Bun (runtime + manager)",
       "capabilities": {
         "dependency_graph": {
@@ -130,7 +130,7 @@
     {
       "id": "build.esbuild",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "esbuild",
       "capabilities": {
         "dependency_graph": {
@@ -244,7 +244,7 @@
     {
       "id": "build.lerna",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Lerna",
       "capabilities": {
         "dependency_graph": {
@@ -338,7 +338,7 @@
     {
       "id": "build.npm",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "npm",
       "capabilities": {
         "dependency_graph": {
@@ -374,7 +374,7 @@
     {
       "id": "build.nx",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Nx (monorepo)",
       "capabilities": {
         "dependency_graph": {
@@ -388,7 +388,7 @@
     {
       "id": "build.parcel",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Parcel",
       "capabilities": {
         "dependency_graph": {
@@ -438,7 +438,7 @@
     {
       "id": "build.pnpm",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "pnpm",
       "capabilities": {
         "dependency_graph": {
@@ -490,7 +490,7 @@
     {
       "id": "build.rollup",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Rollup",
       "capabilities": {
         "dependency_graph": {
@@ -554,7 +554,7 @@
     {
       "id": "build.turborepo",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Turborepo",
       "capabilities": {
         "dependency_graph": {
@@ -586,7 +586,7 @@
     {
       "id": "build.vite",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Vite",
       "capabilities": {
         "dependency_graph": {
@@ -602,7 +602,7 @@
     {
       "id": "build.webpack",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Webpack",
       "capabilities": {
         "dependency_graph": {
@@ -618,7 +618,7 @@
     {
       "id": "build.yarn",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Yarn",
       "capabilities": {
         "dependency_graph": {
@@ -899,7 +899,7 @@
     {
       "id": "config.tsconfig",
       "category": "configuration",
-      "language": "javascript",
+      "language": "jsts",
       "label": "tsconfig.json",
       "capabilities": {
         "file_parsing": {
@@ -1549,79 +1549,6 @@
       }
     },
     {
-      "id": "lang.clojure",
-      "category": "language",
-      "language": "clojure",
-      "label": "Clojure",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/clojure/clojure.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
-      "id": "lang.cpp",
-      "category": "language",
-      "language": "cpp",
-      "label": "C++",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/cpp/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
-      "id": "lang.crystal",
-      "category": "language",
-      "language": "crystal",
-      "label": "Crystal",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/crystal/extractor.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.csharp",
-      "category": "language",
-      "language": "csharp",
-      "label": "C#",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/csharp/csharp.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
       "id": "lang.csharp.driver.cassandra",
       "category": "orm",
       "language": "csharp",
@@ -2213,44 +2140,6 @@
       }
     },
     {
-      "id": "lang.dart",
-      "category": "language",
-      "language": "dart",
-      "label": "Dart",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/dart/dart.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
-      "id": "lang.elixir",
-      "category": "language",
-      "language": "elixir",
-      "label": "Elixir",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/elixir/elixir.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
       "id": "lang.elixir.driver.dynamodb",
       "category": "orm",
       "language": "elixir",
@@ -2641,62 +2530,6 @@
           "status": "partial",
           "cites": ["internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml"],
           "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.erlang",
-      "category": "language",
-      "language": "erlang",
-      "label": "Erlang",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/erlang/extractor.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.fsharp",
-      "category": "language",
-      "language": "fsharp",
-      "label": "F#",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/fsharp/extractor.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.go",
-      "category": "language",
-      "language": "go",
-      "label": "Go",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full",
-          "cites": ["internal/extractors/golang/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/golang/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        },
-        "navigates_to": {
-          "status": "missing"
         }
       }
     },
@@ -3436,59 +3269,6 @@
       }
     },
     {
-      "id": "lang.groovy",
-      "category": "language",
-      "language": "groovy",
-      "label": "Groovy",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/groovy/groovy.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.haskell",
-      "category": "language",
-      "language": "haskell",
-      "label": "Haskell",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/haskell/extractor.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.java",
-      "category": "language",
-      "language": "java",
-      "label": "Java",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full",
-          "cites": ["internal/extractors/java/java.go"],
-          "verified_at": "2026-05-28"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/java/java.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
       "id": "lang.java.framework.akka-http",
       "category": "http_framework",
       "language": "java",
@@ -4204,37 +3984,9 @@
       }
     },
     {
-      "id": "lang.javascript",
-      "category": "language",
-      "language": "javascript",
-      "label": "JavaScript",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/discriminator.go"],
-          "verified_at": "2026-05-28"
-        },
-        "navigates_to": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/navigation.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.javascript.driver.cassandra",
+      "id": "lang.jsts.driver.cassandra",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "cassandra-driver (JS)",
       "capabilities": {
         "migration_parsing": {
@@ -4251,9 +4003,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.dynamodb",
+      "id": "lang.jsts.driver.dynamodb",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "AWS SDK DynamoDB (JS)",
       "capabilities": {
         "migration_parsing": {
@@ -4270,9 +4022,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.elastic",
+      "id": "lang.jsts.driver.elastic",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "@elastic/elasticsearch",
       "capabilities": {
         "migration_parsing": {
@@ -4289,9 +4041,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.mongodb",
+      "id": "lang.jsts.driver.mongodb",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "MongoDB Node.js driver",
       "capabilities": {
         "migration_parsing": {
@@ -4308,9 +4060,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.mysql",
+      "id": "lang.jsts.driver.mysql",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "mysql / mysql2",
       "capabilities": {
         "migration_parsing": {
@@ -4327,9 +4079,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.neo4j",
+      "id": "lang.jsts.driver.neo4j",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "neo4j-driver (JS)",
       "capabilities": {
         "migration_parsing": {
@@ -4346,9 +4098,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.postgres",
+      "id": "lang.jsts.driver.postgres",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "node-postgres / pg",
       "capabilities": {
         "migration_parsing": {
@@ -4365,9 +4117,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.redis",
+      "id": "lang.jsts.driver.redis",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "ioredis / node-redis",
       "capabilities": {
         "migration_parsing": {
@@ -4384,9 +4136,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.sqlite",
+      "id": "lang.jsts.driver.sqlite",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "better-sqlite3 / sqlite3",
       "capabilities": {
         "migration_parsing": {
@@ -4403,9 +4155,9 @@
       }
     },
     {
-      "id": "lang.javascript.driver.supabase",
+      "id": "lang.jsts.driver.supabase",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "supabase-js",
       "capabilities": {
         "migration_parsing": {
@@ -4422,9 +4174,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.adonisjs",
+      "id": "lang.jsts.framework.adonisjs",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "AdonisJS",
       "capabilities": {
         "auth_coverage": {
@@ -4442,9 +4194,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.angular",
+      "id": "lang.jsts.framework.angular",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Angular",
       "capabilities": {
         "auth_coverage": {
@@ -4464,9 +4216,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.astro",
+      "id": "lang.jsts.framework.astro",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Astro",
       "capabilities": {
         "auth_coverage": {
@@ -4488,9 +4240,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.electron",
+      "id": "lang.jsts.framework.electron",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Electron",
       "capabilities": {
         "auth_coverage": {
@@ -4510,9 +4262,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.expo",
+      "id": "lang.jsts.framework.expo",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Expo",
       "capabilities": {
         "auth_coverage": {
@@ -4532,9 +4284,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.express",
+      "id": "lang.jsts.framework.express",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Express",
       "capabilities": {
         "auth_coverage": {
@@ -4558,9 +4310,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.fastify",
+      "id": "lang.jsts.framework.fastify",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Fastify",
       "capabilities": {
         "auth_coverage": {
@@ -4582,9 +4334,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.feathers",
+      "id": "lang.jsts.framework.feathers",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Feathers",
       "capabilities": {
         "auth_coverage": {
@@ -4602,9 +4354,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.gatsby",
+      "id": "lang.jsts.framework.gatsby",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Gatsby",
       "capabilities": {
         "auth_coverage": {
@@ -4626,9 +4378,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.graphql-resolvers",
+      "id": "lang.jsts.framework.graphql-resolvers",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)",
       "capabilities": {
         "auth_coverage": {
@@ -4650,9 +4402,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.hapi",
+      "id": "lang.jsts.framework.hapi",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Hapi",
       "capabilities": {
         "auth_coverage": {
@@ -4670,9 +4422,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.hono",
+      "id": "lang.jsts.framework.hono",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Hono",
       "capabilities": {
         "auth_coverage": {
@@ -4694,9 +4446,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.ionic",
+      "id": "lang.jsts.framework.ionic",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Ionic",
       "capabilities": {
         "auth_coverage": {
@@ -4716,9 +4468,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.koa",
+      "id": "lang.jsts.framework.koa",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Koa",
       "capabilities": {
         "auth_coverage": {
@@ -4740,9 +4492,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.langchain",
+      "id": "lang.jsts.framework.langchain",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "LangChain.js",
       "capabilities": {
         "auth_coverage": {
@@ -4762,9 +4514,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.marblejs",
+      "id": "lang.jsts.framework.marblejs",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Marble.js",
       "capabilities": {
         "auth_coverage": {
@@ -4782,9 +4534,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.nativescript",
+      "id": "lang.jsts.framework.nativescript",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "NativeScript",
       "capabilities": {
         "auth_coverage": {
@@ -4804,9 +4556,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.nestjs",
+      "id": "lang.jsts.framework.nestjs",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "NestJS",
       "capabilities": {
         "auth_coverage": {
@@ -4832,9 +4584,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.next-api",
+      "id": "lang.jsts.framework.next-api",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Next.js API Routes / App Router",
       "capabilities": {
         "auth_coverage": {
@@ -4856,9 +4608,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.nuxt",
+      "id": "lang.jsts.framework.nuxt",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Nuxt",
       "capabilities": {
         "auth_coverage": {
@@ -4880,9 +4632,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.polka",
+      "id": "lang.jsts.framework.polka",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Polka",
       "capabilities": {
         "auth_coverage": {
@@ -4900,9 +4652,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.react",
+      "id": "lang.jsts.framework.react",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "React",
       "capabilities": {
         "auth_coverage": {
@@ -4922,9 +4674,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.react-native",
+      "id": "lang.jsts.framework.react-native",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "React Native",
       "capabilities": {
         "auth_coverage": {
@@ -4944,9 +4696,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.remix",
+      "id": "lang.jsts.framework.remix",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Remix",
       "capabilities": {
         "auth_coverage": {
@@ -4968,9 +4720,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.restify",
+      "id": "lang.jsts.framework.restify",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Restify",
       "capabilities": {
         "auth_coverage": {
@@ -4988,9 +4740,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.sails",
+      "id": "lang.jsts.framework.sails",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Sails",
       "capabilities": {
         "auth_coverage": {
@@ -5008,9 +4760,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.svelte",
+      "id": "lang.jsts.framework.svelte",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Svelte",
       "capabilities": {
         "auth_coverage": {
@@ -5030,9 +4782,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.sveltekit",
+      "id": "lang.jsts.framework.sveltekit",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "SvelteKit",
       "capabilities": {
         "auth_coverage": {
@@ -5054,9 +4806,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.trpc",
+      "id": "lang.jsts.framework.trpc",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "tRPC",
       "capabilities": {
         "auth_coverage": {
@@ -5078,9 +4830,9 @@
       }
     },
     {
-      "id": "lang.javascript.framework.vue",
+      "id": "lang.jsts.framework.vue",
       "category": "http_framework",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Vue",
       "capabilities": {
         "auth_coverage": {
@@ -5100,9 +4852,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.drizzle",
+      "id": "lang.jsts.orm.drizzle",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Drizzle",
       "capabilities": {
         "migration_parsing": {
@@ -5121,9 +4873,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.knex",
+      "id": "lang.jsts.orm.knex",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Knex (query builder)",
       "capabilities": {
         "migration_parsing": {
@@ -5140,9 +4892,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.mikro-orm",
+      "id": "lang.jsts.orm.mikro-orm",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "MikroORM",
       "capabilities": {
         "migration_parsing": {
@@ -5161,9 +4913,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.mongoose",
+      "id": "lang.jsts.orm.mongoose",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Mongoose",
       "capabilities": {
         "migration_parsing": {
@@ -5182,9 +4934,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.objection",
+      "id": "lang.jsts.orm.objection",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Objection.js",
       "capabilities": {
         "migration_parsing": {
@@ -5199,9 +4951,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.prisma",
+      "id": "lang.jsts.orm.prisma",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Prisma",
       "capabilities": {
         "migration_parsing": {
@@ -5222,9 +4974,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.sequelize",
+      "id": "lang.jsts.orm.sequelize",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Sequelize",
       "capabilities": {
         "migration_parsing": {
@@ -5243,9 +4995,9 @@
       }
     },
     {
-      "id": "lang.javascript.orm.typeorm",
+      "id": "lang.jsts.orm.typeorm",
       "category": "orm",
-      "language": "javascript",
+      "language": "jsts",
       "label": "TypeORM",
       "capabilities": {
         "migration_parsing": {
@@ -5260,25 +5012,6 @@
           "status": "full",
           "cites": ["internal/engine/orm_queries_jsts.go"],
           "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.kotlin",
-      "category": "language",
-      "language": "kotlin",
-      "label": "Kotlin",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/kotlin/imports.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
         }
       }
     },
@@ -5721,57 +5454,6 @@
       "label": "OpenResty",
       "capabilities": {
         "endpoint_synthesis": {
-          "status": "missing"
-        }
-      }
-    },
-    {
-      "id": "lang.nim",
-      "category": "language",
-      "language": "nim",
-      "label": "Nim",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/nim/nim.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.ocaml",
-      "category": "language",
-      "language": "ocaml",
-      "label": "OCaml",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/ocaml/extractor.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.php",
-      "category": "language",
-      "language": "php",
-      "label": "PHP",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/php/php.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
           "status": "missing"
         }
       }
@@ -6325,32 +6007,6 @@
           "status": "partial",
           "cites": ["internal/engine/rules/php/orms/redbeanphp.yaml"],
           "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.python",
-      "category": "language",
-      "language": "python",
-      "label": "Python",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full",
-          "cites": ["internal/extractors/python/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/python/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "full",
-          "cites": ["internal/extractors/python/discriminator.go"],
-          "verified_at": "2026-05-28"
-        },
-        "navigates_to": {
-          "status": "missing"
         }
       }
     },
@@ -7164,25 +6820,6 @@
       }
     },
     {
-      "id": "lang.ruby",
-      "category": "language",
-      "language": "ruby",
-      "label": "Ruby",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/ruby/ruby.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
       "id": "lang.ruby.driver.cassandra",
       "category": "orm",
       "language": "ruby",
@@ -7622,25 +7259,6 @@
           "status": "partial",
           "cites": ["internal/engine/rules/ruby/orms/sequel.yaml"],
           "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.rust",
-      "category": "language",
-      "language": "rust",
-      "label": "Rust",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/rust/rust.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
         }
       }
     },
@@ -8169,25 +7787,6 @@
       }
     },
     {
-      "id": "lang.scala",
-      "category": "language",
-      "language": "scala",
-      "label": "Scala",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/scala/scala.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
       "id": "lang.scala.framework.akka-http",
       "category": "http_framework",
       "language": "scala",
@@ -8524,41 +8123,6 @@
       }
     },
     {
-      "id": "lang.solidity",
-      "category": "language",
-      "language": "solidity",
-      "label": "Solidity",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/solidity/extractor.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.swift",
-      "category": "language",
-      "language": "swift",
-      "label": "Swift",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/swift/swift.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "missing"
-        }
-      }
-    },
-    {
       "id": "lang.swift.framework.vapor",
       "category": "http_framework",
       "language": "swift",
@@ -8566,46 +8130,6 @@
       "capabilities": {
         "endpoint_synthesis": {
           "status": "missing"
-        }
-      }
-    },
-    {
-      "id": "lang.typescript",
-      "category": "language",
-      "language": "typescript",
-      "label": "TypeScript (shares the JavaScript extractor)",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "full"
-        },
-        "core_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/extractor.go"],
-          "verified_at": "2026-05-28"
-        },
-        "discriminates_on": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/discriminator.go"],
-          "verified_at": "2026-05-28"
-        },
-        "navigates_to": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/navigation.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.zig",
-      "category": "language",
-      "language": "zig",
-      "label": "Zig",
-      "capabilities": {
-        "call_line_precision": {
-          "status": "partial"
-        },
-        "core_extraction": {
-          "status": "partial"
         }
       }
     },
@@ -8951,7 +8475,7 @@
     {
       "id": "msg.bullmq",
       "category": "message_broker",
-      "language": "javascript",
+      "language": "jsts",
       "label": "BullMQ / bull (Node task queue)",
       "capabilities": {
         "consumer_extraction": {
@@ -9253,7 +8777,7 @@
     {
       "id": "pkg.npm",
       "category": "package_manager",
-      "language": "javascript",
+      "language": "jsts",
       "label": "package.json (npm/yarn/pnpm)",
       "capabilities": {
         "lockfile_parsing": {
@@ -9679,7 +9203,7 @@
     {
       "id": "test.ava",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "AVA",
       "capabilities": {
         "dependency_graph": {
@@ -9767,7 +9291,7 @@
     {
       "id": "test.cypress",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Cypress",
       "capabilities": {
         "dependency_graph": {
@@ -9887,7 +9411,7 @@
     {
       "id": "test.jasmine",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Jasmine",
       "capabilities": {
         "dependency_graph": {
@@ -9901,7 +9425,7 @@
     {
       "id": "test.jest",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Jest",
       "capabilities": {
         "dependency_graph": {
@@ -9973,7 +9497,7 @@
     {
       "id": "test.mocha",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Mocha",
       "capabilities": {
         "dependency_graph": {
@@ -10101,7 +9625,7 @@
     {
       "id": "test.playwright",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Playwright",
       "capabilities": {
         "dependency_graph": {
@@ -10207,7 +9731,7 @@
     {
       "id": "test.tap",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "tap / node:test",
       "capabilities": {
         "dependency_graph": {
@@ -10273,7 +9797,7 @@
     {
       "id": "test.vitest",
       "category": "build_system",
-      "language": "javascript",
+      "language": "jsts",
       "label": "Vitest",
       "capabilities": {
         "dependency_graph": {

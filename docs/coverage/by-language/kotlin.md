@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # kotlin
 
-**Frameworks**: 12 · **Tools**: 0 · **ORMs**: 7 · **Other**: 1
+**Frameworks**: 12 · **Tools**: 0 · **ORMs**: 7 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -33,9 +33,3 @@ Back to [summary](../summary.md).
 | [Room (Android)](../detail/lang.kotlin.orm.room.md) | ❌ | ⚠️ | ⚠️ | |
 | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | ❌ | ⚠️ | ⚠️ | |
 | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | ❌ | ⚠️ | ⚠️ | |
-
-## Other
-
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [Kotlin](../detail/lang.kotlin.md) | [language](../by-category/language.md) | ❌ | |

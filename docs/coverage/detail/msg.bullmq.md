@@ -3,7 +3,7 @@
 
 Auto-generated. Back to [summary](../summary.md).
 
-- **Language:** [javascript](../by-language/javascript.md)
+- **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Capability cells:** 3
 
