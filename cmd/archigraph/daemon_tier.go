@@ -287,6 +287,12 @@ func tierEvictCallback(key tier.SlotKey) {
 // the newest source-file mtime in the repo. If the repo has changed since the
 // graph was last indexed, enqueue a reactive reindex so the query is served
 // from the most up-to-date graph on the next request.
+//
+// #2645: also ensure the fsnotify subscription is live after a cold wake.
+// In the normal path the subscription is kept through WARM→COLD (the Pause
+// is now deferred to COLD→EXPIRED), but an EXPIRED slot that got re-indexed
+// will have had its subscription removed. Resume is idempotent, so this call
+// is safe even when the subscription is already active.
 func tierReloadCallback(key tier.SlotKey) error {
 	stateDir := daemon.StateDirForRepoRef(key.RepoPath, key.Ref)
 	fbPath := filepath.Join(stateDir, "graph.fb")
@@ -296,6 +302,11 @@ func tierReloadCallback(key tier.SlotKey) error {
 		return err
 	}
 	release()
+
+	// Re-establish the fsnotify subscription on cold wake (#2645).
+	if daemonWatcherMgr != nil {
+		daemonWatcherMgr.Resume(key.RepoPath, key.Ref)
+	}
 
 	// Stale-detection: if the repo has file changes newer than graph.fb,
 	// enqueue a reactive reindex so the next query gets a fresh graph.

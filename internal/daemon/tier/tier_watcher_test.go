@@ -2,6 +2,11 @@ package tier_test
 
 // tier_watcher_test.go — integration tests for PH2a watcher pause/resume
 // driven by tier transitions. PH2a of epic #2087 (#2096).
+//
+// #2645: WARM→COLD no longer fires Pause — the fsnotify subscription is kept
+// alive through the COLD window so that TS/TSX (and all other source) file
+// edits continue to trigger reindex while the graph is cold-on-disk.
+// Pause is now deferred to COLD→EXPIRED (when the graph.fb is deleted).
 
 import (
 	"sync"
@@ -45,10 +50,14 @@ func (f *fakeWatcherHook) resumedCount() int {
 }
 
 // ---------------------------------------------------------------------------
-// Test: WARM→COLD fires Pause
+// Test: WARM→COLD does NOT fire Pause (#2645)
+//
+// Before #2645, the watcher subscription was removed when a slot went COLD,
+// silently dropping file-change events for repos idle for >60 min.
+// The fix defers Pause to COLD→EXPIRED so the subscription stays alive.
 // ---------------------------------------------------------------------------
 
-func TestWatcherPausedOnCold(t *testing.T) {
+func TestWatcherNotPausedOnCold(t *testing.T) {
 	clock, advance := makeClock()
 	hook := &fakeWatcherHook{}
 	var evictCount atomic.Int32
@@ -75,14 +84,75 @@ func TestWatcherPausedOnCold(t *testing.T) {
 		t.Fatalf("want COLD, got %s", got)
 	}
 
+	// The in-memory graph should have been evicted…
 	if evictCount.Load() != 1 {
 		t.Fatalf("want 1 eviction, got %d", evictCount.Load())
 	}
-	if hook.pausedCount() != 1 {
-		t.Fatalf("want 1 Pause call, got %d", hook.pausedCount())
+	// …but the fsnotify subscription must NOT have been removed (#2645).
+	if hook.pausedCount() != 0 {
+		t.Fatalf("#2645: Pause must NOT fire on WARM→COLD; got %d Pause calls", hook.pausedCount())
 	}
 	if hook.resumedCount() != 0 {
 		t.Fatalf("want 0 Resume calls before wake, got %d", hook.resumedCount())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: COLD→EXPIRED fires Pause
+//
+// The subscription should be removed only when the graph.fb is deleted from
+// disk (COLD→EXPIRED), because at that point there is nothing to reindex into.
+// ---------------------------------------------------------------------------
+
+func TestWatcherPausedOnExpired(t *testing.T) {
+	cfg := tier.DefaultTTLConfig()
+	// Use short expired window so we can drive COLD→EXPIRED in the test.
+	cfg.ExpiredWindow = 2 * time.Minute
+	cfg.ExpiredWindowWorktree = 2 * time.Minute
+
+	clock, advance := makeClock()
+	hook := &fakeWatcherHook{}
+	var diskEvictCount atomic.Int32
+
+	m := tier.NewManagerForTestWithDiskEvict(cfg, clock,
+		noopEvict,
+		noopReload,
+		func(k tier.SlotKey) (int64, error) {
+			diskEvictCount.Add(1)
+			return 0, nil
+		},
+	)
+	m.SetWatcherHook(hook)
+
+	key := tier.SlotKey{RepoPath: "/repo/expired", Ref: "feat/gone"}
+	m.Register(key, false, tier.SlotKindBranchFeature)
+
+	// Drive to COLD.
+	advance(6 * time.Minute)
+	m.Scan()
+	advance(61 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierCold {
+		t.Fatalf("prereq: want COLD, got %s", got)
+	}
+	// Still no Pause during COLD.
+	if hook.pausedCount() != 0 {
+		t.Fatalf("#2645: Pause must not fire on WARM→COLD; got %d", hook.pausedCount())
+	}
+
+	// Drive COLD→EXPIRED.
+	advance(3 * time.Minute)
+	m.Scan()
+	if got := m.Get(key); got != tier.TierExpired {
+		t.Fatalf("want EXPIRED, got %s", got)
+	}
+
+	// NOW Pause should fire (subscription removed because graph.fb was deleted).
+	if hook.pausedCount() != 1 {
+		t.Fatalf("want 1 Pause call on EXPIRED, got %d", hook.pausedCount())
+	}
+	if diskEvictCount.Load() != 1 {
+		t.Fatalf("want 1 disk evict, got %d", diskEvictCount.Load())
 	}
 }
 
@@ -94,7 +164,6 @@ func TestWatcherResumedOnColdWake(t *testing.T) {
 	clock, advance := makeClock()
 	hook := &fakeWatcherHook{}
 
-	resumeOrder := make([]string, 0)
 	reloadOrder := make([]string, 0)
 	var mu sync.Mutex
 
@@ -113,7 +182,6 @@ func TestWatcherResumedOnColdWake(t *testing.T) {
 		},
 	)
 	m.SetWatcherHook(hook)
-	_ = resumeOrder
 
 	key := tier.SlotKey{RepoPath: "/repo/ph2a-wake", Ref: "feat/x"}
 	m.Register(key, false, tier.SlotKindBranchFeature)
@@ -263,12 +331,13 @@ func TestConcurrentColdWakesWithWatcherHook(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: stale detection — IsPaused is false after cold-wake
+// Test: stale detection — no Pause after WARM→COLD, Resume after cold-wake
 // ---------------------------------------------------------------------------
 
 func TestSlotNotPausedAfterWake(t *testing.T) {
 	// Simulate the full cycle: register → evict → wake.
 	// After the wake the slot should be HOT and watcher should be resumed.
+	// #2645: there should be 0 Pause calls (Pause deferred to EXPIRED).
 	clock, advance := makeClock()
 	hook := &fakeWatcherHook{}
 
@@ -284,11 +353,12 @@ func TestSlotNotPausedAfterWake(t *testing.T) {
 	m.Scan()
 	_ = m.Touch(key) // cold wake
 
-	// After the wake the slot is HOT; the hook should have 1 Pause + 1 Resume.
-	if hook.pausedCount() != 1 {
-		t.Errorf("want 1 Pause call, got %d", hook.pausedCount())
+	// After the wake the slot is HOT; subscription was never removed (#2645),
+	// and Resume fires on the cold wake.
+	if hook.pausedCount() != 0 {
+		t.Errorf("#2645: want 0 Pause calls (deferred to EXPIRED), got %d", hook.pausedCount())
 	}
 	if hook.resumedCount() != 1 {
-		t.Errorf("want 1 Resume call, got %d", hook.resumedCount())
+		t.Errorf("want 1 Resume call after cold wake, got %d", hook.resumedCount())
 	}
 }

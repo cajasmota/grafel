@@ -577,21 +577,29 @@ func (m *Manager) scan() {
 	// This runs outside the lock so it can call m.onEvict safely.
 	pressureEvicted := m.scanPressureEvict()
 
-	// PH2a: pause watcher subscriptions for newly-COLD slots.
+	// PH2a: release in-memory graphs for newly-COLD slots but keep the
+	// fsnotify subscription alive so file edits during the COLD window still
+	// trigger reindex. (#2645: removing the subscription here caused TS/TSX
+	// changes to go undetected when a repo had been idle for >60 min.)
 	wh := m.watcher // read under mu already released; field is write-once after init
 	for _, k := range toEvict {
 		m.onEvict(k)
-		if wh != nil {
-			wh.Pause(k.RepoPath, k.Ref)
-		}
+		// wh.Pause intentionally NOT called here — subscription removal is
+		// deferred to the COLD→EXPIRED path below so that watcher events keep
+		// firing while the graph is cold-but-still-on-disk.
 	}
 	if len(toEvict) > 0 || pressureEvicted > 0 {
 		runtime.GC() // nudge GC so released graph objects are reclaimed promptly
 	}
 
 	// PH6: perform disk eviction for newly expired slots.
-	if m.onDiskEvict != nil {
-		for _, k := range toExpire {
+	// Only EXPIRED slots lose their fsnotify subscription — at that point the
+	// graph.fb has been deleted and there is nothing to reindex into.
+	for _, k := range toExpire {
+		if wh != nil {
+			wh.Pause(k.RepoPath, k.Ref)
+		}
+		if m.onDiskEvict != nil {
 			freed, err := m.onDiskEvict(k)
 			if err != nil {
 				m.logger.Error("tier: expired-evict FAILED", "repo", k.RepoPath, "ref", k.Ref, "err", err)
@@ -666,12 +674,12 @@ func (m *Manager) scanPressureEvict() int {
 	}
 	m.mu.Unlock()
 
-	wh := m.watcher
+	// Evict in-memory graphs only; do NOT remove fsnotify subscriptions on
+	// pressure-driven WARM→COLD (same reasoning as the TTL scan: #2645).
+	// Subscriptions are only removed when a slot reaches EXPIRED and its
+	// graph.fb is deleted from disk.
 	for _, k := range toEvict {
 		m.onEvict(k)
-		if wh != nil {
-			wh.Pause(k.RepoPath, k.Ref)
-		}
 	}
 	return len(toEvict)
 }

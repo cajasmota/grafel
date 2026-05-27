@@ -367,6 +367,119 @@ func TestForceRescan(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// #2645 regression tests: TS/TSX and other source file changes must trigger
+// the sink. These are the canonical regression tests for issue #2645 —
+// "daemon watcher isn't picking up TS/TSX file changes in core-mobile".
+// ---------------------------------------------------------------------------
+
+// TestWatcher_TSFileChange_TriggersReindex verifies that editing a .tsx file
+// in a watched repo fires the sink within 5 s. This is the direct regression
+// test for #2645: watcher events from TS/TSX files must flow through to the
+// debounce → sink → reindex enqueue chain.
+func TestWatcher_TSFileChange_TriggersReindex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping in short mode")
+	}
+	repo := t.TempDir()
+	src := filepath.Join(repo, "src")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-create a .tsx fixture so subsequent writes are tracked-file edits
+	// (same scenario as editing an existing component in core-mobile).
+	initial := filepath.Join(src, "Component.tsx")
+	if err := os.WriteFile(initial, []byte("export default () => null;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	doneCh := make(chan string, 4)
+	w, err := newTestWatcher(200*time.Millisecond, func(repoPath string, _ bool) {
+		doneCh <- repoPath
+	})
+	if err != nil {
+		t.Fatalf("new watcher: %v", err)
+	}
+	defer w.Stop()
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+
+	// Simulate the developer saving an edit to the .tsx file.
+	if err := os.WriteFile(initial, []byte("export default () => <View/>;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-doneCh:
+		if got != repo {
+			t.Errorf("sink got repo=%q, want %q", got, repo)
+		}
+		// Success: the watcher fired for the TS file change within 5 s.
+	case <-time.After(5 * time.Second):
+		t.Fatal("#2645 regression: watcher did not fire within 5 s for .tsx edit")
+	}
+}
+
+// TestWatcher_AcceptsAllSupportedExtensions verifies that .ts, .tsx, .js,
+// .jsx, .py and .go edits all trigger watcher events. None of these are in
+// SkipExts, so they should all reach the sink.
+func TestWatcher_AcceptsAllSupportedExtensions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping in short mode")
+	}
+
+	type tc struct {
+		ext     string
+		content string
+	}
+	cases := []tc{
+		{".ts", "export const x = 1;"},
+		{".tsx", "export default () => null;"},
+		{".js", "module.exports = {};"},
+		{".jsx", "export default () => null;"},
+		{".py", "x = 1"},
+		{".go", "package main"},
+	}
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.ext, func(t *testing.T) {
+			t.Parallel()
+			repo := t.TempDir()
+			src := filepath.Join(repo, "src")
+			if err := os.MkdirAll(src, 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			doneCh := make(chan struct{}, 4)
+			w, err := newTestWatcher(150*time.Millisecond, func(_ string, _ bool) {
+				doneCh <- struct{}{}
+			})
+			if err != nil {
+				t.Fatalf("new watcher: %v", err)
+			}
+			defer w.Stop()
+			if _, err := w.AddRepo(repo); err != nil {
+				t.Fatalf("AddRepo: %v", err)
+			}
+
+			f := filepath.Join(src, "file"+c.ext)
+			if err := os.WriteFile(f, []byte(c.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			select {
+			case <-doneCh:
+				// OK — extension was not filtered.
+			case <-time.After(3 * time.Second):
+				t.Errorf("#2645: watcher did not fire for %s file within 3 s", c.ext)
+			}
+		})
+	}
+}
+
 // TestExtendedStats verifies that ExtendedStats returns per-repo counters
 // after some events.
 func TestExtendedStats(t *testing.T) {
