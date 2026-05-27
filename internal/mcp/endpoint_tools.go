@@ -414,13 +414,29 @@ func respondPaginated[T any](
 // ---------------------------------------------------------------------------
 
 // handleEndpoints dispatches on action= to the appropriate endpoint handler.
+//
+// #2665: when kind="navigation" (or include_navigation=true on action=definitions),
+// the handler also/only returns in-app navigation routes derived from
+// NAVIGATES_TO edges rather than http_endpoint_definition entities. This folds
+// the dedicated archigraph_navigates surface into the discoverable endpoints
+// tool.
 func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	action, err := req.RequireString("action")
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
+	// #2665: kind=navigation short-circuit (any action), returns navigation
+	// routes only. include_navigation merges navigation routes into the
+	// definitions output.
+	kind := strings.ToLower(argString(req, "kind", ""))
+	if kind == "navigation" {
+		return s.handleEndpointNavigation(ctx, req)
+	}
 	switch action {
 	case "definitions":
+		if argBool(req, "include_navigation", false) {
+			return s.handleEndpointDefinitionsWithNavigation(ctx, req)
+		}
 		return s.handleEndpointDefinitions(ctx, req)
 	case "calls":
 		return s.handleEndpointCalls(ctx, req)
@@ -431,6 +447,207 @@ func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest
 			"unknown action " + action + " (allowed: definitions, calls, stats)",
 		), nil
 	}
+}
+
+// ---------------------------------------------------------------------------
+// archigraph_endpoints — navigation route surface (#2665)
+// ---------------------------------------------------------------------------
+
+// navigationRouteItem is the wire shape for a single in-app navigation route
+// surfaced via archigraph_endpoints with kind=navigation or
+// include_navigation=true.
+type navigationRouteItem struct {
+	Kind         string `json:"kind"`            // always "navigation"
+	Route        string `json:"route"`           // the route literal (e.g. "/users/[id]")
+	ToID         string `json:"to_id"`           // route stub ID ("route:/users/[id]")
+	CallSites    int    `json:"call_sites"`      // number of NAVIGATES_TO edges pointing here
+	ParamsKeys   string `json:"params_keys"`     // merged sorted JSON array of all observed param keys
+	SampleFromID string `json:"sample_from_id"`  // one prefixed caller ID (for quick locate)
+	SampleFile   string `json:"sample_file,omitempty"`
+	SampleLine   int    `json:"sample_line,omitempty"`
+	Repo         string `json:"repo,omitempty"`
+}
+
+// collectNavigationRoutes aggregates NAVIGATES_TO edges across the given repos
+// into one navigationRouteItem per distinct route (ToID). Param keys are
+// merged across all call-sites, deduped, and sorted. The first caller (by
+// repo + from_id sort order) supplies the sample locator fields.
+func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigationRouteItem {
+	// Aggregate per ToID.
+	type agg struct {
+		route       string
+		callSites   int
+		paramKeys   map[string]struct{}
+		sampleRepo  string
+		sampleFrom  string
+		sampleFile  string
+		sampleLine  int
+		sampleSeen  bool
+	}
+	byTo := make(map[string]*agg)
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		// Build a quick local-id → entity map for sample-file/line resolution.
+		byID := r.ByID
+		for i := range r.Doc.Relationships {
+			rel := &r.Doc.Relationships[i]
+			if rel.Kind != "NAVIGATES_TO" {
+				continue
+			}
+			route := ""
+			if rel.Properties != nil {
+				route = rel.Properties["route"]
+			}
+			if pathContains != "" && !strings.Contains(strings.ToLower(route), pathContains) {
+				continue
+			}
+			a, ok := byTo[rel.ToID]
+			if !ok {
+				a = &agg{route: route, paramKeys: make(map[string]struct{})}
+				byTo[rel.ToID] = a
+			}
+			a.callSites++
+			// Merge param keys: prefer params_keys JSON, fall back to legacy params CSV.
+			if rel.Properties != nil {
+				if pk := rel.Properties["params_keys"]; pk != "" {
+					var arr []string
+					if err := json.Unmarshal([]byte(pk), &arr); err == nil {
+						for _, k := range arr {
+							if k != "" {
+								a.paramKeys[k] = struct{}{}
+							}
+						}
+					}
+				} else if pcsv := rel.Properties["params"]; pcsv != "" {
+					for _, p := range strings.Split(pcsv, ",") {
+						p = strings.TrimSpace(p)
+						if p != "" {
+							a.paramKeys[p] = struct{}{}
+						}
+					}
+				}
+			}
+			if !a.sampleSeen {
+				a.sampleRepo = r.Repo
+				a.sampleFrom = prefixedID(r.Repo, rel.FromID)
+				if e := byID[rel.FromID]; e != nil {
+					a.sampleFile = e.SourceFile
+				}
+				if rel.Properties != nil {
+					if ls, ok := rel.Properties["line"]; ok {
+						if n, err := strconv.Atoi(ls); err == nil {
+							a.sampleLine = n
+						}
+					}
+				}
+				a.sampleSeen = true
+			}
+		}
+	}
+
+	out := make([]navigationRouteItem, 0, len(byTo))
+	for toID, a := range byTo {
+		keys := make([]string, 0, len(a.paramKeys))
+		for k := range a.paramKeys {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		paramsJSON := "[]"
+		if b, err := json.Marshal(keys); err == nil {
+			paramsJSON = string(b)
+		}
+		out = append(out, navigationRouteItem{
+			Kind:         "navigation",
+			Route:        a.route,
+			ToID:         toID,
+			CallSites:    a.callSites,
+			ParamsKeys:   paramsJSON,
+			SampleFromID: a.sampleFrom,
+			SampleFile:   a.sampleFile,
+			SampleLine:   a.sampleLine,
+			Repo:         a.sampleRepo,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Route < out[j].Route })
+	return out
+}
+
+// handleEndpointNavigation handles archigraph_endpoints when kind=navigation:
+// returns only in-app navigation routes (NAVIGATES_TO edges aggregated by
+// destination). #2665.
+func (s *Server) handleEndpointNavigation(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	_, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	pathContains := strings.ToLower(argString(req, "path_contains", ""))
+	routes := collectNavigationRoutes(repos, pathContains)
+
+	limit := argInt(req, "limit", 20)
+	offset := argInt(req, "offset", 0)
+	total := len(routes)
+	if offset > 0 && offset < len(routes) {
+		routes = routes[offset:]
+	} else if offset >= len(routes) {
+		routes = nil
+	}
+	if limit > 0 && len(routes) > limit {
+		routes = routes[:limit]
+	}
+	if routes == nil {
+		routes = []navigationRouteItem{}
+	}
+	return jsonResult(map[string]any{
+		"kind":          "navigation",
+		"count":         len(routes),
+		"total":         total,
+		"offset":        offset,
+		"path_contains": pathContains,
+		"routes":        routes,
+	}), nil
+}
+
+// handleEndpointDefinitionsWithNavigation runs the normal definitions handler
+// and then appends a "navigation_routes" key with the aggregated NAVIGATES_TO
+// routes. The HTTP definitions response shape is preserved untouched so
+// existing callers see no regression. #2665.
+func (s *Server) handleEndpointDefinitionsWithNavigation(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	res, err := s.handleEndpointDefinitions(ctx, req)
+	if err != nil || res == nil {
+		return res, err
+	}
+	// Decode the JSON result, splice in navigation routes, re-encode.
+	_, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return res, nil // best-effort; return HTTP-only response on group error
+	}
+	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	pathContains := strings.ToLower(argString(req, "path_contains", ""))
+	navRoutes := collectNavigationRoutes(repos, pathContains)
+
+	// Append by decoding the underlying JSON content the result already carries.
+	for i := range res.Content {
+		tc, ok := res.Content[i].(mcpapi.TextContent)
+		if !ok {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(tc.Text), &m); err != nil {
+			continue
+		}
+		m["include_navigation"] = true
+		m["navigation_routes"] = navRoutes
+		m["navigation_count"] = len(navRoutes)
+		out, err := json.Marshal(m)
+		if err != nil {
+			continue
+		}
+		res.Content[i] = mcpapi.NewTextContent(string(out))
+	}
+	return res, nil
 }
 
 // ---------------------------------------------------------------------------

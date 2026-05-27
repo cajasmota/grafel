@@ -25,6 +25,11 @@ When you need to traverse:
 
 Other useful read tools to layer in: `archigraph_traces` (process-flow BFS), `archigraph_cross_links` (HTTP/Kafka/WS cross-repo), `archigraph_clusters` (Louvain communities), `archigraph_module_analysis`, `archigraph_subgraph`.
 
+### In-app navigation (#2665)
+For Expo Router / React Navigation / Next.js push-sites, two shortcuts fold the NAVIGATES_TO graph into the existing read tools:
+- `archigraph_endpoints(kind="navigation")` — list distinct routes, with merged `params_keys` (sorted, deduped JSON array) per route. Use this to answer "which screens take param X?".
+- `archigraph_find_callers("/route/literal")` — pass a literal beginning with `/`; the handler reverse-traverses NAVIGATES_TO and returns push-site callers with `file`, `line`, and per-call `params_keys`. Use this when adding a required param: callers whose `params_keys` is missing the new key are the diff candidates.
+
 ## When the READ phase is enough
 Many user questions resolve at Step 2 (inspect a single entity, read the neighbors). Don't over-traverse. Three rules:
 1. STOP when the entities you've seen answer the user's question

@@ -115,6 +115,8 @@ Results are **ranked by call frequency** (descending) within each hop level, the
 
 > **Deprecation**: prefer `archigraph_neighbors(direction=in)` for new code.
 
+**Route-literal resolution (#2665).** If `entity_id` starts with `/` AND does not match any entity by ID or name, the handler treats it as an in-app route literal: it searches NAVIGATES_TO edges whose `ToID == "route:<literal>"` (or whose `Properties["route"]` equals the literal) and returns the push-site callers directly. Each caller carries `file`, `line`, `route`, and `params_keys` (JSON array) so you can immediately answer "which call-sites pass param X?". Response includes `resolved_as: "navigation_route"` so callers can branch on the resolution mode.
+
 #### `archigraph_find_paths`
 
 Key parameters: `from` (required), `to` (required), `max_hops` (default 5).
@@ -181,6 +183,13 @@ Output: cross-repo HTTP/Kafka/WS link records with match confidence.
 Key parameters: `action` (required: `definitions`/`calls`/`stats`), `path_contains`, `method`, `orphan_only`, `limit` (default 20), `offset` (default 0), `token_budget` (default 800), `format` (`terse`/`full`).
 
 Filters (`path_contains`, `method`) are applied **before** `limit`.
+
+**Navigation surface (#2665).** Two new params fold in-app NAVIGATES_TO routes (Expo Router, React Navigation, Next.js, etc.) into the same tool surface so agents don't need to remember `archigraph_navigates`:
+
+- `kind="navigation"` — short-circuits any `action` and returns aggregated navigation routes only. Each entry carries `route`, `to_id`, `call_sites`, `params_keys` (sorted, deduped JSON array merged across call-sites), and a `sample_*` locator pointing at the first push-site.
+- `include_navigation=true` (with `action=definitions`) — preserves the HTTP-definitions payload and appends a `navigation_routes` array + `navigation_count` for side-by-side comparison.
+
+`path_contains` filters routes by case-insensitive substring on the route literal in both modes.
 
 #### `archigraph_clusters`
 
