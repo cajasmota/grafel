@@ -973,19 +973,50 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			}
 		}
 
-		// Count orphan call-sites: FETCHES edges whose ToID is not a definition
-		// AND whose FromID isn't covered by a cross-repo link entry.
+		// Count orphan call-sites and cross-repo-resolved call-sites.
+		//
+		// #2571: count unique caller entities (by FromID), NOT raw FETCHES
+		// edges. A single call entity may have multiple FETCHES edges to
+		// different targets; counting raw edges caused orphan_calls to
+		// exceed total_calls (which counts entities). We use a per-repo
+		// seen set so each caller is tallied at most once.
+		//
+		// #2573: reconcile cross_repo_resolved with the http_pass source of
+		// truth. The HTTP pass emits links whose Source is the resolved
+		// callerID (a real function entity). The FETCHES edge FromID is the
+		// http_endpoint_call synthetic, which may differ. We therefore check
+		// both the direct prefixed-FromID and any link source in the same
+		// repo (i.e. if ANY link source shares the same repo as this caller,
+		// treat the edge as cross-repo-resolved when intra-repo resolution
+		// also failed). The definitive check remains res.linkedSources keyed
+		// by prefixed entity ID: callers resolved by the http_pass will have
+		// their callerID in linkedSources, so we also check whether a link
+		// source in the same repo covers the entity via the FETCHES ToID.
+		seenCallers := map[string]bool{}
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
 			if rel.Kind != kindFETCHES {
 				continue
 			}
+			// Deduplicate: tally each FromID only once per repo (#2571).
+			if seenCallers[rel.FromID] {
+				continue
+			}
+			seenCallers[rel.FromID] = true
+
 			resolvedIntra := res.definitionIDs[rel.ToID] || res.definitionIDs[prefixedID(r.Repo, rel.ToID)]
 			if resolvedIntra {
 				continue
 			}
 			srcPrefixed := prefixedID(r.Repo, rel.FromID)
-			if res.linkedSources[srcPrefixed] {
+			// #2573: check both the FETCHES FromID (the call synthetic) AND
+			// the FETCHES ToID entity in linkedSources. The HTTP pass links
+			// use the resolved callerID as Source, which is the real function
+			// entity, not the synthetic; checking the ToID-prefixed form
+			// catches the case where the link source points at the target
+			// synthetic rather than the edge source.
+			tgtPrefixed := prefixedID(r.Repo, rel.ToID)
+			if res.linkedSources[srcPrefixed] || res.linkedSources[tgtPrefixed] {
 				rs.CrossRepoResolved++
 				continue
 			}

@@ -123,6 +123,17 @@ type PassResult struct {
 	LinksAdded int
 	Candidates int
 	Skipped    int // suppressed by rejection list
+
+	// OrphanCalls is the number of consumer-side HTTP endpoint hits that
+	// were not matched to any producer this pass. Reset to zero on every
+	// invocation so successive index runs never accumulate.
+	OrphanCalls int
+
+	// CrossRepoResolved is the number of consumer-side HTTP endpoint hits
+	// that were matched and had a cross-repo link emitted this pass.
+	// This is the single source of truth; endpoint_tools derives its
+	// cross_repo_resolved counter from this value via the links file.
+	CrossRepoResolved int
 }
 
 // RunResult is the aggregate of all three passes from RunAllPasses.

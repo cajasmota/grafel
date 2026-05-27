@@ -2028,3 +2028,185 @@ func TestHTTPPass_CrossRepo_NoPrefixStaysOrphan(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #2571 — per-pass counter reset between runs
+// ---------------------------------------------------------------------------
+
+// TestHTTPPass_CountersReset_BetweenRuns calls runHTTPPass twice over the
+// same fixture and asserts that OrphanCalls and CrossRepoResolved in the
+// PassResult reflect ONLY the second run — i.e. they are not accumulated
+// across invocations.
+func TestHTTPPass_CountersReset_BetweenRuns(t *testing.T) {
+	root := fixtureRoot(t)
+	// Write a simple consumer+producer pair. The consumer has no matching
+	// producer on the first run (producer is removed), then re-added for
+	// the second run so OrphanCalls flips to 0 and CrossRepoResolved becomes 1.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "ItemView", "kind": "Controller", "source_file": "app/views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/items/{id}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/items/{id}",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "fetchItem", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/items/{id}", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/items/{id}",
+					"framework":     "fetch",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchItem",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+
+	// First run — both producer and consumer present; expect one resolved link.
+	graphs1, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths1, err := PathsFor(home, "g-counter-reset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1, err := runHTTPPass(graphs1, paths1, nil)
+	if err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if r1.CrossRepoResolved != 1 {
+		t.Errorf("first run CrossRepoResolved: want 1, got %d", r1.CrossRepoResolved)
+	}
+	if r1.OrphanCalls != 0 {
+		t.Errorf("first run OrphanCalls: want 0, got %d", r1.OrphanCalls)
+	}
+
+	// Second run over the same data — counters must equal the second run's
+	// output only and must NOT be accumulated on top of the first run.
+	graphs2, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths2, err := PathsFor(home, "g-counter-reset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := runHTTPPass(graphs2, paths2, nil)
+	if err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	// Counter must reflect only this run — not r1 + r2.
+	if r2.CrossRepoResolved != 1 {
+		t.Errorf("second run CrossRepoResolved: want 1 (not accumulated), got %d", r2.CrossRepoResolved)
+	}
+	if r2.OrphanCalls != 0 {
+		t.Errorf("second run OrphanCalls: want 0 (not accumulated), got %d", r2.OrphanCalls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #2573 — cross_repo_resolved matches links_emitted_this_pass
+// ---------------------------------------------------------------------------
+
+// TestHTTPPass_CrossRepoResolvedMatchesLinks asserts that
+// PassResult.CrossRepoResolved == number of unique consumer synthetics that
+// had a link emitted, and that OrphanCalls accounts for the rest.
+// Together they must equal the total unique consumer hits seen.
+func TestHTTPPass_CrossRepoResolvedMatchesLinks(t *testing.T) {
+	root := fixtureRoot(t)
+	// Two consumers: one matches a producer (resolved), one has no producer (orphan).
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "View", "kind": "Controller", "source_file": "a.py"},
+			{
+				"id": "ep1", "name": "http:GET:/matched", "kind": "http_endpoint",
+				"source_file": "a.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/matched",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "callMatched", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/matched", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/matched",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:callMatched",
+				},
+			},
+			// This consumer has no matching producer.
+			{
+				"id": "ep3", "name": "http:GET:/no-producer", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/no-producer",
+					"pattern_type": "http_endpoint_client_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g-counter-match")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := runHTTPPass(graphs, paths, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// CrossRepoResolved must equal the number of links emitted (1 matched consumer).
+	if res.CrossRepoResolved != 1 {
+		t.Errorf("CrossRepoResolved: want 1 (matched consumer), got %d", res.CrossRepoResolved)
+	}
+	// OrphanCalls must count the unmatched consumer (1 orphan).
+	if res.OrphanCalls != 1 {
+		t.Errorf("OrphanCalls: want 1 (unmatched /no-producer consumer), got %d", res.OrphanCalls)
+	}
+	// Invariant: cross_repo_resolved + orphan_calls == total unique consumers.
+	total := res.CrossRepoResolved + res.OrphanCalls
+	if total != 2 {
+		t.Errorf("CrossRepoResolved + OrphanCalls: want 2 total consumers, got %d", total)
+	}
+}

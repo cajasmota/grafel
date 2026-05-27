@@ -438,6 +438,14 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	emitted := map[string]bool{}
 	var fresh []Link
 
+	// #2571: per-pass counters for orphan and cross-repo-resolved consumers.
+	// Both are local to this invocation — they can never accumulate across
+	// successive index runs. matchedConsumers tracks consumer stampedIDs that
+	// emitted at least one link; the final orphan count = total unique consumers
+	// seen − matched ones, so orphan_calls ≤ total consumer entities.
+	matchedConsumers := map[string]bool{} // repo::stampedID → matched
+	allConsumers := map[string]bool{}     // repo::stampedID → seen
+
 	// Deterministic iteration order: sort names.
 	names := make([]string, 0, len(hits))
 	for n := range hits {
@@ -495,7 +503,17 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		}
 
 		if len(producers) == 0 || len(consumers) == 0 {
+			// Record consumer hits even when unmatched — they count as orphans
+			// unless covered by a later bucket.
+			for _, c := range consumers {
+				allConsumers[entityKey(c.repo, c.stampedID)] = true
+			}
 			continue
+		}
+
+		// Track all consumer hits seen so we can derive orphan counts later.
+		for _, c := range consumers {
+			allConsumers[entityKey(c.repo, c.stampedID)] = true
 		}
 		// Deterministic ordering for tie-breaking inside each verb tier.
 		sort.SliceStable(producers, func(i, j int) bool { return less(producers[i], producers[j]) })
@@ -610,6 +628,10 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					continue
 				}
 				emitted[id] = true
+				// #2571/#2573: mark this consumer as cross-repo-resolved for
+				// the per-pass counter. One consumer may link to multiple
+				// producer repos; we count it resolved once it has any link.
+				matchedConsumers[entityKey(c.repo, c.stampedID)] = true
 
 				ident := canonicalIdentifier(c, p)
 				ch := httpChannel
@@ -644,12 +666,23 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	res.LinksAdded = added
 	res.Skipped = skipped
 
+	// #2571: derive OrphanCalls and CrossRepoResolved from per-pass state.
+	// Both counters are computed from local maps that are zero-initialised
+	// at every runHTTPPass entry, so they can never accumulate across runs.
+	//
+	// #2573: CrossRepoResolved is the single source of truth — it is the
+	// count of consumer synthetics that had a link emitted this pass
+	// (len(matchedConsumers)). OrphanCalls = total consumers seen minus
+	// matched ones, ensuring orphan_calls ≤ total consumer entity count.
+	res.CrossRepoResolved = len(matchedConsumers)
+	res.OrphanCalls = len(allConsumers) - len(matchedConsumers)
+
 	// Diagnostic logging: #2558 tracking of empty canonicalPath handling.
 	// These counters help identify if the fallback path resolution is covering
 	// consumer-side hits that would have been silently dropped in prior versions.
 	if hitsProcessed > 0 {
-		log.Printf("http_pass: hits_processed=%d, hits_canonical_empty=%d, links_registered=%d",
-			hitsProcessed, hitsCanonicalEmpty, len(fresh))
+		log.Printf("http_pass: hits_processed=%d, hits_canonical_empty=%d, links_registered=%d, orphan_calls=%d, cross_repo_resolved=%d",
+			hitsProcessed, hitsCanonicalEmpty, len(fresh), res.OrphanCalls, res.CrossRepoResolved)
 	}
 
 	return res, nil
