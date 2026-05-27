@@ -1243,3 +1243,107 @@ func TestExpand_TokenBudgetEnforced(t *testing.T) {
 		t.Fatalf("unexpected result type %T", rawResult)
 	}
 }
+
+// TestFindCallers_RankedByFrequency verifies #2577: callers are sorted by call
+// frequency (descending), not alphabetically. Fixture: A→X 3 times, B→X 1 time,
+// C→X 5 times => expected order [C (5), A (3), B (1)].
+func TestFindCallers_RankedByFrequency(t *testing.T) {
+	// Build a doc where A, B, C each call X, but with different frequencies:
+	// A calls X 3 times, B calls X 1 time, C calls X 5 times.
+	entities := []graph.Entity{
+		{ID: "ent-a", Name: "FuncA", Kind: "Function", SourceFile: "a.go", StartLine: 10},
+		{ID: "ent-b", Name: "FuncB", Kind: "Function", SourceFile: "b.go", StartLine: 20},
+		{ID: "ent-c", Name: "FuncC", Kind: "Function", SourceFile: "c.go", StartLine: 30},
+		{ID: "ent-x", Name: "FuncX", Kind: "Function", SourceFile: "x.go", StartLine: 40},
+	}
+	rels := []graph.Relationship{
+		// A calls X 3 times
+		{FromID: "ent-a", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-a", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-a", ToID: "ent-x", Kind: "CALLS"},
+		// B calls X 1 time
+		{FromID: "ent-b", ToID: "ent-x", Kind: "CALLS"},
+		// C calls X 5 times
+		{FromID: "ent-c", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-c", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-c", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-c", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-c", ToID: "ent-x", Kind: "CALLS"},
+	}
+	doc := minDoc(entities, rels)
+	srv := newTestServer(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "ent-x",
+		"depth":     float64(1),
+	})
+
+	callers, ok := out["callers"].([]any)
+	if !ok {
+		t.Fatalf("expected callers array, got %T", out["callers"])
+	}
+	if len(callers) != 3 {
+		t.Fatalf("expected 3 callers, got %d", len(callers))
+	}
+
+	// Expected order: C (5 calls), A (3 calls), B (1 call).
+	first := callers[0].(map[string]any)
+	if first["name"] != "FuncC" {
+		t.Errorf("expected first caller=FuncC, got %v", first["name"])
+	}
+
+	second := callers[1].(map[string]any)
+	if second["name"] != "FuncA" {
+		t.Errorf("expected second caller=FuncA, got %v", second["name"])
+	}
+
+	third := callers[2].(map[string]any)
+	if third["name"] != "FuncB" {
+		t.Errorf("expected third caller=FuncB, got %v", third["name"])
+	}
+}
+
+// TestFindCallers_TieBreakAlphabetical verifies that when two callers have the
+// same frequency, they are sorted alphabetically. Fixture: A→X 2 times, B→X 2
+// times => expected order [A, B].
+func TestFindCallers_TieBreakAlphabetical(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "ent-a", Name: "FuncA", Kind: "Function", SourceFile: "a.go", StartLine: 10},
+		{ID: "ent-b", Name: "FuncB", Kind: "Function", SourceFile: "b.go", StartLine: 20},
+		{ID: "ent-x", Name: "FuncX", Kind: "Function", SourceFile: "x.go", StartLine: 40},
+	}
+	rels := []graph.Relationship{
+		// A calls X 2 times
+		{FromID: "ent-a", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-a", ToID: "ent-x", Kind: "CALLS"},
+		// B calls X 2 times
+		{FromID: "ent-b", ToID: "ent-x", Kind: "CALLS"},
+		{FromID: "ent-b", ToID: "ent-x", Kind: "CALLS"},
+	}
+	doc := minDoc(entities, rels)
+	srv := newTestServer(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "ent-x",
+		"depth":     float64(1),
+	})
+
+	callers, ok := out["callers"].([]any)
+	if !ok {
+		t.Fatalf("expected callers array, got %T", out["callers"])
+	}
+	if len(callers) != 2 {
+		t.Fatalf("expected 2 callers, got %d", len(callers))
+	}
+
+	// Both have the same frequency (2), so should be sorted alphabetically: A, B.
+	first := callers[0].(map[string]any)
+	if first["name"] != "FuncA" {
+		t.Errorf("expected first caller=FuncA, got %v", first["name"])
+	}
+
+	second := callers[1].(map[string]any)
+	if second["name"] != "FuncB" {
+		t.Errorf("expected second caller=FuncB, got %v", second["name"])
+	}
+}

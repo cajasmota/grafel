@@ -281,10 +281,36 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			}
 			callers = append(callers, c)
 		}
+
+		// #2577: count CALLS edges per source entity to rank callers by frequency.
+		// Build a map: entity ID (unprefixed) -> count of CALLS edges to target.
+		callFrequency := make(map[string]int)
+		for _, e := range adj.in[target] {
+			if e.kind == "CALLS" {
+				callFrequency[e.target]++
+			}
+		}
+
 		sort.Slice(callers, func(i, j int) bool {
 			if callers[i].HopCount != callers[j].HopCount {
 				return callers[i].HopCount < callers[j].HopCount
 			}
+			// Within the same hop level, sort by call frequency (descending).
+			// Extract unprefixed ID from EntityID for frequency lookup.
+			idI := callers[i].EntityID
+			idJ := callers[j].EntityID
+			if _, local := splitPrefixed(idI); local != "" {
+				idI = local
+			}
+			if _, local := splitPrefixed(idJ); local != "" {
+				idJ = local
+			}
+			freqI := callFrequency[idI]
+			freqJ := callFrequency[idJ]
+			if freqI != freqJ {
+				return freqI > freqJ // descending
+			}
+			// Tie-break alphabetically by name.
 			return callers[i].Name < callers[j].Name
 		})
 
