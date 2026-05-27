@@ -127,6 +127,11 @@ BM25-ranked graph query, optionally BFS-expanded from each top hit. The
 primary discovery tool — reach for it when you know what you are looking for
 but not where it lives.
 
+**Scope default (since #2643):** by default the search is scoped to the
+cwd-resolved repo (eliminates cross-repo noise in single-repo workflows).
+Pass `cross_repo=true` to span all repos in the group, or use `repo_filter`
+to select specific repos explicitly.
+
 Key parameters:
 - `question` — natural-language query (BM25 tokenises it against entity labels
   and qualified names).
@@ -134,7 +139,10 @@ Key parameters:
   0 to skip BFS entirely).
 - `token_budget` — max approximate tokens in compact output (default 800;
   lower for orientation, higher for deep inventory).
-- `repo_filter` — restrict to one or more repos by slug.
+- `repo_filter` — restrict to one or more repos by slug (takes priority over
+  `cross_repo`).
+- `cross_repo` — set `true` to search all repos in the group (opt-in; default
+  `false`).
 - `context_filter` — restrict BFS traversal to specific edge kinds
   (`CALLS`, `IMPORTS`, `PUBLISHES_TO`, etc.).
 
@@ -142,6 +150,7 @@ Key parameters:
 archigraph_find(question="payment processing charge refund", depth=2, token_budget=600)
 archigraph_find(question="order HTTP routes endpoints", repo_filter=["orders-api"], depth=1)
 archigraph_find(question="auth token validation middleware", context_filter=["CALLS"], depth=3)
+archigraph_find(question="auth token", cross_repo=true)   # span all repos
 ```
 
 CLI equivalent: `archigraph search "payment processing"` (thin RPC wrapper)

@@ -385,12 +385,13 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find",
-		mcpapi.WithDescription("BM25 graph query. query=. min_score>=0.15 trims tail. max_results caps at 200."),
+		mcpapi.WithDescription("BM25 graph query. cwd-repo default; cross_repo=true spans all. min_score>=0.15."),
 		mcpapi.WithString("query", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithBoolean("cross_repo", mcpapi.DefaultBool(false)), // #2643: opt-in to search all repos
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
 		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
 		// verbose=true (default false), min_score (default 0.15), max_results (default 50, ceiling 200)

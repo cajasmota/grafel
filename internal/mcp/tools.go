@@ -436,8 +436,24 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		maxResults = 200
 	}
 	repoFilter := argStringSlice(req, "repo_filter")
+	crossRepo := argBool(req, "cross_repo", false)
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
 	mode := argString(req, "mode", "bfs")
+
+	// #2643: default to cwd-resolved repo to avoid cross-repo noise.
+	// Priority order:
+	//   1. repo_filter set explicitly → use it (existing behaviour).
+	//   2. cross_repo=true           → search all repos (new opt-in).
+	//   3. neither, cwd resolves     → filter to the cwd-resolved repo.
+	//   4. neither, cwd unresolved   → search all repos (graceful fallback).
+	if len(repoFilter) == 0 && !crossRepo {
+		cwd := s.inferCWD(req)
+		cwdRes := ResolveCWD(s.State, cwd)
+		if cwdRes.RepoSlug != "" {
+			repoFilter = []string{cwdRes.RepoSlug}
+		}
+		// If cwd doesn't resolve, repoFilter stays nil → reposToConsider returns all.
+	}
 
 	repos := reposToConsider(lg, repoFilter)
 	if len(repos) == 0 {

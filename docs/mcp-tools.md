@@ -66,7 +66,9 @@ Output: ranked list of matching entities with source file + line.
 
 #### `archigraph_find`
 
-Key parameters: `query` (required), `mode` (`bfs`/`ids`), `depth` (default 3), `token_budget` (default 800), `max_results` (default 50, ceiling 200), `min_score` (default 0.15), `repo_filter[]`, `context_filter[]`, `fields[]`.
+Key parameters: `query` (required), `mode` (`bfs`/`ids`), `depth` (default 3), `token_budget` (default 800), `max_results` (default 50, ceiling 200), `min_score` (default 0.15), `repo_filter[]`, `cross_repo` (bool, default `false`), `context_filter[]`, `fields[]`.
+
+**Scope default (since #2643):** when neither `repo_filter` nor `cross_repo=true` is supplied, the search is scoped to the cwd-resolved repo. Pass `cross_repo=true` to span all repos in the group. If cwd cannot be resolved to a repo, all repos are searched as a fallback.
 
 Output: BM25-scored entities with BFS expansion. Tail trimmed below `min_score`.
 
