@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -379,6 +380,39 @@ func assertGitignoreEntry(t *testing.T, repoRoot string) {
 		}
 	}
 	t.Errorf(".gitignore does not contain /.archigraph/; content: %q", string(data))
+}
+
+// TestRunCopy_MissingSkillsDirectory verifies that when the skills directory
+// cannot be discovered, the error message includes the current working directory
+// and suggests using --skills-source-dir.
+func TestRunCopy_MissingSkillsDirectory(t *testing.T) {
+	env := newTestEnv(t)
+
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   "/nonexistent/skills",
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+	}
+
+	_, err := install.RunCopy(opts)
+	if err == nil {
+		t.Fatal("expected RunCopy to fail when skills directory is missing")
+	}
+
+	errMsg := err.Error()
+	// Check that the error message includes the actionable hints.
+	if !strings.Contains(errMsg, "no skills/ directory found") {
+		t.Errorf("error should mention missing skills directory; got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "--skills-source-dir") {
+		t.Errorf("error should suggest --skills-source-dir flag; got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "/skills") {
+		t.Errorf("error should show path suffix /skills; got: %s", errMsg)
+	}
 }
 
 func splitLines(s string) []string {

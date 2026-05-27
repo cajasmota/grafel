@@ -199,7 +199,11 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	skillsDir := skilllink.DiscoverSkillsDir(opts.BinPath, opts.SkillsSourceDir)
 	if skillsDir == "" {
 		rollback(2)
-		return nil, fmt.Errorf("step 2 – no skills/ directory found; set --skills-source-dir to override")
+		cwd := opts.WorkingDir
+		if cwd == "" {
+			cwd, _ = os.Getwd()
+		}
+		return nil, fmt.Errorf("no skills/ directory found at %s; pass --skills-source-dir <path-to-archigraph-repo>/skills", cwd)
 	}
 
 	claudeDirs := mcpreg.DetectClaudeConfigDirs(opts.ClaudeConfigDirs)

@@ -20,6 +20,7 @@ import (
 	"net/rpc/jsonrpc"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
@@ -31,6 +32,22 @@ import (
 // Callers use errors.Is to recognise this condition (it wraps the
 // underlying dial error so verbose diagnostics are still available).
 var ErrDaemonNotRunning = errors.New("daemon not running")
+
+// isTransientRPCError detects connection drops during RPC calls (e.g.,
+// daemon restart, network blip). These should be retried with a brief backoff
+// rather than failing immediately.
+func isTransientRPCError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// net/rpc/jsonrpc closes with "connection is shut down" when the remote
+	// end closes the socket during a call (e.g., daemon graceful restart).
+	return strings.Contains(errStr, "connection is shut down") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "broken pipe")
+}
 
 // Client is a connected RPC client. Construct it with Dial; release it
 // with Close.
@@ -96,6 +113,10 @@ func (c *Client) SocketPath() string {
 func (c *Client) Ping() (proto.PingReply, error) {
 	var reply proto.PingReply
 	if err := c.rpc.Call(proto.ServiceName+".Ping", proto.PingArgs{}, &reply); err != nil {
+		// Wrap transient connection errors with a hint to retry.
+		if isTransientRPCError(err) {
+			return proto.PingReply{}, fmt.Errorf("daemon connection unavailable (likely restarting) — retry in 1-2s. If persistent, run 'archigraph status': %w", err)
+		}
 		return proto.PingReply{}, err
 	}
 	return reply, nil
@@ -107,6 +128,10 @@ func (c *Client) Ping() (proto.PingReply, error) {
 func (c *Client) Status() (proto.StatusReply, error) {
 	var reply proto.StatusReply
 	if err := c.rpc.Call(proto.ServiceName+".Status", proto.StatusArgs{}, &reply); err != nil {
+		// Wrap transient connection errors with a hint to retry.
+		if isTransientRPCError(err) {
+			return proto.StatusReply{}, fmt.Errorf("daemon connection unavailable (likely restarting) — retry in 1-2s. If persistent, run 'archigraph status': %w", err)
+		}
 		return proto.StatusReply{}, err
 	}
 	return reply, nil
