@@ -1,0 +1,81 @@
+{
+  "$schema_version": 1,
+  "records": [
+    {
+      "id": "lang.javascript.framework.express",
+      "category": "http_framework",
+      "language": "javascript",
+      "label": "Express.js",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-27"
+        }
+      }
+    },
+    {
+      "id": "lang.javascript.framework.nestjs",
+      "category": "http_framework",
+      "language": "javascript",
+      "label": "NestJS",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-27"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.django-drf",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Django REST Framework",
+      "capabilities": {
+        "auth_coverage": {
+          "status": "partial",
+          "cites": ["internal/engine/django_drf_actions.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/1942",
+          "verified_at": "2026-05-27"
+        },
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/django_drf_actions.go","internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-27"
+        },
+        "handler_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/django_drf_actions.go"],
+          "verified_at": "2026-05-27"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.fastapi",
+      "category": "http_framework",
+      "language": "python",
+      "label": "FastAPI",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-27"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.flask",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Flask",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go"],
+          "verified_at": "2026-05-27"
+        }
+      }
+    }
+  ]
+}
