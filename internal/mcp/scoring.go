@@ -22,6 +22,11 @@ const (
 	weightFileStem  = 1.5
 	weightPathDirs  = 0.8
 	weightDocstring = 0.6
+	// #2666 — discriminator literal terms are mixed in at a modest weight so
+	// queries like "checklistType 2" surface the enclosing entity. We weight
+	// below docstrings (which are author-curated prose) but above stop-word
+	// boilerplate. Both the var name and the literal value contribute.
+	weightDiscriminator = 0.5
 )
 
 // docstringLimitChars caps docstring contribution to the first 200 characters.
@@ -134,6 +139,43 @@ func buildDocTerms(e *graph.Entity) docTerms {
 				ds = ds[:docstringLimitChars]
 			}
 			add(ds, weightDocstring, true)
+		}
+		// #2666 — discriminator pairs: stamp by the extractors as a
+		// comma-separated "var=value,var2=value2" string in Properties
+		// (mirror of the DISCRIMINATES_ON edges). Mix both the variable
+		// name and the literal value into the doc terms at a modest weight
+		// so queries like "checklistType 2" rank the enclosing entity
+		// higher. Tokenize via addIdentifier so camelCase / snake_case
+		// vars still split into sub-tokens; literals go through tokenize
+		// directly (numbers/strings need digit-boundary splitting).
+		if pairs, ok := e.Properties["discriminators"]; ok && pairs != "" {
+			for _, pair := range strings.Split(pairs, ",") {
+				eq := strings.IndexByte(pair, '=')
+				if eq <= 0 || eq >= len(pair)-1 {
+					continue
+				}
+				varName := pair[:eq]
+				literal := pair[eq+1:]
+				// Variable name: use the identifier-aware path so the full
+				// camelCase token plus its sub-tokens are all indexed.
+				for _, t := range tokenizeIdentifier(varName) {
+					d.tf[t] += weightDiscriminator
+					d.length += weightDiscriminator
+				}
+				// Literal value: plain tokenize. Numeric literals like "2"
+				// would normally fall below the min-token-length of 2, so
+				// add the raw literal as well to make exact-number queries
+				// score.
+				for _, t := range tokenize(literal) {
+					d.tf[t] += weightDiscriminator
+					d.length += weightDiscriminator
+				}
+				if literal != "" {
+					raw := strings.ToLower(literal)
+					d.tf[raw] += weightDiscriminator
+					d.length += weightDiscriminator
+				}
+			}
 		}
 	}
 	return d

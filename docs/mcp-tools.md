@@ -80,6 +80,7 @@ Output: full entity record including all properties + attached findings. Also re
 
 - `calls[]` — outbound CALLS edges with line-precise data. Each entry: `{target, target_path, line, via}`. Unresolved edges (where the target entity could not be found — empty `target_path` or bare repo prefix) are **filtered by default**. Pass `include_unresolved: true` to include them; unresolved entries carry an extra `"unresolved": true` field.
 - `called_by[]` — inbound CALLS edges (callers). Always present even when empty (`called_by: []`). Each entry: `{source, source_path, line, context}` where `context` is a ~40-char snippet of the call-site line.
+- `discriminators[]` (#2666) — only present when the entity has DISCRIMINATES_ON edges. Each row: `{file_line, line, literal, other_side}` where `literal` is the RHS literal value (e.g. `"2"`, `"periodic"`) and `other_side` is the synthetic `var:<varName>` stub identifying the discriminating variable. Lets agents jump straight to the comparison site instead of scanning the whole function body. Discriminator literals are also mixed into the `archigraph_find` BM25 doc terms at modest weight, so queries like "checklistType 2" rank the enclosing entity higher.
 - `metadata` — index provenance block: `{indexed_ref, indexed_sha, indexed_at, age_seconds}`. Agents can use `age_seconds` to decide whether line numbers might be stale before calling `archigraph_get_source`.
 
 #### `archigraph_get_source`

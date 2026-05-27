@@ -918,6 +918,11 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				out["calls"] = inspectOutboundCalls(r, e, scopeIsOne, includeUnresolved)
 				// #2641: called_by always present (empty array when no callers).
 				out["called_by"] = inspectInboundCalls(r, e, scopeIsOne)
+				// #2666: discriminator comparison sites surfaced from DISCRIMINATES_ON
+				// edges. Section is omitted entirely when no discriminator edges exist.
+				if discs := inspectDiscriminators(r, e, scopeIsOne); len(discs) > 0 {
+					out["discriminators"] = discs
+				}
 				// #2642: metadata block with index provenance.
 				out["metadata"] = inspectMetadata(r)
 				return jsonResult(out), nil
@@ -975,6 +980,11 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	out["calls"] = inspectOutboundCalls(m.repo, m.ent, scopeIsOne, includeUnresolved)
 	// #2641: called_by always present (empty array when no callers).
 	out["called_by"] = inspectInboundCalls(m.repo, m.ent, scopeIsOne)
+	// #2666: discriminator comparison sites surfaced from DISCRIMINATES_ON
+	// edges. Section is omitted entirely when no discriminator edges exist.
+	if discs := inspectDiscriminators(m.repo, m.ent, scopeIsOne); len(discs) > 0 {
+		out["discriminators"] = discs
+	}
 	// #2642: metadata block with index provenance.
 	out["metadata"] = inspectMetadata(m.repo)
 	return jsonResult(out), nil
@@ -1194,6 +1204,76 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 		}
 		entry["context"] = ctx
 		out = append(out, entry)
+	}
+	return out
+}
+
+// inspectDiscriminators returns rows for every DISCRIMINATES_ON edge attached
+// to entity e (#2666). Each row carries:
+//
+//	file:line   — the entity's source file + the edge Properties["line"]
+//	literal     — Properties["literal"]: the RHS literal value (e.g. "2", "periodic")
+//	other_side  — the synthetic var stub on the other side of the edge
+//	              (ToID for outgoing edges, FromID for incoming)
+//
+// Returns nil when the entity has no DISCRIMINATES_ON edges so the inspect
+// envelope can omit the section entirely.
+func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	if lr == nil || lr.Doc == nil || e == nil {
+		return nil
+	}
+	out := []map[string]any{}
+	rels := lr.Doc.Relationships
+	emit := func(ed edge, otherIsTarget bool) {
+		if ed.relIdx < 0 || ed.relIdx >= len(rels) {
+			return
+		}
+		r := &rels[ed.relIdx]
+		line := 0
+		if v := r.Properties["line"]; v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				line = n
+			}
+		}
+		literal := r.Properties["literal"]
+		other := ed.target
+		if !scopeIsOne {
+			// Synthetic "var:<name>" stubs are not prefixed (they are not
+			// per-repo entities); leave them as-is for cross-repo scope so
+			// agents can correlate hits across repos.
+			if !strings.HasPrefix(other, "var:") {
+				other = prefixedID(lr.Repo, other)
+			}
+		}
+		fileLine := ""
+		if e.SourceFile != "" && line > 0 {
+			fileLine = fmt.Sprintf("%s:%d", e.SourceFile, line)
+		} else if e.SourceFile != "" {
+			fileLine = e.SourceFile
+		}
+		entry := map[string]any{
+			"file_line":  fileLine,
+			"line":       line,
+			"literal":    literal,
+			"other_side": other,
+		}
+		_ = otherIsTarget // direction encoded by which adjacency list we walked
+		out = append(out, entry)
+	}
+	for _, ed := range lr.Adjacency.Outgoing(e.ID) {
+		if !strings.EqualFold(ed.kind, "DISCRIMINATES_ON") {
+			continue
+		}
+		emit(ed, true)
+	}
+	for _, ed := range lr.Adjacency.Incoming(e.ID) {
+		if !strings.EqualFold(ed.kind, "DISCRIMINATES_ON") {
+			continue
+		}
+		emit(ed, false)
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

@@ -462,6 +462,18 @@ const (
 	//       "undeclared_used" — call/import crossing with no BUILD dep declared
 	RelationshipKindBazelDependsOn RelationshipKind = "BAZEL_DEPENDS_ON"
 	RelationshipKindBazelDepStatus RelationshipKind = "BAZEL_DEP_STATUS"
+
+	// #2666: Discriminator comparison edges. Emitted by the JS/TS and Python
+	// extractors for every `identifier == literal` comparison detected in a
+	// function/method body (the discriminator pattern from #2659).
+	//   DISCRIMINATES_ON : enclosing operation → synthetic "var:<varName>" stub
+	// Properties:
+	//   "line"    : 1-indexed source line of the comparison
+	//   "literal" : RHS literal value as a string (e.g. "2", "periodic")
+	// Surfaced by archigraph_inspect (discriminators section) and mixed into
+	// BM25 doc terms so literal-value queries (e.g. "checklistType 2") rank
+	// the enclosing entity higher.
+	RelationshipKindDiscriminatesOn RelationshipKind = "DISCRIMINATES_ON"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -551,6 +563,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #2183 Bazel BUILD-graph fusion:
 		RelationshipKindBazelDependsOn,
 		RelationshipKindBazelDepStatus,
+		// #2666 discriminator comparison edges:
+		RelationshipKindDiscriminatesOn,
 	}
 }
 

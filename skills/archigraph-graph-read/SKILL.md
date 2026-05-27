@@ -13,6 +13,7 @@ For each entity of interest (a class, function, file path the user named):
 - `archigraph_inspect entity_id=<id-or-path>` returns the entity + 1-hop neighbors with line-precise CALLS/called_by edges
 - `calls[].line` = line in the inspected entity's body where the outbound call appears
 - `called_by[].line` + `called_by[].context` = line and ~40-char snippet in the caller's body
+- `discriminators[]` (#2666) — when the entity does `var === literal` comparisons (e.g. `checklistType === 2`), each row carries `{file_line, literal, other_side}` so you can jump straight to the comparison without scanning the body. Discriminator literals are also mixed into the BM25 doc terms, so `archigraph_find` queries like "checklistType 2" surface the enclosing entity.
 - Use these to pinpoint call sites without calling `get_source`
 - Look at the neighbors for ORIENTATION before drilling deeper
 

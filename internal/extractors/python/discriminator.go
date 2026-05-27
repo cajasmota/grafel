@@ -23,6 +23,7 @@ package python
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -30,15 +31,39 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+// pyDiscriminatorHit captures one discriminator-pattern comparison site: the
+// variable name, the literal value, and the 1-indexed source line of the
+// comparison. Used to emit DISCRIMINATES_ON edges (#2666).
+type pyDiscriminatorHit struct {
+	varName string
+	literal string
+	line    int
+}
+
 // extractPythonDiscriminators walks the body node (a function/method body block)
 // and returns a comma-separated "var=value" string for every discriminator
 // comparison found. Returns "" when no discriminators are found or body is nil.
 func extractPythonDiscriminators(body *sitter.Node, src []byte) string {
-	if body == nil {
+	hits := extractPythonDiscriminatorHits(body, src)
+	if len(hits) == 0 {
 		return ""
 	}
+	pairs := make([]string, 0, len(hits))
+	for _, h := range hits {
+		pairs = append(pairs, fmt.Sprintf("%s=%s", h.varName, h.literal))
+	}
+	return strings.Join(pairs, ",")
+}
 
-	var pairs []string
+// extractPythonDiscriminatorHits walks the body and returns one
+// pyDiscriminatorHit per unique (var, literal) pair found. Used by
+// stampPythonDiscriminators (#2666) to emit DISCRIMINATES_ON edges with
+// line + literal properties.
+func extractPythonDiscriminatorHits(body *sitter.Node, src []byte) []pyDiscriminatorHit {
+	if body == nil {
+		return nil
+	}
+	var hits []pyDiscriminatorHit
 	seen := make(map[string]bool)
 
 	defer func() { _ = recover() }()
@@ -54,10 +79,10 @@ func extractPythonDiscriminators(body *sitter.Node, src []byte) string {
 			continue
 		}
 		seen[key] = true
-		pairs = append(pairs, key)
+		line := int(n.StartPoint().Row) + 1
+		hits = append(hits, pyDiscriminatorHit{varName: varName, literal: litVal, line: line})
 	}
-
-	return strings.Join(pairs, ",")
+	return hits
 }
 
 // discriminatorFromPythonComparison inspects a comparison_operator node and
@@ -186,13 +211,29 @@ func stampPythonDiscriminators(body *sitter.Node, src []byte, out *[]types.Entit
 	if body == nil || out == nil || idx < 0 || idx >= len(*out) {
 		return
 	}
-	d := extractPythonDiscriminators(body, src)
-	if d == "" {
+	hits := extractPythonDiscriminatorHits(body, src)
+	if len(hits) == 0 {
 		return
 	}
 	e := &(*out)[idx]
+	pairs := make([]string, 0, len(hits))
+	for _, h := range hits {
+		pairs = append(pairs, fmt.Sprintf("%s=%s", h.varName, h.literal))
+	}
 	if e.Properties == nil {
 		e.Properties = make(map[string]string)
 	}
-	e.Properties["discriminators"] = d
+	e.Properties["discriminators"] = strings.Join(pairs, ",")
+	// #2666 — emit DISCRIMINATES_ON edges to synthetic "var:<varName>" stubs
+	// so inspect/find can surface line-precise hits.
+	for _, h := range hits {
+		e.Relationships = append(e.Relationships, types.RelationshipRecord{
+			ToID: "var:" + h.varName,
+			Kind: string(types.RelationshipKindDiscriminatesOn),
+			Properties: map[string]string{
+				"line":    strconv.Itoa(h.line),
+				"literal": h.literal,
+			},
+		})
+	}
 }
