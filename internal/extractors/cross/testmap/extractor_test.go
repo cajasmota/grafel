@@ -1504,3 +1504,23 @@ func TestPytest_TestsDirMatchesAnyPath(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Regression: #2606 — filenameHints must not contain path patterns
+// ---------------------------------------------------------------------------
+
+// TestAllFrameworks_NoPathPatternsInFilenameHints asserts that all framework
+// entries have basenames only in filenameHints and no forward-slash patterns
+// (those belong in pathHints). This prevents silent match failures due to
+// matchesAnyFilename only checking the basename against the full path.
+func TestAllFrameworks_NoPathPatternsInFilenameHints(t *testing.T) {
+	for _, fe := range frameworkOrder {
+		for _, re := range fe.filenameHints {
+			pattern := re.String()
+			if strings.Contains(pattern, "/") {
+				t.Errorf("framework %q has path pattern in filenameHints: %q (move to pathHints)",
+					fe.name, pattern)
+			}
+		}
+	}
+}
