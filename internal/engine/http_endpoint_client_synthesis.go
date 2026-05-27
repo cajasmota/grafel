@@ -345,6 +345,182 @@ func buildJSConstantSymbolTable(content string) map[string]string {
 	return syms
 }
 
+// ---------------------------------------------------------------------------
+// #2709 — object-literal const symbol table for template-literal subscripts
+// ---------------------------------------------------------------------------
+//
+// Handles the pattern:
+//
+//	const COMPANY_TYPE_MAPPING = {
+//	    1: "contracting-companies",
+//	    2: "witnessing-companies",
+//	};
+//	apiClient.get(`/${COMPANY_TYPE_MAPPING[companyType]}/${id}`);
+//
+// We collect ident → (key → string-literal value) for every same-file
+// `const NAME = { ... }` declaration whose body is a flat key/value list of
+// string-literal values. Used by canonicalizeTemplateLiteralExpand to
+// enumerate subscript interpolations.
+//
+// Limits (per the issue scope):
+//   - const declaration only (not let/var, not assignment, not merge / spread)
+//   - flat literal only — nested objects, computed keys, function values are
+//     all ignored (the entire ident is skipped if any pair fails to parse)
+//   - all values must be string literals (single, double, or backtick — no
+//     substitutions inside the value)
+
+// jsConstObjectStartRe matches the START of a `const NAME = { ... }`
+// declaration. We capture the identifier and the position just past the
+// opening `{` so the caller can walk forward to the matching close brace
+// (handled by findMatchingBrace, already used by wrapper-call parsing).
+//
+// Capture group: 1 = identifier name.
+var jsConstObjectStartRe = regexp.MustCompile(
+	`(?m)\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*\{`,
+)
+
+// jsConstObjectPairRe matches a single `key: "value"` pair inside a flat
+// object literal body. Keys may be:
+//   - bare identifier (`foo`)
+//   - quoted string (`"foo"` / `'foo'`)
+//   - numeric (`1`, `42`) — preserved as-is in the resulting key string
+//
+// Values must be string literals (single, double, or backtick — no
+// substitutions). Other shapes (numbers, booleans, nested objects,
+// function references) skip the pair.
+//
+// Capture groups: 1/2/3 = key variants (bare/numeric, double-quoted,
+// single-quoted); 4/5/6 = value variants (double, single, backtick).
+var jsConstObjectPairRe = regexp.MustCompile(
+	"(?:^|[,{\\s])" +
+		"(?:([A-Za-z_$][\\w$]*|\\d+)|\"([^\"\\n\\r]+)\"|'([^'\\n\\r]+)')" +
+		"\\s*:\\s*" +
+		"(?:\"([^\"\\n\\r]*)\"|'([^'\\n\\r]*)'|`([^`\\n\\r$]*)`)",
+)
+
+// buildJSConstantObjectTable returns a map from identifier name → (key →
+// string value) for every `const NAME = { ... }` flat object literal in
+// the file whose values are all string literals.
+//
+// An object literal is INCLUDED only when:
+//   - the entire body parses as a flat key/value list (no nested braces)
+//   - every value is a string literal
+//
+// On any failure (non-string value, nested object, unmatched brace, etc.)
+// the ident is omitted entirely rather than half-populated.
+func buildJSConstantObjectTable(content string) map[string]map[string]string {
+	out := map[string]map[string]string{}
+	if !strings.Contains(content, "const") || !strings.Contains(content, "{") {
+		return out
+	}
+	for _, m := range jsConstObjectStartRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		name := content[m[2]:m[3]]
+		// m[1] is the byte just past `{`; back up by one to the `{` itself.
+		openIdx := m[1] - 1
+		if openIdx < 0 || openIdx >= len(content) || content[openIdx] != '{' {
+			continue
+		}
+		closeIdx := findMatchingBrace(content, openIdx)
+		if closeIdx < 0 {
+			continue
+		}
+		body := content[openIdx+1 : closeIdx]
+		// Reject bodies that contain a nested object/function literal: any
+		// `{` inside the body would mean a nested structure we don't model.
+		if strings.ContainsAny(body, "{}") {
+			continue
+		}
+		pairs := jsConstObjectPairRe.FindAllStringSubmatch(body, -1)
+		if len(pairs) == 0 {
+			continue
+		}
+		entries := map[string]string{}
+		ok := true
+		for _, p := range pairs {
+			// Re-construct key.
+			var key, val string
+			switch {
+			case p[1] != "":
+				key = p[1]
+			case p[2] != "":
+				key = p[2]
+			case p[3] != "":
+				key = p[3]
+			default:
+				ok = false
+			}
+			switch {
+			case p[4] != "":
+				val = p[4]
+			case p[5] != "":
+				val = p[5]
+			case p[6] != "":
+				val = p[6]
+			default:
+				ok = false
+			}
+			if !ok {
+				break
+			}
+			entries[key] = val
+		}
+		if !ok || len(entries) == 0 {
+			continue
+		}
+		// Reject merge / spread / computed-key shapes: if the body contains
+		// spread (`...`) we don't trust the static enumeration.
+		if strings.Contains(body, "...") {
+			continue
+		}
+		// Defensive: skip if a pair count mismatches non-whitespace commas.
+		// A flat literal with N pairs should have at least N-1 commas (and
+		// may have a trailing comma). If we matched fewer pairs than commas
+		// suggest, some entry was non-string-literal and we should bail.
+		commas := strings.Count(body, ",")
+		// Allow trailing comma: pairs == commas OR pairs == commas+1.
+		if len(pairs) < commas {
+			// Some pair didn't match — half-populated, skip the whole ident.
+			continue
+		}
+		if _, dup := out[name]; !dup {
+			out[name] = entries
+		}
+	}
+	return out
+}
+
+// clientSynthState carries per-extraction side-channel state from
+// synthesizeFetchAxios (and its helpers) up to the runtime adapter.
+//
+// pendingPolySubscript, when non-empty just before an `emit(...)` call,
+// signals that the just-canonicalised endpoint was produced by static
+// enumeration of an `${ident[keyExpr]}` subscript expression (#2709). The
+// adapter stamps the corresponding property on the emitted entity and
+// then clears the field.
+type clientSynthState struct {
+	pendingPolySubscript string
+}
+
+// newClientSynthState returns an empty state ready to be threaded through
+// the JS/TS client-synthesis call graph. Safe to pass nil to helpers that
+// don't need poly support; helpers must nil-check before reading/writing.
+func newClientSynthState() *clientSynthState {
+	return &clientSynthState{}
+}
+
+// templateExpansion is one canonicalized path produced by expanding a
+// template-literal URL. Most templates yield a single expansion with an
+// empty PolySubscript. Subscript-into-map enumeration (#2709) yields one
+// expansion per known map value, each tagged with the source subscript
+// expression (e.g. `COMPANY_TYPE_MAPPING[companyType]`).
+type templateExpansion struct {
+	Path          string
+	PolySubscript string // "" for non-polymorphic single expansions
+}
+
 // templateSubstRe matches ${<expression>} inside a template literal.
 // We capture the full expression inside ${...} for further analysis.
 var templateSubstRe = regexp.MustCompile(`\$\{([^}]+)\}`)
@@ -428,6 +604,173 @@ func extractParamName(expr string) string {
 // the explicit accessor forms are reliable env-var signals.
 func isEnvVarStyleExpr(expr string) bool {
 	return strings.HasPrefix(expr, "process.env.") || strings.HasPrefix(expr, "import.meta.env.")
+}
+
+// subscriptInterpRe matches `${IDENT[KEY_EXPR]}` interpolations. Capture
+// groups: 1 = ident name; 2 = key expression (raw, may be a string literal
+// or any identifier/expression — caller distinguishes).
+//
+// We require `[` + balanced single-pair `]` directly after the identifier
+// (no chained property access like `ident.foo[key]`) to keep the rule tight
+// and predictable. Whitespace around the brackets is tolerated.
+var subscriptInterpRe = regexp.MustCompile(
+	`^([A-Za-z_$][\w$]*)\s*\[\s*(.+?)\s*\]$`,
+)
+
+// stringLiteralRe matches a single, fully-enclosed string literal token
+// (single or double quotes). Used to detect when a subscript key is a
+// static literal rather than a dynamic identifier.
+var stringLiteralRe = regexp.MustCompile(
+	`^(?:"([^"\\]*)"|'([^'\\]*)')$`,
+)
+
+// canonicalizeTemplateLiteralExpand is the enumeration-aware extension of
+// canonicalizeTemplateLiteral (#2709). When the template contains an
+// `${ident[keyExpr]}` interpolation and `ident` resolves to a known
+// flat const object literal:
+//
+//   - Static string-literal key: substitutes the matching value (or falls
+//     back to `{param}` when the key is unknown). Single expansion.
+//   - Dynamic identifier key (variable / parameter): enumerates ONE
+//     expansion per known map value, each tagged with PolySubscript =
+//     "<ident>[<keyExpr>]" so downstream consumers know this set is a
+//     static discovery rather than a guaranteed runtime shape.
+//
+// When no subscript interpolation appears (or the ident is unknown), the
+// function delegates to the existing scalar canonicalize path and returns
+// a single expansion with PolySubscript = "" — preserving back-compat for
+// every other call site.
+//
+// objSyms == nil disables subscript enumeration (back-compat for callers
+// that don't carry the object-literal table).
+func canonicalizeTemplateLiteralExpand(
+	tmpl string,
+	syms map[string]string,
+	objSyms map[string]map[string]string,
+) []templateExpansion {
+	// Fast path: no `[` in any interpolation means no subscripts to enumerate.
+	// Fall back to the scalar canonicaliser.
+	if len(objSyms) == 0 || !strings.Contains(tmpl, "[") {
+		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		if !ok {
+			return nil
+		}
+		return []templateExpansion{{Path: path}}
+	}
+
+	// Find the FIRST subscript interpolation that targets a known object
+	// literal. We enumerate one subscript at a time; templates with multiple
+	// subscript interpolations are out of scope (and rare in practice).
+	matches := templateSubstRe.FindAllStringSubmatchIndex(tmpl, -1)
+	var (
+		hitIdx     = -1 // index into matches[]
+		hitIdent   string
+		hitKeyExpr string
+	)
+	for i, m := range matches {
+		inner := strings.TrimSpace(tmpl[m[2]:m[3]])
+		sm := subscriptInterpRe.FindStringSubmatch(inner)
+		if len(sm) < 3 {
+			continue
+		}
+		ident := sm[1]
+		if _, ok := objSyms[ident]; !ok {
+			continue
+		}
+		hitIdx = i
+		hitIdent = ident
+		hitKeyExpr = strings.TrimSpace(sm[2])
+		break
+	}
+	if hitIdx < 0 {
+		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		if !ok {
+			return nil
+		}
+		return []templateExpansion{{Path: path}}
+	}
+
+	entries := objSyms[hitIdent]
+	hitMatch := matches[hitIdx]
+	matchStart, matchEnd := hitMatch[0], hitMatch[1]
+
+	// Static-key case: subscript key is a string literal. Substitute the
+	// matching value (or fall back to {param} when unknown).
+	if lm := stringLiteralRe.FindStringSubmatch(hitKeyExpr); len(lm) > 0 {
+		keyVal := lm[1]
+		if keyVal == "" {
+			keyVal = lm[2]
+		}
+		var replacement string
+		if v, ok := entries[keyVal]; ok {
+			replacement = v
+		} else {
+			replacement = "{param}"
+		}
+		rewritten := tmpl[:matchStart] + replacement + tmpl[matchEnd:]
+		path, ok := canonicalizeTemplateLiteral(rewritten, syms)
+		if !ok {
+			return nil
+		}
+		return []templateExpansion{{Path: path}}
+	}
+
+	// Dynamic-key case: enumerate one expansion per known value. The
+	// keyExpr must look like a plain identifier (parameter / variable) —
+	// anything more exotic falls back to the unknown-subscript `{param}`
+	// shape so we don't over-fire on call-expressions or arithmetic.
+	if !jsIdentRe.MatchString(hitKeyExpr) {
+		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		if !ok {
+			return nil
+		}
+		return []templateExpansion{{Path: path}}
+	}
+
+	// Deterministic iteration order: keys are sorted so test output is
+	// stable across runs (Go map iteration is randomised). We also dedup
+	// by resolved path — different keys mapping to the same value should
+	// not produce duplicate entries.
+	keys := make([]string, 0, len(entries))
+	for k := range entries {
+		keys = append(keys, k)
+	}
+	// Sort lexicographically for determinism.
+	for i := 1; i < len(keys); i++ {
+		for j := i; j > 0 && keys[j-1] > keys[j]; j-- {
+			keys[j-1], keys[j] = keys[j], keys[j-1]
+		}
+	}
+
+	polyTag := hitIdent + "[" + hitKeyExpr + "]"
+	expansions := make([]templateExpansion, 0, len(keys))
+	seenPath := map[string]bool{}
+	for _, k := range keys {
+		v := entries[k]
+		rewritten := tmpl[:matchStart] + v + tmpl[matchEnd:]
+		path, ok := canonicalizeTemplateLiteral(rewritten, syms)
+		if !ok {
+			continue
+		}
+		if seenPath[path] {
+			continue
+		}
+		seenPath[path] = true
+		expansions = append(expansions, templateExpansion{
+			Path:          path,
+			PolySubscript: polyTag,
+		})
+	}
+	if len(expansions) == 0 {
+		// All enumerated values failed canonicalisation — fall back to
+		// the scalar path so we still emit something rather than nothing.
+		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		if !ok {
+			return nil
+		}
+		return []templateExpansion{{Path: path}}
+	}
+	return expansions
 }
 
 func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, bool) {
@@ -549,7 +892,12 @@ func looksLikeURLPathOrParam(s string) bool {
 // synthesizeFetchAxios scans a JS/TS file and emits one synthetic
 // http_endpoint per detected client call. Handles both static string literals
 // (Phase 1) and template literals with ${...} substitutions (Phase 2).
-func synthesizeFetchAxios(content string, emit emitFn) {
+//
+// `state`, when non-nil, carries the side-channel used by #2709
+// object-subscript enumeration to annotate emitted entities with a
+// `polymorphic_subscript` property. May be nil for callers that don't need
+// poly support.
+func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) {
 	// Phase 5 (#806): React Query / RTK Query patterns can appear in files
 	// that contain none of the standard HTTP-client markers below. Handle
 	// them first so the early-exit guard doesn't drop them.
@@ -587,6 +935,23 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// Build constant symbol table once for the whole file (used by template
 	// literal folding below).
 	syms := buildJSConstantSymbolTable(content)
+	// #2709 — build same-file const-object-literal table (used by subscript
+	// enumeration in template-literal canonicalisation).
+	objSyms := buildJSConstantObjectTable(content)
+
+	// emitWithPoly stamps state.pendingPolySubscript for the next emit call
+	// when the expansion is polymorphic, then calls emit and clears the
+	// state. Safe with a nil state (no annotation; behaves like a direct
+	// emit).
+	emitWithPoly := func(verb, canonical, framework, refKind, refName, polySubscript string) {
+		if state != nil {
+			state.pendingPolySubscript = polySubscript
+		}
+		emit(verb, canonical, framework, refKind, refName)
+		if state != nil {
+			state.pendingPolySubscript = ""
+		}
+	}
 
 	// fetch(...) — static string literals
 	for _, m := range fetchCallRe.FindAllStringSubmatchIndex(content, -1) {
@@ -626,13 +991,11 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 				verb = strings.ToUpper(mv[1])
 			}
 		}
-		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
-		if !ok {
-			continue
-		}
 		caller := enclosingJSFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
-		emit(verb, canonical, "fetch", "Function", caller)
+		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms) {
+			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
+			emitWithPoly(verb, canonical, "fetch", "Function", caller, exp.PolySubscript)
+		}
 	}
 
 	// fetch(url, ...) — bare identifier whose value is a template literal (#654)
@@ -660,13 +1023,11 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 					verb = strings.ToUpper(mv[1])
 				}
 			}
-			path, ok2 := canonicalizeTemplateLiteral(tmplBody, syms)
-			if !ok2 {
-				continue
-			}
 			caller := enclosingJSFuncAt(funcs, m[0])
-			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
-			emit(verb, canonical, "fetch", "Function", caller)
+			for _, exp := range canonicalizeTemplateLiteralExpand(tmplBody, syms, objSyms) {
+				canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
+				emitWithPoly(verb, canonical, "fetch", "Function", caller, exp.PolySubscript)
+			}
 		}
 	}
 
@@ -694,13 +1055,11 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		tmpl := content[m[4]:m[5]]
-		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
-		if !ok {
-			continue
-		}
 		caller := enclosingJSFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
-		emit(verb, canonical, "axios", "Function", caller)
+		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms) {
+			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
+			emitWithPoly(verb, canonical, "axios", "Function", caller, exp.PolySubscript)
+		}
 	}
 
 	// <ident>{HttpClient,Client,httpClient,apiClient}.<verb>(...) — static string literals
@@ -727,13 +1086,11 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		}
 		verb := strings.ToUpper(content[m[4]:m[5]])
 		tmpl := content[m[6]:m[7]]
-		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
-		if !ok {
-			continue
-		}
 		caller := enclosingJSFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
-		emit(verb, canonical, "http_client", "Function", caller)
+		for _, exp := range canonicalizeTemplateLiteralExpand(tmpl, syms, objSyms) {
+			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
+			emitWithPoly(verb, canonical, "http_client", "Function", caller, exp.PolySubscript)
+		}
 	}
 
 	// -----------------------------------------------------------------
@@ -750,7 +1107,7 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// Phase 5 (#806): also accepts bare resource names (no leading /)
 	// when the wrapper name is recognized as HTTP-aware (Option A heuristic
 	// or Option B per-repo config). Bare names are normalized to /name/.
-	synthesizeWrapperCalls(content, funcs, syms, nil, emit)
+	synthesizeWrapperCalls(content, funcs, syms, objSyms, nil, emit, state)
 
 	// Note: React Query / RTK Query synthesis is handled in the early-exit
 	// section at the top of this function (Phase 5 / #806). No second call needed.
@@ -769,7 +1126,7 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// When the instance has a known baseURL, prepend it to the path so
 	// frontend↔backend cross-repo matching survives prefix differences.
 	instances := buildAxiosInstanceTable(content)
-	synthesizeAxiosInstanceCalls(content, funcs, syms, instances, emit)
+	synthesizeAxiosInstanceCalls(content, funcs, syms, objSyms, instances, emit, state)
 
 	// -----------------------------------------------------------------
 	// Phase 4 (#712): bare const-variable path resolution
@@ -789,7 +1146,12 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 
 // jsRuntimeEmitFn is the runtime-dynamic-aware emitter type used by
 // synthesizeFetchAxiosWithRuntime. Mirrors pyClientEmitFn / javaClientEmitFn.
-type jsRuntimeEmitFn func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool)
+//
+// #2709 extension: the trailing polySubscript argument carries an optional
+// `<ident>[<keyExpr>]` tag identifying entries produced by static
+// enumeration of an object-subscript template-literal interpolation. The
+// downstream emit closure stamps this on the entity's Properties.
+type jsRuntimeEmitFn func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool, polySubscript string)
 
 // synthesizeFetchAxiosWithRuntime is the #721 entry point for JS/TS
 // consumer-side synthesis. It calls the existing synthesizeFetchAxios for
@@ -800,10 +1162,15 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 	// Delegate all existing static/template/wrapper/axios-instance patterns
 	// through the adapter. The adapter bridges emitFn → jsRuntimeEmitFn
 	// with runtimeDynamic=false (these URLs are known at analysis time).
+	//
+	// #2709 — the shared clientSynthState carries the most-recent poly
+	// subscript marker just-before each emit; the adapter forwards it and
+	// then trusts synthesizeFetchAxios to clear / reset for the next call.
+	state := newClientSynthState()
 	adapter := func(method, canonicalPath, framework, refKind, refName string) {
-		emit(method, canonicalPath, framework, refKind, refName, false)
+		emit(method, canonicalPath, framework, refKind, refName, false, state.pendingPolySubscript)
 	}
-	synthesizeFetchAxios(content, adapter)
+	synthesizeFetchAxios(content, adapter, state)
 
 	// Env-var concatenation patterns — emit with runtimeDynamic=true.
 	if !strings.Contains(content, "process.env") && !strings.Contains(content, "import.meta.env") {
@@ -829,7 +1196,7 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
 		caller := enclosingJSFuncAt(funcs, m[0])
-		emit(verb, canonical, "fetch", "Function", caller, true)
+		emit(verb, canonical, "fetch", "Function", caller, true, "")
 	}
 
 	// axios.<verb>(process.env.X + "/path")
@@ -844,7 +1211,7 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
 		caller := enclosingJSFuncAt(funcs, m[0])
-		emit(verb, canonical, "axios", "Function", caller, true)
+		emit(verb, canonical, "axios", "Function", caller, true, "")
 	}
 
 	// <ident>.<verb>(process.env.X + "/path") — $http, apiClient, etc.
@@ -865,7 +1232,7 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
 		caller := enclosingJSFuncAt(funcs, m[0])
-		emit(verb, canonical, "http_client", "Function", caller, true)
+		emit(verb, canonical, "http_client", "Function", caller, true, "")
 	}
 }
 
@@ -957,7 +1324,7 @@ var wrapperBlocklist = map[string]bool{
 // normalized to /name/.
 //
 // wrapperIdx may be nil — in that case only Option A heuristics apply.
-func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]string, wrapperIdx WrapperConfigIndex, emit emitFn) {
+func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]string, objSyms map[string]map[string]string, wrapperIdx WrapperConfigIndex, emit emitFn, state *clientSynthState) {
 	if wrapperIdx == nil {
 		wrapperIdx = WrapperConfigIndex{}
 	}
@@ -1012,29 +1379,26 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 			continue
 		}
 
-		// Resolve URL to a canonical path.
-		// Phase 5 (#806): when the wrapper name is HTTP-aware (Option A or B),
-		// accept bare resource names and normalize them to /name/.
-		var path string
-		var ok bool
+		// Resolve URL to a canonical path. Template literals may expand to
+		// MULTIPLE paths (#2709: enumeration of object-subscript interps);
+		// scalar shapes always yield a single expansion.
+		var expansions []templateExpansion
 		if isTemplate && strings.Contains(rawURL, "${") {
-			path, ok = canonicalizeTemplateLiteral(rawURL, syms)
+			expansions = canonicalizeTemplateLiteralExpand(rawURL, syms, objSyms)
 		} else {
 			candidate := stripURLHost(rawURL)
 			if looksLikeURLPath(candidate) {
-				path = candidate
-				ok = true
+				expansions = []templateExpansion{{Path: candidate}}
 			} else if IsHTTPWrapperHeuristic(wrapper, wrapperIdx) {
 				// Bare resource name from a recognized HTTP wrapper:
 				// normalize "checklists" → "/checklists/" and accept.
 				normalized := normalizeBareName(candidate)
 				if normalized != "" && normalized != "/" {
-					path = normalized
-					ok = true
+					expansions = []templateExpansion{{Path: normalized}}
 				}
 			}
 		}
-		if !ok {
+		if len(expansions) == 0 {
 			continue
 		}
 
@@ -1060,8 +1424,16 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 		}
 
 		caller := enclosingJSFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
-		emit(verb, canonical, "http_wrapper", "Function", caller)
+		for _, exp := range expansions {
+			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, exp.Path)
+			if state != nil {
+				state.pendingPolySubscript = exp.PolySubscript
+			}
+			emit(verb, canonical, "http_wrapper", "Function", caller)
+			if state != nil {
+				state.pendingPolySubscript = ""
+			}
+		}
 	}
 }
 
@@ -1298,33 +1670,41 @@ func synthesizeAxiosInstanceCalls(
 	content string,
 	funcs []jsFuncSpan,
 	syms map[string]string,
+	objSyms map[string]map[string]string,
 	instances map[string]axiosInstance,
 	emit emitFn,
+	state *clientSynthState,
 ) {
 	emitMatch := func(receiver, verb, path string, isTemplate bool, pos int) {
-		var resolved string
-		var ok bool
+		var expansions []templateExpansion
 		if isTemplate {
-			resolved, ok = canonicalizeTemplateLiteral(path, syms)
+			expansions = canonicalizeTemplateLiteralExpand(path, syms, objSyms)
 		} else {
 			candidate := stripURLHost(path)
 			if looksLikeURLPath(candidate) {
-				resolved = candidate
-				ok = true
+				expansions = []templateExpansion{{Path: candidate}}
 			}
 		}
-		if !ok {
+		if len(expansions) == 0 {
 			return
 		}
 
-		// baseURL composition.
-		if inst, found := instances[receiver]; found && inst.baseURL != "" {
-			resolved = composeBaseURL(inst.baseURL, resolved)
-		}
-
 		caller := enclosingJSFuncAt(funcs, pos)
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, resolved)
-		emit(strings.ToUpper(verb), canonical, "axios_instance", "Function", caller)
+		for _, exp := range expansions {
+			resolved := exp.Path
+			// baseURL composition.
+			if inst, found := instances[receiver]; found && inst.baseURL != "" {
+				resolved = composeBaseURL(inst.baseURL, resolved)
+			}
+			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, resolved)
+			if state != nil {
+				state.pendingPolySubscript = exp.PolySubscript
+			}
+			emit(strings.ToUpper(verb), canonical, "axios_instance", "Function", caller)
+			if state != nil {
+				state.pendingPolySubscript = ""
+			}
+		}
 	}
 
 	// Pass 1: any receiver present in the in-file axios.create() table.

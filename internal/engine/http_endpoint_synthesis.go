@@ -393,7 +393,26 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeTRPC(string(content), emitDef)
 		// Consumer side (#721): fetch / axios / generic *Client
 		// HTTP client calls. Now emits FETCHES edges at extraction time.
-		synthesizeFetchAxiosWithRuntime(string(content), emitClientRuntime)
+		//
+		// #2709 — JS/TS extractor enumerates object-subscript template-literal
+		// interpolations and tags resulting entities with a
+		// `polymorphic_subscript` property. The adapter below bridges the
+		// shared (verb, path, framework, refKind, refName, runtimeDynamic)
+		// closure with the JS-specific extra polySubscript argument: after the
+		// upstream emit appends the entity, we stamp the property in place.
+		emitJSClientRuntime := func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool, polySubscript string) {
+			before := len(entities)
+			emitClientRuntime(method, canonicalPath, framework, refKind, refName, runtimeDynamic)
+			if polySubscript == "" || len(entities) == before {
+				return
+			}
+			last := &entities[len(entities)-1]
+			if last.Properties == nil {
+				last.Properties = map[string]string{}
+			}
+			last.Properties["polymorphic_subscript"] = polySubscript
+		}
+		synthesizeFetchAxiosWithRuntime(string(content), emitJSClientRuntime)
 	case "go":
 		// Producer side: Gin / Echo / Chi route registrations. #722.
 		synthesizeGoRouters(string(content), emit)
