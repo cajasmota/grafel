@@ -211,6 +211,11 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// callTarget can synthesise CALLS edges when it sees RESOLVERS[k](args).
 	x.dispatchMaps = x.buildDispatchMaps(root)
 
+	// Issue #2590 — build the zustand store tracker before walk() so that
+	// extractCallRelationships can emit CALLS edges for .getState().<action>()
+	// and immediately-invoked selector patterns.
+	x.zustand = x.buildZustandTracker(root)
+
 	var extractErr error
 	func() {
 		defer func() {
@@ -363,6 +368,15 @@ type extractor struct {
 	// (same as plain static dispatch). dispatchMaps is nil when no
 	// dispatch-map variable is found in the file (fast-path).
 	dispatchMaps map[string]*dispatchMapInfo
+
+	// zustand — Issue #2590. Built once per file in buildZustandTracker
+	// (called from Extract before walk). Tracks const variables assigned
+	// from `create(...)` imported from "zustand". When a call site does
+	// `<storeVar>.getState().<action>(...)` or an immediately-invoked
+	// selector `<storeVar>(s => s.<action>)()`, extractCallRelationships
+	// emits a CALLS edge tagged Properties["via"]="zustand_store".
+	// Nil when no zustand import is found in the file (fast-path).
+	zustand *zustandTracker
 }
 
 // dispatchMapInfo records the handlers registered in a Record<string, Fn>
@@ -1827,6 +1841,33 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 				}
 			}
 			continue
+		}
+
+		// Issue #2590 — Zustand store action CALLS edges.
+		// Check for <storeVar>.getState().<action>(...) before callTarget
+		// so the action name is linked to the store definition rather than
+		// emitting a bare method name that may collide with other symbols.
+		if zustandRels := x.zustand.zustandGetStateActionEdges(x, call, callerName); len(zustandRels) > 0 {
+			for _, zr := range zustandRels {
+				if !seen[zr.ToID] {
+					seen[zr.ToID] = true
+					rels = append(rels, zr)
+				}
+			}
+			// Do NOT continue — callTarget will still emit a bare trailing
+			// method name for the same node. We continue below to also let
+			// the normal trailing-prop edge fire, but since seen[actionName]
+			// is now true the duplicate is suppressed automatically.
+		}
+
+		// Issue #2590 — immediately-invoked selector: <storeVar>(s => s.<action>)()
+		if zustandRels := x.zustand.zustandSelectorActionEdges(x, call, callerName); len(zustandRels) > 0 {
+			for _, zr := range zustandRels {
+				if !seen[zr.ToID] {
+					seen[zr.ToID] = true
+					rels = append(rels, zr)
+				}
+			}
 		}
 
 		target := x.callTarget(call, frame)
