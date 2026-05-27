@@ -207,6 +207,10 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// so that callTarget can rewrite CALLS-to-hook-result edges.
 	x.hookVarToModule = x.buildHookVarToModule(root)
 
+	// Issue #2553 — build the dispatch-map registry before walk() so that
+	// callTarget can synthesise CALLS edges when it sees RESOLVERS[k](args).
+	x.dispatchMaps = x.buildDispatchMaps(root)
+
 	var extractErr error
 	func() {
 		defer func() {
@@ -340,6 +344,36 @@ type extractor struct {
 	// "ext:<module>" rather than the bare local-variable name, which
 	// would otherwise be unresolvable and land in bug-extractor.
 	hookVarToModule map[string]string
+
+	// dispatchMaps — Issue #2553. Built once per file in buildDispatchMaps
+	// (called from Extract before walk). Maps variable names that hold a
+	// Record<string, Fn>-style dispatch table to their registry entries.
+	//
+	//   const RESOLVERS: Record<string, Handler> = { a: fnA, b: fnB };
+	//
+	// → dispatchMaps["RESOLVERS"] = &dispatchMapInfo{
+	//       handlers: ["fnA", "fnB"],
+	//       byKey:    {"a": "fnA", "b": "fnB"},
+	//   }
+	//
+	// When callTarget encounters RESOLVERS[k](args) with a non-literal
+	// index it emits one synthetic CALLS edge per handler entry, each
+	// tagged Properties["via"]="dynamic_dispatch_map". When the index IS
+	// a string literal it resolves only to the matching handler via byKey
+	// (same as plain static dispatch). dispatchMaps is nil when no
+	// dispatch-map variable is found in the file (fast-path).
+	dispatchMaps map[string]*dispatchMapInfo
+}
+
+// dispatchMapInfo records the handlers registered in a Record<string, Fn>
+// dispatch map. Used by buildDispatchMaps and dispatchMapCallEdges (issue #2553).
+type dispatchMapInfo struct {
+	// handlers is the ordered list of handler identifiers (the VALUES from
+	// the object literal). Used for dynamic-index fan-out.
+	handlers []string
+	// byKey maps each literal property key to its handler identifier. Used
+	// for literal-index direct resolution (e.g. RESOLVERS['create_deficiency']).
+	byKey map[string]string
 }
 
 // emitDestructureDetailEnabled reports whether const_destructure /
@@ -1781,6 +1815,20 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
+		// Issue #2553 — dynamic dispatch map: RESOLVERS[k](args).
+		// Check for subscript_expression as the function child BEFORE
+		// calling callTarget (which returns "" for subscript callee shapes
+		// and would cause us to skip the call entirely).
+		if dynRels := x.dispatchMapCallEdges(call, callerName); len(dynRels) > 0 {
+			for _, dr := range dynRels {
+				if !seen[dr.ToID] {
+					seen[dr.ToID] = true
+					rels = append(rels, dr)
+				}
+			}
+			continue
+		}
+
 		target := x.callTarget(call, frame)
 		if target == "" || target == "require" {
 			continue
@@ -1810,6 +1858,93 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			}
 		}
 		rels = append(rels, rel)
+	}
+	return rels
+}
+
+// dispatchMapCallEdges detects `MAPVAR[key](args)` call patterns where MAPVAR
+// is a known dispatch map (tracked in x.dispatchMaps) and emits synthetic CALLS
+// edges. Returns nil when the call is not a dispatch-map invocation.
+//
+// Two sub-cases:
+//
+//  1. Dynamic index — `RESOLVERS[k](args)` where k is an identifier or other
+//     non-literal expression: synthesise one CALLS edge per registered handler
+//     in the dispatch map, tagged Properties["via"]="dynamic_dispatch_map".
+//
+//  2. Literal string index — `RESOLVERS['create_deficiency'](args)`: resolve
+//     directly to the single matching handler when it exists in the map, tagged
+//     Properties["via"]="dynamic_dispatch_map". This is structurally equivalent
+//     to a plain CALLS edge but still carries the traceability tag so reviewers
+//     know it came through the map. If the literal key is not found in the
+//     registered handlers the method returns nil (let the default path handle
+//     it or drop it).
+//
+// Issue #2553.
+func (x *extractor) dispatchMapCallEdges(call *sitter.Node, callerName string) []types.RelationshipRecord {
+	if x.dispatchMaps == nil || call == nil {
+		return nil
+	}
+	fn := call.ChildByFieldName("function")
+	if fn == nil || fn.Type() != "subscript_expression" {
+		return nil
+	}
+	// subscript_expression children: object, "[", index, "]"
+	// tree-sitter: object is child 0, index is child 2.
+	if fn.ChildCount() < 3 {
+		return nil
+	}
+	objNode := fn.Child(0)
+	indexNode := fn.Child(2)
+	if objNode == nil || indexNode == nil {
+		return nil
+	}
+	if objNode.Type() != "identifier" {
+		return nil
+	}
+	mapName := x.nodeText(objNode)
+	info, ok := x.dispatchMaps[mapName]
+	if !ok || info == nil || len(info.handlers) == 0 {
+		return nil
+	}
+
+	const viaProp = "dynamic_dispatch_map"
+
+	// Literal string index — resolve to single handler via byKey.
+	if indexNode.Type() == "string" {
+		// Extract the string content (strip surrounding quotes).
+		key := x.nodeText(indexNode)
+		key = strings.Trim(key, `"'`+"`")
+		if h, found := info.byKey[key]; found {
+			if h == callerName {
+				return nil // self-call drop
+			}
+			return []types.RelationshipRecord{{
+				ToID: h,
+				Kind: "CALLS",
+				Properties: map[string]string{
+					"via": viaProp,
+				},
+			}}
+		}
+		// Literal key not found in the registered handler map — fall
+		// through to the default path (return nil).
+		return nil
+	}
+
+	// Dynamic index — synthesise one edge per handler.
+	rels := make([]types.RelationshipRecord, 0, len(info.handlers))
+	for _, h := range info.handlers {
+		if h == callerName {
+			continue // skip self-recursion
+		}
+		rels = append(rels, types.RelationshipRecord{
+			ToID: h,
+			Kind: "CALLS",
+			Properties: map[string]string{
+				"via": viaProp,
+			},
+		})
 	}
 	return rels
 }
@@ -2096,6 +2231,133 @@ func (x *extractor) buildHookVarToModule(root *sitter.Node) map[string]string {
 		count := int(n.ChildCount())
 		for i := count - 1; i >= 0; i-- {
 			stack = append(stack, n.Child(i))
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// buildDispatchMaps scans the file AST for top-level variable declarations of
+// the form:
+//
+//	const RESOLVERS: Record<string, Fn> = { key1: handlerA, key2: handlerB }
+//	const RESOLVERS = { key1: handlerA, key2: handlerB }
+//
+// and returns a map from the variable identifier to the list of handler
+// identifiers declared as values in the object literal. Only declarations
+// at module scope (outside any function body) are considered, because
+// dispatch-map patterns are structural, not transient locals.
+//
+// Detection heuristics (either is sufficient to classify as a dispatch map):
+//  1. The declarator carries a TypeScript type annotation whose leading text
+//     is "Record<" (type annotation present on the "type" field of the
+//     variable_declarator node).
+//  2. The RHS is an object literal whose values are ALL identifier references
+//     (not function literals, not primitives). This matches the common
+//     pattern where handlers are declared elsewhere and assembled into a map.
+//
+// Issue #2553 — surfaced by core-mobile's offline-sync subsystem where
+// syncEngine.ts dispatches through syncResolvers via RESOLVERS[action.kind](args).
+func (x *extractor) buildDispatchMaps(root *sitter.Node) map[string]*dispatchMapInfo {
+	if root == nil {
+		return nil
+	}
+	result := make(map[string]*dispatchMapInfo)
+	// Only scan top-level statements (direct children of program root).
+	for i := 0; i < int(root.ChildCount()); i++ {
+		stmt := root.Child(i)
+		if stmt == nil {
+			continue
+		}
+		// Unwrap export_statement wrapper: `export const RESOLVERS = {...}`
+		target := stmt
+		if stmt.Type() == "export_statement" {
+			for j := 0; j < int(stmt.ChildCount()); j++ {
+				ch := stmt.Child(j)
+				if ch != nil && (ch.Type() == "lexical_declaration" || ch.Type() == "variable_declaration") {
+					target = ch
+					break
+				}
+			}
+		}
+		if target.Type() != "lexical_declaration" && target.Type() != "variable_declaration" {
+			continue
+		}
+		for j := 0; j < int(target.ChildCount()); j++ {
+			decl := target.Child(j)
+			if decl == nil || decl.Type() != "variable_declarator" {
+				continue
+			}
+			nameNode := decl.ChildByFieldName("name")
+			if nameNode == nil || nameNode.Type() != "identifier" {
+				continue
+			}
+			varName := x.nodeText(nameNode)
+			if varName == "" {
+				continue
+			}
+			valueNode := decl.ChildByFieldName("value")
+			if valueNode == nil || valueNode.Type() != "object" {
+				continue
+			}
+			// Check for Record<...> type annotation on the declarator.
+			hasRecordAnnotation := false
+			if typeNode := decl.ChildByFieldName("type"); typeNode != nil {
+				typeText := x.nodeText(typeNode)
+				if strings.Contains(typeText, "Record<") {
+					hasRecordAnnotation = true
+				}
+			}
+			// Collect key→handler pairs from the object literal.
+			var handlers []string
+			byKey := make(map[string]string)
+			allIdentifiers := true
+			for k := 0; k < int(valueNode.ChildCount()); k++ {
+				pair := valueNode.Child(k)
+				if pair == nil {
+					continue
+				}
+				if pair.Type() != "pair" {
+					// Skip punctuation nodes ({, }, ,).
+					continue
+				}
+				keyNode := pair.ChildByFieldName("key")
+				valNode := pair.ChildByFieldName("value")
+				if valNode == nil {
+					allIdentifiers = false
+					continue
+				}
+				if valNode.Type() == "identifier" {
+					handler := x.nodeText(valNode)
+					handlers = append(handlers, handler)
+					// Record the key→handler mapping for literal-index resolution.
+					// property_identifier keys need no quote-stripping; string keys do.
+					if keyNode != nil {
+						keyText := x.nodeText(keyNode)
+						keyText = strings.Trim(keyText, `"'`+"`")
+						byKey[keyText] = handler
+					}
+				} else {
+					// Value is a function literal or something else — not
+					// a pure reference map. Still count the entry for
+					// Record-annotated maps; otherwise disqualify.
+					allIdentifiers = false
+				}
+			}
+			if len(handlers) == 0 {
+				continue
+			}
+			// Accept when the type annotation is Record<...> OR when all
+			// values are plain identifier references (high-confidence
+			// heuristic for dispatch-map shape without explicit typing).
+			if hasRecordAnnotation || allIdentifiers {
+				result[varName] = &dispatchMapInfo{
+					handlers: handlers,
+					byKey:    byKey,
+				}
+			}
 		}
 	}
 	if len(result) == 0 {
