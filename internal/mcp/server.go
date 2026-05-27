@@ -858,6 +858,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("persona", mcpapi.Required()),
 		mcpapi.WithString("event_type", mcpapi.Required()),
 		mcpapi.WithAny("target_persona"),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(0)),
+		mcpapi.WithArray("chain"),
 		mcpapi.WithAny("metadata"),
 	), s.wrap("archigraph_persona_event", s.handlePersonaEvent))
 
