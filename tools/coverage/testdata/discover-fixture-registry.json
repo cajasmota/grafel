@@ -1,0 +1,62 @@
+{
+  "$schema_version": 1,
+  "records": [
+    {
+      "id": "lang.python",
+      "category": "language",
+      "language": "python",
+      "label": "Python",
+      "capabilities": {
+        "core_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/python/extractor.go"]
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.flask",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Flask",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go", "internal/engine/old_flask_path.go"]
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.deprecated-fwk",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Deprecated FW",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "partial"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.quart",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Quart",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.aspirational-fwk",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Aspirational FW",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "missing"
+        }
+      }
+    }
+  ]
+}

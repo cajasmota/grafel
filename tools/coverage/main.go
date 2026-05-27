@@ -49,6 +49,8 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return cmdValidate(rest, stdout, stderr)
 	case "gen":
 		return cmdGen(rest, stdout)
+	case "discover":
+		return cmdDiscover(rest, stdout)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -70,7 +72,8 @@ subcommands:
   gaps      list missing/partial records (--language, --category, --json)
   stats     counters across the registry (--json)
   validate  schema + cite-exists + duplicate-id + stale checks
-  gen       regenerate docs/coverage/*.md from docs/coverage/registry.json (--out, --file)`)
+  gen       regenerate docs/coverage/*.md from docs/coverage/registry.json (--out, --file)
+  discover  catalog capabilities from repo signals; emit proposal + orphans + drift (--registry, --repo-root, --json, --include-orphans, --include-drift)`)
 }
 
 // registryFlag adds a shared --file flag for overriding the registry
