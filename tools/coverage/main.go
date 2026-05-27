@@ -154,7 +154,7 @@ func cmdAdd(args []string, out io.Writer) error {
 	if err := validateID(*id); err != nil {
 		return err
 	}
-	if _, ok := categoryCapabilities[*cat]; !ok {
+	if !categoryIsKnown(*cat) {
 		return fmt.Errorf("add: unknown category %q (known: %v)", *cat, knownCategories())
 	}
 	if *sub != "" && !validSubcategory(*cat, *sub) {

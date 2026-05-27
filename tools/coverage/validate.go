@@ -51,7 +51,7 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 
 		if rec.Category == "" {
 			res.Errors = append(res.Errors, prefix+": category is empty")
-		} else if _, ok := categoryCapabilities[rec.Category]; !ok {
+		} else if !categoryIsKnown(rec.Category) {
 			res.Errors = append(res.Errors, fmt.Sprintf("%s: unknown category %q (known: %v)", prefix, rec.Category, knownCategories()))
 		}
 		if rec.Subcategory != "" {

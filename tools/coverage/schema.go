@@ -336,269 +336,12 @@ func capabilitiesAreGrouped(raw json.RawMessage) (bool, error) {
 	return false, nil
 }
 
-// categoryCapabilities maps each registry category to the set of
-// capability keys that are valid for that category. The validate
-// subcommand rejects unknown keys per category.
-var categoryCapabilities = map[string][]string{
-	"language": {
-		"call_line_precision",
-		"discriminates_on",
-		"navigates_to",
-		"core_extraction",
-	},
-	"http_framework": {
-		"endpoint_synthesis",
-		"handler_attribution",
-		"auth_coverage",
-		"middleware_coverage",
-	},
-	"orm": {
-		"model_extraction",
-		"query_attribution",
-		"migration_parsing",
-	},
-	"message_broker": {
-		"producer_extraction",
-		"consumer_extraction",
-		"topic_attribution",
-	},
-	"observability": {
-		"trace_extraction",
-		"metric_extraction",
-		"log_extraction",
-	},
-	"build_system": {
-		"target_extraction",
-		"dependency_graph",
-	},
-	"package_manager": {
-		"manifest_parsing",
-		"lockfile_parsing",
-	},
-	"databases": {
-		"resource_extraction",
-		"dependency_attribution",
-	},
-	"platform": {
-		"resource_extraction",
-		"dependency_attribution",
-		"file_parsing",
-		"env_resolution",
-	},
-	"security": {
-		"auth_policy",
-		"secret_detection",
-		"sql_injection",
-	},
-	"protocol": {
-		"service_extraction",
-		"method_attribution",
-		"cross_repo_linkage",
-	},
-	"ci_cd": {
-		"file_parsing",
-		"env_resolution",
-	},
-}
-
-// validCapabilityKey reports whether key is declared for category.
-func validCapabilityKey(category, key string) bool {
-	keys, ok := categoryCapabilities[category]
-	if !ok {
-		return false
-	}
-	for _, k := range keys {
-		if k == key {
-			return true
-		}
-	}
-	return false
-}
-
-// subcategoryCapabilities maps (category → subcategory → capability keys).
-// Records that opt in to a subcategory validate against the union of
-// that subcategory's keys and the category-wide keys, allowing fine-
-// grained capability vocabulary (e.g. React's component_extraction) to
-// coexist with the broad category lane (http_framework).
-//
-// Adding a new subcategory: drop a line here, list its capability keys,
-// re-run validate. The slugs are surfaced verbatim as section headers
-// in the by-language and by-category pages via prettyKey.
-var subcategoryCapabilities = map[string]map[string][]string{
-	"http_framework": {
-		"http_backend": {
-			"endpoint_synthesis",
-			"handler_attribution",
-			"auth_coverage",
-			"middleware_coverage",
-			"route_extraction",
-			"request_validation",
-			"tests_linkage",
-			"dto_extraction",
-		},
-		"ui_frontend": {
-			"component_extraction",
-			"prop_extraction",
-			"hook_recognition",
-			"state_management",
-			"data_fetching",
-			"router_pattern",
-			"jsx_template",
-			"context_extraction",
-			"hoc_wrapper_recognition",
-			"branch_conditions",
-			"interface_extraction",
-			"type_alias_extraction",
-			"enum_extraction",
-			"state_setter_emission",
-			"tests_linkage",
-		},
-		"meta_framework": {
-			"server_components",
-			"data_loaders",
-			"route_extraction",
-			"hydration_boundaries",
-			"static_generation",
-			"component_extraction",
-			"hook_recognition",
-			"router_pattern",
-			"interface_extraction",
-			"type_alias_extraction",
-			"enum_extraction",
-			"state_setter_emission",
-			"tests_linkage",
-		},
-		"mobile": {
-			"navigation_extraction",
-			"native_module_imports",
-			"platform_branching",
-			"screen_detection",
-			"deep_link_extraction",
-			"state_management",
-			"context_extraction",
-			"hoc_wrapper_recognition",
-			"branch_conditions",
-			"interface_extraction",
-			"type_alias_extraction",
-			"enum_extraction",
-			"state_setter_emission",
-			"tests_linkage",
-		},
-		"desktop": {
-			"ipc_extraction",
-			"main_renderer_split",
-			"native_module_imports",
-		},
-		"rpc_framework": {
-			"procedure_extraction",
-			"schema_extraction",
-			"client_codegen",
-		},
-		"static_site": {
-			"build_extraction",
-			"template_extraction",
-		},
-		"ai_integration": {
-			"prompt_template_extraction",
-			"chain_composition",
-			"tool_use_detection",
-		},
-	},
-}
-
-// subcategoryOrder is the canonical render order for subcategory
-// sub-sections under a bucket. Entries not listed here render
-// alphabetically after the canonical ones (see orderedSubcategories).
-var subcategoryOrder = map[string][]string{
-	"http_framework": {
-		"http_backend",
-		"ui_frontend",
-		"meta_framework",
-		"mobile",
-		"desktop",
-		"rpc_framework",
-		"static_site",
-		"ai_integration",
-	},
-}
-
-// subcategoryDisplay maps a subcategory slug to its human-facing section
-// heading. Slugs without an entry fall back to prettyKey of the slug.
-var subcategoryDisplay = map[string]string{
-	"http_backend":   "Backend HTTP",
-	"ui_frontend":    "UI Frontend",
-	"meta_framework": "Meta Framework",
-	"mobile":         "Mobile",
-	"desktop":        "Desktop",
-	"rpc_framework":  "RPC Framework",
-	"static_site":    "Static Site",
-	"ai_integration": "AI Integration",
-}
-
-// subcategoryGroups declares the canonical capability-group taxonomy
-// per subcategory: subcategory → group name → ordered capability keys.
-// Group names are exact strings (case + spacing preserved); they appear
-// verbatim as section headings on detail pages and as column headers on
-// pivot tables. Capability keys must also be declared in
-// subcategoryCapabilities for their (category, subcategory) so the
-// allow-list and the taxonomy stay in sync.
-//
-// Groups are listed in display order — render order on the detail page
-// and column order in the pivot table both follow this slice.
-var subcategoryGroups = map[string][]capabilityGroup{
-	"ui_frontend": {
-		{Name: "Structure", Keys: []string{"component_extraction", "hook_recognition", "jsx_template", "context_extraction", "hoc_wrapper_recognition"}},
-		{Name: "Data Flow", Keys: []string{"prop_extraction", "state_management", "data_fetching", "branch_conditions"}},
-		{Name: "Navigation", Keys: []string{"router_pattern"}},
-		{Name: "Type System", Keys: []string{"interface_extraction", "type_alias_extraction", "enum_extraction"}},
-		{Name: "Lifecycle", Keys: []string{"state_setter_emission"}},
-		{Name: "Testing", Keys: []string{"tests_linkage"}},
-	},
-	"mobile": {
-		{Name: "Structure", Keys: []string{"context_extraction", "hoc_wrapper_recognition"}},
-		{Name: "Navigation", Keys: []string{"navigation_extraction", "deep_link_extraction", "screen_detection"}},
-		{Name: "Platform", Keys: []string{"platform_branching"}},
-		{Name: "Native Bridge", Keys: []string{"native_module_imports"}},
-		{Name: "Data Flow", Keys: []string{"state_management", "branch_conditions"}},
-		{Name: "Type System", Keys: []string{"interface_extraction", "type_alias_extraction", "enum_extraction"}},
-		{Name: "Lifecycle", Keys: []string{"state_setter_emission"}},
-		{Name: "Testing", Keys: []string{"tests_linkage"}},
-	},
-	"http_backend": {
-		{Name: "Routing", Keys: []string{"endpoint_synthesis", "handler_attribution", "route_extraction"}},
-		{Name: "Security", Keys: []string{"auth_coverage"}},
-		{Name: "Validation", Keys: []string{"request_validation", "dto_extraction"}},
-		{Name: "Middleware", Keys: []string{"middleware_coverage"}},
-		{Name: "Testing", Keys: []string{"tests_linkage"}},
-		{Name: "Observability", Keys: []string{}},
-		{Name: "Data", Keys: []string{}},
-	},
-	"meta_framework": {
-		{Name: "Structure", Keys: []string{"component_extraction", "hook_recognition"}},
-		{Name: "Data Flow", Keys: []string{"data_loaders"}},
-		{Name: "Server", Keys: []string{"server_components", "hydration_boundaries"}},
-		{Name: "Routing", Keys: []string{"route_extraction", "router_pattern"}},
-		{Name: "Build", Keys: []string{"static_generation"}},
-		{Name: "Type System", Keys: []string{"interface_extraction", "type_alias_extraction", "enum_extraction"}},
-		{Name: "Lifecycle", Keys: []string{"state_setter_emission"}},
-		{Name: "Testing", Keys: []string{"tests_linkage"}},
-	},
-	"desktop": {
-		{Name: "Process", Keys: []string{"ipc_extraction", "main_renderer_split"}},
-		{Name: "Native", Keys: []string{"native_module_imports"}},
-		{Name: "Updates", Keys: []string{}},
-	},
-	"rpc_framework": {
-		{Name: "Schema", Keys: []string{"schema_extraction", "procedure_extraction"}},
-		{Name: "Codegen", Keys: []string{"client_codegen"}},
-		{Name: "Transport", Keys: []string{}},
-	},
-	"ai_integration": {
-		{Name: "Prompts", Keys: []string{"prompt_template_extraction"}},
-		{Name: "Composition", Keys: []string{"chain_composition", "tool_use_detection"}},
-		{Name: "Tracking", Keys: []string{}},
-	},
-}
+// The capability taxonomy — buckets, registry categories (and their
+// flat allow-lists), subcategories (and their per-subcategory allow-
+// lists + ordered group taxonomies) — lives in capability-dictionary
+// .yaml (loaded via dict()). The functions below are thin queries on
+// top of that single source of truth so adding a new capability is a
+// YAML edit with zero Go change (#2752).
 
 // capabilityGroup pairs a group name with its ordered capability keys.
 // Render order follows the slice; templates do not re-sort.
@@ -607,50 +350,41 @@ type capabilityGroup struct {
 	Keys []string
 }
 
+// validCapabilityKey reports whether key is declared as a category-wide
+// capability for category.
+func validCapabilityKey(category, key string) bool {
+	for _, k := range dict().CategoryCapabilities(category) {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
 // groupsForSubcategory returns the canonical group taxonomy for sub or
 // nil when the subcategory has no declared taxonomy (e.g. static_site).
 func groupsForSubcategory(sub string) []capabilityGroup {
-	return subcategoryGroups[sub]
+	return dict().GroupsForSubcategory(sub)
 }
 
 // groupForCapability returns the canonical group name that owns key in
 // sub's taxonomy, or "" when the key is not declared in any group. Used
 // by migration and validation to enforce capability-belongs-to-group.
 func groupForCapability(sub, key string) string {
-	for _, g := range subcategoryGroups[sub] {
-		for _, k := range g.Keys {
-			if k == key {
-				return g.Name
-			}
-		}
-	}
-	return ""
+	return dict().GroupForCapability(sub, key)
 }
 
 // groupAllowedKeys returns the declared keys for (sub, group) or nil
 // when group is not part of sub's taxonomy. Validation uses this to
 // reject keys placed under the wrong group within a record.
 func groupAllowedKeys(sub, group string) []string {
-	for _, g := range subcategoryGroups[sub] {
-		if g.Name == group {
-			return g.Keys
-		}
-	}
-	return nil
+	return dict().GroupKeys(sub, group)
 }
 
 // knownGroupNames returns the declared group names for sub in canonical
 // render order, or nil when sub has no group taxonomy.
 func knownGroupNames(sub string) []string {
-	groups := subcategoryGroups[sub]
-	if len(groups) == 0 {
-		return nil
-	}
-	out := make([]string, len(groups))
-	for i, g := range groups {
-		out[i] = g.Name
-	}
-	return out
+	return dict().GroupNames(sub)
 }
 
 // validGroupName reports whether group is part of sub's taxonomy. The
@@ -660,37 +394,25 @@ func validGroupName(sub, group string) bool {
 	if group == uncategorizedGroup {
 		return true
 	}
-	for _, g := range subcategoryGroups[sub] {
-		if g.Name == group {
-			return true
-		}
-	}
-	return false
+	return dict().HasGroup(sub, group)
 }
 
 // knownSubcategories returns the sorted subcategory slugs declared for
-// category. Empty slice if category has no subcategory map.
+// category. Empty slice if the category has no subcategories.
 func knownSubcategories(category string) []string {
-	m, ok := subcategoryCapabilities[category]
-	if !ok {
+	subs := dict().SubcategoriesByCategory(category)
+	if len(subs) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
+	out := make([]string, len(subs))
+	copy(out, subs)
 	sort.Strings(out)
 	return out
 }
 
 // validSubcategory reports whether sub is declared for category.
 func validSubcategory(category, sub string) bool {
-	m, ok := subcategoryCapabilities[category]
-	if !ok {
-		return false
-	}
-	_, ok = m[sub]
-	return ok
+	return dict().HasSubcategory(category, sub)
 }
 
 // validCapabilityKeyForSubcategory reports whether key is in the union
@@ -701,15 +423,10 @@ func validCapabilityKeyForSubcategory(category, sub, key string) bool {
 	if validCapabilityKey(category, key) {
 		return true
 	}
-	m, ok := subcategoryCapabilities[category]
-	if !ok {
+	if !dict().HasSubcategory(category, sub) {
 		return false
 	}
-	keys, ok := m[sub]
-	if !ok {
-		return false
-	}
-	for _, k := range keys {
+	for _, k := range dict().SubcategoryCapabilities(sub) {
 		if k == key {
 			return true
 		}
@@ -725,18 +442,15 @@ func validCapabilityKeyForSubcategory(category, sub, key string) bool {
 // carry category-level cells; those are surfaced on the per-record
 // detail page but suppressed in the per-language summary table.
 func subcategoryRenderKeys(category, sub string) []string {
-	m, ok := subcategoryCapabilities[category]
-	if !ok {
+	if !dict().HasSubcategory(category, sub) {
 		return nil
 	}
-	keys, ok := m[sub]
-	if !ok {
+	keys := dict().SubcategoryCapabilities(sub)
+	if keys == nil {
 		return nil
 	}
-	out := make([]string, len(keys))
-	copy(out, keys)
-	sort.Strings(out)
-	return out
+	sort.Strings(keys)
+	return keys
 }
 
 // subcategoryCapabilityKeys returns the merged sorted capability key
@@ -745,11 +459,11 @@ func subcategoryRenderKeys(category, sub string) []string {
 // declared at either level pass the allow-list check.
 func subcategoryCapabilityKeys(category, sub string) []string {
 	seen := map[string]struct{}{}
-	for _, k := range categoryCapabilities[category] {
+	for _, k := range dict().CategoryCapabilities(category) {
 		seen[k] = struct{}{}
 	}
-	if m, ok := subcategoryCapabilities[category]; ok {
-		for _, k := range m[sub] {
+	if dict().HasSubcategory(category, sub) {
+		for _, k := range dict().SubcategoryCapabilities(sub) {
 			seen[k] = struct{}{}
 		}
 	}
@@ -762,10 +476,11 @@ func subcategoryCapabilityKeys(category, sub string) []string {
 }
 
 // orderedSubcategories returns the subcategory slugs that have records
-// in subs, ordered by subcategoryOrder[category] first then alphabetical
-// for any extras. Slugs in order but absent from subs are dropped.
+// in subs, ordered by the dictionary's canonical sequence for category
+// first then alphabetical for any extras. Slugs in order but absent
+// from subs are dropped.
 func orderedSubcategories(category string, subs map[string]bool) []string {
-	canon := subcategoryOrder[category]
+	canon := dict().SubcategoriesByCategory(category)
 	out := make([]string, 0, len(subs))
 	for _, s := range canon {
 		if subs[s] {
@@ -790,7 +505,7 @@ func orderedSubcategories(category string, subs map[string]bool) []string {
 // back to prettyKey when no display string is registered so brand-new
 // subcategories render reasonably without code changes.
 func subcategoryHeading(sub string) string {
-	if d, ok := subcategoryDisplay[sub]; ok {
+	if d := dict().SubcategoryDisplay(sub); d != "" {
 		return d
 	}
 	return prettyKey(sub)
@@ -799,12 +514,14 @@ func subcategoryHeading(sub string) string {
 // knownCategories returns sorted category names. Used by views and
 // validation error messages.
 func knownCategories() []string {
-	out := make([]string, 0, len(categoryCapabilities))
-	for k := range categoryCapabilities {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	return dict().KnownCategories()
+}
+
+// categoryIsKnown reports whether category is declared in the dictionary.
+// Replaces previous direct map lookups against categoryCapabilities.
+func categoryIsKnown(category string) bool {
+	_, ok := dict().Categories[category]
+	return ok
 }
 
 // validateID returns nil if id matches the stable-slug pattern.

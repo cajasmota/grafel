@@ -4,8 +4,8 @@ import "sort"
 
 // Bucket names. The four buckets group categories into the four
 // rendering lanes used by summary.md and the per-language pages
-// (issue #2725). The order here is the canonical render order:
-// Frameworks → Tools → ORMs → Other.
+// (issue #2725). Bucket → category membership and render order are
+// declared in capability-dictionary.yaml (#2752).
 const (
 	BucketFrameworks = "Frameworks"
 	BucketTools      = "Tools"
@@ -13,48 +13,25 @@ const (
 	BucketOther      = "Other"
 )
 
-// bucketOrder is the fixed display order for the four buckets. Used by
-// templates and the summary pivot table.
-var bucketOrder = []string{BucketFrameworks, BucketTools, BucketORMs, BucketOther}
-
-// categoryBucket maps a registry category to its bucket. Anything not
-// listed here falls into BucketOther (this matches the spec's "Other:
-// everything else" rule and means new categories ship as Other until
-// the maintainer classifies them explicitly).
-var categoryBucket = map[string]string{
-	// Frameworks
-	"http_framework": BucketFrameworks,
-	"web_framework":  BucketFrameworks,
-	"nav_framework":  BucketFrameworks,
-	"rpc_framework":  BucketFrameworks,
-	"graphql":        BucketFrameworks,
-
-	// Tools
-	"build_system":    BucketTools,
-	"build_tool":      BucketTools,
-	"package_manager": BucketTools,
-	"manifest":        BucketTools,
-	"linter":          BucketTools,
-	"formatter":       BucketTools,
-
-	// ORMs
-	"orm":            BucketORMs,
-	"query_builder":  BucketORMs,
-	"migration_tool": BucketORMs,
-}
+// bucketOrder snapshots the dictionary's bucket render order at package
+// init so the existing call sites in generate.go can iterate it
+// directly (`for _, b := range bucketOrder`). Going through dict() at
+// init time is safe because the dictionary's embedded fallback is
+// always available — the loader never fails for a well-formed binary.
+var bucketOrder = dict().BucketOrder()
 
 // bucketOf returns the bucket name for category. Unknown categories
-// fall through to BucketOther.
+// fall through to BucketOther (matches the spec's "Other: everything
+// else" rule so new categories ship as Other until they are explicitly
+// classified in the dictionary).
 func bucketOf(category string) string {
-	if b, ok := categoryBucket[category]; ok {
-		return b
-	}
-	return BucketOther
+	return dict().BucketForCategory(category)
 }
 
 // bucketCapabilityKeys returns the capability columns shown in a
-// bucket's per-language table. Derived from categoryCapabilities so
-// any new framework/orm/tool category automatically widens the union.
+// bucket's per-language table. Derived from the dictionary's bucket →
+// categories mapping so any new framework/orm/tool category
+// automatically widens the union.
 //
 // For BucketOther we return nil — the per-language Other section uses
 // a single "Status" digest column rather than per-capability columns.
@@ -63,11 +40,13 @@ func bucketCapabilityKeys(bucket string) []string {
 		return nil
 	}
 	seen := map[string]struct{}{}
-	for cat, b := range categoryBucket {
-		if b != bucket {
-			continue
-		}
-		for _, k := range categoryCapabilities[cat] {
+	d := dict()
+	b, ok := d.Buckets[bucket]
+	if !ok {
+		return nil
+	}
+	for _, cat := range b.Categories {
+		for _, k := range d.CategoryCapabilities(cat) {
 			seen[k] = struct{}{}
 		}
 	}
