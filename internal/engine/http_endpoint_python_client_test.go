@@ -681,3 +681,41 @@ async def enrich(sku: str) -> dict:
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #2585 — intra-repo HTTP self-call extraction
+// ---------------------------------------------------------------------------
+
+// TestPyExtractor_RequestsGetCall_EmitsHTTPCall verifies that a plain
+// `requests.get("/api/v1/foo")` call site emits an http_endpoint consumer
+// synthetic with the correct canonical path and a FETCHES edge from the
+// enclosing function. This is the minimal case that was under-extracted in
+// upvate-core (#2585 bench iter 3: 15 detected vs 473 endpoint definitions).
+func TestPyExtractor_RequestsGetCall_EmitsHTTPCall(t *testing.T) {
+	src := `
+import requests
+
+def sync_data():
+    return requests.get('/api/v1/foo')
+`
+	ids, rels := runDetectWithRels(t, "python", "tasks.py", src)
+	want := []string{"http:GET:/api/v1/foo"}
+	requireContains(t, ids, want, "requests-get-emits-http-call")
+	requireFetches(t, rels, "http:GET:/api/v1/foo", "requests-get-emits-http-call")
+}
+
+// TestPyExtractor_HttpxPostCall verifies that `httpx.post("/api/v1/foo", ...)`
+// emits an http_endpoint consumer synthetic with verb=POST and the correct
+// canonical path, along with a FETCHES edge from the enclosing function.
+func TestPyExtractor_HttpxPostCall(t *testing.T) {
+	src := `
+import httpx
+
+def submit_order(payload: dict):
+    return httpx.post('/api/v1/foo', json=payload)
+`
+	ids, rels := runDetectWithRels(t, "python", "client.py", src)
+	want := []string{"http:POST:/api/v1/foo"}
+	requireContains(t, ids, want, "httpx-post-emits-http-call")
+	requireFetches(t, rels, "http:POST:/api/v1/foo", "httpx-post-emits-http-call")
+}
