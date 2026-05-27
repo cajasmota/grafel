@@ -70,10 +70,25 @@ var outerClassRe = regexp.MustCompile(
 	`(?m)^class\s+(\w+)\s*(?:\(([^)]*)\))?\s*:`,
 )
 
-// receiverSenderLineRe matches a single @receiver(…, sender=SomeClass…) line.
+// receiverSenderLineRe matches a single @receiver(…, sender=SomeClass…) line
+// where the sender is a bare class reference (e.g. sender=Building).
 // Group 1 = sender class name.
 var receiverSenderLineRe = regexp.MustCompile(
 	`(?m)^[ \t]*@receiver\s*\([^)]*\bsender\s*=\s*([A-Z]\w*)[^)]*\)`,
+)
+
+// receiverSenderStringRe matches @receiver(…, sender='core.Building') or
+// @receiver(…, sender='Building') — string-literal sender forms.
+// Group 1 = the string contents (may contain a dot-separated app label prefix).
+var receiverSenderStringRe = regexp.MustCompile(
+	`(?m)^[ \t]*@receiver\s*\([^)]*\bsender\s*=\s*['"]([A-Za-z_][\w.]*)['"][^)]*\)`,
+)
+
+// receiverSenderAppsGetModelRe matches the pattern
+// @receiver(…, sender=apps.get_model('core', 'Building')) (and double-quote variants).
+// Group 1 = app label, Group 2 = model name.
+var receiverSenderAppsGetModelRe = regexp.MustCompile(
+	`(?m)^[ \t]*@receiver\s*\([^)]*\bsender\s*=\s*(?:\w+\.)?get_model\s*\(\s*['"]([A-Za-z_]\w*)['"][^)]*,\s*['"]([A-Za-z_]\w*)['"][^)]*\)[^)]*\)`,
 )
 
 // receiverDefRe matches the def (or async def) that terminates a decorator
@@ -194,21 +209,34 @@ func serializerInBases(bases string) bool {
 // ApplyReceiverSenderEdges
 // ---------------------------------------------------------------------------
 
+// senderClassNameFromString extracts the model class name from a string sender
+// value like "core.Building" or "Building".  It returns the last dot-separated
+// segment, which is the class name, and also returns the app label (first
+// segment) when present (empty string otherwise).
+func senderClassNameFromString(s string) (appLabel, className string) {
+	parts := strings.SplitN(s, ".", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return "", parts[0]
+}
+
 // ApplyReceiverSenderEdges walks every Python file and emits a HANDLES_SIGNAL
 // edge from each @receiver(…, sender=Model) handler function to the named
 // Model class.
 //
-// Only receivers that supply an explicit `sender=<ClassName>` kwarg are
-// matched; bare `@receiver(post_save)` handlers (which receive ALL models) are
-// intentionally skipped because they don't name a specific model.
+// Three sender forms are handled:
+//
+//  1. Class reference:   sender=Building            (group 1 = "Building")
+//  2. Full string:       sender='core.Building'     (app label + class name)
+//  3. Bare string:       sender='Building'          (class name only)
+//  4. apps.get_model:    sender=apps.get_model('core', 'Building')
+//
+// Bare `@receiver(post_save)` handlers (without sender=) are intentionally
+// skipped because they don't name a specific model.
 //
 // Multiple stacked @receiver decorators on the same def (upvate_core pattern:
 // one @receiver per model) each produce a separate HANDLES_SIGNAL edge.
-//
-// Implementation: we find every @receiver line that carries a sender= arg,
-// then scan forward from that position to find the first `def` — that is the
-// handler function.  This two-scan strategy handles both the single-decorator
-// and the stacked-decorator cases correctly.
 func ApplyReceiverSenderEdges(
 	pyPaths []string,
 	fileReader NestedURLConfFileReader,
@@ -220,6 +248,25 @@ func ApplyReceiverSenderEdges(
 	var out []types.RelationshipRecord
 	seen := map[string]bool{}
 
+	// emitEdge is a local helper that records a HANDLES_SIGNAL edge if not seen.
+	emitEdge := func(p, handlerFunc, senderModel, via string) {
+		key := p + "|" + handlerFunc + "|" + senderModel
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, types.RelationshipRecord{
+			FromID: "Function:" + handlerFunc,
+			ToID:   "Class:" + senderModel,
+			Kind:   string(types.RelationshipKindHandlesSignal),
+			Properties: map[string]string{
+				"framework":    "django_signals",
+				"pattern_type": "receiver_sender_model",
+				"via":          via,
+			},
+		})
+	}
+
 	for _, p := range pyPaths {
 		content := fileReader(p)
 		if len(content) == 0 {
@@ -230,34 +277,48 @@ func ApplyReceiverSenderEdges(
 			continue
 		}
 
-		// Find all @receiver(…sender=X…) lines and their byte offsets.
+		// --- Form 1: class-reference sender (sender=Building) ---
 		for _, idx := range receiverSenderLineRe.FindAllStringSubmatchIndex(s, -1) {
 			senderModel := s[idx[2]:idx[3]]
-			// Scan forward from the end of this decorator line to find the
-			// first `def` (skipping any intervening decorators).
 			rest := s[idx[1]:]
 			dm := receiverDefRe.FindStringSubmatchIndex(rest)
 			if dm == nil {
 				continue
 			}
 			handlerFunc := rest[dm[2]:dm[3]]
+			emitEdge(p, handlerFunc, senderModel, "@receiver(sender=)")
+		}
 
-			key := p + "|" + handlerFunc + "|" + senderModel
-			if seen[key] {
+		// --- Form 2 & 3: string-literal sender ('core.Building' or 'Building') ---
+		for _, idx := range receiverSenderStringRe.FindAllStringSubmatchIndex(s, -1) {
+			rawSender := s[idx[2]:idx[3]]
+			_, className := senderClassNameFromString(rawSender)
+			if className == "" {
 				continue
 			}
-			seen[key] = true
+			rest := s[idx[1]:]
+			dm := receiverDefRe.FindStringSubmatchIndex(rest)
+			if dm == nil {
+				continue
+			}
+			handlerFunc := rest[dm[2]:dm[3]]
+			emitEdge(p, handlerFunc, className, "@receiver(sender='<string>')")
+		}
 
-			out = append(out, types.RelationshipRecord{
-				FromID: "Function:" + handlerFunc,
-				ToID:   "Class:" + senderModel,
-				Kind:   string(types.RelationshipKindHandlesSignal),
-				Properties: map[string]string{
-					"framework":    "django_signals",
-					"pattern_type": "receiver_sender_model",
-					"via":          "@receiver(sender=)",
-				},
-			})
+		// --- Form 4: apps.get_model('core', 'Building') ---
+		for _, idx := range receiverSenderAppsGetModelRe.FindAllStringSubmatchIndex(s, -1) {
+			// group 1 = app label (ignored for entity lookup; class name is enough)
+			className := s[idx[4]:idx[5]]
+			if className == "" {
+				continue
+			}
+			rest := s[idx[1]:]
+			dm := receiverDefRe.FindStringSubmatchIndex(rest)
+			if dm == nil {
+				continue
+			}
+			handlerFunc := rest[dm[2]:dm[3]]
+			emitEdge(p, handlerFunc, className, "@receiver(sender=apps.get_model())")
 		}
 	}
 	return out

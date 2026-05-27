@@ -288,6 +288,98 @@ class Device(models.Model):
 	}
 }
 
+// ---------------------------------------------------------------------------
+// #2592 — string-literal and apps.get_model sender forms
+// ---------------------------------------------------------------------------
+
+func TestReceiverDecorator_StringSender_Matches(t *testing.T) {
+	// sender='core.Building' — full dotted string form.
+	files := map[string]string{
+		"core/signals/replicate_to_datalake.py": `from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender='core.Building')
+def replicate_building(sender, instance, created, **kwargs):
+    pass
+`,
+	}
+	paths := []string{"core/signals/replicate_to_datalake.py"}
+	rels := ApplyReceiverSenderEdges(paths, fileMapReader2578(files))
+
+	handlesSignal := relsOfKind(rels, "HANDLES_SIGNAL")
+	if len(handlesSignal) != 1 {
+		t.Fatalf("expected 1 HANDLES_SIGNAL edge, got %d: %v", len(handlesSignal), handlesSignal)
+	}
+	r := handlesSignal[0]
+	if r.FromID != "Function:replicate_building" {
+		t.Errorf("FromID: want Function:replicate_building, got %q", r.FromID)
+	}
+	if r.ToID != "Class:Building" {
+		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
+	}
+	if r.Properties["pattern_type"] != "receiver_sender_model" {
+		t.Errorf("pattern_type: want receiver_sender_model, got %q", r.Properties["pattern_type"])
+	}
+}
+
+func TestReceiverDecorator_BareStringSender_Matches(t *testing.T) {
+	// sender='Building' — bare string (no app label).
+	files := map[string]string{
+		"core/signals/building_signals.py": `from django.db.models.signals import post_delete
+from django.dispatch import receiver
+
+@receiver(post_delete, sender='Building')
+def on_building_deleted(sender, instance, **kwargs):
+    pass
+`,
+	}
+	paths := []string{"core/signals/building_signals.py"}
+	rels := ApplyReceiverSenderEdges(paths, fileMapReader2578(files))
+
+	handlesSignal := relsOfKind(rels, "HANDLES_SIGNAL")
+	if len(handlesSignal) != 1 {
+		t.Fatalf("expected 1 HANDLES_SIGNAL edge, got %d: %v", len(handlesSignal), handlesSignal)
+	}
+	r := handlesSignal[0]
+	if r.FromID != "Function:on_building_deleted" {
+		t.Errorf("FromID: want Function:on_building_deleted, got %q", r.FromID)
+	}
+	if r.ToID != "Class:Building" {
+		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
+	}
+}
+
+func TestReceiverDecorator_AppsGetModel_Matches(t *testing.T) {
+	// sender=apps.get_model('core', 'Building') — runtime lookup pattern.
+	files := map[string]string{
+		"core/signals/dynamic_signals.py": `from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.apps import apps
+
+@receiver(post_save, sender=apps.get_model('core', 'Building'))
+def on_building_saved(sender, instance, created, **kwargs):
+    pass
+`,
+	}
+	paths := []string{"core/signals/dynamic_signals.py"}
+	rels := ApplyReceiverSenderEdges(paths, fileMapReader2578(files))
+
+	handlesSignal := relsOfKind(rels, "HANDLES_SIGNAL")
+	if len(handlesSignal) != 1 {
+		t.Fatalf("expected 1 HANDLES_SIGNAL edge, got %d: %v", len(handlesSignal), handlesSignal)
+	}
+	r := handlesSignal[0]
+	if r.FromID != "Function:on_building_saved" {
+		t.Errorf("FromID: want Function:on_building_saved, got %q", r.FromID)
+	}
+	if r.ToID != "Class:Building" {
+		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
+	}
+	if r.Properties["via"] != "@receiver(sender=apps.get_model())" {
+		t.Errorf("via: want @receiver(sender=apps.get_model()), got %q", r.Properties["via"])
+	}
+}
+
 func TestPyExtractor_FilterSetMetaModel_NilReader(t *testing.T) {
 	rels := ApplyFilterSetMetaModelEdges([]string{"a.py"}, nil)
 	if len(rels) != 0 {
