@@ -244,9 +244,18 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Step 3: MCP registration
+	// Register in every detected Claude config dir and in any Windsurf
+	// config paths whose parent directory already exists (i.e. Windsurf is
+	// installed). Windsurf paths that have no parent dir are silently skipped.
 	// ─────────────────────────────────────────────────────────────────────────
 	var registeredPaths []string
-	for _, cfgPath := range claudeDirs {
+
+	// Collect all target paths: Claude dirs first, then Windsurf.
+	allMCPTargets := make([]string, len(claudeDirs))
+	copy(allMCPTargets, claudeDirs)
+	allMCPTargets = append(allMCPTargets, mcpreg.DetectWindsurfPaths()...)
+
+	for _, cfgPath := range allMCPTargets {
 		if opts.DryRun {
 			registeredPaths = append(registeredPaths, cfgPath)
 			continue

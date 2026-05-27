@@ -50,8 +50,9 @@ type Entry struct {
 type Tool string
 
 const (
-	ClaudeCode Tool = "claude-code"
-	Windsurf   Tool = "windsurf"
+	ClaudeCode        Tool = "claude-code"
+	Windsurf          Tool = "windsurf"
+	WindsurfJetBrains Tool = "windsurf-jetbrains"
 )
 
 // SettingsPath returns the absolute path to the settings file for a tool.
@@ -67,9 +68,47 @@ func SettingsPath(tool Tool) (string, error) {
 		// This is the file Claude Code reads for mcpServers entries.
 		return filepath.Join(home, ".claude.json"), nil
 	case Windsurf:
+		// Windsurf desktop app: ~/.codeium/windsurf/mcp_config.json
 		return filepath.Join(home, ".codeium", "windsurf", "mcp_config.json"), nil
+	case WindsurfJetBrains:
+		// Windsurf JetBrains plugin: ~/.codeium/mcp_config.json
+		return filepath.Join(home, ".codeium", "mcp_config.json"), nil
 	}
 	return "", fmt.Errorf("unknown tool: %s", tool)
+}
+
+// DetectWindsurfPaths returns the Windsurf config paths that should be
+// registered. Only paths whose parent directory already exists are returned —
+// if Windsurf is not installed the list will be empty and the caller can skip
+// registration silently.
+//
+// Two paths are considered:
+//   - ~/.codeium/windsurf/mcp_config.json  (Windsurf desktop app)
+//   - ~/.codeium/mcp_config.json           (Windsurf JetBrains plugin)
+//
+// For each path: if the config file itself exists it is always included. If
+// the file does not exist but its parent directory does, the caller will
+// create the file (Windsurf is installed but the MCP config hasn't been
+// written yet). If neither the file nor the parent directory exists the
+// path is omitted.
+func DetectWindsurfPaths() []string {
+	var out []string
+	for _, tool := range []Tool{Windsurf, WindsurfJetBrains} {
+		p, err := SettingsPath(tool)
+		if err != nil {
+			continue
+		}
+		// Include if the config file exists OR if its parent dir exists
+		// (meaning Windsurf is installed but hasn't written an MCP config yet).
+		if _, err := os.Stat(p); err == nil {
+			out = append(out, p)
+			continue
+		}
+		if _, err := os.Stat(filepath.Dir(p)); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // DetectClaudeConfigDirs returns the list of ~/.claude.json paths to
