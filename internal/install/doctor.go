@@ -33,7 +33,9 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
+	"github.com/cajasmota/archigraph/internal/install/rulesfiles"
 	"github.com/cajasmota/archigraph/internal/install/skilllink"
+	"github.com/cajasmota/archigraph/internal/registry"
 )
 
 // DoctorSchemaVersion is the JSON schema version for DoctorReport.
@@ -194,6 +196,11 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	// ── Check 5: .gitignore in tracked repos ────────────────────────────────
 	for _, repo := range state.Gitignore.Repos {
 		report.Checks = append(report.Checks, checkGitignore(repo))
+	}
+
+	// ── Check 6: Per-repo IDE rules files (issue #2683) ─────────────────────
+	for _, c := range checkRulesFiles() {
+		report.Checks = append(report.Checks, c)
 	}
 
 	// ── Check 7: Stale staging dirs ─────────────────────────────────────────
@@ -559,6 +566,77 @@ func checkGitignore(repoRoot string) CheckResult {
 	if !hasGitignoreEntry(data, archigraphGitignoreEntry) {
 		cr.OK = false
 		cr.Drift = []string{fmt.Sprintf("/.archigraph/ missing from %s", gitignorePath)}
+	}
+	return cr
+}
+
+// checkRulesFiles scans every registered repo (across every archigraph
+// group) for the per-IDE rules files defined in the rulesfiles package
+// (AGENTS.md, CLAUDE.md, .windsurfrules, .cursorrules,
+// .codeium/instructions.md, .github/copilot-instructions.md).
+//
+// Per repo, one CheckResult is emitted. The check is OK when every
+// target file contains the current archigraph block; otherwise it lists
+// each non-OK file by status (MISSING/STALE/OUTDATED). Severity is
+// Warning — a missing rules block doesn't break archigraph, but it does
+// mean the corresponding IDE agent won't reach for the MCP first.
+//
+// Failures of the registry read are returned as a single Info-severity
+// check so a fresh machine (no groups yet) doesn't appear "broken".
+func checkRulesFiles() []CheckResult {
+	groups, err := registry.Groups()
+	if err != nil {
+		return []CheckResult{{
+			Surface:  "rules-files",
+			OK:       false,
+			Severity: SeverityInfo,
+			Drift:    []string{fmt.Sprintf("cannot read registry: %v", err)},
+		}}
+	}
+	if len(groups) == 0 {
+		// No groups registered — nothing to scan. Don't emit a check.
+		return nil
+	}
+
+	var results []CheckResult
+	for _, g := range groups {
+		cfg, lerr := registry.LoadGroupConfig(g.ConfigPath)
+		if lerr != nil || cfg == nil {
+			results = append(results, CheckResult{
+				Surface:  "rules-files/" + g.Name,
+				OK:       false,
+				Severity: SeverityWarning,
+				Drift:    []string{fmt.Sprintf("cannot load group config %s: %v", g.ConfigPath, lerr)},
+			})
+			continue
+		}
+		for _, repo := range cfg.Repos {
+			results = append(results, scanRulesFilesForRepo(g.Name, repo.Path))
+		}
+	}
+	return results
+}
+
+// scanRulesFilesForRepo runs rulesfiles.Scan on a single repo and
+// converts the result into a CheckResult.
+func scanRulesFilesForRepo(group, repoPath string) CheckResult {
+	cr := CheckResult{
+		Surface:  fmt.Sprintf("rules-files/%s/%s", group, filepath.Base(repoPath)),
+		OK:       true,
+		Severity: SeverityWarning,
+	}
+	statuses := rulesfiles.Scan(repoPath)
+	for _, st := range statuses {
+		if st.Status == rulesfiles.StatusOK {
+			continue
+		}
+		cr.OK = false
+		label := strings.ToUpper(string(st.Status))
+		if st.Detail != "" {
+			cr.Drift = append(cr.Drift, fmt.Sprintf("%s [%s] — %s", st.Target, label, st.Detail))
+		} else {
+			cr.Drift = append(cr.Drift, fmt.Sprintf("%s [%s]", st.Target, label))
+		}
 	}
 	return cr
 }

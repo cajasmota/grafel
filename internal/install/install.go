@@ -15,6 +15,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/install/hooks"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
+	"github.com/cajasmota/archigraph/internal/install/rulesfiles"
 	"github.com/cajasmota/archigraph/internal/install/watchers"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
@@ -30,6 +31,10 @@ type Options struct {
 	SkipHooks    bool
 	SkipWatchers bool
 	SkipMCP      bool
+	// SkipRulesFiles skips writing per-repo IDE rules files
+	// (AGENTS.md, CLAUDE.md, .windsurfrules, .cursorrules,
+	// .codeium/instructions.md, .github/copilot-instructions.md).
+	SkipRulesFiles bool
 }
 
 // Result reports what an Apply call did so the CLI can print a summary.
@@ -39,6 +44,16 @@ type Result struct {
 	WatcherUnits    []string                 // unit-file paths
 	WatcherStatuses []watchers.WatcherStatus // per-unit activation state
 	MCPSettings     []string                 // settings.json paths touched
+	// RulesFiles maps repo path → relative rules-file paths written
+	// (e.g. ".windsurfrules"). Empty when SkipRulesFiles is true.
+	RulesFiles map[string][]string
+	// RulesFilesStaleSkipped maps repo path → rules-file paths left
+	// untouched because they contain mixed predecessor + unrelated
+	// content. The user is warned to migrate these manually.
+	RulesFilesStaleSkipped map[string][]string
+	// RulesFilesStaleReplaced maps repo path → rules-file paths that
+	// were entirely predecessor content and got overwritten.
+	RulesFilesStaleReplaced map[string][]string
 }
 
 // Apply registers the group, writes its config, then installs hooks +
@@ -98,6 +113,39 @@ func Apply(opts Options) (*Result, error) {
 				}
 			}
 			res.HooksInstalled = append(res.HooksInstalled, repo)
+		}
+		if !opts.SkipRulesFiles {
+			if !opts.DryRun {
+				wr, werr := rulesfiles.WriteAll(repo, rulesfiles.WriteOptions{
+					GroupName: opts.Group,
+				})
+				if werr != nil {
+					return nil, fmt.Errorf("rules files for %s: %w", repo, werr)
+				}
+				if wr != nil {
+					if res.RulesFiles == nil {
+						res.RulesFiles = map[string][]string{}
+					}
+					res.RulesFiles[repo] = wr.Written
+					if len(wr.SkippedMixedStale) > 0 {
+						if res.RulesFilesStaleSkipped == nil {
+							res.RulesFilesStaleSkipped = map[string][]string{}
+						}
+						res.RulesFilesStaleSkipped[repo] = wr.SkippedMixedStale
+					}
+					if len(wr.ReplacedStale) > 0 {
+						if res.RulesFilesStaleReplaced == nil {
+							res.RulesFilesStaleReplaced = map[string][]string{}
+						}
+						res.RulesFilesStaleReplaced[repo] = wr.ReplacedStale
+					}
+				}
+			} else {
+				if res.RulesFiles == nil {
+					res.RulesFiles = map[string][]string{}
+				}
+				res.RulesFiles[repo] = append([]string{}, rulesfiles.Targets...)
+			}
 		}
 		if !opts.SkipWatchers && opts.Config.Features.Watchers {
 			u := watchers.Unit{Group: opts.Group, Repo: repo, BinPath: opts.BinPath}
