@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 165 records · **csharp**: 15 · **elixir**: 9 · **go**: 17 · **java**: 19 · **javascript**: 30 · **kotlin**: 12 · **lua**: 2 · **php**: 12 · **python**: 20 · **ruby**: 8 · **rust**: 11 · **scala**: 9 · **swift**: 1
+**Total**: 165 records · **csharp**: 15 · **elixir**: 9 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 12 · **lua**: 2 · **php**: 12 · **python**: 20 · **ruby**: 8 · **rust**: 11 · **scala**: 9 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -67,36 +67,36 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ⚠️ | ✅ | ✅ | ❌ | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
 | [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [javascript](../by-language/javascript.md) | [AdonisJS](../detail/lang.javascript.framework.adonisjs.md) | ❌ | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Angular](../detail/lang.javascript.framework.angular.md) | — | — | ✅ | — | |
-| [javascript](../by-language/javascript.md) | [Astro](../detail/lang.javascript.framework.astro.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Electron](../detail/lang.javascript.framework.electron.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [Expo](../detail/lang.javascript.framework.expo.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [Express](../detail/lang.javascript.framework.express.md) | ❌ | ✅ | ✅ | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [Fastify](../detail/lang.javascript.framework.fastify.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Feathers](../detail/lang.javascript.framework.feathers.md) | ❌ | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Gatsby](../detail/lang.javascript.framework.gatsby.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
-| [javascript](../by-language/javascript.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.javascript.framework.graphql-resolvers.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Hapi](../detail/lang.javascript.framework.hapi.md) | ❌ | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Hono](../detail/lang.javascript.framework.hono.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Ionic](../detail/lang.javascript.framework.ionic.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [Koa](../detail/lang.javascript.framework.koa.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [LangChain.js](../detail/lang.javascript.framework.langchain.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [Marble.js](../detail/lang.javascript.framework.marblejs.md) | ❌ | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [NativeScript](../detail/lang.javascript.framework.nativescript.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [NestJS](../detail/lang.javascript.framework.nestjs.md) | ⚠️ | ✅ | ✅ | ⚠️ | |
-| [javascript](../by-language/javascript.md) | [Next.js API Routes / App Router](../detail/lang.javascript.framework.next-api.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Nuxt](../detail/lang.javascript.framework.nuxt.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Polka](../detail/lang.javascript.framework.polka.md) | ❌ | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [React](../detail/lang.javascript.framework.react.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [React Native](../detail/lang.javascript.framework.react-native.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [Remix](../detail/lang.javascript.framework.remix.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Restify](../detail/lang.javascript.framework.restify.md) | ❌ | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Sails](../detail/lang.javascript.framework.sails.md) | ❌ | ❌ | ❌ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Svelte](../detail/lang.javascript.framework.svelte.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [SvelteKit](../detail/lang.javascript.framework.sveltekit.md) | ❌ | ✅ | ✅ | ❌ | |
-| [javascript](../by-language/javascript.md) | [Vue](../detail/lang.javascript.framework.vue.md) | — | — | ⚠️ | — | |
-| [javascript](../by-language/javascript.md) | [tRPC](../detail/lang.javascript.framework.trpc.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | — | — | ✅ | — | |
+| [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ❌ | ✅ | ✅ | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ❌ | ⚠️ | ⚠️ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ⚠️ | ✅ | ✅ | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | ❌ | ❌ | ❌ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ❌ | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | — | — | ⚠️ | — | |
+| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ❌ | ✅ | ✅ | ❌ | |
 | [kotlin](../by-language/kotlin.md) | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | — | — | ⚠️ | — | |
 | [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | — | — | ⚠️ | — | |
 | [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | — | — | ⚠️ | — | |

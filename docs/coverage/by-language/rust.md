@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # rust
 
-**Frameworks**: 11 · **Tools**: 6 · **ORMs**: 14 · **Other**: 1
+**Frameworks**: 11 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -50,9 +50,3 @@ Back to [summary](../summary.md).
 | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | — | — | ⚠️ | |
 | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | ❌ | ⚠️ | ⚠️ | |
 | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | — | — | ⚠️ | |
-
-## Other
-
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [Rust](../detail/lang.rust.md) | [language](../by-category/language.md) | ❌ | |

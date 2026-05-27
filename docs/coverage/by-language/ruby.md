@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # ruby
 
-**Frameworks**: 8 · **Tools**: 6 · **ORMs**: 13 · **Other**: 2
+**Frameworks**: 8 · **Tools**: 6 · **ORMs**: 13 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -51,5 +51,4 @@ Back to [summary](../summary.md).
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [Ruby](../detail/lang.ruby.md) | [language](../by-category/language.md) | ❌ | |
 | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | [message_broker](../by-category/message_broker.md) | ❌ | |

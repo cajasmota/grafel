@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # scala
 
-**Frameworks**: 9 · **Tools**: 3 · **ORMs**: 6 · **Other**: 1
+**Frameworks**: 9 · **Tools**: 3 · **ORMs**: 6 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -37,9 +37,3 @@ Back to [summary](../summary.md).
 | [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | ❌ | ⚠️ | ⚠️ | |
 | [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | — | ⚠️ | ⚠️ | |
 | [Slick](../detail/lang.scala.orm.slick.md) | ❌ | ⚠️ | ⚠️ | |
-
-## Other
-
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [Scala](../detail/lang.scala.md) | [language](../by-category/language.md) | ❌ | |

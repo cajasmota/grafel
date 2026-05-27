@@ -7,7 +7,7 @@
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-| [javascript](by-language/javascript.md) | 2 | 0 | 0 | 0 |
+| [JS/TS](by-language/jsts.md) | 2 | 0 | 0 | 0 |
 | [python](by-language/python.md) | 3 | 0 | 0 | 0 |
 
 Total: 5 frameworks · 0 tools · 0 ORMs · 0 other

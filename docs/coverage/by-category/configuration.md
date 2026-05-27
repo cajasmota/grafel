@@ -1,14 +1,14 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # configuration
 
-**Total**: 19 records · **java**: 1 · **javascript**: 1 · **multi**: 17
+**Total**: 19 records · **java**: 1 · **JS/TS**: 1 · **multi**: 17
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | env_resolution | file_parsing | Status | Notes |
 |---|---|---|---|---|---|
 | [java](../by-language/java.md) | [.properties (application.properties)](../detail/config.properties.md) | — | ✅ | ✅ | |
-| [javascript](../by-language/javascript.md) | [tsconfig.json](../detail/config.tsconfig.md) | — | ⚠️ | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [tsconfig.json](../detail/config.tsconfig.md) | — | ⚠️ | ⚠️ | |
 | [multi](../by-language/multi.md) | [.env (names-only — values stripped at extraction boundary)](../detail/config.dotenv.md) | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [.ini / setup.cfg / flake8 / mypy / pytest.ini](../detail/config.ini.md) | — | ⚠️ | ⚠️ | |
 | [multi](../by-language/multi.md) | [.toml](../detail/config.toml.md) | — | ✅ | ✅ | |

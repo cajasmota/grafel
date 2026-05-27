@@ -1,7 +1,7 @@
 {{.Marker}}
 # {{.Category}}
 
-**Total**: {{.Total}} records{{range .ByLanguage}} · **{{.Language}}**: {{.Count}}{{end}}
+**Total**: {{.Total}} records{{range .ByLanguage}} · **{{langDsp .Language}}**: {{.Count}}{{end}}
 
 Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 
@@ -11,7 +11,7 @@ Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
 {{- $rec := .}}
-| [{{.Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} {{glyph $rec.Digest}} | |
+| [{{langDsp .Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} {{glyph $rec.Digest}} | |
 {{- end}}
 {{- else -}}
 | Language | Name |{{range .CapabilityKeys}} {{.}} |{{end}} Notes |
@@ -19,6 +19,6 @@ Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
 {{- $rec := .}}
-| [{{.Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
+| [{{langDsp .Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
 {{- end}}
 {{- end}}

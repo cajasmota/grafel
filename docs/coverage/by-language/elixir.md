@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # elixir
 
-**Frameworks**: 9 · **Tools**: 5 · **ORMs**: 10 · **Other**: 1
+**Frameworks**: 9 · **Tools**: 5 · **ORMs**: 10 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -43,9 +43,3 @@ Back to [summary](../summary.md).
 | [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | ❌ | ⚠️ | ⚠️ | |
 | [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | — | — | ⚠️ | |
 | [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | — | — | ⚠️ | |
-
-## Other
-
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [Elixir](../detail/lang.elixir.md) | [language](../by-category/language.md) | ❌ | |

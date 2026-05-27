@@ -68,8 +68,8 @@ func TestListFilterByLanguage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if strings.Contains(out, "javascript") {
-		t.Errorf("expected no javascript records when filtering by python, got:\n%s", out)
+	if strings.Contains(out, "jsts") {
+		t.Errorf("expected no jsts records when filtering by python, got:\n%s", out)
 	}
 	if !strings.Contains(out, "lang.python.framework.fastapi") {
 		t.Errorf("expected fastapi in output, got:\n%s", out)

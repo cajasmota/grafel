@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # go
 
-**Frameworks**: 17 · **Tools**: 8 · **ORMs**: 17 · **Other**: 1
+**Frameworks**: 17 · **Tools**: 8 · **ORMs**: 17 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -61,9 +61,3 @@ Back to [summary](../summary.md).
 | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | ⚠️ | ⚠️ | ⚠️ | |
 | [sqlx](../detail/lang.go.orm.sqlx.md) | ❌ | ⚠️ | ⚠️ | |
 | [xo (codegen)](../detail/lang.go.orm.xo.md) | ❌ | ❌ | ❌ | |
-
-## Other
-
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [Go](../detail/lang.go.md) | [language](../by-category/language.md) | ❌ | |

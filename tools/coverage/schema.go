@@ -43,6 +43,13 @@ type Registry struct {
 }
 
 // Record is a single coverage row keyed by Record.ID.
+//
+// Language is a short language slug ("python", "go", "java", ...). The
+// canonical slug for the JavaScript family is "jsts": archigraph's
+// JS/TS extractor is shared across .js, .ts, .jsx, .tsx, .mjs and .cjs
+// sources, so a single tag covers them all. Records that span multiple
+// language ecosystems (build systems, observability vendors, infra
+// resources) use "multi" and render under the "Uncategorized" pivot row.
 type Record struct {
 	ID           string                `json:"id"`
 	Category     string                `json:"category"`

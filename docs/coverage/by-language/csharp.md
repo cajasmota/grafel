@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # csharp
 
-**Frameworks**: 15 · **Tools**: 7 · **ORMs**: 14 · **Other**: 1
+**Frameworks**: 15 · **Tools**: 7 · **ORMs**: 14 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -55,9 +55,3 @@ Back to [summary](../summary.md).
 | [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | — | — | ⚠️ | |
 | [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | — | — | ⚠️ | |
 | [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | — | — | ⚠️ | |
-
-## Other
-
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [C#](../detail/lang.csharp.md) | [language](../by-category/language.md) | ❌ | |

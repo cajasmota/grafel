@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # java
 
-**Frameworks**: 19 · **Tools**: 10 · **ORMs**: 13 · **Other**: 3
+**Frameworks**: 19 · **Tools**: 10 · **ORMs**: 13 · **Other**: 2
 
 Back to [summary](../summary.md).
 
@@ -68,4 +68,3 @@ Back to [summary](../summary.md).
 |---|---|---|---|
 | [.properties (application.properties)](../detail/config.properties.md) | [configuration](../by-category/configuration.md) | ✅ | |
 | [Auth policy resolver (Java/Kotlin — Phase 1 of #1942)](../detail/security.auth-java.md) | [security](../by-category/security.md) | ✅ | |
-| [Java](../detail/lang.java.md) | [language](../by-category/language.md) | ❌ | |
