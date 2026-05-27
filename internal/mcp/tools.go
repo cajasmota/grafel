@@ -19,8 +19,40 @@ import (
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/links"
+	"github.com/cajasmota/archigraph/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
+
+// argMinConfidence reads the universal --min_confidence flag (Phase 1C, #2769).
+// Default 0.0 means "no filter". Values are clamped to [0, 1].
+func argMinConfidence(req mcpapi.CallToolRequest) float64 {
+	v := argFloat(req, "min_confidence", 0.0)
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// entityPassesConfidence reports whether an Entity's effective confidence
+// clears the threshold. A threshold of 0 always passes (issue #2769 default).
+func entityPassesConfidence(e *graph.Entity, minConfidence float64) bool {
+	if minConfidence <= 0 || e == nil {
+		return true
+	}
+	return types.EffectiveConfidence(e.Confidence) >= minConfidence
+}
+
+// relPassesConfidence reports whether a Relationship's effective confidence
+// clears the threshold.
+func relPassesConfidence(r *graph.Relationship, minConfidence float64) bool {
+	if minConfidence <= 0 || r == nil {
+		return true
+	}
+	return types.EffectiveConfidence(r.Confidence) >= minConfidence
+}
 
 // argString returns a string argument with default fallback.
 func argString(req mcpapi.CallToolRequest, key, def string) string {
@@ -440,6 +472,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	crossRepo := argBool(req, "cross_repo", false)
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
 	mode := argString(req, "mode", "bfs")
+	minConfidence := argMinConfidence(req) // #2769 Phase 1C
 
 	// #2643: default to cwd-resolved repo to avoid cross-repo noise.
 	// Priority order:
@@ -551,6 +584,18 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		if len(culled) > 0 {
 			all = culled
 		}
+	}
+
+	// #2769 Phase 1C: drop hits whose entity confidence falls below the
+	// caller-supplied threshold. Default 0 = no-op.
+	if minConfidence > 0 && len(all) > 0 {
+		culled := all[:0]
+		for _, sc := range all {
+			if entityPassesConfidence(sc.hit.Entity, minConfidence) {
+				culled = append(culled, sc)
+			}
+		}
+		all = culled
 	}
 
 	// "always-1" rule: if nothing matched but repos contain entities, return

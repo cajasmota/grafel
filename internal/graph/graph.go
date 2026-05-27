@@ -87,6 +87,11 @@ type Entity struct {
 	IsGodNode          bool     `json:"is_god_node,omitempty"`
 	IsSurpriseEndpoint bool     `json:"is_surprise_endpoint,omitempty"`
 	IsArticulationPt   bool     `json:"is_articulation_point,omitempty"`
+
+	// Confidence overlay (Phase 1C, #2769). Value in [0.0, 1.0]; zero/unset
+	// reads as 1.0 (direct AST extraction). See internal/types/confidence.go
+	// for the universal taxonomy and propagation rules.
+	Confidence float64 `json:"confidence,omitempty"`
 }
 
 // Relationship is a directed edge between entities.
@@ -96,6 +101,9 @@ type Relationship struct {
 	ToID       string            `json:"to_id"`
 	Kind       string            `json:"kind"`
 	Properties map[string]string `json:"properties,omitempty"`
+	// Confidence overlay (Phase 1C, #2769). Value in [0.0, 1.0]; zero reads
+	// as 1.0. See internal/types/confidence.go.
+	Confidence float64 `json:"confidence,omitempty"`
 }
 
 // EntityID computes a stable 16-char hex id from a repo tag and an entity's

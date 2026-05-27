@@ -541,6 +541,7 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 		Signature:     r.Signature,
 		Tags:          r.Tags,
 		Properties:    r.Properties,
+		Confidence:    r.Confidence, // Phase 1C (#2769) — propagates extractor stamp.
 	}
 }
 
@@ -554,6 +555,7 @@ func relRecordToGraphRel(r types.RelationshipRecord) graph.Relationship {
 		ToID:       r.ToID,
 		Kind:       r.Kind,
 		Properties: r.Properties,
+		Confidence: r.Confidence, // Phase 1C (#2769).
 	}
 }
 

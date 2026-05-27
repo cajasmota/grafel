@@ -42,6 +42,10 @@ type EntityRecord struct {
 	Signature        string           `json:"signature"`
 	Tags             []string         `json:"tags,omitempty"`
 	QualityScore     float64          `json:"quality_score"`
+	// Confidence in [0.0, 1.0] reflecting how certain the extraction is.
+	// Phase 1C (#2769). Zero/unset reads as 1.0 via EffectiveConfidence —
+	// the default semantics for direct-AST extractors that never stamp.
+	Confidence       float64          `json:"confidence,omitempty"`
 	EnrichmentStatus EnrichmentStatus `json:"enrichment_status"`
 	// EnrichmentRequired is the Extract-stage decision: does this entity need LLM enrichment?
 	EnrichmentRequired bool                   `json:"enrichment_required"`
@@ -66,6 +70,9 @@ func (e *EntityRecord) Validate() error {
 	}
 	if e.QualityScore < 0.0 || e.QualityScore > 1.0 {
 		errs = append(errs, fmt.Sprintf("quality_score %.4f is out of range [0.0, 1.0]", e.QualityScore))
+	}
+	if e.Confidence < 0.0 || e.Confidence > 1.0 {
+		errs = append(errs, fmt.Sprintf("confidence %.4f is out of range [0.0, 1.0]", e.Confidence))
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("EntityRecord validation failed: %s", strings.Join(errs, "; "))

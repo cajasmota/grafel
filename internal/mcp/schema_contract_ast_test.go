@@ -191,6 +191,7 @@ var sharedHelpers = map[string]bool{
 	"inferCWD":               true,
 	"FromRequest":            true, // PaginationOpts.FromRequest — all its keys are declared
 	"emitActivity":           true,
+	"argMinConfidence":       true, // #2769 Phase 1C — shared min_confidence reader
 }
 
 // argFuncNames is the set of arg-reader function names to match in the AST.

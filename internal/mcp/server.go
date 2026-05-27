@@ -401,7 +401,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-		mcpapi.WithAny("ref"), // PH1c: optional git ref; defaults to CWD HEAD ref
+		mcpapi.WithAny("ref"),                                  // PH1c: optional git ref; defaults to CWD HEAD ref
+		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("archigraph_find", s.handleQueryGraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_inspect",
@@ -412,8 +413,9 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-		mcpapi.WithAny("ref"),                // PH1c: optional git ref; defaults to CWD HEAD ref
-		mcpapi.WithAny("include_unresolved"), // #2640: when true, include unresolved calls[] with annotation
+		mcpapi.WithAny("ref"),                                        // PH1c: optional git ref; defaults to CWD HEAD ref
+		mcpapi.WithAny("include_unresolved"),                         // #2640: when true, include unresolved calls[] with annotation
+		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("archigraph_inspect", s.handleGetNode))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_expand",
@@ -428,6 +430,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via the request map per the
+		// #1639 token-ceiling pattern; see internal/mcp/tools.go::argMinConfidence.
 	), s.wrap("archigraph_expand", s.handleGetNeighbors))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_trace",
@@ -438,6 +442,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_trace", s.handleShortestPath))
 
 	// archigraph_traces — process-flow query surface (#724).
@@ -456,6 +461,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_traces", s.handleTraces))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_clusters",
@@ -598,6 +604,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("fields"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("archigraph_search_entities", s.handleSearchEntities))
 
 	// archigraph_subgraph — unified subgraph tool (#1754).
@@ -610,6 +617,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("format", mcpapi.DefaultString("raw")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_subgraph", s.handleSubgraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_paths",
@@ -620,6 +628,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 
 	// archigraph_endpoints — HTTP surface (#1281, overhaul #1650, filter+dedupe #1745).
@@ -642,6 +651,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
 	// archigraph_neighbors — folds find_callers + find_callees into one tool
@@ -657,6 +667,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_neighbors", s.handleNeighbors))
 
 	// verbose=true (default false) read from request map to stay under token ceiling.
@@ -669,6 +680,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_find_callers", s.handleFindCallers))
 
 	// Deprecated alias for archigraph_neighbors(direction=out) (#1753).
@@ -680,6 +692,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_find_callees", s.handleFindCallees))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_impact_radius",
@@ -689,6 +702,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_impact_radius", s.handleImpactRadius))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_dead_code",
@@ -698,7 +712,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		mcpapi.WithAny("ref"),                                        // PH1c: optional git ref
+		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("archigraph_find_dead_code", s.handleFindDeadCode))
 
 	// archigraph_quality_cycles — import cycle detection (#1312).

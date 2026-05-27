@@ -12,6 +12,8 @@ type RelationshipRecord struct {
 	ToID       string            `json:"to_id"`
 	Kind       string            `json:"kind"`
 	Properties map[string]string `json:"properties,omitempty"`
+	// Confidence in [0.0, 1.0]; zero reads as 1.0. Phase 1C (#2769).
+	Confidence float64 `json:"confidence,omitempty"`
 }
 
 // Validate checks that all required fields are present.
@@ -41,6 +43,8 @@ type Relationship struct {
 	TargetID   string            `json:"target_id"`
 	Type       string            `json:"type"`
 	Properties map[string]string `json:"properties,omitempty"`
+	// Confidence in [0.0, 1.0]; zero reads as 1.0. Phase 1C (#2769).
+	Confidence float64 `json:"confidence,omitempty"`
 }
 
 // Validate checks that all required fields are present.

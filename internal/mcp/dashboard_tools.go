@@ -730,6 +730,7 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 	limit := argInt(req, "limit", 30)
 	includeNoise := argBool(req, "include_noise", false)
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	minConfidence := argMinConfidence(req) // #2769 Phase 1C
 	ql := strings.ToLower(query)
 
 	type item struct {
@@ -758,6 +759,10 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 			// are suppressed from default results — ~25 fields per serializer
 			// class clutter ranked output. Pass include_noise:true to recover them.
 			if !includeNoise && classifyNoise(e) == noiseSchemaField {
+				continue
+			}
+			// #2769 Phase 1C: drop entities below the caller's confidence floor.
+			if !entityPassesConfidence(e, minConfidence) {
 				continue
 			}
 			nameL := strings.ToLower(e.Name)

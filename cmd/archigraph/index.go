@@ -3703,6 +3703,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 				Tags:          r.Tags,
 				Metadata:      r.Metadata,
 				Properties:    r.Properties,
+				Confidence:    r.Confidence, // Phase 1C (#2769).
 			})
 		}
 
@@ -3724,6 +3725,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 				ToID:       toID,
 				Kind:       rel.Kind,
 				Properties: rel.Properties,
+				Confidence: rel.Confidence, // Phase 1C (#2769).
 			})
 		}
 	}
@@ -3747,6 +3749,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			ToID:       toID,
 			Kind:       rel.Kind,
 			Properties: rel.Properties,
+			Confidence: rel.Confidence, // Phase 1C (#2769).
 		})
 	}
 

@@ -86,6 +86,7 @@ subcategories:
       - constant_propagation
       - env_fallback_recognition
       - import_resolution_quality
+      - confidence_overlay
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction]
@@ -102,7 +103,7 @@ subcategories:
       - name: Data
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
 
   ui_frontend:
     display: "UI Frontend"
@@ -126,6 +127,7 @@ subcategories:
       - constant_propagation
       - env_fallback_recognition
       - import_resolution_quality
+      - confidence_overlay
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition, jsx_template, context_extraction, hoc_wrapper_recognition]
@@ -140,7 +142,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
 
   meta_framework:
     display: "Meta Framework"
@@ -162,6 +164,7 @@ subcategories:
       - constant_propagation
       - env_fallback_recognition
       - import_resolution_quality
+      - confidence_overlay
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition]
@@ -180,7 +183,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
 
   mobile:
     display: "Mobile"
@@ -203,6 +206,7 @@ subcategories:
       - constant_propagation
       - env_fallback_recognition
       - import_resolution_quality
+      - confidence_overlay
     groups:
       - name: Structure
         keys: [context_extraction, hoc_wrapper_recognition]
@@ -221,7 +225,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
 
   desktop:
     display: "Desktop"
@@ -248,6 +252,7 @@ subcategories:
       - constant_propagation
       - env_fallback_recognition
       - import_resolution_quality
+      - confidence_overlay
     groups:
       - name: Schema
         keys: [schema_extraction, procedure_extraction]
@@ -256,7 +261,7 @@ subcategories:
       - name: Transport
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay]
 
   static_site:
     display: "Static Site"

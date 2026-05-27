@@ -1315,6 +1315,7 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 	kindFilter := strings.ToLower(argString(req, "kind_filter", ""))
 	limit := argInt(req, "limit", 100)
+	minConfidence := argMinConfidence(req) // #2769 Phase 1C
 
 	type item struct {
 		EntityID   string  `json:"entity_id"`
@@ -1367,6 +1368,10 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 				continue
 			}
 			if !matchesKindFilter(e, kindFilter) {
+				continue
+			}
+			// #2769 Phase 1C: drop entities below the caller's confidence floor.
+			if !entityPassesConfidence(e, minConfidence) {
 				continue
 			}
 
