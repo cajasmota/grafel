@@ -240,6 +240,17 @@ func (x *extractor) collectFromImportStatement(n *sitter.Node, out *[]importBind
 			// external-synth (external-unknown) — honest disposition and
 			// keeps RN/Expo bug-extractor counts off the floor.
 			aliasResolved = exists
+		} else if x.aliases.BaseURL != "" && x.repoRoot != "" {
+			// Synthetic baseUrl fallback (#2576): when tsconfig has baseUrl
+			// but no paths{}, resolve bare imports relative to baseUrl only
+			// when the candidate file actually exists on disk. npm package
+			// imports (e.g. "react") that have no matching file under baseUrl
+			// are left unresolved here and fall through to external treatment.
+			candidate := x.aliases.BaseURL + "/" + source
+			if found := firstExistingJSPath(x.repoRoot, candidate); found != "" {
+				resolved = found
+				aliasResolved = true
+			}
 		}
 	}
 	dotted := source // default: npm spec verbatim (slashes become dots below)

@@ -105,8 +105,18 @@ type aliasEntry struct {
 // AliasMap is the per-repository merged alias table. Lookups are
 // resolved by iterating entries longest-prefix first so `@/components`
 // wins over `@` when both are declared.
+//
+// BaseURL (#2576): when tsconfig has a baseUrl but no paths{} declarations,
+// BaseURL holds the repo-relative base directory (e.g. "src"). Callers
+// that need filesystem-validated resolution can check BaseURL after a
+// ResolveAll miss to resolve bare imports relative to that directory.
 type AliasMap struct {
 	entries []aliasEntry
+	// BaseURL is the repo-relative path of tsconfig compilerOptions.baseUrl
+	// when the tsconfig has no paths{} entries. Empty when paths{} are
+	// declared (paths take precedence and the baseUrl-only fallback is not
+	// needed) or when no tsconfig is present.
+	BaseURL string
 }
 
 // Resolve returns the repo-relative POSIX path the import specifier
@@ -244,14 +254,55 @@ func LoadAliasMap(repoRoot string) AliasMap {
 		return AliasMap{}
 	}
 	var entries []aliasEntry
-	entries = append(entries, parseTsconfigPaths(repoRoot)...)
+	tsEntries := parseTsconfigPaths(repoRoot)
+	entries = append(entries, tsEntries...)
 	entries = append(entries, parseViteAliases(repoRoot)...)
 	entries = append(entries, parseWebpackAliases(repoRoot)...)
 	entries = append(entries, parseMetroAliases(repoRoot)...)
 	entries = append(entries, parseBabelAliases(repoRoot)...)
 	// Sort by descending prefix length so longest match wins.
 	sortByPrefixLen(entries)
-	return AliasMap{entries: dedupAliasEntries(entries)}
+
+	// Synthetic baseUrl fallback (#2576): when tsconfig has baseUrl but no
+	// paths{} declarations, record BaseURL on the map so callers can resolve
+	// bare imports relative to baseUrl with an on-disk existence check.
+	// This is intentionally NOT added to entries so that npm package imports
+	// that happen to share a name (e.g. "react") are not misclassified when
+	// no matching file exists under baseUrl.
+	var baseURL string
+	if len(tsEntries) == 0 {
+		baseURL = parseTsconfigBaseURL(repoRoot)
+	}
+
+	return AliasMap{entries: dedupAliasEntries(entries), BaseURL: baseURL}
+}
+
+// parseTsconfigBaseURL reads the tsconfig.json / jsconfig.json at configDir
+// and returns the repo-relative baseUrl value, or "" when none is set or
+// the file cannot be parsed. Used by LoadAliasMap to populate AliasMap.BaseURL
+// when no paths{} entries are present.
+func parseTsconfigBaseURL(configDir string) string {
+	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
+		configPath := filepath.Join(configDir, name)
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			continue
+		}
+		cleaned := stripJSONComments(data)
+		var raw struct {
+			CompilerOptions struct {
+				BaseURL string `json:"baseUrl"`
+			} `json:"compilerOptions"`
+		}
+		if err := json.Unmarshal(cleaned, &raw); err != nil {
+			continue
+		}
+		bu := strings.TrimPrefix(strings.TrimPrefix(raw.CompilerOptions.BaseURL, "./"), "/")
+		if bu != "" && bu != "." {
+			return bu
+		}
+	}
+	return ""
 }
 
 // loadSubdirAliasMap parses configs found under a specific subdirectory
@@ -535,6 +586,7 @@ func parseTsconfigPathsBytesWithDir(data []byte, configDir string, depth int) []
 		}
 		out = append(out, entry)
 	}
+
 	return out
 }
 
