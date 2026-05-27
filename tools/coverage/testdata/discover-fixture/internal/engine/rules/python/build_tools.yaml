@@ -1,0 +1,11 @@
+build_package_tools:
+- name: pip + requirements.txt
+  detection:
+    config_files: [requirements.txt]
+- name: Poetry
+  detection:
+    config_files: [pyproject.toml]
+    lock_files: [poetry.lock]
+- name: uv
+  detection:
+    lock_files: [uv.lock]

@@ -233,6 +233,199 @@ func TestCmdDiscoverJSONOutput(t *testing.T) {
 	}
 }
 
+func TestBuildWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	buildWalker(fixtureRoot(t), cands)
+	// fixture python build_tools.yaml mentions pip, poetry, uv.
+	for _, want := range []string{"build.pip", "build.poetry", "build.uv"} {
+		c, ok := cands[want]
+		if !ok {
+			t.Fatalf("expected %s candidate, got: %v", want, keys(cands))
+		}
+		if !hasEvidence(c, "yaml_rule", "python/build_tools.yaml") {
+			t.Fatalf("expected yaml_rule evidence for %s: %+v", want, c.Evidence)
+		}
+	}
+	// Dockerfile extractor dir → build.dockerfile evidence.
+	if c, ok := cands["build.dockerfile"]; !ok || !hasEvidence(c, "extractor_dir", "extractors/dockerfile") {
+		t.Fatalf("expected build.dockerfile extractor_dir evidence: %+v", c)
+	}
+	// Cross/manifest extractor source mentions go.mod, package.json, cargo.toml.
+	for _, want := range []string{"build.go-modules", "build.npm", "build.cargo"} {
+		c, ok := cands[want]
+		if !ok {
+			t.Fatalf("expected %s candidate from manifest source, got: %v", want, keys(cands))
+		}
+		if !hasEvidence(c, "extractor_source", "manifest/extractor.go") {
+			t.Fatalf("expected extractor_source evidence for %s: %+v", want, c.Evidence)
+		}
+	}
+}
+
+func TestCIWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	ciWalker(fixtureRoot(t), cands)
+	if c, ok := cands["ci.github-actions"]; !ok || !hasEvidence(c, "yaml_rule", "github_actions.yaml") {
+		t.Fatalf("expected ci.github-actions yaml_rule evidence: %+v", c)
+	}
+	if c, ok := cands["ci.circleci"]; !ok || !hasEvidence(c, "yaml_rule", "circleci.yaml") {
+		t.Fatalf("expected ci.circleci yaml_rule evidence: %+v", c)
+	}
+}
+
+func TestObservabilityWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	observabilityWalker(fixtureRoot(t), cands)
+	for _, want := range []string{
+		"infra.observability.opentelemetry",
+		"infra.observability.sentry",
+		"infra.observability.prometheus",
+		"infra.observability.datadog",
+		"infra.observability.newrelic",
+		"infra.observability.honeycomb",
+	} {
+		c, ok := cands[want]
+		if !ok {
+			t.Fatalf("expected %s candidate, got: %v", want, keys(cands))
+		}
+		if len(c.Evidence) == 0 {
+			t.Fatalf("%s has no evidence", want)
+		}
+	}
+}
+
+func TestBrokerWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	brokerWalker(fixtureRoot(t), cands)
+	if c, ok := cands["msg.broker.kafka"]; !ok || !hasEvidence(c, "engine_file", "kafka_edges.go") {
+		t.Fatalf("expected msg.broker.kafka engine_file evidence: %+v", c)
+	}
+	if c, ok := cands["msg.broker.nats"]; !ok || !hasEvidence(c, "engine_file", "nats_edges.go") {
+		t.Fatalf("expected msg.broker.nats engine_file evidence: %+v", c)
+	}
+}
+
+func TestContainerWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	containerWalker(fixtureRoot(t), cands)
+	for _, want := range []string{
+		"infra.container.dockerfile",
+		"infra.container.docker-compose",
+		"infra.container.kubernetes",
+	} {
+		c, ok := cands[want]
+		if !ok {
+			t.Fatalf("expected %s candidate, got: %v", want, keys(cands))
+		}
+		if len(c.Evidence) == 0 {
+			t.Fatalf("%s has no evidence", want)
+		}
+	}
+}
+
+func TestIacWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	iacWalker(fixtureRoot(t), cands)
+	if c, ok := cands["infra.iac.terraform"]; !ok || !hasEvidence(c, "yaml_rule", "hcl/_manifest.yaml") {
+		t.Fatalf("expected infra.iac.terraform yaml_rule evidence: %+v", c)
+	}
+	if c, ok := cands["infra.iac.cloudformation"]; !ok {
+		t.Fatalf("expected infra.iac.cloudformation candidate, got: %v", keys(cands))
+	} else if len(c.Evidence) == 0 {
+		t.Fatalf("infra.iac.cloudformation has no evidence")
+	}
+}
+
+func TestDatabaseWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	databaseWalker(fixtureRoot(t), cands)
+	// fixture has python/orms/postgresql_py.yaml and redis_py.yaml.
+	if c, ok := cands["lang.python.driver.postgres"]; !ok {
+		t.Fatalf("expected lang.python.driver.postgres candidate, got: %v", keys(cands))
+	} else if !hasEvidence(c, "yaml_rule", "postgresql_py.yaml") {
+		t.Fatalf("expected postgresql_py.yaml evidence: %+v", c.Evidence)
+	}
+	if c, ok := cands["lang.python.driver.redis"]; !ok {
+		t.Fatalf("expected lang.python.driver.redis candidate")
+	} else if !hasEvidence(c, "yaml_rule", "redis_py.yaml") {
+		t.Fatalf("expected redis_py.yaml evidence: %+v", c.Evidence)
+	}
+	// Also a top-level db.* candidate.
+	if _, ok := cands["db.postgres"]; !ok {
+		t.Fatalf("expected db.postgres candidate, got: %v", keys(cands))
+	}
+	if _, ok := cands["db.redis"]; !ok {
+		t.Fatalf("expected db.redis candidate")
+	}
+}
+
+func TestConfigWalker(t *testing.T) {
+	cands := map[string]*Candidate{}
+	configWalker(fixtureRoot(t), cands)
+	for _, want := range []string{
+		"config.toml", "config.ini", "config.properties", "config.dotenv",
+		"config.makefile", "config.tsconfig", "config.yaml",
+	} {
+		c, ok := cands[want]
+		if !ok {
+			t.Fatalf("expected %s candidate, got: %v", want, keys(cands))
+		}
+		if !hasEvidence(c, "extractor_source", "config/discover.go") {
+			t.Fatalf("expected extractor_source evidence for %s: %+v", want, c.Evidence)
+		}
+	}
+}
+
+func TestNewWalkersDeterminism(t *testing.T) {
+	// Run all new walkers twice and assert the candidate map is
+	// byte-identical when sorted by ID.
+	run := func() string {
+		cands := map[string]*Candidate{}
+		buildWalker(fixtureRoot(t), cands)
+		ciWalker(fixtureRoot(t), cands)
+		observabilityWalker(fixtureRoot(t), cands)
+		brokerWalker(fixtureRoot(t), cands)
+		containerWalker(fixtureRoot(t), cands)
+		iacWalker(fixtureRoot(t), cands)
+		databaseWalker(fixtureRoot(t), cands)
+		configWalker(fixtureRoot(t), cands)
+		ids := make([]string, 0, len(cands))
+		for id := range cands {
+			ids = append(ids, id)
+		}
+		insertionSortStrings(ids)
+		var b bytes.Buffer
+		for _, id := range ids {
+			c := cands[id]
+			b.WriteString(id)
+			b.WriteByte('|')
+			for _, e := range c.Evidence {
+				b.WriteString(e.Kind)
+				b.WriteByte(':')
+				b.WriteString(e.Path)
+				b.WriteByte(',')
+			}
+			b.WriteByte('\n')
+		}
+		return b.String()
+	}
+	a := run()
+	c := run()
+	if a != c {
+		t.Fatalf("non-deterministic walker output:\n%s\n---\n%s", a, c)
+	}
+}
+
+// insertionSortStrings is a tiny helper that avoids importing sort in
+// the test file; used by TestNewWalkersDeterminism only.
+func insertionSortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
+}
+
 // hasEvidence reports whether the candidate has an evidence entry of
 // the requested kind whose symbol or path contains needle.
 func hasEvidence(c *Candidate, kind, needle string) bool {
