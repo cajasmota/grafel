@@ -155,12 +155,16 @@ func (x *extractor) scanDestructureDeclarator(decl *sitter.Node, out map[string]
 	// ── Single-property selector form (issue #2632) ──────────────────────────
 	// const softLogout = useAuthStore(s => s.softLogout);
 	if nameNode.Type() == "identifier" {
-		if actionName := x.parseSelectorArrowFn(valueNode); actionName != "" {
+		if storeVar, actionName := x.parseSelectorArrowFn(valueNode); actionName != "" {
 			localName := x.nodeText(nameNode)
 			if localName != "" {
+				// Issue #2631 — qualify the sourceTarget with the store variable so the
+				// CALLS edge resolves to the correct entity when multiple stores share
+				// an action name. Format: <storeVar>::<actionName>.
+				qualifiedTarget := storeVar + "::" + actionName
 				out[localName] = &destructureBinding{
 					localName:    localName,
-					sourceTarget: actionName,
+					sourceTarget: qualifiedTarget,
 					via:          PropViaZustandSelector,
 				}
 				return
@@ -307,32 +311,35 @@ func (x *extractor) classifyDestructureRHS(value *sitter.Node) (via, calleeBase 
 
 // parseSelectorArrowFn detects the single-property Zustand selector pattern (issue #2632):
 //
-//	useAuthStore(s => s.softLogout)          → "softLogout"
-//	useAuthStore((s) => s.softLogout)        → "softLogout"  (parenthesised param)
-//	useAuthStore(state => state.softLogout)  → "softLogout"  (any param name)
-//	useAuthStore(s => s?.softLogout)         → "softLogout"  (optional chain)
+//	useAuthStore(s => s.softLogout)          → ("useAuthStore", "softLogout")
+//	useAuthStore((s) => s.softLogout)        → ("useAuthStore", "softLogout")  (parenthesised param)
+//	useAuthStore(state => state.softLogout)  → ("useAuthStore", "softLogout")  (any param name)
+//	useAuthStore(s => s?.softLogout)         → ("useAuthStore", "softLogout")  (optional chain)
 //
-// Derived-value selectors like useAuthStore(s => Boolean(s.user)) return "" so
+// Derived-value selectors like useAuthStore(s => Boolean(s.user)) return ("", "") so
 // no spurious CALLS edge is emitted for non-callable selected values.
 //
-// Returns the action name on success or "" when the node does not match.
-func (x *extractor) parseSelectorArrowFn(value *sitter.Node) string {
+// Returns (storeVar, actionName) on success or ("", "") when the node does not match.
+// Issue #2631 — storeVar is returned so callers can build the qualified entity ID
+// <storeVar>::<actionName> instead of the bare action name.
+func (x *extractor) parseSelectorArrowFn(value *sitter.Node) (string, string) {
 	if value == nil || value.Type() != "call_expression" {
-		return ""
+		return "", ""
 	}
 	// Callee must be a Zustand hook (useXxxStore).
 	fnNode := value.ChildByFieldName("function")
 	if fnNode == nil {
-		return ""
+		return "", ""
 	}
 	callee := x.calleeLeafName(fnNode)
 	if !isZustandHookName(callee) {
-		return ""
+		return "", ""
 	}
+	storeVar := callee
 	// First argument must be an arrow_function.
 	argsNode := value.ChildByFieldName("arguments")
 	if argsNode == nil {
-		return ""
+		return "", ""
 	}
 	// Find the first non-punctuation child of the arguments node.
 	var arrowNode *sitter.Node
@@ -349,17 +356,17 @@ func (x *extractor) parseSelectorArrowFn(value *sitter.Node) string {
 		break
 	}
 	if arrowNode == nil || arrowNode.Type() != "arrow_function" {
-		return ""
+		return "", ""
 	}
 	// Arrow body must be a simple member_expression (s.action) or
 	// optional member_expression (s?.action).  Anything else (call, binary,
 	// sequence, etc.) is a derived value — skip it.
 	bodyNode := arrowNode.ChildByFieldName("body")
 	if bodyNode == nil {
-		return ""
+		return "", ""
 	}
 	if bodyNode.Type() != "member_expression" && bodyNode.Type() != "optional_chain" {
-		return ""
+		return "", ""
 	}
 
 	// For optional_chain (s?.x) the grammar nests differently; normalise by
@@ -372,11 +379,11 @@ func (x *extractor) parseSelectorArrowFn(value *sitter.Node) string {
 		// access like s.nested.action from being treated as a single action.
 		objNode := bodyNode.ChildByFieldName("object")
 		if objNode == nil {
-			return ""
+			return "", ""
 		}
 		// Allow only a bare identifier (the selector parameter).
 		if objNode.Type() != "identifier" {
-			return ""
+			return "", ""
 		}
 		propNode = bodyNode.ChildByFieldName("property")
 	case "optional_chain":
@@ -393,9 +400,9 @@ func (x *extractor) parseSelectorArrowFn(value *sitter.Node) string {
 		}
 	}
 	if propNode == nil {
-		return ""
+		return "", ""
 	}
-	return x.nodeText(propNode)
+	return storeVar, x.nodeText(propNode)
 }
 
 // calleeLeafName extracts the trailing identifier name from a function expression node.

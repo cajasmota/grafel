@@ -555,18 +555,24 @@ func (t *zustandTracker) emitStoreActionEntities(x *extractor) {
 			if nodeMap != nil {
 				fnNode = nodeMap[actionName]
 			}
+			// Issue #2631 — qualify the entity name with the store variable so
+			// two stores sharing an action name (e.g. useAuthStore.logout and
+			// useAdminStore.logout) produce distinct entity IDs.
+			// Format: <storeVar>::<actionName>  (mirrors class method convention).
+			qualifiedName := storeVar + "::" + actionName
 			props := map[string]string{
-				"kind":    "SCOPE.Operation",
-				"subtype": "method",
-				"via":     PropViaZustandStore,
-				"store":   storeVar,
+				"kind":        "SCOPE.Operation",
+				"subtype":     "method",
+				"via":         PropViaZustandStore,
+				"store":       storeVar,
+				"action_name": actionName,
 			}
 			if partFields != "" {
 				props["partialize_fields"] = partFields
 			}
 			sig := storeVar + "." + actionName
 			if fnNode != nil {
-				x.emitWithProps(actionName, "SCOPE.Operation", fnNode, "method", sig, props, nil)
+				x.emitWithProps(qualifiedName, "SCOPE.Operation", fnNode, "method", sig, props, nil)
 			}
 			// When fnNode is nil (should not happen in practice; storeActionNodes
 			// is always co-populated with storeActions), skip silently: the
@@ -635,9 +641,10 @@ func (t *zustandTracker) zustandGetStateActionEdges(x *extractor, callNode *sitt
 		return nil
 	}
 
-	// Emit a CALLS edge from callerName → actionName.
+	// Issue #2631 — use the qualified ID (<storeVar>::<actionName>) so the CALLS
+	// edge resolves to the correct entity when multiple stores share an action name.
 	rel := types.RelationshipRecord{
-		ToID: actionName,
+		ToID: storeVar + "::" + actionName,
 		Kind: "CALLS",
 		Properties: map[string]string{
 			"via":  PropViaZustandStore,
@@ -755,8 +762,10 @@ func (t *zustandTracker) zustandSelectorActionEdges(x *extractor, callNode *sitt
 		return nil
 	}
 
+	// Issue #2631 — qualify the ToID with the store name to match the entity ID
+	// emitted by emitStoreActionEntities.
 	rel := types.RelationshipRecord{
-		ToID: actionName,
+		ToID: storeVar + "::" + actionName,
 		Kind: "CALLS",
 		Properties: map[string]string{
 			"via":  PropViaZustandStore,

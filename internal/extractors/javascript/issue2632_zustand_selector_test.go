@@ -45,14 +45,15 @@ export const handleLogout = () => {
 		t.Fatal("expected entity 'handleLogout' to be emitted")
 	}
 
+	// Issue #2631 — ToID is now qualified: <storeVar>::<actionName>.
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "softLogout" {
+		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" {
 			if r.Properties != nil && r.Properties["via"] == "zustand_selector" {
 				found = true
 				break
 			}
-			t.Logf("CALLS handleLogout→softLogout found but via=%q (want zustand_selector); props=%v",
+			t.Logf("CALLS handleLogout→useAuthStore::softLogout found but via=%q (want zustand_selector); props=%v",
 				r.Properties["via"], r.Properties)
 		}
 	}
@@ -61,7 +62,7 @@ export const handleLogout = () => {
 		for _, r := range e.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Errorf("expected CALLS handleLogout→softLogout with via=zustand_selector; not found")
+		t.Errorf("expected CALLS handleLogout→useAuthStore::softLogout with via=zustand_selector; not found")
 	}
 }
 
@@ -90,9 +91,10 @@ export const handleLogout = () => {
 		t.Fatal("expected entity 'handleLogout' to be emitted")
 	}
 
+	// Issue #2631 — ToID is now qualified: <storeVar>::<actionName>.
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "softLogout" &&
+		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" &&
 			r.Properties != nil && r.Properties["via"] == "zustand_selector" {
 			found = true
 			break
@@ -103,7 +105,7 @@ export const handleLogout = () => {
 		for _, r := range e.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Errorf("expected CALLS handleLogout→softLogout with via=zustand_selector (parenthesised param); not found")
+		t.Errorf("expected CALLS handleLogout→useAuthStore::softLogout with via=zustand_selector (parenthesised param); not found")
 	}
 }
 
@@ -132,9 +134,10 @@ export const handleLogout = () => {
 		t.Fatal("expected entity 'handleLogout' to be emitted")
 	}
 
+	// Issue #2631 — ToID is now qualified: <storeVar>::<actionName>.
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "softLogout" &&
+		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" &&
 			r.Properties != nil && r.Properties["via"] == "zustand_selector" {
 			found = true
 			break
@@ -145,7 +148,7 @@ export const handleLogout = () => {
 		for _, r := range e.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Errorf("expected CALLS handleLogout→softLogout with via=zustand_selector (state param name); not found")
+		t.Errorf("expected CALLS handleLogout→useAuthStore::softLogout with via=zustand_selector (state param name); not found")
 	}
 }
 
@@ -174,9 +177,10 @@ export const handleLogout = () => {
 		t.Fatal("expected entity 'handleLogout' to be emitted")
 	}
 
+	// Issue #2631 — ToID is now qualified: <storeVar>::<actionName>.
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "softLogout" &&
+		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" &&
 			r.Properties != nil && r.Properties["via"] == "zustand_selector" {
 			found = true
 			break
@@ -187,7 +191,7 @@ export const handleLogout = () => {
 		for _, r := range e.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Errorf("expected CALLS handleLogout→softLogout with via=zustand_selector (optional chain); not found")
+		t.Errorf("expected CALLS handleLogout→useAuthStore::softLogout with via=zustand_selector (optional chain); not found")
 	}
 }
 

@@ -64,13 +64,14 @@ export const useAuthStore = create<AuthState>()(
 	ents := runJS(t, src, "typescript", tree)
 
 	// Both action methods must appear as named entities.
-	login := findByNameRel(ents, "login")
+	// Issue #2631 — entity names are now qualified: <storeVar>::<actionName>.
+	login := findByNameRel(ents, "useAuthStore::login")
 	if login == nil {
-		t.Error("expected SCOPE.Operation entity 'login' to be emitted for Zustand persist store; got nil")
+		t.Error("expected SCOPE.Operation entity 'useAuthStore::login' to be emitted for Zustand persist store; got nil")
 	}
-	logout := findByNameRel(ents, "logout")
+	logout := findByNameRel(ents, "useAuthStore::logout")
 	if logout == nil {
-		t.Error("expected SCOPE.Operation entity 'logout' to be emitted for Zustand persist store; got nil")
+		t.Error("expected SCOPE.Operation entity 'useAuthStore::logout' to be emitted for Zustand persist store; got nil")
 	}
 }
 
@@ -105,9 +106,10 @@ export function handleSignOut() {
 		t.Fatal("expected entity 'handleSignOut' to be emitted")
 	}
 
+	// Issue #2631 — ToID is now qualified: <storeVar>::<actionName>.
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "logout" {
+		if r.Kind == "CALLS" && r.ToID == "useAuthStore::logout" {
 			if r.Properties != nil && r.Properties["via"] == "zustand_store" {
 				found = true
 				break
@@ -119,7 +121,7 @@ export function handleSignOut() {
 		for _, r := range e.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Error("expected CALLS handleSignOut→logout with via=zustand_store for persist-wrapped store")
+		t.Error("expected CALLS handleSignOut→useAuthStore::logout with via=zustand_store for persist-wrapped store")
 	}
 }
 
@@ -148,8 +150,9 @@ export const useSyncQueueStore = create()(
 	tree := parseTSRel(t, []byte(src))
 	ents := runJS(t, src, "typescript", tree)
 
-	if findByNameRel(ents, "enqueue") == nil {
-		t.Error("expected SCOPE.Operation entity 'enqueue' to be emitted for nested-middleware store; got nil")
+	// Issue #2631 — entity names are now qualified: <storeVar>::<actionName>.
+	if findByNameRel(ents, "useSyncQueueStore::enqueue") == nil {
+		t.Error("expected SCOPE.Operation entity 'useSyncQueueStore::enqueue' to be emitted for nested-middleware store; got nil")
 	}
 }
 

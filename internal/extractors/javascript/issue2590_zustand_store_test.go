@@ -51,14 +51,15 @@ export async function syncEngine() {
 		t.Fatal("syncEngine entity missing")
 	}
 
+	// Issue #2631 — entity IDs are now qualified: <storeVar>::<actionName>.
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "process" {
+		if r.Kind == "CALLS" && r.ToID == "useSyncQueueStore::process" {
 			if r.Properties != nil && r.Properties["via"] == "zustand_store" {
 				found = true
 				break
 			}
-			t.Logf("CALLS syncEngine→process found but via=%q (want zustand_store); props=%v",
+			t.Logf("CALLS syncEngine→useSyncQueueStore::process found but via=%q (want zustand_store); props=%v",
 				r.Properties["via"], r.Properties)
 		}
 	}
@@ -67,7 +68,7 @@ export async function syncEngine() {
 		for _, r := range e.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Errorf("expected CALLS syncEngine→process with via=zustand_store; not found")
+		t.Errorf("expected CALLS syncEngine→useSyncQueueStore::process with via=zustand_store; not found")
 	}
 }
 
@@ -102,18 +103,20 @@ async function processSyncQueue(id) {
 		t.Fatal("expected entity 'processSyncQueue' to be emitted")
 	}
 
+	// Issue #2631 — entity IDs are now qualified: <storeVar>::<actionName>.
 	for _, action := range []string{"markSyncing", "markCompleted", "markFailed"} {
 		e := findByNameRel(ents, "processSyncQueue")
+		qualifiedAction := "useSyncQueueStore::" + action
 		found := false
 		for _, r := range e.Relationships {
-			if r.Kind == "CALLS" && r.ToID == action &&
+			if r.Kind == "CALLS" && r.ToID == qualifiedAction &&
 				r.Properties != nil && r.Properties["via"] == "zustand_store" {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("expected CALLS processSyncQueue→%s (via=zustand_store); not found", action)
+			t.Errorf("expected CALLS processSyncQueue→%s (via=zustand_store); not found", qualifiedAction)
 		}
 	}
 }
@@ -146,9 +149,10 @@ function onSessionExpired() {
 	}
 
 	e := findByNameRel(ents, "onSessionExpired")
+	// Issue #2631 — entity IDs are now qualified: <storeVar>::<actionName>.
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "logout" &&
+		if r.Kind == "CALLS" && r.ToID == "useAuthStore::logout" &&
 			r.Properties != nil && r.Properties["via"] == "zustand_store" {
 			found = true
 			break
@@ -159,7 +163,7 @@ function onSessionExpired() {
 		for _, r := range e.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Errorf("expected CALLS onSessionExpired→logout (via=zustand_store); not found")
+		t.Errorf("expected CALLS onSessionExpired→useAuthStore::logout (via=zustand_store); not found")
 	}
 }
 
@@ -219,9 +223,10 @@ export const useMyStore = create((set, get) => ({
 	tree := parseTSRel(t, []byte(src))
 	ents := runJS(t, src, "typescript", tree)
 
-	fooEnt := findByNameRel(ents, "foo")
+	// Issue #2631 — entity name is now qualified: <storeVar>::<actionName>.
+	fooEnt := findByNameRel(ents, "useMyStore::foo")
 	if fooEnt == nil {
-		t.Fatalf("expected entity 'foo' to be emitted as a standalone entity (issue #2626); got names: %v", func() []string {
+		t.Fatalf("expected entity 'useMyStore::foo' to be emitted as a standalone entity (issue #2626+#2631); got names: %v", func() []string {
 			var ns []string
 			for _, e := range ents {
 				ns = append(ns, e.Name)
@@ -230,16 +235,16 @@ export const useMyStore = create((set, get) => ({
 		}())
 	}
 	if fooEnt.Kind != "SCOPE.Operation" {
-		t.Errorf("foo.Kind = %q, want SCOPE.Operation", fooEnt.Kind)
+		t.Errorf("useMyStore::foo.Kind = %q, want SCOPE.Operation", fooEnt.Kind)
 	}
 	if fooEnt.Subtype != "method" {
-		t.Errorf("foo.Subtype = %q, want method", fooEnt.Subtype)
+		t.Errorf("useMyStore::foo.Subtype = %q, want method", fooEnt.Subtype)
 	}
 	if fooEnt.Properties == nil || fooEnt.Properties["via"] != "zustand_store" {
-		t.Errorf("foo.Properties[via] = %q, want zustand_store; props=%v", fooEnt.Properties["via"], fooEnt.Properties)
+		t.Errorf("useMyStore::foo.Properties[via] = %q, want zustand_store; props=%v", fooEnt.Properties["via"], fooEnt.Properties)
 	}
 	if fooEnt.StartLine == 0 {
-		t.Errorf("foo.StartLine = 0, expected a valid source line (issue #2626 — line range required)")
+		t.Errorf("useMyStore::foo.StartLine = 0, expected a valid source line (issue #2626 — line range required)")
 	}
 }
 
@@ -277,25 +282,26 @@ export async function loginWithBiometrics() {
 	ents := runJS(t, src, "typescript", tree)
 
 	// 1. unlockWithBiometrics must be emitted as a standalone entity.
-	actionEnt := findByNameRel(ents, "unlockWithBiometrics")
+	// Issue #2631 — entity name is now qualified: <storeVar>::<actionName>.
+	actionEnt := findByNameRel(ents, "useAuthStore::unlockWithBiometrics")
 	if actionEnt == nil {
-		t.Fatalf("expected 'unlockWithBiometrics' as a standalone entity (issue #2626); not found")
+		t.Fatalf("expected 'useAuthStore::unlockWithBiometrics' as a standalone entity (issue #2626+#2631); not found")
 	}
 	if actionEnt.Kind != "SCOPE.Operation" {
-		t.Errorf("unlockWithBiometrics.Kind = %q, want SCOPE.Operation", actionEnt.Kind)
+		t.Errorf("useAuthStore::unlockWithBiometrics.Kind = %q, want SCOPE.Operation", actionEnt.Kind)
 	}
 	if actionEnt.StartLine == 0 {
-		t.Errorf("unlockWithBiometrics.StartLine = 0, want non-zero (body line range)")
+		t.Errorf("useAuthStore::unlockWithBiometrics.StartLine = 0, want non-zero (body line range)")
 	}
 
-	// 2. loginWithBiometrics must have a CALLS edge to unlockWithBiometrics.
+	// 2. loginWithBiometrics must have a CALLS edge to the qualified entity ID.
 	caller := findByNameRel(ents, "loginWithBiometrics")
 	if caller == nil {
 		t.Fatal("expected entity 'loginWithBiometrics'")
 	}
 	found := false
 	for _, r := range caller.Relationships {
-		if r.Kind == "CALLS" && r.ToID == "unlockWithBiometrics" &&
+		if r.Kind == "CALLS" && r.ToID == "useAuthStore::unlockWithBiometrics" &&
 			r.Properties != nil && r.Properties["via"] == "zustand_store" {
 			found = true
 			break
@@ -306,7 +312,7 @@ export async function loginWithBiometrics() {
 		for _, r := range caller.Relationships {
 			t.Logf("  %s → %s (props=%v)", r.Kind, r.ToID, r.Properties)
 		}
-		t.Errorf("expected CALLS loginWithBiometrics→unlockWithBiometrics (via=zustand_store); not found")
+		t.Errorf("expected CALLS loginWithBiometrics→useAuthStore::unlockWithBiometrics (via=zustand_store); not found")
 	}
 }
 
