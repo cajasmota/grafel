@@ -205,6 +205,7 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2766"]
+          verified_at: "2026-05-28"
         db_effect:
           status: partial
           symbols:
@@ -240,6 +241,7 @@ records:
             - file: internal/links/effect_propagation.go
               functions: [runEffectPropagationPass]
           issues_implemented: ["2764"]
+          verified_at: "2026-05-28"
 
   lang.jsts.framework.react-native:
     capabilities:
@@ -381,6 +383,7 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2766"]
+<<<<<<< HEAD
         db_effect:
           status: partial
           symbols:
@@ -416,6 +419,9 @@ records:
             - file: internal/links/effect_propagation.go
               functions: [runEffectPropagationPass]
           issues_implemented: ["2764"]
+=======
+          verified_at: "2026-05-28"
+>>>>>>> bfbd7c5b (feat(substrate): Phase 1B reachability + dead-code for T1 languages (#2766))
 
   lang.python.framework.flask:
     capabilities:
@@ -650,6 +656,7 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2766"]
+<<<<<<< HEAD
         db_effect:
           status: partial
           symbols:
@@ -685,6 +692,9 @@ records:
             - file: internal/links/effect_propagation.go
               functions: [runEffectPropagationPass]
           issues_implemented: ["2764"]
+=======
+          verified_at: "2026-05-28"
+>>>>>>> bfbd7c5b (feat(substrate): Phase 1B reachability + dead-code for T1 languages (#2766))
 
   lang.go.framework.gin:
     capabilities:
