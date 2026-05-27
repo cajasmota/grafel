@@ -149,12 +149,13 @@ type PassResult struct {
 
 	// CrossRepoResolveHitsByStrategy reports how many consumer→producer
 	// resolutions each strategy contributed. Keys (stable):
-	//   - "exact"            byPath bucket hit with a same-name producer
-	//   - "prefix_stripped"  prefix-injection retry (#2569)
-	//   - "case_normalized"  per-segment case/separator normalization (#2703)
-	//   - "url_pattern"      normalizeURLPattern fallback (#2588)
-	//   - "graphql_root"     consumer pointed at /graphql root, producer
-	//                        per-field synthetic registered there (#1496)
+	//   - "exact"               byPath bucket hit with a same-name producer
+	//   - "prefix_stripped"     prefix-injection retry (#2569)
+	//   - "mount_prefix_added"  consumer-side mount-prefix retry (#2702)
+	//   - "case_normalized"     per-segment case/separator normalization (#2703)
+	//   - "url_pattern"         normalizeURLPattern fallback (#2588)
+	//   - "graphql_root"        consumer pointed at /graphql root, producer
+	//                           per-field synthetic registered there (#1496)
 	// (#2669)
 	CrossRepoResolveHitsByStrategy map[string]int
 
@@ -373,11 +374,11 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 // timestamp so MCP responses can tell callers when the snapshot was taken.
 // (#2669)
 type LinkPassStatsDocument struct {
-	Version     int                    `json:"version"`
-	Group       string                 `json:"group"`
-	WrittenAt   string                 `json:"written_at"`
-	Passes      []LinkPassStatsEntry   `json:"passes"`
-	HTTPSummary *HTTPResolveStats      `json:"http_resolve,omitempty"`
+	Version     int                  `json:"version"`
+	Group       string               `json:"group"`
+	WrittenAt   string               `json:"written_at"`
+	Passes      []LinkPassStatsEntry `json:"passes"`
+	HTTPSummary *HTTPResolveStats    `json:"http_resolve,omitempty"`
 }
 
 // LinkPassStatsEntry is one per-pass counter snapshot.
@@ -394,9 +395,9 @@ type LinkPassStatsEntry struct {
 // at the document root so MCP can return it without descending into the
 // per-pass list. (#2669)
 type HTTPResolveStats struct {
-	Attempts        int            `json:"cross_repo_resolve_attempts"`
-	HitsByStrategy  map[string]int `json:"cross_repo_resolve_hits_by_strategy,omitempty"`
-	MissesByReason  map[string]int `json:"cross_repo_resolve_misses_by_reason,omitempty"`
+	Attempts       int            `json:"cross_repo_resolve_attempts"`
+	HitsByStrategy map[string]int `json:"cross_repo_resolve_hits_by_strategy,omitempty"`
+	MissesByReason map[string]int `json:"cross_repo_resolve_misses_by_reason,omitempty"`
 }
 
 // writeLinkPassStats serialises every PassResult counter on res to the

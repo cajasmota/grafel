@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "repo": "consumer",
+  "entities": [
+    {
+      "id": "caller-list-things",
+      "name": "listThings",
+      "kind": "Function",
+      "source_file": "src/client.js"
+    },
+    {
+      "id": "endpoint-call-things",
+      "name": "http:GET:/things",
+      "kind": "http_endpoint",
+      "source_file": "src/client.js",
+      "properties": {
+        "verb": "GET",
+        "path": "/things",
+        "framework": "fetch",
+        "pattern_type": "http_endpoint_client_synthesis",
+        "source_caller": "Function:listThings"
+      }
+    }
+  ],
+  "relationships": []
+}
