@@ -10,14 +10,37 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Navigation
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `deep_link_extraction` | ❌ `missing` | — | — | — | — |
-| `native_module_imports` | ❌ `missing` | — | — | — | — |
 | `navigation_extraction` | ❌ `missing` | — | — | — | — |
-| `platform_branching` | ❌ `missing` | — | — | — | — |
 | `screen_detection` | ❌ `missing` | — | — | — | — |
+
+### Platform
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `platform_branching` | ❌ `missing` | — | — | — | — |
+
+### Native Bridge
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `native_module_imports` | ❌ `missing` | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `state_management` | ❌ `missing` | — | — | — | — |
+
+### Lifecycle
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 
 ## Provenance
 

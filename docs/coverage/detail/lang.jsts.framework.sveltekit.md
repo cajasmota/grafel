@@ -10,15 +10,38 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Structure
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `component_extraction` | ❌ `missing` | — | — | — | — |
-| `data_loaders` | ❌ `missing` | — | — | — | — |
 | `hook_recognition` | — `not_applicable` | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `data_loaders` | ❌ `missing` | — | — | — | — |
+
+### Server
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `hydration_boundaries` | ❌ `missing` | — | — | — | — |
+| `server_components` | ❌ `missing` | — | — | — | — |
+
+### Routing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `route_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml` |
 | `router_pattern` | ❌ `missing` | — | — | — | — |
-| `server_components` | ❌ `missing` | — | — | — | — |
+
+### Build
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `static_generation` | ❌ `missing` | — | — | — | — |
 
 ## Provenance

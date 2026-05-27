@@ -189,9 +189,107 @@ func TestBuildBucketSectionGroupsBySubcategory(t *testing.T) {
 	if len(sec.Records) != 1 || sec.Records[0].ID != "lang.jsts.framework.legacy" {
 		t.Errorf("legacy record should fall through to flat Records, got %+v", sec.Records)
 	}
-	// Render keys must be subcategory-scoped, not the bucket union.
-	if got := sec.Subsections[1].CapabilityKeys; len(got) == 0 || got[0] == "auth_coverage" {
-		t.Errorf("ui_frontend columns should not include auth_coverage, got %v", got)
+	// ui_frontend has a declared group taxonomy (#2737), so the
+	// subsection now renders group-digest columns rather than per-
+	// capability columns. CapabilityKeys is unset; GroupNames carries
+	// the canonical group render order.
+	uiSec := sec.Subsections[1]
+	if len(uiSec.CapabilityKeys) != 0 {
+		t.Errorf("ui_frontend should use group columns, got CapabilityKeys=%v", uiSec.CapabilityKeys)
+	}
+	wantGroups := []string{"Structure", "Data Flow", "Navigation", "Type System", "Lifecycle", "Testing"}
+	if !reflect.DeepEqual(uiSec.GroupNames, wantGroups) {
+		t.Errorf("ui_frontend GroupNames = %v, want %v", uiSec.GroupNames, wantGroups)
+	}
+}
+
+// TestGroupForCapability checks the canonical taxonomy lookups.
+func TestGroupForCapability(t *testing.T) {
+	if g := groupForCapability("ui_frontend", "router_pattern"); g != "Navigation" {
+		t.Errorf("router_pattern should resolve to Navigation, got %q", g)
+	}
+	if g := groupForCapability("ui_frontend", "component_extraction"); g != "Structure" {
+		t.Errorf("component_extraction should resolve to Structure, got %q", g)
+	}
+	if g := groupForCapability("ui_frontend", "nonexistent_key"); g != "" {
+		t.Errorf("nonexistent_key should return empty, got %q", g)
+	}
+}
+
+// TestGroupDigest checks the worst-glyph + full-count/total digest.
+func TestGroupDigest(t *testing.T) {
+	caps := map[string]Capability{
+		"a": {Status: StatusFull},
+		"b": {Status: StatusPartial},
+		"c": {Status: StatusMissing},
+	}
+	if got := groupDigest(caps); got != "❌ 1/3" {
+		t.Errorf("groupDigest = %q, want ❌ 1/3", got)
+	}
+	if got := groupDigest(map[string]Capability{}); got != "—" {
+		t.Errorf("empty groupDigest = %q, want —", got)
+	}
+}
+
+// TestValidateGroupedRecord exercises the new #2737 validation rules:
+// canonical group names, capability-belongs-to-group, and
+// uniqueness-within-record.
+func TestValidateGroupedRecord(t *testing.T) {
+	reg := &Registry{
+		SchemaVersion: SchemaVersion,
+		Records: []Record{
+			{
+				ID: "lang.jsts.framework.react", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "React",
+				Groups: map[string]map[string]Capability{
+					"Structure":  {"component_extraction": {Status: StatusPartial, Issue: "x"}},
+					"Navigation": {"router_pattern": {Status: StatusFull}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.bad-group", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "BadGroup",
+				Groups: map[string]map[string]Capability{
+					"Strcture": {"component_extraction": {Status: StatusFull}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.bad-place", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "BadPlace",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"router_pattern": {Status: StatusFull}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.dup-key", Category: "http_framework",
+				Subcategory: "ui_frontend", Language: "jsts", Label: "DupKey",
+				Groups: map[string]map[string]Capability{
+					"Structure":  {"component_extraction": {Status: StatusFull}},
+					"Navigation": {"component_extraction": {Status: StatusFull}},
+				},
+			},
+		},
+	}
+	res := validateRegistry(reg, ".")
+	hasError := func(needle string) bool {
+		for _, e := range res.Errors {
+			if containsStr(e, needle) {
+				return true
+			}
+		}
+		return false
+	}
+	if hasError("lang.jsts.framework.react") {
+		t.Errorf("react should validate; got: %v", res.Errors)
+	}
+	if !hasError(`unknown group "Strcture"`) {
+		t.Errorf("expected unknown group error; got: %v", res.Errors)
+	}
+	if !hasError("does not belong to group") {
+		t.Errorf("expected capability-belongs-to-group error; got: %v", res.Errors)
+	}
+	if !hasError("already declared under group") {
+		t.Errorf("expected duplicate-key error; got: %v", res.Errors)
 	}
 }
 

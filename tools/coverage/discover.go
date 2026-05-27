@@ -1828,7 +1828,7 @@ func MergeWithRegistry(discovered map[string]*Candidate, reg *Registry, repoRoot
 				// Record has no discovered code evidence. Classification depends on status.
 				// Only records with status full/partial are orphans; status=missing is intentional.
 				isOrphan := false
-				for _, cap := range rec.Capabilities {
+				for _, cap := range rec.AllCapabilities() {
 					if cap.Status == StatusFull || cap.Status == StatusPartial {
 						isOrphan = true
 						break
@@ -1843,13 +1843,14 @@ func MergeWithRegistry(discovered map[string]*Candidate, reg *Registry, repoRoot
 			// Record has discovered code evidence. Check if it should be a status_upgrade_candidate.
 			isStatusUpgradeCandidate := true
 			suggestedStatus := "partial"
-			for _, cap := range rec.Capabilities {
+			recCaps := rec.AllCapabilities()
+			for _, cap := range recCaps {
 				if cap.Status != StatusMissing {
 					isStatusUpgradeCandidate = false
 					break
 				}
 			}
-			if isStatusUpgradeCandidate && len(rec.Capabilities) > 0 {
+			if isStatusUpgradeCandidate && len(recCaps) > 0 {
 				// All non-empty capabilities have status=missing, and we found evidence.
 				// Suggest partial (conservative) unless evidence suggests full.
 				if len(c.Evidence) > 3 {
@@ -1877,7 +1878,7 @@ func MergeWithRegistry(discovered map[string]*Candidate, reg *Registry, repoRoot
 			// exist on disk (resolved relative to repoRoot).
 			stale := []string{}
 			seen := map[string]bool{}
-			for _, cap := range rec.Capabilities {
+			for _, cap := range recCaps {
 				for _, cite := range cap.Cites {
 					if seen[cite] {
 						continue

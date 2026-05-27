@@ -57,23 +57,36 @@ type capEntry struct {
 	Cap Capability
 }
 
-// recordView wraps a Record with a pre-sorted CapList for templates.
+// groupView is one capability group rendered on a detail page or as a
+// digest cell on a pivot table.
+type groupView struct {
+	Name    string     // canonical group name (or "Uncategorized")
+	CapList []capEntry // sorted capability cells in this group
+	Digest  string     // "<glyph> <full>/<total>" or "—" when empty
+}
+
+// recordView wraps a Record with template-ready capability listings.
+//
+//   - CapList / CapByKey are the flat per-key listing used by pivot
+//     tables and the legacy non-grouped detail rendering.
+//   - GroupViews is populated only for grouped records and drives the
+//     per-group sub-tables on the detail page plus the group-digest
+//     cells on the per-language and per-category pivot tables.
+//   - GroupDigestByName maps canonical group name → its digest for
+//     templates that want O(1) cell lookup by column header.
 type recordView struct {
-	ID          string
-	Category    string
-	Subcategory string
-	Language    string
-	Label       string
-	Bucket      string
-	CapList     []capEntry
-	// CapByKey lets templates look up a capability cell by key without
-	// re-ranging CapList. Empty (missing) keys return the zero Capability;
-	// templates pair this with the Glyph helper to render "—".
-	CapByKey map[string]Capability
-	// Digest is the worst-status across this record's capabilities.
-	// Populated for every record; templates use it for the Other bucket's
-	// single Status column.
-	Digest string
+	ID                string
+	Category          string
+	Subcategory       string
+	Language          string
+	Label             string
+	Bucket            string
+	CapList           []capEntry
+	CapByKey          map[string]Capability
+	GroupViews        []groupView
+	GroupDigestByName map[string]string
+	Digest            string
+	Grouped           bool
 }
 
 // pivotRow is one row of the summary pivot table (rows = language,
@@ -93,22 +106,24 @@ type pivotRow struct {
 // bucketSection is one rendered section on a by-language page. When a
 // bucket contains records with subcategories the section is split into
 // Subsections (one per subcategory, ordered by subcategoryOrder) and a
-// final Records list holds the un-subcategorized tail. Records without
-// any subcategorised siblings fall through to the legacy single-table
-// rendering where Subsections is empty and CapabilityKeys carries the
-// bucket-wide union.
+// final Records list holds the un-subcategorized tail.
 type bucketSection struct {
-	Name           string   // bucket display name (Frameworks/Tools/ORMs/Other)
-	CapabilityKeys []string // capability columns; empty for Other
+	Name           string
+	CapabilityKeys []string
 	Records        []recordView
 	Subsections    []subSection
 }
 
 // subSection is one subcategory-scoped table inside a bucketSection.
+// When the subcategory has a declared group taxonomy (subcategoryGroups)
+// the table renders one column per group (group-digest cells) and
+// CapabilityKeys is unused. Otherwise the legacy per-capability column
+// set is used.
 type subSection struct {
 	Subcategory    string       // raw slug, used in IDs
 	Heading        string       // display heading (e.g. "UI Frontend")
-	CapabilityKeys []string     // columns specific to this subcategory
+	CapabilityKeys []string     // legacy columns (when no group taxonomy)
+	GroupNames     []string     // group-digest column headers
 	Records        []recordView // pre-sorted (label, ID)
 }
 
@@ -143,74 +158,163 @@ type categoryLanguageCount struct {
 // categoryRow is one row in the by-category table (Language column +
 // capability glyphs + Notes).
 type categoryRow struct {
-	Language    string
-	Label       string
-	ID          string
-	Subcategory string
-	CapList     []capEntry
-	CapByKey    map[string]Capability
-	Digest      string
+	Language          string
+	Label             string
+	ID                string
+	Subcategory       string
+	CapList           []capEntry
+	CapByKey          map[string]Capability
+	GroupViews        []groupView
+	GroupDigestByName map[string]string
+	Digest            string
+	Grouped           bool
 }
 
-// categoryPageData feeds by-category/<cat>.md.tmpl. Subsections holds
-// per-subcategory tables when the category exposes them; the legacy
-// single-table render uses Records + CapabilityKeys with Subsections
-// empty.
+// categoryPageData feeds by-category/<cat>.md.tmpl.
 type categoryPageData struct {
 	Marker         string
 	Category       string
 	Bucket         string
 	Total          int
 	ByLanguage     []categoryLanguageCount
-	CapabilityKeys []string // capability columns for this category's bucket
+	CapabilityKeys []string
 	Records        []categoryRow
 	Subsections    []categorySubSection
 }
 
 // categorySubSection is one subcategory-scoped table on a by-category
-// page (mirrors subSection for by-language, but uses categoryRow rows
-// because by-category tables include a Language column).
+// page. Mirrors subSection.
 type categorySubSection struct {
 	Subcategory    string
 	Heading        string
 	CapabilityKeys []string
+	GroupNames     []string
 	Records        []categoryRow
 }
 
-// detailPageData feeds detail/<id>.md.tmpl.
+// detailPageData feeds detail/<id>.md.tmpl. When Grouped is true the
+// template renders one sub-table per group (GroupViews); otherwise the
+// legacy single capability table (CapList) is used.
 type detailPageData struct {
-	Marker  string
-	Record  Record
-	CapList []capEntry
+	Marker     string
+	Record     Record
+	CapList    []capEntry
+	GroupViews []groupView
+	Grouped    bool
 }
 
 // recordToView materialises a Record with sorted capability entries so
 // templates iterate deterministically.
 func recordToView(rec Record) recordView {
-	keys := sortedCapKeys(rec.Capabilities)
+	flat := rec.AllCapabilities()
+	keys := sortedCapKeys(flat)
 	list := make([]capEntry, 0, len(keys))
 	byKey := make(map[string]Capability, len(keys))
 	for _, k := range keys {
-		list = append(list, capEntry{Key: k, Cap: rec.Capabilities[k]})
-		byKey[k] = rec.Capabilities[k]
+		list = append(list, capEntry{Key: k, Cap: flat[k]})
+		byKey[k] = flat[k]
 	}
-	return recordView{
-		ID:          rec.ID,
-		Category:    rec.Category,
-		Subcategory: rec.Subcategory,
-		Language:    rec.Language,
-		Label:       rec.Label,
-		Bucket:      bucketOf(rec.Category),
-		CapList:     list,
-		CapByKey:    byKey,
-		Digest:      digestStatus(rec.Capabilities),
+	view := recordView{
+		ID:                rec.ID,
+		Category:          rec.Category,
+		Subcategory:       rec.Subcategory,
+		Language:          rec.Language,
+		Label:             rec.Label,
+		Bucket:            bucketOf(rec.Category),
+		CapList:           list,
+		CapByKey:          byKey,
+		Digest:            digestStatus(flat),
+		Grouped:           rec.IsGrouped(),
+		GroupDigestByName: map[string]string{},
 	}
+	if rec.IsGrouped() {
+		view.GroupViews = buildGroupViews(rec)
+		for _, g := range view.GroupViews {
+			view.GroupDigestByName[g.Name] = g.Digest
+		}
+	}
+	return view
+}
+
+// buildGroupViews materialises one groupView per declared group in the
+// subcategory's taxonomy, in canonical order. Empty groups (records that
+// have not yet populated every group) still render with a "—" digest so
+// the pivot table column layout is stable across records.
+func buildGroupViews(rec Record) []groupView {
+	canon := knownGroupNames(rec.Subcategory)
+	seen := map[string]bool{}
+	views := make([]groupView, 0, len(canon)+len(rec.Groups))
+	for _, name := range canon {
+		caps := rec.Groups[name]
+		views = append(views, makeGroupView(name, caps))
+		seen[name] = true
+	}
+	// Any extras (Uncategorized or unknown group names that survived
+	// validation only because of legacy data) get appended alphabetically.
+	extras := make([]string, 0)
+	for name := range rec.Groups {
+		if !seen[name] {
+			extras = append(extras, name)
+		}
+	}
+	sort.Strings(extras)
+	for _, name := range extras {
+		views = append(views, makeGroupView(name, rec.Groups[name]))
+	}
+	return views
+}
+
+// makeGroupView constructs a groupView from a group name + its cell
+// map. The CapList is sorted alphabetically by key; the digest follows
+// the "<glyph> <full-count>/<total>" convention from #2737.
+func makeGroupView(name string, caps map[string]Capability) groupView {
+	keys := sortedCapKeys(caps)
+	list := make([]capEntry, 0, len(keys))
+	for _, k := range keys {
+		list = append(list, capEntry{Key: k, Cap: caps[k]})
+	}
+	return groupView{
+		Name:    name,
+		CapList: list,
+		Digest:  groupDigest(caps),
+	}
+}
+
+// groupDigest returns the worst-glyph + full-count/total summary for a
+// group's capability cells. Empty groups (no cells declared) render as
+// "—" so pivot rows for sparsely-populated records still align under
+// every group column. The full-count counts StatusFull only — partials
+// are folded into the glyph severity but not the numerator (the cell
+// already differentiates ✅/⚠️/❌).
+func groupDigest(caps map[string]Capability) string {
+	if len(caps) == 0 {
+		return "—"
+	}
+	full := 0
+	worst := ""
+	worstRank := -1
+	rank := map[string]int{
+		StatusMissing:       4,
+		StatusPartial:       3,
+		StatusFull:          2,
+		StatusNotApplicable: 1,
+		"":                  0,
+	}
+	for _, c := range caps {
+		if c.Status == StatusFull {
+			full++
+		}
+		if r := rank[c.Status]; r > worstRank {
+			worstRank = r
+			worst = c.Status
+		}
+	}
+	return fmt.Sprintf("%s %d/%d", statusGlyph(worst), full, len(caps))
 }
 
 // languageDisplay maps a language slug to its human-facing label. Slugs
 // without an entry render verbatim. "jsts" expands to "JS/TS" because
-// the registry collapses JavaScript and TypeScript under one tag (see
-// the Record.Language docstring).
+// the registry collapses JavaScript and TypeScript under one tag.
 func languageDisplay(slug string) string {
 	switch slug {
 	case "jsts":
@@ -219,13 +323,27 @@ func languageDisplay(slug string) string {
 	return slug
 }
 
-// templateFuncs are the helpers exposed to templates. Kept minimal so
-// most rendering logic lives in Go where it can be tested.
+// templateFuncs are the helpers exposed to templates.
 var templateFuncs = template.FuncMap{
-	"glyph":       statusGlyph,
-	"langDsp":     languageDisplay,
-	"prettyKey":   prettyKey,
-	"subHeading":  subcategoryHeading,
+	"glyph":      statusGlyph,
+	"langDsp":    languageDisplay,
+	"prettyKey":  prettyKey,
+	"subHeading": subcategoryHeading,
+	"groupCell":  groupCell,
+}
+
+// groupCell returns the digest string for groupName on a recordView or
+// categoryRow-like value. It accepts a map[string]string lookup so the
+// template can keep its expressions terse. Missing entries render as
+// "—" so columns never leave blank cells.
+func groupCell(byName map[string]string, groupName string) string {
+	if byName == nil {
+		return "—"
+	}
+	if v, ok := byName[groupName]; ok {
+		return v
+	}
+	return "—"
 }
 
 // generate writes the full markdown tree under outRoot/docs/coverage.
@@ -238,8 +356,6 @@ func generate(reg *Registry, outRoot string) error {
 		return err
 	}
 
-	// Sorted record views (registry already sorts records, but be defensive
-	// so generate works on any *Registry, not just one fresh from saveRegistry).
 	sortedRecs := make([]Record, len(reg.Records))
 	copy(sortedRecs, reg.Records)
 	sort.Slice(sortedRecs, func(i, j int) bool { return sortedRecs[i].ID < sortedRecs[j].ID })
@@ -248,7 +364,6 @@ func generate(reg *Registry, outRoot string) error {
 		allViews[i] = recordToView(r)
 	}
 
-	// Group views per language, per category, and per (language, bucket).
 	byLang := map[string][]recordView{}
 	byCat := map[string][]recordView{}
 	byLangBucket := map[string]map[string][]recordView{}
@@ -263,23 +378,18 @@ func generate(reg *Registry, outRoot string) error {
 		langSet[v.Language] = struct{}{}
 	}
 
-	// Sort language names for deterministic iteration. The pivot table
-	// lists each language alphabetically; templates do not re-sort.
 	langNames := make([]string, 0, len(langSet))
 	for n := range langSet {
 		langNames = append(langNames, n)
 	}
 	sort.Strings(langNames)
 
-	// Sort category names.
 	catNames := make([]string, 0, len(byCat))
 	for n := range byCat {
 		catNames = append(catNames, n)
 	}
 	sort.Strings(catNames)
 
-	// Records within each slice are sorted by label (then ID for stability)
-	// per #2725 rendering rules.
 	sortByLabel := func(rs []recordView) {
 		sort.SliceStable(rs, func(i, j int) bool {
 			if rs[i].Label != rs[j].Label {
@@ -309,7 +419,6 @@ func generate(reg *Registry, outRoot string) error {
 		return err
 	}
 
-	// Build summary pivot rows.
 	totals := pivotRow{}
 	rows := make([]pivotRow, 0, len(langNames)+1)
 	for _, n := range langNames {
@@ -326,9 +435,6 @@ func generate(reg *Registry, outRoot string) error {
 		totals.Tools += row.Tools
 		totals.ORMs += row.ORMs
 		totals.Other += row.Other
-		// Language-neutral pseudo-language. Surface it as an explicit
-		// "Uncategorized" row at the bottom rather than blending into the
-		// alphabetical list (per #2725 spec).
 		if n == "multi" || n == "" {
 			row.Name = "Uncategorized"
 			row.Display = "Uncategorized"
@@ -336,7 +442,6 @@ func generate(reg *Registry, outRoot string) error {
 		}
 		rows = append(rows, row)
 	}
-	// Move any Uncategorized rows to the end.
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Uncategorized != rows[j].Uncategorized {
 			return !rows[i].Uncategorized
@@ -356,7 +461,6 @@ func generate(reg *Registry, outRoot string) error {
 		return err
 	}
 
-	// Per-language pages.
 	for _, n := range langNames {
 		buckets := byLangBucket[n]
 		sections := make([]bucketSection, 0, len(bucketOrder))
@@ -386,11 +490,9 @@ func generate(reg *Registry, outRoot string) error {
 		}
 	}
 
-	// Per-category pages.
 	for _, n := range catNames {
 		recs := byCat[n]
 		bucket := bucketOf(n)
-		// Per-language banner counts for this category.
 		perLang := map[string]int{}
 		for _, r := range recs {
 			perLang[r.Language]++
@@ -404,11 +506,6 @@ func generate(reg *Registry, outRoot string) error {
 		for _, l := range langs {
 			banner = append(banner, categoryLanguageCount{Language: l, Count: perLang[l]})
 		}
-		// Capability keys: prefer the bucket-wide union for framework/orm/tool
-		// pages so the column set is consistent across categories in the
-		// same bucket. For Other categories, use the category's own keys
-		// (the bucket-wide nil signals "digest only", but per-category
-		// pages still benefit from showing the real columns).
 		var keys []string
 		if bucket == BucketOther {
 			keys = make([]string, len(categoryCapabilities[n]))
@@ -417,18 +514,19 @@ func generate(reg *Registry, outRoot string) error {
 		} else {
 			keys = bucketCapabilityKeys(bucket)
 		}
-		// Rows sorted by language then label (already label-sorted; do a
-		// stable resort by language).
 		rows := make([]categoryRow, 0, len(recs))
 		for _, r := range recs {
 			rows = append(rows, categoryRow{
-				Language:    r.Language,
-				Label:       r.Label,
-				ID:          r.ID,
-				Subcategory: r.Subcategory,
-				CapList:     r.CapList,
-				CapByKey:    r.CapByKey,
-				Digest:      r.Digest,
+				Language:          r.Language,
+				Label:             r.Label,
+				ID:                r.ID,
+				Subcategory:       r.Subcategory,
+				CapList:           r.CapList,
+				CapByKey:          r.CapByKey,
+				GroupViews:        r.GroupViews,
+				GroupDigestByName: r.GroupDigestByName,
+				Digest:            r.Digest,
+				Grouped:           r.Grouped,
 			})
 		}
 		sort.SliceStable(rows, func(i, j int) bool {
@@ -437,9 +535,6 @@ func generate(reg *Registry, outRoot string) error {
 			}
 			return rows[i].Label < rows[j].Label
 		})
-		// Group by subcategory when the category supports them and at
-		// least one record opts in. Records without a subcategory fall
-		// through to the legacy flat table at the bottom of the page.
 		subSecs, flatRows := splitCategoryRowsBySubcategory(n, rows)
 		if err := renderToFile(tmpls, "by-category.md.tmpl",
 			filepath.Join(root, "by-category", n+".md"),
@@ -457,15 +552,16 @@ func generate(reg *Registry, outRoot string) error {
 		}
 	}
 
-	// Per-record detail pages.
 	for _, rec := range sortedRecs {
 		view := recordToView(rec)
 		if err := renderToFile(tmpls, "detail.md.tmpl",
 			filepath.Join(root, "detail", rec.ID+".md"),
 			detailPageData{
-				Marker:  doNotEditMarker,
-				Record:  rec,
-				CapList: view.CapList,
+				Marker:     doNotEditMarker,
+				Record:     rec,
+				CapList:    view.CapList,
+				GroupViews: view.GroupViews,
+				Grouped:    view.Grouped,
 			}); err != nil {
 			return err
 		}
@@ -477,27 +573,17 @@ func generate(reg *Registry, outRoot string) error {
 // When any record in recs declares a subcategory, the section is split
 // into one subSection per subcategory (ordered by subcategoryOrder)
 // plus a final flat Records list for legacy un-subcategorised entries.
-// Buckets whose records all live at the category level keep the
-// original single-table render with CapabilityKeys = bucket union.
+// Subsections whose subcategory has a declared group taxonomy switch
+// from per-capability columns to per-group digest columns.
 func buildBucketSection(bucket string, recs []recordView) bucketSection {
 	bySub := map[string][]recordView{}
 	var flat []recordView
-	subCat := ""
 	for _, r := range recs {
 		if r.Subcategory == "" {
 			flat = append(flat, r)
 			continue
 		}
-		// All records in a bucket share the same category? Not strictly:
-		// the bucket maps multiple categories. But subcategoryCapabilities
-		// is category-scoped, so we route subcategory rendering by the
-		// record's own category. Track the dominant category for ordering
-		// — when multiple categories appear in one bucket we union their
-		// subcategoryOrder lists.
 		bySub[r.Subcategory] = append(bySub[r.Subcategory], r)
-		if subCat == "" {
-			subCat = r.Category
-		}
 	}
 	if len(bySub) == 0 {
 		return bucketSection{
@@ -506,9 +592,6 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 			Records:        recs,
 		}
 	}
-	// Collect ordered subcategory slugs across all categories represented
-	// in this bucket. categoriesInBucket is small (1–5) so the nested
-	// loop is fine and keeps ordering deterministic.
 	cats := map[string]bool{}
 	for _, r := range recs {
 		if r.Subcategory != "" {
@@ -520,11 +603,11 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 		catList = append(catList, c)
 	}
 	sort.Strings(catList)
-	seen := map[string]bool{}
 	merged := map[string]bool{}
 	for s := range bySub {
 		merged[s] = true
 	}
+	seen := map[string]bool{}
 	ordered := make([]string, 0, len(merged))
 	for _, c := range catList {
 		for _, s := range subcategoryOrder[c] {
@@ -534,8 +617,6 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 			}
 		}
 	}
-	// Any leftover subcategories (declared on records but not in
-	// subcategoryOrder for their category) sort alphabetically.
 	extras := make([]string, 0)
 	for s := range merged {
 		if !seen[s] {
@@ -548,17 +629,19 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 	subs := make([]subSection, 0, len(ordered))
 	for _, s := range ordered {
 		recsForSub := bySub[s]
-		// Pick a representative category to source the capability key
-		// union. When multiple categories share a subcategory slug we
-		// pick the first record's category (deterministic because recs
-		// is pre-sorted by label/ID).
 		cat := recsForSub[0].Category
-		subs = append(subs, subSection{
-			Subcategory:    s,
-			Heading:        subcategoryHeading(s),
-			CapabilityKeys: subcategoryRenderKeys(cat, s),
-			Records:        recsForSub,
-		})
+		groupNames := knownGroupNames(s)
+		sec := subSection{
+			Subcategory: s,
+			Heading:     subcategoryHeading(s),
+			Records:     recsForSub,
+		}
+		if len(groupNames) > 0 {
+			sec.GroupNames = groupNames
+		} else {
+			sec.CapabilityKeys = subcategoryRenderKeys(cat, s)
+		}
+		subs = append(subs, sec)
 	}
 	return bucketSection{
 		Name:           bucket,
@@ -570,9 +653,8 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 
 // splitCategoryRowsBySubcategory partitions by-category rows into
 // per-subcategory subsections plus a tail of un-subcategorised rows.
-// When no row carries a subcategory, the subsection slice is nil and
-// all rows are returned verbatim so the legacy single-table template
-// path takes over.
+// Subcategories with a declared group taxonomy switch from per-capability
+// columns to per-group digest columns (parallel to buildBucketSection).
 func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]categorySubSection, []categoryRow) {
 	bySub := map[string][]categoryRow{}
 	var flat []categoryRow
@@ -593,12 +675,18 @@ func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]cate
 	ordered := orderedSubcategories(category, present)
 	subs := make([]categorySubSection, 0, len(ordered))
 	for _, s := range ordered {
-		subs = append(subs, categorySubSection{
-			Subcategory:    s,
-			Heading:        subcategoryHeading(s),
-			CapabilityKeys: subcategoryRenderKeys(category, s),
-			Records:        bySub[s],
-		})
+		groupNames := knownGroupNames(s)
+		sec := categorySubSection{
+			Subcategory: s,
+			Heading:     subcategoryHeading(s),
+			Records:     bySub[s],
+		}
+		if len(groupNames) > 0 {
+			sec.GroupNames = groupNames
+		} else {
+			sec.CapabilityKeys = subcategoryRenderKeys(category, s)
+		}
+		subs = append(subs, sec)
 	}
 	return subs, flat
 }
@@ -610,9 +698,6 @@ func renderToFile(tmpls *template.Template, name, path string, data any) error {
 	if err := tmpls.ExecuteTemplate(&buf, name, data); err != nil {
 		return fmt.Errorf("execute %s: %w", name, err)
 	}
-	// Ensure file ends with exactly one trailing newline. Templates may
-	// or may not include one; normalising here keeps output stable across
-	// template edits.
 	out := bytes.TrimRight(buf.Bytes(), "\n")
 	out = append(out, '\n')
 

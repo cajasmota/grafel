@@ -212,29 +212,29 @@ func cmdUpdate(args []string, out io.Writer) error {
 	} else if !validCapabilityKey(rec.Category, *cap) {
 		return fmt.Errorf("update: capability %q not valid for category %q", *cap, rec.Category)
 	}
-	if rec.Capabilities == nil {
-		rec.Capabilities = map[string]Capability{}
-	}
-	cell := rec.Capabilities[*cap]
-	cell.Status = *status
-	if *cites != "" {
-		parts := strings.Split(*cites, ",")
-		clean := make([]string, 0, len(parts))
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				clean = append(clean, p)
-			}
+	// Route the write to the right shape. Grouped records auto-place
+	// the cell into its canonical group (per subcategoryGroups); keys
+	// outside the taxonomy fall into the synthetic Uncategorized
+	// group so we never lose data.
+	if rec.IsGrouped() {
+		group := groupForCapability(rec.Subcategory, *cap)
+		if group == "" {
+			group = uncategorizedGroup
 		}
-		cell.Cites = clean
+		if rec.Groups[group] == nil {
+			rec.Groups[group] = map[string]Capability{}
+		}
+		cell := rec.Groups[group][*cap]
+		applyUpdateFlags(&cell, *status, *cites, *issue, *verifiedNow)
+		rec.Groups[group][*cap] = cell
+	} else {
+		if rec.Capabilities == nil {
+			rec.Capabilities = map[string]Capability{}
+		}
+		cell := rec.Capabilities[*cap]
+		applyUpdateFlags(&cell, *status, *cites, *issue, *verifiedNow)
+		rec.Capabilities[*cap] = cell
 	}
-	if *issue != "" {
-		cell.Issue = *issue
-	}
-	if *verifiedNow {
-		cell.VerifiedAt = time.Now().UTC().Format("2006-01-02")
-	}
-	rec.Capabilities[*cap] = cell
 	if err := saveRegistry(*path, reg); err != nil {
 		return err
 	}
@@ -352,6 +352,30 @@ func cmdValidate(args []string, out, errw io.Writer) error {
 	}
 	fmt.Fprintf(out, "ok: %d record(s), %d warning(s)\n", len(reg.Records), len(res.Warnings))
 	return nil
+}
+
+// applyUpdateFlags mutates cell with the non-empty CLI flags from
+// cmdUpdate. Shared between the flat and grouped write paths so cell
+// semantics stay identical regardless of capability shape.
+func applyUpdateFlags(cell *Capability, status, cites, issue string, verifiedNow bool) {
+	cell.Status = status
+	if cites != "" {
+		parts := strings.Split(cites, ",")
+		clean := make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				clean = append(clean, p)
+			}
+		}
+		cell.Cites = clean
+	}
+	if issue != "" {
+		cell.Issue = issue
+	}
+	if verifiedNow {
+		cell.VerifiedAt = time.Now().UTC().Format("2006-01-02")
+	}
 }
 
 // sortStrings is a tiny local helper to avoid pulling sort into main.go

@@ -10,15 +10,38 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Structure
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `component_extraction` | ❌ `missing` | — | — | — | — |
-| `data_loaders` | ❌ `missing` | — | — | — | — |
 | `hook_recognition` | ❌ `missing` | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `data_loaders` | ❌ `missing` | — | — | — | — |
+
+### Server
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `hydration_boundaries` | ❌ `missing` | — | — | — | — |
+| `server_components` | ❌ `missing` | — | — | — | — |
+
+### Routing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `route_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/gatsby.yaml` |
 | `router_pattern` | ❌ `missing` | — | — | — | — |
-| `server_components` | ❌ `missing` | — | — | — | — |
+
+### Build
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `static_generation` | ❌ `missing` | — | — | — | — |
 
 ## Provenance

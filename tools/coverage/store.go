@@ -68,7 +68,8 @@ func saveRegistry(path string, reg *Registry) error {
 
 // sortRegistry sorts records by ID and also sorts each record's cites
 // slice deterministically. Capability map ordering is handled at
-// marshal time.
+// marshal time. Both flat and grouped capability shapes have their
+// cite slices normalised.
 func sortRegistry(reg *Registry) {
 	sort.Slice(reg.Records, func(i, j int) bool {
 		return reg.Records[i].ID < reg.Records[j].ID
@@ -77,6 +78,13 @@ func sortRegistry(reg *Registry) {
 		for k, cap := range reg.Records[i].Capabilities {
 			sort.Strings(cap.Cites)
 			reg.Records[i].Capabilities[k] = cap
+		}
+		for g, inner := range reg.Records[i].Groups {
+			for k, cap := range inner {
+				sort.Strings(cap.Cites)
+				inner[k] = cap
+			}
+			reg.Records[i].Groups[g] = inner
 		}
 	}
 }
@@ -132,24 +140,105 @@ func writeRecord(buf *bytes.Buffer, rec Record, indent string) error {
 		return err
 	}
 	buf.WriteString(inner + "\"capabilities\": {")
-	keys := sortedCapKeys(rec.Capabilities)
-	if len(keys) > 0 {
-		buf.WriteString("\n")
-	}
-	for i, k := range keys {
-		cap := rec.Capabilities[k]
-		if err := writeCapability(buf, inner+"  ", k, cap); err != nil {
+	if rec.IsGrouped() {
+		if err := writeGroupedCapabilities(buf, inner+"  ", rec); err != nil {
 			return err
 		}
-		if i < len(keys)-1 {
-			buf.WriteString(",\n")
-		} else {
-			buf.WriteString("\n" + inner)
+	} else {
+		keys := sortedCapKeys(rec.Capabilities)
+		if len(keys) > 0 {
+			buf.WriteString("\n")
+		}
+		for i, k := range keys {
+			cap := rec.Capabilities[k]
+			if err := writeCapability(buf, inner+"  ", k, cap); err != nil {
+				return err
+			}
+			if i < len(keys)-1 {
+				buf.WriteString(",\n")
+			} else {
+				buf.WriteString("\n" + inner)
+			}
 		}
 	}
 	buf.WriteString("}\n")
 	buf.WriteString(indent + "}")
 	return nil
+}
+
+// writeGroupedCapabilities serialises the nested capability shape as
+// "capabilities": { "Group": { "key": {cell}, ... }, ... }. Group names
+// are emitted in their canonical taxonomy order (subcategoryGroups),
+// then any extras (including the synthetic "Uncategorized" group) in
+// alphabetical order. Within each group, capability keys sort
+// alphabetically so output is byte-for-byte stable.
+func writeGroupedCapabilities(buf *bytes.Buffer, indent string, rec Record) error {
+	groups := orderedGroupNames(rec.Subcategory, rec.Groups)
+	if len(groups) == 0 {
+		return nil
+	}
+	buf.WriteString("\n")
+	for gi, gname := range groups {
+		encG, err := json.Marshal(gname)
+		if err != nil {
+			return err
+		}
+		buf.WriteString(indent)
+		buf.Write(encG)
+		buf.WriteString(": {")
+		inner := indent + "  "
+		caps := rec.Groups[gname]
+		keys := sortedCapKeys(caps)
+		if len(keys) > 0 {
+			buf.WriteString("\n")
+		}
+		for i, k := range keys {
+			if err := writeCapability(buf, inner, k, caps[k]); err != nil {
+				return err
+			}
+			if i < len(keys)-1 {
+				buf.WriteString(",\n")
+			} else {
+				buf.WriteString("\n" + indent)
+			}
+		}
+		buf.WriteString("}")
+		if gi < len(groups)-1 {
+			buf.WriteString(",\n")
+		} else {
+			buf.WriteString("\n")
+			// Trim indent back to the "capabilities": { level.
+			buf.WriteString(indent[:len(indent)-2])
+		}
+	}
+	return nil
+}
+
+// orderedGroupNames returns the group names present in groups, sorted
+// by canonical order from subcategoryGroups first then alphabetically
+// for any extras (e.g. the synthetic "Uncategorized" bucket).
+func orderedGroupNames(sub string, groups map[string]map[string]Capability) []string {
+	known := knownGroupNames(sub)
+	present := map[string]bool{}
+	for g := range groups {
+		present[g] = true
+	}
+	out := make([]string, 0, len(present))
+	seen := map[string]bool{}
+	for _, g := range known {
+		if present[g] {
+			out = append(out, g)
+			seen[g] = true
+		}
+	}
+	extras := make([]string, 0)
+	for g := range present {
+		if !seen[g] {
+			extras = append(extras, g)
+		}
+	}
+	sort.Strings(extras)
+	return append(out, extras...)
 }
 
 // writeJSONField writes a "key": value pair using encoding/json for

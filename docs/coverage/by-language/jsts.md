@@ -10,68 +10,75 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Auth Coverage | DTO Extraction | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Request Validation | Route Extraction | Tests Linkage | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
-| [Express](../detail/lang.jsts.framework.express.md) | ❌ | — | ✅ | ✅ | ⚠️ | — | — | — | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ | — | ✅ | ✅ | ❌ | — | — | — | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | ❌ | — | ✅ | ✅ | ❌ | — | — | — | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | ❌ | — | ✅ | ✅ | ❌ | — | — | — | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ⚠️ | — | ✅ | ✅ | ⚠️ | — | — | — | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | ❌ | — | ❌ | ❌ | ❌ | — | — | — | |
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Express](../detail/lang.jsts.framework.express.md) | ✅ 2/2 | ❌ 0/1 | — | ⚠️ 0/1 | — | — | — | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ⚠️ 0/1 | — | ⚠️ 0/1 | — | — | — | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | |
+
 
 ### UI Frontend
 
-| Name | Component Extraction | Data Fetching | Hook Recognition | JSX Template | Prop Extraction | Router Pattern | State Management | Notes |
-|---|---|---|---|---|---|---|---|---|
-| [Angular](../detail/lang.jsts.framework.angular.md) | ❌ | ❌ | — | — | ❌ | ❌ | ❌ | |
-| [React](../detail/lang.jsts.framework.react.md) | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ✅ | ⚠️ | |
-| [Svelte](../detail/lang.jsts.framework.svelte.md) | ❌ | ❌ | — | — | ❌ | ❌ | ❌ | |
-| [Vue](../detail/lang.jsts.framework.vue.md) | ❌ | ❌ | ❌ | — | ❌ | ❌ | ❌ | |
+| Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Notes |
+|---|---|---|---|---|---|---|---|
+| [Angular](../detail/lang.jsts.framework.angular.md) | ❌ 0/3 | ❌ 0/3 | ❌ 0/1 | — | — | — | |
+| [React](../detail/lang.jsts.framework.react.md) | ⚠️ 0/3 | ⚠️ 0/3 | ✅ 1/1 | — | — | — | |
+| [Svelte](../detail/lang.jsts.framework.svelte.md) | ❌ 0/3 | ❌ 0/3 | ❌ 0/1 | — | — | — | |
+| [Vue](../detail/lang.jsts.framework.vue.md) | ❌ 0/3 | ❌ 0/3 | ❌ 0/1 | — | — | — | |
+
 
 ### Meta Framework
 
-| Name | Component Extraction | Data Loaders | Hook Recognition | Hydration Boundaries | Route Extraction | Router Pattern | Server Components | Static Generation | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [Astro](../detail/lang.jsts.framework.astro.md) | ❌ | ❌ | — | ❌ | ✅ | ❌ | ❌ | ❌ | |
-| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ❌ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ | |
-| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | |
-| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ❌ | ❌ | — | ❌ | ✅ | ❌ | ❌ | ❌ | |
-| [Remix](../detail/lang.jsts.framework.remix.md) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | |
-| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ❌ | ❌ | — | ❌ | ✅ | ❌ | ❌ | ❌ | |
+| Name | Structure | Data Flow | Server | Routing | Build | Notes |
+|---|---|---|---|---|---|---|
+| [Astro](../detail/lang.jsts.framework.astro.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | |
+| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | |
+| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ✅ 2/2 | ❌ 0/1 | |
+| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | |
+| [Remix](../detail/lang.jsts.framework.remix.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | |
+| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | |
+
 
 ### Mobile
 
-| Name | Deep Link Extraction | Native Module Imports | Navigation Extraction | Platform Branching | Screen Detection | State Management | Notes |
-|---|---|---|---|---|---|---|---|
-| [Expo](../detail/lang.jsts.framework.expo.md) | ❌ | ❌ | ✅ | ⚠️ | ✅ | ⚠️ | |
-| [Ionic](../detail/lang.jsts.framework.ionic.md) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | |
-| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | |
-| [React Native](../detail/lang.jsts.framework.react-native.md) | ❌ | ❌ | ✅ | ⚠️ | ✅ | ⚠️ | |
+| Name | Navigation | Platform | Native Bridge | Data Flow | Lifecycle | Notes |
+|---|---|---|---|---|---|---|
+| [Expo](../detail/lang.jsts.framework.expo.md) | ❌ 2/3 | ⚠️ 0/1 | ❌ 0/1 | ⚠️ 0/1 | — | |
+| [Ionic](../detail/lang.jsts.framework.ionic.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/1 | — | |
+| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/1 | — | |
+| [React Native](../detail/lang.jsts.framework.react-native.md) | ❌ 2/3 | ⚠️ 0/1 | ❌ 0/1 | ⚠️ 0/1 | — | |
+
 
 ### Desktop
 
-| Name | IPC Extraction | Main Renderer Split | Native Module Imports | Notes |
+| Name | Process | Native | Updates | Notes |
 |---|---|---|---|---|
-| [Electron](../detail/lang.jsts.framework.electron.md) | ❌ | ⚠️ | ❌ | |
+| [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/2 | ❌ 0/1 | — | |
+
 
 ### RPC Framework
 
-| Name | Client Codegen | Procedure Extraction | Schema Extraction | Notes |
+| Name | Schema | Codegen | Transport | Notes |
 |---|---|---|---|---|
-| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ❌ | ✅ | ✅ | |
-| [tRPC](../detail/lang.jsts.framework.trpc.md) | ❌ | ✅ | ⚠️ | |
+| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | — | |
+| [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | — | |
+
 
 ### AI Integration
 
-| Name | Chain Composition | Prompt Template Extraction | Tool Use Detection | Notes |
+| Name | Prompts | Composition | Tracking | Notes |
 |---|---|---|---|---|
-| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ | ⚠️ | ❌ | |
+| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ 0/1 | ❌ 0/2 | — | |
+
 
 ## Tools
 

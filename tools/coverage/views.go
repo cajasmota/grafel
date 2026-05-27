@@ -30,9 +30,10 @@ func listRecords(reg *Registry, f ListFilter) []Record {
 		if f.Category != "" && rec.Category != f.Category {
 			continue
 		}
+		caps := rec.AllCapabilities()
 		if f.Status != "" {
 			match := false
-			for _, cap := range rec.Capabilities {
+			for _, cap := range caps {
 				if cap.Status == f.Status {
 					match = true
 					break
@@ -44,7 +45,7 @@ func listRecords(reg *Registry, f ListFilter) []Record {
 		}
 		if f.StaleDays > 0 {
 			stale := false
-			for _, cap := range rec.Capabilities {
+			for _, cap := range caps {
 				if cap.VerifiedAt == "" {
 					continue
 				}
@@ -104,7 +105,7 @@ func computeStats(reg *Registry) Stats {
 		s.ByCategory[rec.Category]++
 		ls := s.ByLanguage[rec.Language]
 		ls.Records++
-		for _, cap := range rec.Capabilities {
+		for _, cap := range rec.AllCapabilities() {
 			s.Capabilities++
 			s.ByStatus[cap.Status]++
 			switch cap.Status {
@@ -135,7 +136,7 @@ func gapsRecords(reg *Registry, language, category string) []Record {
 			continue
 		}
 		hit := false
-		for _, cap := range rec.Capabilities {
+		for _, cap := range rec.AllCapabilities() {
 			if cap.Status == StatusMissing || cap.Status == StatusPartial {
 				hit = true
 				break
@@ -149,14 +150,16 @@ func gapsRecords(reg *Registry, language, category string) []Record {
 	return out
 }
 
-// printRecordsText writes a human-readable table to w.
+// printRecordsText writes a human-readable table to w. Grouped records
+// flatten capabilities for display; the per-group structure is shown
+// on the markdown detail pages and via JSON output.
 func printRecordsText(w io.Writer, recs []Record) {
 	for _, rec := range recs {
 		fmt.Fprintf(w, "%-50s  %-18s  %-12s  %s\n", rec.ID, rec.Category, rec.Language, rec.Label)
-		keys := sortedCapKeys(rec.Capabilities)
+		caps := rec.AllCapabilities()
+		keys := sortedCapKeys(caps)
 		for _, k := range keys {
-			cap := rec.Capabilities[k]
-			fmt.Fprintf(w, "    %-30s  %s\n", k, cap.Status)
+			fmt.Fprintf(w, "    %-30s  %s\n", k, caps[k].Status)
 		}
 	}
 }

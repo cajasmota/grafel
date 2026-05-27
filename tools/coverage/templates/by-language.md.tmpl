@@ -17,7 +17,15 @@ Back to [summary](../summary.md).
 {{- range .Subsections}}
 
 ### {{.Heading}}
-
+{{if .GroupNames}}
+| Name |{{range .GroupNames}} {{.}} |{{end}} Notes |
+|---|{{range .GroupNames}}---|{{end}}---|
+{{- $groups := .GroupNames}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{.Label}}](../detail/{{.ID}}.md) |{{range $groups}} {{groupCell $rec.GroupDigestByName .}} |{{end}} |
+{{- end}}
+{{else}}
 | Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
 |---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
@@ -25,6 +33,7 @@ Back to [summary](../summary.md).
 {{- $rec := .}}
 | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
 {{- end}}
+{{end}}
 {{- end}}
 {{- if .Records}}
 

@@ -10,11 +10,24 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Prompts
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `prompt_template_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/langchain.yaml` |
+
+### Composition
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `chain_composition` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/langchain.yaml` |
-| `prompt_template_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/langchain.yaml` |
 | `tool_use_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
+
+### Tracking
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 
 ## Provenance
 

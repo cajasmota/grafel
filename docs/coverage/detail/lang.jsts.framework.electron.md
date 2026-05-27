@@ -10,11 +10,24 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Process
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `ipc_extraction` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | — |
 | `main_renderer_split` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/electron.yaml` |
+
+### Native
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 | `native_module_imports` | ❌ `missing` | — | — | — | — |
+
+### Updates
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 
 ## Provenance
 

@@ -10,15 +10,43 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
+
+### Structure
+
 | Capability | Status | Verified at | Verified SHA | Issue | Cites |
 |------------|--------|-------------|--------------|-------|-------|
 | `component_extraction` | ❌ `missing` | — | — | — | — |
-| `data_fetching` | ❌ `missing` | — | — | — | — |
 | `hook_recognition` | — `not_applicable` | — | — | — | — |
 | `jsx_template` | — `not_applicable` | — | — | — | — |
+
+### Data Flow
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `data_fetching` | ❌ `missing` | — | — | — | — |
 | `prop_extraction` | ❌ `missing` | — | — | — | — |
-| `router_pattern` | ❌ `missing` | — | — | — | — |
 | `state_management` | ❌ `missing` | — | — | — | — |
+
+### Navigation
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+| `router_pattern` | ❌ `missing` | — | — | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+
+### Lifecycle
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
+
+### Testing
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites |
+|------------|--------|-------------|--------------|-------|-------|
 
 ## Provenance
 

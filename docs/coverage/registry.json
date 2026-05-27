@@ -4180,17 +4180,23 @@
       "language": "jsts",
       "label": "AdonisJS",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing"
+          },
+          "handler_attribution": {
+            "status": "missing"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "missing"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "missing"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4201,26 +4207,32 @@
       "language": "jsts",
       "label": "Angular",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "not_applicable"
+          },
+          "jsx_template": {
+            "status": "not_applicable"
+          }
         },
-        "data_fetching": {
-          "status": "missing"
+        "Data Flow": {
+          "data_fetching": {
+            "status": "missing"
+          },
+          "prop_extraction": {
+            "status": "missing"
+          },
+          "state_management": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "not_applicable"
-        },
-        "jsx_template": {
-          "status": "not_applicable"
-        },
-        "prop_extraction": {
-          "status": "missing"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "state_management": {
-          "status": "missing"
+        "Navigation": {
+          "router_pattern": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4231,31 +4243,41 @@
       "language": "jsts",
       "label": "Astro",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "not_applicable"
+          }
         },
-        "data_loaders": {
-          "status": "missing"
+        "Data Flow": {
+          "data_loaders": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "not_applicable"
+        "Server": {
+          "hydration_boundaries": {
+            "status": "missing"
+          },
+          "server_components": {
+            "status": "missing"
+          }
         },
-        "hydration_boundaries": {
-          "status": "missing"
+        "Routing": {
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/astro.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "router_pattern": {
+            "status": "missing"
+          }
         },
-        "route_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/astro.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "server_components": {
-          "status": "missing"
-        },
-        "static_generation": {
-          "status": "missing"
+        "Build": {
+          "static_generation": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4266,18 +4288,22 @@
       "language": "jsts",
       "label": "Electron",
       "capabilities": {
-        "ipc_extraction": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Process": {
+          "ipc_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          },
+          "main_renderer_split": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/electron.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          }
         },
-        "main_renderer_split": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/electron.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
-        },
-        "native_module_imports": {
-          "status": "missing"
+        "Native": {
+          "native_module_imports": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4288,35 +4314,43 @@
       "language": "jsts",
       "label": "Expo",
       "capabilities": {
-        "deep_link_extraction": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Navigation": {
+          "deep_link_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          },
+          "navigation_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "screen_detection": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "native_module_imports": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Platform": {
+          "platform_branching": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2666",
+            "verified_at": "2026-05-28"
+          }
         },
-        "navigation_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
-          "verified_at": "2026-05-28"
+        "Native Bridge": {
+          "native_module_imports": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         },
-        "platform_branching": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2666",
-          "verified_at": "2026-05-28"
-        },
-        "screen_detection": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "state_management": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2632",
-          "verified_at": "2026-05-28"
+        "Data Flow": {
+          "state_management": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -4327,23 +4361,29 @@
       "language": "jsts",
       "label": "Express",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/express.yaml","internal/extractors/javascript/framework_dsl.go"],
+            "verified_at": "2026-05-28"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/express.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/express.yaml","internal/extractors/javascript/framework_dsl.go"],
-          "verified_at": "2026-05-28"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/express.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "middleware_coverage": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/express.yaml"],
-          "verified_at": "2026-05-28"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/express.yaml"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -4354,21 +4394,27 @@
       "language": "jsts",
       "label": "Fastify",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/fastify.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/fastify.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/fastify.yaml"],
-          "verified_at": "2026-05-28"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/fastify.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4379,17 +4425,23 @@
       "language": "jsts",
       "label": "Feathers",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing"
+          },
+          "handler_attribution": {
+            "status": "missing"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "missing"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "missing"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4400,32 +4452,42 @@
       "language": "jsts",
       "label": "Gatsby",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "missing"
+          }
         },
-        "data_loaders": {
-          "status": "missing"
+        "Data Flow": {
+          "data_loaders": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "missing"
+        "Server": {
+          "hydration_boundaries": {
+            "status": "missing"
+          },
+          "server_components": {
+            "status": "missing"
+          }
         },
-        "hydration_boundaries": {
-          "status": "missing"
+        "Routing": {
+          "route_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/gatsby.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          },
+          "router_pattern": {
+            "status": "missing"
+          }
         },
-        "route_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/gatsby.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "server_components": {
-          "status": "missing"
-        },
-        "static_generation": {
-          "status": "missing"
+        "Build": {
+          "static_generation": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4436,19 +4498,23 @@
       "language": "jsts",
       "label": "GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)",
       "capabilities": {
-        "client_codegen": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Schema": {
+          "procedure_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/graphql/frameworks/apollo_server.yaml","internal/engine/rules/graphql/frameworks/graphql_yoga.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "schema_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/graphql/frameworks/graphql_schema.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "procedure_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/graphql/frameworks/apollo_server.yaml","internal/engine/rules/graphql/frameworks/graphql_yoga.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "schema_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/graphql/frameworks/graphql_schema.yaml"],
-          "verified_at": "2026-05-28"
+        "Codegen": {
+          "client_codegen": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         }
       }
     },
@@ -4459,17 +4525,23 @@
       "language": "jsts",
       "label": "Hapi",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing"
+          },
+          "handler_attribution": {
+            "status": "missing"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "missing"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "missing"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4480,21 +4552,27 @@
       "language": "jsts",
       "label": "Hono",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/framework_dsl.go"],
+            "verified_at": "2026-05-28"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/framework_dsl.go"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/framework_dsl.go"],
-          "verified_at": "2026-05-28"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/framework_dsl.go"],
-          "verified_at": "2026-05-28"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4505,23 +4583,31 @@
       "language": "jsts",
       "label": "Ionic",
       "capabilities": {
-        "deep_link_extraction": {
-          "status": "missing"
+        "Navigation": {
+          "deep_link_extraction": {
+            "status": "missing"
+          },
+          "navigation_extraction": {
+            "status": "missing"
+          },
+          "screen_detection": {
+            "status": "missing"
+          }
         },
-        "native_module_imports": {
-          "status": "missing"
+        "Platform": {
+          "platform_branching": {
+            "status": "missing"
+          }
         },
-        "navigation_extraction": {
-          "status": "missing"
+        "Native Bridge": {
+          "native_module_imports": {
+            "status": "missing"
+          }
         },
-        "platform_branching": {
-          "status": "missing"
-        },
-        "screen_detection": {
-          "status": "missing"
-        },
-        "state_management": {
-          "status": "missing"
+        "Data Flow": {
+          "state_management": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4532,21 +4618,27 @@
       "language": "jsts",
       "label": "Koa",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/framework_dsl.go"],
+            "verified_at": "2026-05-28"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/framework_dsl.go"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/framework_dsl.go"],
-          "verified_at": "2026-05-28"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/extractors/javascript/framework_dsl.go"],
-          "verified_at": "2026-05-28"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4557,21 +4649,25 @@
       "language": "jsts",
       "label": "LangChain.js",
       "capabilities": {
-        "chain_composition": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
+        "Prompts": {
+          "prompt_template_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          }
         },
-        "prompt_template_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
-        },
-        "tool_use_detection": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Composition": {
+          "chain_composition": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          },
+          "tool_use_detection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         }
       }
     },
@@ -4582,17 +4678,23 @@
       "language": "jsts",
       "label": "Marble.js",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing"
+          },
+          "handler_attribution": {
+            "status": "missing"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "missing"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "missing"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4603,23 +4705,31 @@
       "language": "jsts",
       "label": "NativeScript",
       "capabilities": {
-        "deep_link_extraction": {
-          "status": "missing"
+        "Navigation": {
+          "deep_link_extraction": {
+            "status": "missing"
+          },
+          "navigation_extraction": {
+            "status": "missing"
+          },
+          "screen_detection": {
+            "status": "missing"
+          }
         },
-        "native_module_imports": {
-          "status": "missing"
+        "Platform": {
+          "platform_branching": {
+            "status": "missing"
+          }
         },
-        "navigation_extraction": {
-          "status": "missing"
+        "Native Bridge": {
+          "native_module_imports": {
+            "status": "missing"
+          }
         },
-        "platform_branching": {
-          "status": "missing"
-        },
-        "screen_detection": {
-          "status": "missing"
-        },
-        "state_management": {
-          "status": "missing"
+        "Data Flow": {
+          "state_management": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4630,25 +4740,31 @@
       "language": "jsts",
       "label": "NestJS",
       "capabilities": {
-        "auth_coverage": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
-          "verified_at": "2026-05-28"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
-          "verified_at": "2026-05-28"
+        "Security": {
+          "auth_coverage": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "handler_attribution": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "middleware_coverage": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
-          "verified_at": "2026-05-28"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -4659,39 +4775,49 @@
       "language": "jsts",
       "label": "Next.js API Routes / App Router",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          },
+          "hook_recognition": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         },
-        "data_loaders": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Data Flow": {
+          "data_loaders": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         },
-        "hook_recognition": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Server": {
+          "hydration_boundaries": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          },
+          "server_components": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         },
-        "hydration_boundaries": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Routing": {
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/next_js.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "router_pattern": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/next_js.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "route_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/next_js.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "router_pattern": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/next_js.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "server_components": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
-        },
-        "static_generation": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Build": {
+          "static_generation": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         }
       }
     },
@@ -4702,31 +4828,41 @@
       "language": "jsts",
       "label": "Nuxt",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "not_applicable"
+          }
         },
-        "data_loaders": {
-          "status": "missing"
+        "Data Flow": {
+          "data_loaders": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "not_applicable"
+        "Server": {
+          "hydration_boundaries": {
+            "status": "missing"
+          },
+          "server_components": {
+            "status": "missing"
+          }
         },
-        "hydration_boundaries": {
-          "status": "missing"
+        "Routing": {
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/nuxt.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "router_pattern": {
+            "status": "missing"
+          }
         },
-        "route_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/nuxt.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "server_components": {
-          "status": "missing"
-        },
-        "static_generation": {
-          "status": "missing"
+        "Build": {
+          "static_generation": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4737,17 +4873,23 @@
       "language": "jsts",
       "label": "Polka",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing"
+          },
+          "handler_attribution": {
+            "status": "missing"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "missing"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "missing"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4758,46 +4900,52 @@
       "language": "jsts",
       "label": "React",
       "capabilities": {
-        "component_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
+        "Structure": {
+          "component_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          },
+          "hook_recognition": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          },
+          "jsx_template": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          }
         },
-        "data_fetching": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2554",
-          "verified_at": "2026-05-28"
+        "Data Flow": {
+          "data_fetching": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2554",
+            "verified_at": "2026-05-28"
+          },
+          "prop_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2665",
+            "verified_at": "2026-05-28"
+          },
+          "state_management": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+            "verified_at": "2026-05-28"
+          }
         },
-        "hook_recognition": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
-        },
-        "jsx_template": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
-        },
-        "prop_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2665",
-          "verified_at": "2026-05-28"
-        },
-        "router_pattern": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "state_management": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2632",
-          "verified_at": "2026-05-28"
+        "Navigation": {
+          "router_pattern": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react.yaml"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -4808,35 +4956,43 @@
       "language": "jsts",
       "label": "React Native",
       "capabilities": {
-        "deep_link_extraction": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Navigation": {
+          "deep_link_extraction": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          },
+          "navigation_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "screen_detection": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
+            "verified_at": "2026-05-28"
+          }
         },
-        "native_module_imports": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Platform": {
+          "platform_branching": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2666",
+            "verified_at": "2026-05-28"
+          }
         },
-        "navigation_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
-          "verified_at": "2026-05-28"
+        "Native Bridge": {
+          "native_module_imports": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         },
-        "platform_branching": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2666",
-          "verified_at": "2026-05-28"
-        },
-        "screen_detection": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "state_management": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2632",
-          "verified_at": "2026-05-28"
+        "Data Flow": {
+          "state_management": {
+            "status": "partial",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -4847,31 +5003,41 @@
       "language": "jsts",
       "label": "Remix",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "missing"
+          }
         },
-        "data_loaders": {
-          "status": "missing"
+        "Data Flow": {
+          "data_loaders": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "missing"
+        "Server": {
+          "hydration_boundaries": {
+            "status": "missing"
+          },
+          "server_components": {
+            "status": "missing"
+          }
         },
-        "hydration_boundaries": {
-          "status": "missing"
+        "Routing": {
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/remix.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "router_pattern": {
+            "status": "missing"
+          }
         },
-        "route_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/remix.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "server_components": {
-          "status": "missing"
-        },
-        "static_generation": {
-          "status": "missing"
+        "Build": {
+          "static_generation": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4882,17 +5048,23 @@
       "language": "jsts",
       "label": "Restify",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing"
+          },
+          "handler_attribution": {
+            "status": "missing"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "missing"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "missing"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4903,17 +5075,23 @@
       "language": "jsts",
       "label": "Sails",
       "capabilities": {
-        "auth_coverage": {
-          "status": "missing"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing"
+          },
+          "handler_attribution": {
+            "status": "missing"
+          }
         },
-        "endpoint_synthesis": {
-          "status": "missing"
+        "Security": {
+          "auth_coverage": {
+            "status": "missing"
+          }
         },
-        "handler_attribution": {
-          "status": "missing"
-        },
-        "middleware_coverage": {
-          "status": "missing"
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4924,26 +5102,32 @@
       "language": "jsts",
       "label": "Svelte",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "not_applicable"
+          },
+          "jsx_template": {
+            "status": "not_applicable"
+          }
         },
-        "data_fetching": {
-          "status": "missing"
+        "Data Flow": {
+          "data_fetching": {
+            "status": "missing"
+          },
+          "prop_extraction": {
+            "status": "missing"
+          },
+          "state_management": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "not_applicable"
-        },
-        "jsx_template": {
-          "status": "not_applicable"
-        },
-        "prop_extraction": {
-          "status": "missing"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "state_management": {
-          "status": "missing"
+        "Navigation": {
+          "router_pattern": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4954,31 +5138,41 @@
       "language": "jsts",
       "label": "SvelteKit",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "not_applicable"
+          }
         },
-        "data_loaders": {
-          "status": "missing"
+        "Data Flow": {
+          "data_loaders": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "not_applicable"
+        "Server": {
+          "hydration_boundaries": {
+            "status": "missing"
+          },
+          "server_components": {
+            "status": "missing"
+          }
         },
-        "hydration_boundaries": {
-          "status": "missing"
+        "Routing": {
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "router_pattern": {
+            "status": "missing"
+          }
         },
-        "route_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "server_components": {
-          "status": "missing"
-        },
-        "static_generation": {
-          "status": "missing"
+        "Build": {
+          "static_generation": {
+            "status": "missing"
+          }
         }
       }
     },
@@ -4989,20 +5183,24 @@
       "language": "jsts",
       "label": "tRPC",
       "capabilities": {
-        "client_codegen": {
-          "status": "missing",
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+        "Schema": {
+          "procedure_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_trpc.go","internal/engine/rules/javascript_typescript/frameworks/trpc.yaml"],
+            "verified_at": "2026-05-28"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_trpc.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "verified_at": "2026-05-28"
+          }
         },
-        "procedure_extraction": {
-          "status": "full",
-          "cites": ["internal/engine/http_endpoint_trpc.go","internal/engine/rules/javascript_typescript/frameworks/trpc.yaml"],
-          "verified_at": "2026-05-28"
-        },
-        "schema_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/http_endpoint_trpc.go"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-          "verified_at": "2026-05-28"
+        "Codegen": {
+          "client_codegen": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
         }
       }
     },
@@ -5013,26 +5211,32 @@
       "language": "jsts",
       "label": "Vue",
       "capabilities": {
-        "component_extraction": {
-          "status": "missing"
+        "Structure": {
+          "component_extraction": {
+            "status": "missing"
+          },
+          "hook_recognition": {
+            "status": "missing"
+          },
+          "jsx_template": {
+            "status": "not_applicable"
+          }
         },
-        "data_fetching": {
-          "status": "missing"
+        "Data Flow": {
+          "data_fetching": {
+            "status": "missing"
+          },
+          "prop_extraction": {
+            "status": "missing"
+          },
+          "state_management": {
+            "status": "missing"
+          }
         },
-        "hook_recognition": {
-          "status": "missing"
-        },
-        "jsx_template": {
-          "status": "not_applicable"
-        },
-        "prop_extraction": {
-          "status": "missing"
-        },
-        "router_pattern": {
-          "status": "missing"
-        },
-        "state_management": {
-          "status": "missing"
+        "Navigation": {
+          "router_pattern": {
+            "status": "missing"
+          }
         }
       }
     },
