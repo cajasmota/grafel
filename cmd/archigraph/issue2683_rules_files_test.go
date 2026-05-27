@@ -171,8 +171,7 @@ func TestIssue2683_MixedStaleSkippedWithWarning(t *testing.T) {
 // reports OK / MISSING / STALE / OUTDATED across the rules files of a
 // registered group.
 func TestIssue2683_DoctorReportsAllStatuses(t *testing.T) {
-	root, repos, cfg := twoRepoGroup(t)
-	_ = root
+	_, repos, cfg := twoRepoGroup(t)
 
 	// Register the group via install.Apply (which also writes initial
 	// rules files into both repos as OK).
