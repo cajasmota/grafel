@@ -60,10 +60,10 @@ func TestAudit2678Go_GinEchoAttribution(t *testing.T) {
 			t.Errorf("%s: attribution=%q want %q — re-attribution pass did not run",
 				tc.endpointName, got, "handler_resolved")
 		}
-		// registration_file property must preserve the original router file
+		// registration_source_file property must preserve the original router file
 		// so the mount-point is still discoverable.
-		if got := e.Properties["registration_file"]; got == "" {
-			t.Errorf("%s: registration_file is empty — original registration site lost",
+		if got := e.Properties["registration_source_file"]; got == "" {
+			t.Errorf("%s: registration_source_file is empty — original registration site lost",
 				tc.endpointName)
 		}
 		if e.StartLine <= 0 {

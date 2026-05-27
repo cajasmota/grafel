@@ -416,6 +416,8 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			if r.Language == "" {
 				r.Language = handler.Language
 			}
+			// Mark that the handler resolution and re-attribution passed
+			r.Properties["attribution"] = "handler_resolved"
 		}
 		// Clear the now-redundant properties.
 		delete(r.Properties, "source_handler")
