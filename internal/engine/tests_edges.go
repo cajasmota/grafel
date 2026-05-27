@@ -47,6 +47,7 @@
 package engine
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -82,6 +83,13 @@ var pyTestFuncForEdgeRe = regexp.MustCompile(
 // isTestFilePath returns true when the path looks like a Python test file by
 // naming convention. Mirrors the pytest frameworkEntry filename hints.
 func isTestFilePath(p string) bool {
+	// Path-segment check: /tests/ directory (idiomatic Django/Python layout).
+	// Prefix with "/" so leading segments like "tests/foo.py" also match "/tests/".
+	slashed := "/" + filepath.ToSlash(strings.ToLower(p))
+	if strings.Contains(slashed, "/tests/") {
+		return true
+	}
+
 	base := p
 	if idx := strings.LastIndexByte(p, '/'); idx >= 0 {
 		base = p[idx+1:]

@@ -183,10 +183,18 @@ func TestNormaliseHTTPPath(t *testing.T) {
 
 func TestIsTestFilePath(t *testing.T) {
 	yes := []string{
-		"tests/test_foo.py",
-		"app/tests/test_schedule_import.py",
+		// test_ prefix convention
+		"test_foo.py",
+		"test_schedule_import.py",
+		// _test suffix convention
 		"foo_test.py",
 		"bar_test.py",
+		// tests/ directory convention (no prefix required)
+		"tests/test_foo.py",
+		"tests/conftest.py",
+		"tests/__init__.py",
+		"app/tests/test_schedule_import.py",
+		"core/tests/models.py",
 	}
 	no := []string{
 		"views.py",
