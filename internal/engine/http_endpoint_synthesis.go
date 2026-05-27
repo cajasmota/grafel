@@ -330,10 +330,18 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Now emits FETCHES edges at extraction time.
 		synthesizePyClientWithRuntime(string(content), emitClientRuntime)
 	case "javascript", "typescript":
-		// Producer side: Express.
+		// Producer side: Express (also catches Hono and Koa-Router whose
+		// receivers match the `app`/`router` allowlist).
 		synthesizeExpress(string(content), emit)
 		// Producer side: NestJS @Controller + @Get/@Post/... decorators (#1418).
 		synthesizeNestJS(string(content), emit)
+		// Producer side: Fastify — `fastify.<verb>(...)` / `server.<verb>(...)`.
+		// The Express synthesizer's receiver allowlist does not include
+		// "fastify", so a dedicated pass is needed (#2678 audit).
+		synthesizeFastify(string(content), emit)
+		// Producer side: Next.js API routes (pages/api/*, app/api/*/route.ts).
+		// The route is implicit from the file path, not from a call site.
+		synthesizeNextAPIRoute(path, string(content), emit)
 		// Producer side: Apollo / GraphQL resolvers (#1422). GraphQL is
 		// schema-first rather than REST, so resolver fields are emitted as
 		// graphql_field endpoint-ish entities keyed by operation + field.
