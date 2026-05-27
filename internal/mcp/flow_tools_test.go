@@ -723,6 +723,139 @@ func TestImpactRadius_RootHasNoUpstreamImpact(t *testing.T) {
 	}
 }
 
+// buildMixedCallerDoc builds a doc for #2644 testing.
+//
+// Graph shape (impact_radius walks INBOUND edges from the queried entity):
+//
+//	ent-hub (Function)    → CALLS →    ent-leaf (Function)
+//	ent-named-{1..4} (Function)     → CALLS     → ent-hub  (4 named callers)
+//	ent-mod-{1..9}   (SCOPE.Component) → CONTAINS → ent-hub  (9 module/file nodes)
+//
+// impact_radius(ent-leaf): finds ent-hub as a 1-hop inbound caller.
+// ent-hub total in-degree = 4 CALLS (named) + 9 CONTAINS (module) = 13.
+func buildMixedCallerDoc() *graph.Document {
+	entities := []graph.Entity{
+		{ID: "ent-leaf", Name: "lowLevelHelper", Kind: "Function", SourceFile: "helper.ts"},
+		{ID: "ent-hub", Name: "useInspectorHomeData", Kind: "Function", SourceFile: "hooks.ts", StartLine: 10},
+	}
+	rels := []graph.Relationship{
+		// hub calls leaf — hub appears in impact_radius(leaf) results.
+		{FromID: "ent-hub", ToID: "ent-leaf", Kind: "CALLS"},
+	}
+	// 4 named callers of hub.
+	for i := 1; i <= 4; i++ {
+		id := fmt.Sprintf("ent-named-%d", i)
+		entities = append(entities, graph.Entity{
+			ID: id, Name: fmt.Sprintf("CallerFunc%d", i), Kind: "Function", SourceFile: "callers.ts",
+		})
+		rels = append(rels, graph.Relationship{FromID: id, ToID: "ent-hub", Kind: "CALLS"})
+	}
+	// 9 module/file nodes pointing to hub.
+	for i := 1; i <= 9; i++ {
+		id := fmt.Sprintf("ent-mod-%d", i)
+		entities = append(entities, graph.Entity{
+			ID: id, Name: fmt.Sprintf("module%d.ts", i), Kind: "SCOPE.Component", SourceFile: fmt.Sprintf("module%d.ts", i),
+		})
+		rels = append(rels, graph.Relationship{FromID: id, ToID: "ent-hub", Kind: "CONTAINS"})
+	}
+	return minDoc(entities, rels)
+}
+
+// TestImpactRadius_NamedVsModuleCallerBreakdown verifies #2644:
+// when an affected entity has both named callers and module/file nodes in its
+// inbound edges, risk_reason must emit the qualified breakdown form.
+func TestImpactRadius_NamedVsModuleCallerBreakdown(t *testing.T) {
+	doc := buildMixedCallerDoc()
+	srv := newTestServer(t, doc)
+
+	// Query impact of ent-leaf: ent-hub is the 1-hop inbound caller.
+	// ent-hub has in-degree 13 (4 named CALLS + 9 CONTAINS module nodes).
+	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
+		"entity_id": "ent-leaf",
+		"hops":      float64(1),
+	})
+	affected, ok := out["affected"].([]any)
+	if !ok || len(affected) == 0 {
+		t.Fatalf("expected at least 1 affected entity, got %v", out["affected"])
+	}
+	// Find ent-hub in results.
+	var hubEntry map[string]any
+	for _, a := range affected {
+		m := a.(map[string]any)
+		if m["name"] == "useInspectorHomeData" {
+			hubEntry = m
+			break
+		}
+	}
+	if hubEntry == nil {
+		t.Fatal("useInspectorHomeData not found in affected list")
+	}
+	reason, _ := hubEntry["risk_reason"].(string)
+	// Must mention named callers and module/file node breakdown.
+	if !strings.Contains(reason, "named callers") {
+		t.Errorf("risk_reason should contain 'named callers'; got: %q", reason)
+	}
+	if !strings.Contains(reason, "module/file nodes") {
+		t.Errorf("risk_reason should contain 'module/file nodes'; got: %q", reason)
+	}
+	if !strings.Contains(reason, "inbound edges") {
+		t.Errorf("risk_reason should contain 'inbound edges'; got: %q", reason)
+	}
+}
+
+// TestImpactRadius_NamedOnly verifies that when all inbound edges come from
+// named operation entities (no module/file nodes), risk_reason uses the
+// simplified "N named callers" form without a module breakdown.
+func TestImpactRadius_NamedOnly(t *testing.T) {
+	// Graph: ent-hub → ent-leaf; 6 named callers → ent-hub; 0 module nodes.
+	// impact_radius(ent-leaf) → ent-hub in affected with in-degree 6 (named only).
+	entities := []graph.Entity{
+		{ID: "ent-leaf", Name: "leafFunc", Kind: "Function", SourceFile: "leaf.go"},
+		{ID: "ent-hub", Name: "coreHelper", Kind: "Function", SourceFile: "core.go"},
+	}
+	rels := []graph.Relationship{
+		{FromID: "ent-hub", ToID: "ent-leaf", Kind: "CALLS"},
+	}
+	for i := 1; i <= 6; i++ {
+		id := fmt.Sprintf("ent-named-%d", i)
+		entities = append(entities, graph.Entity{
+			ID: id, Name: fmt.Sprintf("Caller%d", i), Kind: "Function", SourceFile: "callers.go",
+		})
+		rels = append(rels, graph.Relationship{FromID: id, ToID: "ent-hub", Kind: "CALLS"})
+	}
+	doc := minDoc(entities, rels)
+	srv := newTestServer(t, doc)
+
+	// impact_radius(ent-leaf): ent-hub appears in affected with 6 named callers.
+	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
+		"entity_id": "ent-leaf",
+		"hops":      float64(1),
+	})
+	affected, ok := out["affected"].([]any)
+	if !ok || len(affected) == 0 {
+		t.Fatalf("expected at least 1 affected entity, got %v", out["affected"])
+	}
+	var hubEntry map[string]any
+	for _, a := range affected {
+		m := a.(map[string]any)
+		if m["name"] == "coreHelper" {
+			hubEntry = m
+			break
+		}
+	}
+	if hubEntry == nil {
+		t.Fatal("coreHelper not found in affected list")
+	}
+	reason, _ := hubEntry["risk_reason"].(string)
+	// Should use simple "N named callers" without module breakdown.
+	if !strings.Contains(reason, "named callers") {
+		t.Errorf("risk_reason should contain 'named callers'; got: %q", reason)
+	}
+	if strings.Contains(reason, "module/file nodes") {
+		t.Errorf("risk_reason should NOT mention module/file nodes when there are none; got: %q", reason)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestSubgraph_FormatMarkdown (format=markdown path of the unified tool)
 // ---------------------------------------------------------------------------

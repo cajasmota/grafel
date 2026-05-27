@@ -630,11 +630,28 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 			continue
 		}
 
-		// Precompute in-degree for risk scoring.
-		inDegreeMap := map[string]int{}
+		// Precompute in-degree for risk scoring, broken down by caller kind.
+		// namedCallerMap counts inbound edges whose source is a named operation
+		// (Function, Method, Class, Component, Operation, etc.).
+		// moduleCallerMap counts inbound edges whose source is a file/module
+		// container node (SCOPE.Component, SCOPE.Module, File, Module, etc.).
+		// totalDegreeMap is the simple sum of all inbound edges (used for scoring).
+		namedCallerMap := map[string]int{}
+		moduleCallerMap := map[string]int{}
+		totalDegreeMap := map[string]int{}
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
-			inDegreeMap[rel.ToID]++
+			totalDegreeMap[rel.ToID]++
+			if src := byID[rel.FromID]; src != nil {
+				if isModuleFileEntity(src) {
+					moduleCallerMap[rel.ToID]++
+				} else {
+					namedCallerMap[rel.ToID]++
+				}
+			} else {
+				// Source not in byID — treat as named to avoid under-counting.
+				namedCallerMap[rel.ToID]++
+			}
 		}
 
 		// Impact radius = entities that transitively depend on `target`.
@@ -668,8 +685,8 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 			if e == nil {
 				continue
 			}
-			risk := impactRiskScore(e, inDegreeMap[id])
-			reason := buildRiskReason(e, inDegreeMap[id])
+			risk := impactRiskScore(e, totalDegreeMap[id])
+			reason := buildRiskReason(e, namedCallerMap[id], moduleCallerMap[id], totalDegreeMap[id])
 			results = append(results, affected{
 				EntityID:   prefixedID(r.Repo, e.ID),
 				Name:       e.Name,
@@ -711,10 +728,21 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 }
 
 // buildRiskReason produces a short human-readable reason string for the risk score.
-func buildRiskReason(e *graph.Entity, inDegree int) string {
+// namedCallers is the count of inbound edges from named operation entities (Function,
+// Method, Class, Component, Operation, etc.). moduleNodes is the count from file/module
+// container entities (SCOPE.Component, SCOPE.Module, File, Module, etc.). total is
+// their sum. When the two counts differ we emit a qualified breakdown so consumers
+// understand how much of the in-degree is actual named callers vs structural noise.
+func buildRiskReason(e *graph.Entity, namedCallers, moduleNodes, total int) string {
 	parts := []string{}
-	if inDegree > 5 {
-		parts = append(parts, fmt.Sprintf("high in-degree (%d callers)", inDegree))
+	if total > 5 {
+		if moduleNodes == 0 {
+			// All callers are named — simple, unambiguous message.
+			parts = append(parts, fmt.Sprintf("high in-degree (%d named callers)", namedCallers))
+		} else {
+			// Mixed: qualify the breakdown so consumers are not misled.
+			parts = append(parts, fmt.Sprintf("high in-degree (%d named callers, %d module/file nodes; total %d inbound edges)", namedCallers, moduleNodes, total))
+		}
 	}
 	k := strings.ToLower(e.Kind)
 	if strings.Contains(k, "http_endpoint") || strings.Contains(k, "endpoint") {
@@ -1040,6 +1068,26 @@ func isStdlibEntity(e *graph.Entity) bool {
 	if e.Properties["is_external"] == "true" ||
 		e.Properties["is_stdlib"] == "true" ||
 		e.Properties["external"] == "true" {
+		return true
+	}
+	return false
+}
+
+// isModuleFileEntity returns true when an entity is a file or module container
+// node rather than a named callable operation. These nodes (SCOPE.Component,
+// SCOPE.Module, File, Module, Package, Namespace, Directory) appear as inbound
+// edge sources in the graph but do not represent actual callers of a function;
+// they are structural containers that inflate the raw in-degree count.
+func isModuleFileEntity(e *graph.Entity) bool {
+	k := e.Kind
+	// SCOPE.* prefix always indicates a container/file node.
+	if strings.HasPrefix(k, "SCOPE.") {
+		return true
+	}
+	lower := strings.ToLower(k)
+	// Bare kind names that represent container/file concepts.
+	switch lower {
+	case "file", "module", "package", "namespace", "directory", "folder":
 		return true
 	}
 	return false
