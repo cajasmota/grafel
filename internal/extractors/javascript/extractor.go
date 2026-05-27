@@ -215,6 +215,11 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// extractCallRelationships can emit CALLS edges for .getState().<action>()
 	// and immediately-invoked selector patterns.
 	x.zustand = x.buildZustandTracker(root)
+	// Issue #2626 — emit each store action as a standalone SCOPE.Operation
+	// entity so that the graph's CALLS adjacency has outgoing edges FROM the
+	// action, allowing archigraph_traces BFS to enter the closure body.
+	// Without this, traces terminated at useAuthStore ("no_outgoing_calls").
+	x.zustand.emitStoreActionEntities(x)
 
 	var extractErr error
 	func() {

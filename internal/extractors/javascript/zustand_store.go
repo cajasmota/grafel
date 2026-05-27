@@ -66,6 +66,18 @@ type zustandTracker struct {
 	// the set of action keys defined in its create() object literal.
 	// Only function-valued keys are included; plain state values are excluded.
 	storeActions map[string]map[string]bool
+
+	// storeActionNodes maps a store variable name to a map from action key to
+	// the AST node of the function value. Populated alongside storeActions so
+	// that emitStoreActionEntities can derive source-line ranges for each action
+	// method entity (issue #2626).
+	storeActionNodes map[string]map[string]*sitter.Node
+
+	// storePartializeFields maps a store variable name to the list of field
+	// names that appear in the partialize config (issue #2626).
+	// Populated by processVariableDeclarator when a second argument to create()
+	// contains a "partialize" key.
+	storePartializeFields map[string][]string
 }
 
 // buildZustandTracker constructs a zustandTracker from the already-populated
@@ -104,7 +116,9 @@ func (x *extractor) buildZustandTracker(root *sitter.Node) *zustandTracker {
 	}
 
 	t := &zustandTracker{
-		storeActions: make(map[string]map[string]bool),
+		storeActions:          make(map[string]map[string]bool),
+		storeActionNodes:      make(map[string]map[string]*sitter.Node),
+		storePartializeFields: make(map[string][]string),
 	}
 	if root != nil {
 		t.scanForStores(x, root, zustandCreateLocals)
@@ -172,11 +186,18 @@ func (t *zustandTracker) processVariableDeclarator(x *extractor, n *sitter.Node,
 
 	// Extract the object literal from the factory arrow: create((set, get) => ({...}))
 	// The first argument should be an arrow_function or function_expression.
-	actions := extractStoreActions(x, callNode)
+	actions, actionNodes := extractStoreActionsWithNodes(x, callNode)
 	if len(actions) == 0 {
 		return
 	}
 	t.storeActions[storeVar] = actions
+	t.storeActionNodes[storeVar] = actionNodes
+
+	// Issue #2626 — extract partialize fields from the optional second argument
+	// to create(): create(factory, { name: 'auth', partialize: (s) => ({ user: s.user }) })
+	if fields := extractPartializeFields(x, callNode); len(fields) > 0 {
+		t.storePartializeFields[storeVar] = fields
+	}
 }
 
 // unwrapToCallExpression unwraps TS generic call expressions like `create<T>(...)`
@@ -225,15 +246,18 @@ func (t *zustandTracker) isZustandCreateCall(x *extractor, callNode *sitter.Node
 	return false
 }
 
-// extractStoreActions extracts the action keys (function-valued properties)
-// from the first argument of a create() call.
+// extractStoreActionsWithNodes extracts the action keys (function-valued
+// properties) from the first argument of a create() call, returning both the
+// bool set (used by call-site detection) and a map from action name to the
+// function-value AST node (used by emitStoreActionEntities to derive line
+// ranges). Issue #2626.
 //
 // Expected shape: create((set, get) => ({ key: fnVal, ... }))
 // Also handles:   create((set, get) => { return { key: fnVal, ... } })
-func extractStoreActions(x *extractor, createCall *sitter.Node) map[string]bool {
+func extractStoreActionsWithNodes(x *extractor, createCall *sitter.Node) (map[string]bool, map[string]*sitter.Node) {
 	args := createCall.ChildByFieldName("arguments")
 	if args == nil {
-		return nil
+		return nil, nil
 	}
 	// Find the first arrow_function or function_expression argument.
 	var factoryNode *sitter.Node
@@ -248,23 +272,117 @@ func extractStoreActions(x *extractor, createCall *sitter.Node) map[string]bool 
 		}
 	}
 	if factoryNode == nil {
-		return nil
+		return nil, nil
 	}
 
 	// The body of the factory arrow/function should be a parenthesized object
 	// or contain a return statement with an object.
 	body := factoryNode.ChildByFieldName("body")
 	if body == nil {
-		return nil
+		return nil, nil
 	}
 
 	// Find the object literal in the body.
 	objNode := findObjectLiteral(body)
 	if objNode == nil {
-		return nil
+		return nil, nil
 	}
 
-	return collectFunctionValuedKeys(x, objNode)
+	return collectFunctionValuedKeysWithNodes(x, objNode)
+}
+
+// extractPartializeFields extracts the field names from the partialize function
+// in the optional second argument of create():
+//
+//	create(factory, { name: 'auth', partialize: (s) => ({ user: s.user, token: s.token }) })
+//
+// Returns nil when no partialize config is found. Issue #2626.
+func extractPartializeFields(x *extractor, createCall *sitter.Node) []string {
+	args := createCall.ChildByFieldName("arguments")
+	if args == nil {
+		return nil
+	}
+	// The second non-comma, non-factory argument should be an object literal
+	// containing the store config (name, partialize, etc.).
+	factorySkipped := false
+	for i := 0; i < int(args.ChildCount()); i++ {
+		ch := args.Child(i)
+		if ch == nil {
+			continue
+		}
+		if ch.Type() == "," {
+			continue
+		}
+		if ch.Type() == "arrow_function" || ch.Type() == "function_expression" {
+			factorySkipped = true
+			continue
+		}
+		if !factorySkipped {
+			continue
+		}
+		if ch.Type() != "object" {
+			continue
+		}
+		// Found the config object — look for a "partialize" key.
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			pair := ch.Child(j)
+			if pair == nil || pair.Type() != "pair" {
+				continue
+			}
+			keyNode := pair.ChildByFieldName("key")
+			if keyNode == nil {
+				continue
+			}
+			key := strings.Trim(x.nodeText(keyNode), `"'`+"`")
+			if key != "partialize" {
+				continue
+			}
+			// The value should be an arrow_function or function_expression
+			// returning an object with the fields to keep.
+			valNode := pair.ChildByFieldName("value")
+			if valNode == nil {
+				continue
+			}
+			return collectPartializeReturnKeys(x, valNode)
+		}
+		break
+	}
+	return nil
+}
+
+// collectPartializeReturnKeys collects the object keys returned by the
+// partialize arrow: (s) => ({ user: s.user, token: s.token }) → ["user", "token"].
+func collectPartializeReturnKeys(x *extractor, fnNode *sitter.Node) []string {
+	if fnNode == nil {
+		return nil
+	}
+	if fnNode.Type() != "arrow_function" && fnNode.Type() != "function_expression" {
+		return nil
+	}
+	body := fnNode.ChildByFieldName("body")
+	if body == nil {
+		return nil
+	}
+	objNode := findObjectLiteral(body)
+	if objNode == nil {
+		return nil
+	}
+	var fields []string
+	for i := 0; i < int(objNode.ChildCount()); i++ {
+		pair := objNode.Child(i)
+		if pair == nil || pair.Type() != "pair" {
+			continue
+		}
+		keyNode := pair.ChildByFieldName("key")
+		if keyNode == nil {
+			continue
+		}
+		field := strings.Trim(x.nodeText(keyNode), `"'`+"`")
+		if field != "" {
+			fields = append(fields, field)
+		}
+	}
+	return fields
 }
 
 // findObjectLiteral searches for an object node in typical arrow-function body shapes:
@@ -313,12 +431,14 @@ func findObjectLiteral(body *sitter.Node) *sitter.Node {
 	return nil
 }
 
-// collectFunctionValuedKeys returns the set of property keys in an object
-// literal whose values are arrow functions or function expressions.
+// collectFunctionValuedKeysWithNodes returns the set of property keys in an
+// object literal whose values are arrow functions or function expressions,
+// alongside a map from key to the function-value AST node (for line ranges).
 // Plain state values (arrays, primitives, identifiers that are not functions)
-// are excluded so we don't emit spurious CALLS edges.
-func collectFunctionValuedKeys(x *extractor, obj *sitter.Node) map[string]bool {
+// are excluded so we don't emit spurious CALLS edges. Issue #2626.
+func collectFunctionValuedKeysWithNodes(x *extractor, obj *sitter.Node) (map[string]bool, map[string]*sitter.Node) {
 	actions := make(map[string]bool)
+	nodes := make(map[string]*sitter.Node)
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		pair := obj.Child(i)
 		if pair == nil || pair.Type() != "pair" {
@@ -336,12 +456,62 @@ func collectFunctionValuedKeys(x *extractor, obj *sitter.Node) map[string]bool {
 		key = strings.Trim(key, `"'`+"`")
 		if key != "" {
 			actions[key] = true
+			nodes[key] = valNode
 		}
 	}
 	if len(actions) == 0 {
-		return nil
+		return nil, nil
 	}
-	return actions
+	return actions, nodes
+}
+
+// emitStoreActionEntities emits a SCOPE.Operation entity for every action
+// method found in every Zustand store in this file. This is the fix for
+// issue #2626: without standalone entities for store actions, the graph's
+// CALLS adjacency has no outgoing edges FROM the store actions, so BFS
+// (archigraph_traces action=follow) terminates at useAuthStore instead of
+// entering the closure body.
+//
+// Each entity gets:
+//   - Kind = "SCOPE.Operation", Subtype = "method"
+//   - SourceFile / StartLine / EndLine from the function-value node
+//   - Properties["via"] = "zustand_store" to flag origin
+//   - Properties["store"] = storeVar so callers can group by store
+//
+// partialize_fields are stamped on the store-variable entity via a synthetic
+// property on the first emitted action (there is no separate store entity in
+// the current architecture; the property lives on the tracker and is wired
+// via Properties["partialize_fields"] on each action entity of that store).
+func (t *zustandTracker) emitStoreActionEntities(x *extractor) {
+	if t == nil {
+		return
+	}
+	for storeVar, actionNames := range t.storeActions {
+		nodeMap := t.storeActionNodes[storeVar]
+		partFields := strings.Join(t.storePartializeFields[storeVar], ",")
+		for actionName := range actionNames {
+			var fnNode *sitter.Node
+			if nodeMap != nil {
+				fnNode = nodeMap[actionName]
+			}
+			props := map[string]string{
+				"kind":    "SCOPE.Operation",
+				"subtype": "method",
+				"via":     PropViaZustandStore,
+				"store":   storeVar,
+			}
+			if partFields != "" {
+				props["partialize_fields"] = partFields
+			}
+			sig := storeVar + "." + actionName
+			if fnNode != nil {
+				x.emitWithProps(actionName, "SCOPE.Operation", fnNode, "method", sig, props, nil)
+			}
+			// When fnNode is nil (should not happen in practice; storeActionNodes
+			// is always co-populated with storeActions), skip silently: the
+			// CALLS edge still resolves if another extractor pass emits the action.
+		}
+	}
 }
 
 // isFunctionNode returns true when the node is an arrow_function or
