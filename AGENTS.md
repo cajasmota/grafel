@@ -11,6 +11,46 @@ and PR wiring it into `internal/mcp/server.go`), not from this file.
 - ADRs in `docs/adrs/`, numbered sequentially
 - Quality fixtures in `internal/quality/golden/`; must hold 100% must-have recall on every PR
 
+## Coverage matrix update — mandatory for capability-changing PRs
+
+When your PR adds, modifies, or fixes a capability that's tracked in the coverage matrix, the PR MUST also update `docs/coverage/registry.json` to reflect the change. The matrix is the source of truth for archigraph's capabilities; PRs that ship code without updating the matrix create drift that erodes the matrix's value.
+
+### When this applies
+- A new framework / ORM / tool / protocol gets extraction support → add a new record OR update an existing one
+- An existing capability's status changes (e.g. partial → full) → update the cell
+- A new capability is implemented that doesn't fit any existing taxonomy slot → propose extending the schema in a separate small PR first, then the implementation PR uses the new key
+- A bug fix that materially changes what a capability does → update the cell's notes + verified_at
+
+### When this does NOT apply
+- Pure refactors that don't change behavior
+- Bug fixes that don't change what we extract (e.g. fixing a panic, not a capability)
+- Docs / test-only changes
+- Tooling changes that don't touch extractors
+
+### How to update
+1. Identify the affected record(s): `go run ./tools/coverage list --json | jq ...`
+2. For each capability changed:
+   - `go run ./tools/coverage update <record-id> --capability <key> --status <s> --cites <paths,...>` (the tool auto-places into the canonical group)
+   - OR edit `docs/coverage/registry.json` directly + run `go run ./tools/coverage validate` to confirm
+3. If the capability is implemented in identifiable functions, update `tools/coverage/capability-map.yaml` with file + functions + issues_implemented
+4. Set `verified_at` to today's date
+5. `go run ./tools/coverage gen` to regenerate `docs/coverage/*.md`
+6. `git add docs/coverage/registry.json docs/coverage/capability-map.yaml docs/coverage/` and commit alongside your code changes
+
+### Enforcement
+- The CI workflow at `.github/workflows/coverage-docs.yml` rejects PRs that change `docs/coverage.json` (or related files) without regenerating docs
+- Reviewers should flag capability-changing PRs that don't touch the registry
+- A future enhancement (#2741 Phase 3) will scan PR body for `implements-capability:` tags and auto-update `verified_at`
+
+### Examples
+- PR adds Rails ORM extraction → updates `lang.ruby.orm.activerecord` record's relevant capability from missing → full
+- PR fixes Django DRF endpoint attribution → updates `lang.python.framework.django-drf` `handler_attribution` cell's verified_at + cites
+- PR ships a new framework synthesizer → may need to add a new record `lang.X.framework.Y` (use `go run ./tools/coverage add`)
+- PR extends the JS extractor with React Context detection → updates `lang.jsts.framework.react` `Structure.context_extraction` cell (which exists thanks to #2751)
+
+### Coverage tool CLI quick-reference
+`go run ./tools/coverage <subcommand>` — supported subcommands: `list`, `get`, `add`, `update`, `gaps`, `stats`, `validate`, `gen`, `discover`, `map-status`. See `tools/coverage/AGENTS.md` for tooling-specific conventions and `docs/coverage/summary.md` for the rendered matrix.
+
 ## Coordinator role
 - Dispatch implementation work to subagents; do not edit code directly when acting as coordinator
 - One PR per scope; small focused changes
@@ -30,6 +70,7 @@ and PR wiring it into `internal/mcp/server.go`), not from this file.
 - Graph format: `internal/graph/fbreader/` + `internal/graph/fbwriter/`
 - Per-framework rule packs: `internal/engine/rules/*.yaml`
 - Quality / orphan audit: `internal/quality/audit/`
+- Capability coverage matrix: `docs/coverage/registry.json` + `docs/coverage/summary.md` (generated); tooling in `tools/coverage/`
 
 ## Tests + gates
 - `go test ./...` is the baseline gate
