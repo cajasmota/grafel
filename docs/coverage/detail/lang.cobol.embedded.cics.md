@@ -5,13 +5,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [COBOL](../by-language/cobol.md)
 - **Category:** [language](../by-category/language.md)
-- **Capability cells:** 1
+- **Capability cells:** 2
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `http_effect` | ⚠️ `partial` | `2026-05-28` | — | [link](2743) | `internal/substrate/effect_sinks_cobol.go` | — |
+| `fs_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/substrate/effect_sinks_cobol.go` | — |
+| `http_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/substrate/effect_sinks_cobol.go`<br>`internal/extractors/cobol/depth.go` | — |
 
 ## Provenance
 

@@ -23,7 +23,7 @@
 //   - CALLS    — PERFORM <paragraph> (intra-program control flow)
 //   - CALLS    — CALL '<program>' (inter-program dynamic call; external=true)
 //   - IMPORTS  — COPY <copybook> (.cpy copybook inclusion — the COBOL analog
-//                of #include / import)
+//     of #include / import)
 //   - CONTAINS — program → its paragraphs (Format A structural ref)
 //
 // COBOL column sensitivity is respected for fixed-format source: columns
@@ -92,13 +92,16 @@ var (
 	// variable holding the program name). Group 1: identifier.
 	callIdentRe = regexp.MustCompile(`(?i)\bCALL\s+([A-Za-z][A-Za-z0-9-]*)`)
 
-	// copyRe matches `COPY <copybook>` directives (optionally `COPY name.`).
-	// Group 1: copybook name.
-	copyRe = regexp.MustCompile(`(?i)\bCOPY\s+([A-Za-z0-9][A-Za-z0-9-]*)`)
-
 	// dataItemRe matches level-numbered data items, e.g. `01 CUSTOMER-REC.`
 	// or `05 CUST-ID PIC X(10).`. Group 1: level number; Group 2: item name.
 	dataItemRe = regexp.MustCompile(`(?i)^\s*(0[1-9]|[1-4][0-9]|66|77|88)\s+([A-Za-z0-9][A-Za-z0-9-]*)`)
+
+	// dataRedefinesRe captures the REDEFINES target on a data item.
+	dataRedefinesRe = regexp.MustCompile(`\bREDEFINES\s+([A-Za-z][A-Za-z0-9-]*)`)
+	// dataOccursRe captures the OCCURS count (array dimension).
+	dataOccursRe = regexp.MustCompile(`\bOCCURS\s+([0-9]+)`)
+	// dataPicRe captures the PICTURE clause string (PIC / PICTURE).
+	dataPicRe = regexp.MustCompile(`\bPIC(?:TURE)?\s+(?:IS\s+)?([A-Z0-9()VSX$.,/+\-]+)`)
 
 	// paragraphRe matches a PROCEDURE DIVISION paragraph header: an
 	// identifier in Area A terminated by a period, alone on the line.
@@ -141,7 +144,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	if len(file.Content) == 0 {
 		return nil, nil
 	}
-	out := extractCOBOL(string(file.Content), file.Path)
+	out := extractCOBOL(string(file.Content), file.Path, file.RepoRoot)
 	extractor.TagRelationshipsLanguage(out, "cobol")
 	extractor.TagEntitiesLanguage(out, "cobol")
 	return out, nil
@@ -228,7 +231,7 @@ func splitLines(src string) []codeLine {
 // Core extraction
 // ---------------------------------------------------------------------------
 
-func extractCOBOL(src, filePath string) []types.EntityRecord {
+func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 	lines := splitLines(src)
 	var entities []types.EntityRecord
 
@@ -250,9 +253,53 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 	// edges discovered while scanning paragraph bodies.
 	currentParagraphIdx := -1
 
+	// currentParagraphName tracks the open paragraph's name so embedded-SQL
+	// access entities can be attributed to it (the ACCESSES_TABLE FromID).
+	currentParagraphName := ""
+
+	// EXEC SQL / EXEC CICS block accumulation (#2838 Phase 2). A block may
+	// span many lines; we buffer its body until END-EXEC, then extract.
+	var execBuf *execBlock
+
+	// Data-hierarchy tracking: a stack of (level, entity index) so 05/10 items
+	// can record their parent group via a CONTAINS edge and a parent property.
+	type dataScope struct {
+		level int
+		idx   int
+	}
+	var dataStack []dataScope
+
 	addProgramRel := func(rel types.RelationshipRecord) {
 		if programIdx >= 0 {
 			entities[programIdx].Relationships = append(entities[programIdx].Relationships, rel)
+		}
+	}
+
+	// fnRefName returns the qualified name used to attribute embedded-SQL /
+	// CICS effects: the open paragraph, else the program name.
+	fnRefName := func() string {
+		if currentParagraphName != "" {
+			return currentParagraphName
+		}
+		return programName
+	}
+
+	// flushExecBlock processes a completed EXEC SQL / CICS block: SQL blocks
+	// yield SCOPE.DataAccess table/cursor entities; CICS blocks yield CALLS
+	// edges for program/transaction transfers.
+	flushExecBlock := func() {
+		if execBuf == nil {
+			return
+		}
+		blk := *execBuf
+		execBuf = nil
+		switch blk.kind {
+		case "SQL":
+			entities = append(entities, extractSQLEntities(filePath, fnRefName(), blk)...)
+		case "CICS":
+			for _, c := range extractCICSTransfers(blk.text) {
+				attachCall(entities, currentParagraphIdx, programIdx, cicsCallEdge(c, blk.startLine))
+			}
 		}
 	}
 
@@ -261,11 +308,37 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 			continue
 		}
 
+		// ── EXEC SQL / EXEC CICS block accumulation ──────────────────────
+		// Buffer the body of an EXEC block across lines until END-EXEC so the
+		// full statement (multi-line in practice) is available for table /
+		// cursor / program-transfer extraction.
+		if execBuf != nil {
+			execBuf.text += " " + ln.code
+			if execEndRe.MatchString(ln.upper) {
+				flushExecBlock()
+			}
+			continue
+		}
+		if m := execStartRe.FindStringSubmatch(ln.upper); m != nil {
+			execBuf = &execBlock{
+				kind:      strings.ToUpper(m[1]),
+				startLine: ln.num,
+				text:      ln.code,
+			}
+			// A single-line EXEC ... END-EXEC closes immediately.
+			if execEndRe.MatchString(ln.upper) {
+				flushExecBlock()
+			}
+			continue
+		}
+
 		// ── PROGRAM-ID ────────────────────────────────────────────────────
 		if m := programIDRe.FindStringSubmatch(ln.code); m != nil {
 			programName = m[1]
 			programIdx = len(entities)
 			currentParagraphIdx = -1
+			currentParagraphName = ""
+			dataStack = dataStack[:0]
 			entities = append(entities, types.EntityRecord{
 				Name:       programName,
 				Kind:       "SCOPE.Component",
@@ -285,6 +358,8 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 			inProcedureDivision = div == "PROCEDURE"
 			inDataItemArea = false
 			currentParagraphIdx = -1
+			currentParagraphName = ""
+			dataStack = dataStack[:0]
 			entities = append(entities, types.EntityRecord{
 				Name:       div + " DIVISION",
 				Kind:       "SCOPE.Component",
@@ -328,27 +403,25 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 				Signature:  strings.TrimSpace(ln.code),
 			})
 			currentParagraphIdx = -1
+			currentParagraphName = ""
+			dataStack = dataStack[:0]
 			continue
 		}
 
 		// ── COPY (IMPORTS) — valid anywhere ──────────────────────────────
-		if m := copyRe.FindStringSubmatch(ln.code); m != nil {
-			book := m[1]
+		// Resolve the copybook name against on-disk .cpy files (#2838): when
+		// resolved, the IMPORTS edge binds to the actual copybook file path
+		// and REPLACING clauses are captured for drift analysis.
+		if book, replacing, ok := parseCopyDirective(ln.code); ok {
 			if !seenCopy[strings.ToUpper(book)] {
 				seenCopy[strings.ToUpper(book)] = true
-				rel := types.RelationshipRecord{
-					FromID: filePath,
-					ToID:   book,
-					Kind:   "IMPORTS",
-					Properties: map[string]string{
-						"line":     strconv.Itoa(ln.num),
-						"copybook": book,
-					},
-				}
-				addProgramRel(rel)
-				// Also emit a placeholder entity for the copybook so the
-				// import target is resolvable (mirrors crystal's require).
-				entities = append(entities, types.EntityRecord{
+				path, resolved := resolveCopybook(repoRoot, filePath, book)
+				cr := copyResolution{book: book, resolved: resolved, path: path, replacing: replacing}
+				addProgramRel(buildCopyImportEdge(filePath, cr, ln.num))
+				// Emit a placeholder entity for the copybook so the bare-name
+				// import target is resolvable even when the file is absent
+				// (mirrors crystal's require). When resolved, record the path.
+				placeholder := types.EntityRecord{
 					Name:       book,
 					Kind:       "SCOPE.Component",
 					Subtype:    "copybook",
@@ -356,7 +429,15 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 					Language:   "cobol",
 					StartLine:  ln.num,
 					EndLine:    ln.num,
-				})
+					Properties: map[string]string{"resolved": strconv.FormatBool(resolved)},
+				}
+				if resolved {
+					placeholder.Properties["copybook_path"] = path
+				}
+				if replacing != "" {
+					placeholder.Properties["replacing"] = replacing
+				}
+				entities = append(entities, placeholder)
 			}
 			// COPY may share a line with other code in rare cases; fall
 			// through so PERFORM/CALL on the same line are still scanned.
@@ -377,6 +458,38 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 				if strings.EqualFold(fieldName, "FILLER") {
 					continue
 				}
+				levelNum, _ := strconv.Atoi(level)
+				props := map[string]string{"level": level}
+				// REDEFINES / OCCURS structured-field metadata (#2838).
+				if rm := dataRedefinesRe.FindStringSubmatch(ln.upper); rm != nil {
+					props["redefines"] = rm[1]
+				}
+				if om := dataOccursRe.FindStringSubmatch(ln.upper); om != nil {
+					props["occurs"] = om[1]
+				}
+				if pm := dataPicRe.FindStringSubmatch(ln.upper); pm != nil {
+					props["pic"] = pm[1]
+				} else if levelNum != 88 && levelNum != 66 {
+					// No PICTURE clause on an ordinary item ⇒ group item.
+					props["group"] = "true"
+				}
+				// Maintain the level stack and bind this item to its parent
+				// group (the nearest enclosing item with a lower level number).
+				// Levels 88 (condition) / 66 (renames) attach to the current
+				// top without becoming parents themselves.
+				for len(dataStack) > 0 && dataStack[len(dataStack)-1].level >= levelNum {
+					dataStack = dataStack[:len(dataStack)-1]
+				}
+				thisIdx := len(entities)
+				if len(dataStack) > 0 {
+					parent := dataStack[len(dataStack)-1]
+					props["parent"] = entities[parent.idx].Name
+					// CONTAINS edge: parent group → this field.
+					toID := extractor.BuildSchemaFieldStructuralRef("cobol", filePath, fieldName)
+					entities[parent.idx].Relationships = append(entities[parent.idx].Relationships,
+						types.RelationshipRecord{ToID: toID, Kind: "CONTAINS",
+							Properties: map[string]string{"child": fieldName}})
+				}
 				entities = append(entities, types.EntityRecord{
 					Name:       fieldName,
 					Kind:       "SCOPE.Schema",
@@ -386,8 +499,11 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 					StartLine:  ln.num,
 					EndLine:    ln.num,
 					Signature:  strings.TrimSpace(ln.code),
-					Properties: map[string]string{"level": level},
+					Properties: props,
 				})
+				if levelNum != 88 && levelNum != 66 {
+					dataStack = append(dataStack, dataScope{level: levelNum, idx: thisIdx})
+				}
 				continue
 			}
 		}
@@ -400,6 +516,7 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 				up := strings.ToUpper(name)
 				if !cobolReservedHeads[up] && !isAllDigits(name) {
 					currentParagraphIdx = len(entities)
+					currentParagraphName = name
 					rec := types.EntityRecord{
 						Name:       name,
 						Kind:       "SCOPE.Operation",
@@ -481,6 +598,10 @@ func extractCOBOL(src, filePath string) []types.EntityRecord {
 			}
 		}
 	}
+
+	// Flush a trailing EXEC block that lacked a closing END-EXEC (tolerant of
+	// malformed / truncated source).
+	flushExecBlock()
 
 	_ = programName
 	return entities

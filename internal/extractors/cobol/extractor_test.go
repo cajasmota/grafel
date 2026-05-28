@@ -13,16 +13,35 @@ import (
 // run is a small helper that extracts entities from a source string.
 func run(t *testing.T, path, src string) []types.EntityRecord {
 	t.Helper()
+	return runWithRoot(t, path, src, "")
+}
+
+// runWithRoot extracts with an explicit RepoRoot so the COPY resolver can
+// bind copybook references to on-disk .cpy files (#2838).
+func runWithRoot(t *testing.T, path, src, repoRoot string) []types.EntityRecord {
+	t.Helper()
 	e := &Extractor{}
 	recs, err := e.Extract(context.Background(), extractor.FileInput{
 		Path:     path,
 		Content:  []byte(src),
 		Language: "cobol",
+		RepoRoot: repoRoot,
 	})
 	if err != nil {
 		t.Fatalf("Extract returned error: %v", err)
 	}
 	return recs
+}
+
+// importEdge returns the first IMPORTS relationship whose copybook property
+// matches book, or false.
+func importEdge(recs []types.EntityRecord, book string) (types.RelationshipRecord, bool) {
+	for _, rel := range relationsByKind(recs, "IMPORTS") {
+		if rel.Properties["copybook"] == book {
+			return rel, true
+		}
+	}
+	return types.RelationshipRecord{}, false
 }
 
 // findByKind returns entities matching kind (and optional subtype).
@@ -263,6 +282,238 @@ func TestExtractor_LanguageTagging(t *testing.T) {
 				t.Fatalf("relationship %s->%s language not tagged cobol", rel.FromID, rel.ToID)
 			}
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #2838 Phase 2 — copybook resolution, embedded SQL, CICS depth, data hierarchy
+// ---------------------------------------------------------------------------
+
+// findDataAccess returns SCOPE.DataAccess entities (optionally by subtype).
+func findDataAccess(recs []types.EntityRecord, subtype string) []types.EntityRecord {
+	return findByKind(recs, "SCOPE.DataAccess", subtype)
+}
+
+func dataAccessFor(recs []types.EntityRecord, op, table string) bool {
+	for _, r := range findDataAccess(recs, "embedded-sql") {
+		if r.Properties["operation"] == op && r.Properties["table"] == table {
+			return true
+		}
+	}
+	return false
+}
+
+// TestExtractor_CopybookResolution proves COPY resolves against on-disk .cpy
+// files: with RepoRoot=testdata, COPY EMPREC / COPY TAXRULES bind to the real
+// files and the IMPORTS edge carries resolved=true + copybook_path. This is
+// the import_resolution_quality partial→full move.
+func TestExtractor_CopybookResolution(t *testing.T) {
+	src := loadFixture(t, "ledger.cbl")
+	recs := runWithRoot(t, "ledger.cbl", src, "testdata")
+
+	for _, book := range []string{"EMPREC", "TAXRULES"} {
+		rel, ok := importEdge(recs, book)
+		if !ok {
+			t.Fatalf("expected IMPORTS edge for %q", book)
+		}
+		if rel.Properties["resolved"] != "true" {
+			t.Errorf("COPY %s expected resolved=true, got %q", book, rel.Properties["resolved"])
+		}
+		if rel.Properties["copybook_path"] == "" {
+			t.Errorf("COPY %s expected copybook_path, got empty", book)
+		}
+		// A resolved COPY binds the edge ToID to the resolved file path.
+		if rel.ToID != rel.Properties["copybook_path"] {
+			t.Errorf("COPY %s ToID=%q should equal copybook_path=%q", book, rel.ToID, rel.Properties["copybook_path"])
+		}
+	}
+}
+
+// TestExtractor_CopybookUnresolvedStaysPartial proves that without a RepoRoot
+// (no disk to resolve against) the edge is still emitted but marked
+// resolved=false — honest degradation, no false "full".
+func TestExtractor_CopybookUnresolved(t *testing.T) {
+	src := loadFixture(t, "ledger.cbl")
+	recs := run(t, "ledger.cbl", src) // no RepoRoot
+
+	rel, ok := importEdge(recs, "EMPREC")
+	if !ok {
+		t.Fatal("expected IMPORTS edge for EMPREC even when unresolved")
+	}
+	if rel.Properties["resolved"] != "false" {
+		t.Errorf("unresolved COPY expected resolved=false, got %q", rel.Properties["resolved"])
+	}
+	if rel.ToID != "EMPREC" {
+		t.Errorf("unresolved COPY ToID should be bare name EMPREC, got %q", rel.ToID)
+	}
+}
+
+// TestExtractor_CopybookReplacing proves the REPLACING clause is captured and
+// its operand pairs normalized.
+func TestExtractor_CopybookReplacing(t *testing.T) {
+	src := loadFixture(t, "ledger.cbl")
+	recs := runWithRoot(t, "ledger.cbl", src, "testdata")
+
+	rel, ok := importEdge(recs, "EMPREC")
+	if !ok {
+		t.Fatal("expected IMPORTS edge for EMPREC")
+	}
+	if rel.Properties["replacing"] == "" {
+		t.Error("expected REPLACING clause to be captured on COPY EMPREC")
+	}
+	if pairs := rel.Properties["replacing_pairs"]; pairs != "EM=>WS-EM" {
+		t.Errorf("expected replacing_pairs=EM=>WS-EM, got %q", pairs)
+	}
+}
+
+// TestExtractor_EmbeddedSQLTables proves EXEC SQL table references become
+// SCOPE.DataAccess entities with ACCESSES_TABLE edges (db_effect precision).
+func TestExtractor_EmbeddedSQLTables(t *testing.T) {
+	src := loadFixture(t, "ledger.cbl")
+	recs := runWithRoot(t, "ledger.cbl", src, "testdata")
+
+	want := []struct{ op, table string }{
+		{"SELECT", "LEDGER_ENTRY"},
+		{"INSERT", "PAYROLL_LEDGER"},
+		{"UPDATE", "ACCOUNT_BALANCE"},
+		{"DELETE", "LEDGER_ENTRY"},
+	}
+	for _, w := range want {
+		if !dataAccessFor(recs, w.op, w.table) {
+			t.Errorf("expected SCOPE.DataAccess %s %s", w.op, w.table)
+		}
+	}
+	// Every table access carries an ACCESSES_TABLE edge.
+	if len(relationsByKind(recs, "ACCESSES_TABLE")) == 0 {
+		t.Error("expected ACCESSES_TABLE edges for embedded SQL")
+	}
+}
+
+// TestExtractor_EmbeddedSQLCursor proves DECLARE CURSOR yields a cursor
+// SCOPE.DataAccess entity and OPEN/FETCH/CLOSE emit REFERENCES edges.
+func TestExtractor_EmbeddedSQLCursor(t *testing.T) {
+	src := loadFixture(t, "ledger.cbl")
+	recs := runWithRoot(t, "ledger.cbl", src, "testdata")
+
+	cursors := findDataAccess(recs, "cursor")
+	var declared bool
+	for _, c := range cursors {
+		if c.Properties["operation"] == "DECLARE_CURSOR" && c.Properties["cursor"] == "LEDGER-CUR" {
+			declared = true
+		}
+	}
+	if !declared {
+		t.Error("expected DECLARE_CURSOR SCOPE.DataAccess entity for LEDGER-CUR")
+	}
+	// OPEN / FETCH / CLOSE reference the cursor.
+	ops := map[string]bool{}
+	for _, rel := range relationsByKind(recs, "REFERENCES") {
+		if rel.Properties["cursor"] == "LEDGER-CUR" {
+			ops[rel.Properties["operation"]] = true
+		}
+	}
+	for _, op := range []string{"OPEN", "FETCH", "CLOSE"} {
+		if !ops[op] {
+			t.Errorf("expected cursor REFERENCES edge for %s LEDGER-CUR", op)
+		}
+	}
+}
+
+// TestExtractor_CICSProgramTransfer proves EXEC CICS LINK/XCTL/START become
+// external CALLS edges (CICS transaction-graph depth).
+func TestExtractor_CICSProgramTransfer(t *testing.T) {
+	src := loadFixture(t, "orderui.cbl")
+	recs := run(t, "orderui.cbl", src)
+
+	for _, prog := range []string{"PRICESVC", "ORDMENU"} {
+		if !hasCallTo(recs, prog) {
+			t.Errorf("expected CICS program-transfer CALLS edge to %q", prog)
+		}
+	}
+	// START TRANSID('AUDT') schedules a transaction.
+	var foundTransid bool
+	for _, rel := range relationsByKind(recs, "CALLS") {
+		if rel.ToID == "AUDT" && rel.Properties["transid"] == "AUDT" {
+			foundTransid = true
+		}
+	}
+	if !foundTransid {
+		t.Error("expected CICS START TRANSID CALLS edge for AUDT")
+	}
+	// LINK edge carries via=EXEC-CICS-LINK + external.
+	var linkTagged bool
+	for _, rel := range relationsByKind(recs, "CALLS") {
+		if rel.ToID == "PRICESVC" {
+			if rel.Properties["via"] != "EXEC-CICS-LINK" || rel.Properties["external"] != "true" {
+				t.Errorf("CICS LINK edge to PRICESVC missing via/external: %v", rel.Properties)
+			}
+			linkTagged = true
+		}
+	}
+	if !linkTagged {
+		t.Error("expected EXEC-CICS-LINK edge to PRICESVC")
+	}
+}
+
+// TestExtractor_DataHierarchy proves 01/05 nesting binds child fields to their
+// parent group (parent property + CONTAINS edge) and captures REDEFINES/OCCURS.
+func TestExtractor_DataHierarchy(t *testing.T) {
+	src := loadFixture(t, "payroll.cbl")
+	recs := run(t, "payroll.cbl", src)
+
+	// EMP-ID (05) is nested under EMP-RECORD (01).
+	var found bool
+	for _, r := range findByKind(recs, "SCOPE.Schema", "field") {
+		if r.Name == "EMP-ID" {
+			found = true
+			if r.Properties["parent"] != "EMP-RECORD" {
+				t.Errorf("EMP-ID parent = %q, want EMP-RECORD", r.Properties["parent"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected field EMP-ID")
+	}
+	// The 01 group records the CONTAINS edge to its children.
+	var contains bool
+	for _, r := range findByKind(recs, "SCOPE.Schema", "field") {
+		if r.Name == "EMP-RECORD" {
+			for _, rel := range r.Relationships {
+				if rel.Kind == "CONTAINS" && rel.Properties["child"] == "EMP-ID" {
+					contains = true
+				}
+			}
+		}
+	}
+	if !contains {
+		t.Error("expected CONTAINS edge EMP-RECORD -> EMP-ID")
+	}
+}
+
+// TestExtractor_DataRedefinesOccurs proves REDEFINES/OCCURS structured-field
+// metadata is captured.
+func TestExtractor_DataRedefinesOccurs(t *testing.T) {
+	src := "       DATA DIVISION.\n" +
+		"       WORKING-STORAGE SECTION.\n" +
+		"       01  WS-BUFFER.\n" +
+		"           05  WS-LINES OCCURS 10 TIMES PIC X(80).\n" +
+		"       01  WS-ALIAS REDEFINES WS-BUFFER PIC X(800).\n"
+	recs := run(t, "redef.cbl", src)
+
+	var occursOK, redefOK bool
+	for _, r := range findByKind(recs, "SCOPE.Schema", "field") {
+		if r.Name == "WS-LINES" && r.Properties["occurs"] == "10" {
+			occursOK = true
+		}
+		if r.Name == "WS-ALIAS" && r.Properties["redefines"] == "WS-BUFFER" {
+			redefOK = true
+		}
+	}
+	if !occursOK {
+		t.Error("expected OCCURS 10 on WS-LINES")
+	}
+	if !redefOK {
+		t.Error("expected REDEFINES WS-BUFFER on WS-ALIAS")
 	}
 }
 

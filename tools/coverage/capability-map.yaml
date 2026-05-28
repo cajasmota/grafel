@@ -41,29 +41,55 @@ records:
         issues_implemented: ["2743"]
         verified_at: "2026-05-28"
       import_resolution_quality:
-        status: partial
+        # #2838: COPY resolves against on-disk .cpy files (resolveCopybook)
+        # and REPLACING clauses are captured — partial→full.
+        status: full
         symbols:
           - file: internal/extractors/cobol/extractor.go
             functions: [extractCOBOL]
-        issues_implemented: ["2743"]
+          - file: internal/extractors/cobol/depth.go
+            functions: [resolveCopybook, parseCopyDirective, buildCopyImportEdge]
+        tests:
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
       fs_effect:
-        status: partial
+        # #2838: CICS file/queue I/O (READ/READQ/WRITE/WRITEQ) deepened.
+        status: full
         symbols:
           - file: internal/substrate/effect_sinks_cobol.go
             functions: [sniffEffectsCobol, scanCobolParagraphHeaders]
         tests:
           - file: internal/substrate/effect_sinks_cobol_test.go
-        issues_implemented: ["2743"]
+        issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
       db_effect:
-        status: partial
+        # #2838: embedded SQL tables/cursors extracted as SCOPE.DataAccess
+        # entities + ACCESSES_TABLE edges — not just a flag — partial→full.
+        status: full
         symbols:
           - file: internal/substrate/effect_sinks_cobol.go
             functions: [sniffEffectsCobol]
+          - file: internal/extractors/cobol/depth.go
+            functions: [extractSQLEntities, sqlOpFor]
         tests:
           - file: internal/substrate/effect_sinks_cobol_test.go
-        issues_implemented: ["2743"]
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743", "2838"]
+        verified_at: "2026-05-28"
+      http_effect:
+        # #2838: EXEC CICS LINK/XCTL/START surfaced as external CALLS +
+        # http_out effect (transaction depth) — partial→full.
+        status: full
+        symbols:
+          - file: internal/substrate/effect_sinks_cobol.go
+            functions: [sniffEffectsCobol]
+          - file: internal/extractors/cobol/depth.go
+            functions: [extractCICSTransfers, cicsCallEdge]
+        tests:
+          - file: internal/substrate/effect_sinks_cobol_test.go
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
 
   lang.cobol.runtime.gnucobol:
@@ -85,35 +111,59 @@ records:
         issues_implemented: ["2743"]
         verified_at: "2026-05-28"
       import_resolution_quality:
-        status: partial
+        # #2838: COPY disk resolution applies to GnuCOBOL too (same extractor).
+        status: full
         symbols:
           - file: internal/extractors/cobol/extractor.go
             functions: [extractCOBOL]
-        issues_implemented: ["2743"]
+          - file: internal/extractors/cobol/depth.go
+            functions: [resolveCopybook, parseCopyDirective]
+        tests:
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
 
   lang.cobol.embedded.db2-sql:
     capabilities:
       db_effect:
+        # #2838: tables + cursors extracted as SCOPE.DataAccess entities.
+        status: full
+        symbols:
+          - file: internal/substrate/effect_sinks_cobol.go
+            functions: [sniffEffectsCobol]
+          - file: internal/extractors/cobol/depth.go
+            functions: [extractSQLEntities, sqlOpFor]
+        tests:
+          - file: internal/substrate/effect_sinks_cobol_test.go
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743", "2838"]
+        verified_at: "2026-05-28"
+
+  lang.cobol.embedded.cics:
+    capabilities:
+      http_effect:
+        # #2838: EXEC CICS LINK/XCTL/START program-transfer + transaction
+        # scheduling as external CALLS — partial→full.
+        status: full
+        symbols:
+          - file: internal/substrate/effect_sinks_cobol.go
+            functions: [sniffEffectsCobol]
+          - file: internal/extractors/cobol/depth.go
+            functions: [extractCICSTransfers, cicsCallEdge]
+        tests:
+          - file: internal/substrate/effect_sinks_cobol_test.go
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743", "2838"]
+        verified_at: "2026-05-28"
+      fs_effect:
+        # #2838: CICS file/queue I/O (READ/READQ/WRITE/WRITEQ) as fs effects.
         status: full
         symbols:
           - file: internal/substrate/effect_sinks_cobol.go
             functions: [sniffEffectsCobol]
         tests:
           - file: internal/substrate/effect_sinks_cobol_test.go
-        issues_implemented: ["2743"]
-        verified_at: "2026-05-28"
-
-  lang.cobol.embedded.cics:
-    capabilities:
-      http_effect:
-        status: partial
-        symbols:
-          - file: internal/substrate/effect_sinks_cobol.go
-            functions: [sniffEffectsCobol]
-        tests:
-          - file: internal/substrate/effect_sinks_cobol_test.go
-        issues_implemented: ["2743"]
+        issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
 
   lang.jsts.framework.react:

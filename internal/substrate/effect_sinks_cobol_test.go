@@ -74,6 +74,33 @@ func TestSniffEffectsCobol_Mutation(t *testing.T) {
 	}
 }
 
+// TestSniffEffectsCobol_CICSFileIO proves EXEC CICS file/queue I/O
+// (READ/READQ → fs_read, WRITE/WRITEQ/REWRITE → fs_write) is surfaced as
+// filesystem effects, deepening CICS beyond the http_out flag (#2838).
+func TestSniffEffectsCobol_CICSFileIO(t *testing.T) {
+	src := `       PROCEDURE DIVISION.
+       LOAD-ORDER.
+           EXEC CICS READ FILE('ORDFILE') INTO(WS-REC) END-EXEC
+           EXEC CICS READQ TS QUEUE(WS-Q) INTO(WS-REC) END-EXEC.
+       PERSIST-ORDER.
+           EXEC CICS WRITE FILE('ORDFILE') FROM(WS-REC) END-EXEC
+           EXEC CICS WRITEQ TS QUEUE(WS-Q) FROM(WS-REC) END-EXEC.
+       CALL-SVC.
+           EXEC CICS LINK PROGRAM('PRICESVC') END-EXEC.
+`
+	got := cobolEffectsByFn(src)
+	if !got["LOAD-ORDER"][EffectFSRead] {
+		t.Errorf("LOAD-ORDER expected fs_read (CICS READ/READQ), got %v", got["LOAD-ORDER"])
+	}
+	if !got["PERSIST-ORDER"][EffectFSWrite] {
+		t.Errorf("PERSIST-ORDER expected fs_write (CICS WRITE/WRITEQ), got %v", got["PERSIST-ORDER"])
+	}
+	// LINK still registers as http_out (transaction/service transfer).
+	if !got["CALL-SVC"][EffectHTTPOut] {
+		t.Errorf("CALL-SVC expected http_out (CICS LINK), got %v", got["CALL-SVC"])
+	}
+}
+
 func TestSniffEffectsCobol_Registered(t *testing.T) {
 	if EffectSnifferFor("cobol") == nil {
 		t.Fatal("cobol effect sniffer not registered")

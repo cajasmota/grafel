@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `db_effect` | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/substrate/effect_sinks_cobol.go` | — |
+| `db_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/substrate/effect_sinks_cobol.go`<br>`internal/extractors/cobol/depth.go` | — |
 
 ## Provenance
 
