@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 37 (16 active · 21 placeholder) · **Frameworks**: 182 · **ORMs**: 150 · **Tools**: 110 · **Other**: 99
+**Languages**: 34 (16 active · 18 placeholder) · **Frameworks**: 182 · **ORMs**: 150 · **Tools**: 110 · **Other**: 99
 
 ## Coverage by language
 
@@ -44,7 +44,6 @@
 
 | Language |
 |---|
-| [Astro](by-language/astro.md) |
 | [Clojure](by-language/clojure.md) |
 | [Crystal](by-language/crystal.md) |
 | [Elm](by-language/elm.md) |
@@ -60,10 +59,8 @@
 | [ReasonML](by-language/reasonml.md) |
 | [Solidity](by-language/solidity.md) |
 | [Standard ML](by-language/sml.md) |
-| [Svelte](by-language/svelte.md) |
 | [VHDL](by-language/vhdl.md) |
 | [Verilog](by-language/verilog.md) |
-| [Vue](by-language/vue.md) |
 | [Zig](by-language/zig.md) |
 
 Total: 182 frameworks · 110 tools · 150 ORMs · 99 other

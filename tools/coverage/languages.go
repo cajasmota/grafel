@@ -52,11 +52,25 @@ var extractorNonLanguageFormats = map[string]bool{
 // is the extractor dirname but the registry uses "go"; "cpp" expands to
 // "c-cpp" because archigraph's C/C++ extractor is shared across .c and
 // .cpp sources (mirrors the JS/TS collapse — see #2732).
+//
+// Vue (.vue), Svelte (.svelte) and Astro (.astro) are JS/TS frameworks
+// with custom single-file-component formats, NOT standalone languages —
+// the same class as React, which #2729 collapsed into jsts. They have
+// dedicated extractor directories (the SFC crackers that hand <script>
+// bodies to the JS/TS pipeline) and their own runtime dispatch language
+// tokens, but on the *coverage* axis they belong under jsts as frameworks
+// (their registry records already live at lang.jsts.framework.{vue,
+// svelte,astro}). Collapsing them here keeps them out of the by-language
+// pivot and stops empty by-language/{vue,svelte,astro}.md pages being
+// emitted, while leaving the runtime extraction path untouched (#2821).
 var extractorDirAliases = map[string]string{
 	"javascript": "jsts",
 	"typescript": "jsts",
 	"golang":     "go",
 	"cpp":        "c-cpp",
+	"vue":        "jsts",
+	"svelte":     "jsts",
+	"astro":      "jsts",
 }
 
 // languageDisplayOverrides maps a canonical language slug to its human

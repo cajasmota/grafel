@@ -541,8 +541,11 @@ func TestMX1100_Dockerfile_ClassifyWithSize(t *testing.T) {
 	}
 }
 
-// TestMX1100_Vue_LanguageToken verifies that .vue maps to "vue" (the dedicated
-// Vue SFC extractor, not the generic "html" extractor).
+// TestMX1100_Vue_LanguageToken verifies that .vue maps to the "vue" runtime
+// extractor-dispatch token (the dedicated Vue SFC extractor, not the generic
+// "html" extractor). Note: "vue" is a JS/TS framework, not a coverage language
+// — on the coverage by-language axis it collapses into jsts (#2821). This token
+// is purely the dispatch key that routes .vue files to the SFC extractor.
 func TestMX1100_Vue_LanguageToken(t *testing.T) {
 	c := newTestClassifier(t)
 	ctx := context.Background()
@@ -600,8 +603,11 @@ func TestMX1100_HTML_LanguageToken(t *testing.T) {
 	}
 }
 
-// TestAstroLanguageToken verifies that .astro files map to the "astro"
-// language token (matching extractor.Register("astro", …)).
+// TestAstroLanguageToken verifies that .astro files map to the "astro" runtime
+// extractor-dispatch token (matching extractor.Register("astro", …)). Note:
+// "astro" is a JS/TS framework, not a coverage language — on the coverage
+// by-language axis it collapses into jsts (#2821). This token only routes
+// .astro files to the dedicated SFC extractor.
 func TestAstroLanguageToken(t *testing.T) {
 	c := newTestClassifier(t)
 	ctx := context.Background()
@@ -643,8 +649,11 @@ func TestMX1100_HTML_ClassifyWithSize(t *testing.T) {
 	}
 }
 
-// TestSvelte_LanguageToken verifies that .svelte files are classified as
-// "svelte" (not "html") now that a dedicated svelte extractor is registered.
+// TestSvelte_LanguageToken verifies that .svelte files are classified with the
+// "svelte" runtime extractor-dispatch token (not "html") so the dedicated
+// svelte SFC extractor is invoked. Note: "svelte" is a JS/TS framework, not a
+// coverage language — on the coverage by-language axis it collapses into jsts
+// (#2821). This token only routes .svelte files to the SFC extractor.
 func TestSvelte_LanguageToken(t *testing.T) {
 	c := newTestClassifier(t)
 	ctx := context.Background()
