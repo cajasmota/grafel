@@ -86,6 +86,13 @@ var (
 	// Matches both self-closing `<Foo />` and opening `<Foo>` / `<Foo ...>`.
 	// PascalCase tag → Svelte component by convention (lower-case → HTML element).
 	childComponentRE = regexp.MustCompile(`<([A-Z][A-Za-z0-9]*)\b`)
+
+	// Context (issue #2854 — Structure/context_extraction). Svelte's
+	// dependency-injection context API: setContext(key, value) is the
+	// provider, getContext(key) is the consumer. The first argument is the
+	// context key (Symbol identifier or string literal).
+	setContextRE = regexp.MustCompile(`\bsetContext\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*|['"][^'"]+['"])`)
+	getContextRE = regexp.MustCompile(`\bgetContext\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*|['"][^'"]+['"])`)
 )
 
 // Extract parses the Svelte SFC source and returns entity records.
@@ -131,6 +138,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	if scriptContent != "" {
 		scriptEntities := extractScriptEntities(scriptContent, scriptStartLine, file.Path)
 		entities = append(entities, scriptEntities...)
+
+		// Context provide/consume (#2854 — Structure/context_extraction).
+		ctxEntities, ctxRels := extractContext(scriptContent, scriptStartLine, file.Path, componentName)
+		entities[0].Relationships = append(entities[0].Relationships, ctxRels...)
+		entities = append(entities, ctxEntities...)
 	}
 
 	// ── 3. Extract RENDERS edges from child components in the template ────────
@@ -339,6 +351,81 @@ func extractScriptEntities(script string, scriptStartLine int, filePath string) 
 	}
 
 	return entities
+}
+
+// extractContext scans the <script> content for Svelte context API calls
+// (issue #2854 — Structure/context_extraction). setContext(key, …) provides a
+// context; getContext(key) consumes one. Each distinct (role, key) pair yields
+// a SCOPE.Operation entity (subtype "provide_context"/"inject_context") and a
+// USES edge from the component to that context operation.
+func extractContext(script string, scriptStartLine int, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+
+	emit := func(re *regexp.Regexp, subtype, role string) {
+		for _, m := range re.FindAllStringSubmatchIndex(script, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			key := normalizeContextKey(script[m[2]:m[3]])
+			if key == "" {
+				continue
+			}
+			dedupe := role + ":" + key
+			if seen[dedupe] {
+				continue
+			}
+			seen[dedupe] = true
+			lineNum := scriptStartLine + strings.Count(script[:m[0]], "\n")
+			name := role + ":" + key
+			ents = append(ents, types.EntityRecord{
+				Name:         name,
+				Kind:         "SCOPE.Operation",
+				Subtype:      subtype,
+				SourceFile:   filePath,
+				Language:     "svelte",
+				StartLine:    lineNum,
+				EndLine:      lineNum,
+				Signature:    subtype + "(" + key + ")",
+				QualityScore: 0.8,
+				Properties: map[string]string{
+					"component":    componentName,
+					"context_key":  key,
+					"context_role": role,
+					"framework":    "svelte",
+				},
+			})
+			rels = append(rels, types.RelationshipRecord{
+				FromID: filePath,
+				ToID:   name,
+				Kind:   "USES",
+				Properties: map[string]string{
+					"component":    componentName,
+					"context_key":  key,
+					"context_role": role,
+					"framework":    "svelte",
+				},
+			})
+		}
+	}
+
+	emit(setContextRE, "provide_context", "provider")
+	emit(getContextRE, "inject_context", "consumer")
+	return ents, rels
+}
+
+// normalizeContextKey strips quotes from a string-literal context key, or
+// returns a Symbol/identifier key unchanged.
+func normalizeContextKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) >= 2 {
+		f, l := raw[0], raw[len(raw)-1]
+		if (f == '\'' || f == '"') && f == l {
+			return raw[1 : len(raw)-1]
+		}
+	}
+	return raw
 }
 
 // extractChildComponents scans the template content for PascalCase component

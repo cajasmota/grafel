@@ -689,6 +689,10 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	if parentClass != "" {
 		subtype = "method"
 	}
+	// Issue #2854 — a top-level use-prefixed function is a React custom hook.
+	if parentClass == "" && isReactHookName(name) {
+		subtype = "react_hook"
+	}
 	sig := fmt.Sprintf("function %s", name)
 	body := n.ChildByFieldName("body")
 	// Issue #421 — top-level functions can still take typed parameters
@@ -702,6 +706,9 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	// JSX child elements and emit RENDERS edges so the component-composition
 	// graph is complete.
 	rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
+	// Issue #2854 — emit USES_HOOK edges from components / custom hooks to the
+	// hooks they call (Structure/hook_recognition).
+	rels = append(rels, x.extractHookCalls(body, name)...)
 	x.emitWithRels(name, "SCOPE.Operation", n, subtype, sig, rels)
 	// Issue #2654 — stamp discriminator comparisons found in the body.
 	x.stampDiscriminators(body)
@@ -726,6 +733,17 @@ func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 	className := x.nodeText(nameNode)
 	if className == "" {
 		return
+	}
+
+	// Issue #2854 — Angular declares components/directives/services/pipes via
+	// class decorators (@Component, @Directive, @Injectable, @Pipe, @NgModule).
+	// When the class is Angular-decorated, route to the Angular-aware path so
+	// the component subtype, selector/template RENDERS edges, and DI INJECTS
+	// edges are emitted; the generic class path is then skipped.
+	if decorator, call := x.angularDecoratorFor(n); decorator != "" {
+		if x.handleAngularClass(n, decorator, call) {
+			return
+		}
 	}
 
 	// Snapshot the entity slice length before walking the body so we can
@@ -1198,12 +1216,18 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		if parentClass != "" {
 			subtype = "method"
 		}
+		// Issue #2854 — `const useFoo = (...) => …` is a React custom hook.
+		if parentClass == "" && isReactHookName(name) {
+			subtype = "react_hook"
+		}
 		body := valueNode.ChildByFieldName("body")
 		params := valueNode.ChildByFieldName("parameters")
 		frame := x.functionParamFrame(params, cb)
 		rels := x.extractCallRelationships(body, name, frame)
 		// Issue #610 — PascalCase arrow components emit RENDERS edges.
 		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
+		// Issue #2854 — USES_HOOK edges (Structure/hook_recognition).
+		rels = append(rels, x.extractHookCalls(body, name)...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name), rels)
 		// Issue #2654 — stamp discriminator comparisons found in the body.
 		x.stampDiscriminators(body)
@@ -1220,12 +1244,18 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		if parentClass != "" {
 			subtype = "method"
 		}
+		// Issue #2854 — `const useFoo = function …` is a React custom hook.
+		if parentClass == "" && isReactHookName(name) {
+			subtype = "react_hook"
+		}
 		body := valueNode.ChildByFieldName("body")
 		params := valueNode.ChildByFieldName("parameters")
 		frame := x.functionParamFrame(params, cb)
 		rels := x.extractCallRelationships(body, name, frame)
 		// Issue #610 — PascalCase function-expression components emit RENDERS edges.
 		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
+		// Issue #2854 — USES_HOOK edges (Structure/hook_recognition).
+		rels = append(rels, x.extractHookCalls(body, name)...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name), rels)
 		// Issue #2654 — stamp discriminator comparisons found in the body.
 		x.stampDiscriminators(body)

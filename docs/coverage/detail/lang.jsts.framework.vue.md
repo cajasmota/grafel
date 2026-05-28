@@ -15,10 +15,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `component_extraction` | ❌ `missing` | — | — | — | — | — |
-| `context_extraction` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
-| `hoc_wrapper_recognition` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
-| `hook_recognition` | ❌ `missing` | — | — | — | — | — |
+| `component_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2854_test.go` | — |
+| `context_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2854_test.go` | — |
+| `hoc_wrapper_recognition` | — `not_applicable` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2854) | — | — |
+| `hook_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2854_test.go` | — |
 | `jsx_template` | — `not_applicable` | — | — | — | — | — |
 
 ### Data Flow

@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `component_extraction` | ❌ `missing` | — | — | — | — | — |
-| `context_extraction` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
-| `hoc_wrapper_recognition` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
+| `component_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/angular.go`<br>`internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue2854_angular_test.go` | — |
+| `context_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/javascript/angular.go`<br>`internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue2854_angular_test.go` | — |
+| `hoc_wrapper_recognition` | — `not_applicable` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2854) | — | — |
 | `hook_recognition` | — `not_applicable` | — | — | — | — | — |
 | `jsx_template` | — `not_applicable` | — | — | — | — | — |
 

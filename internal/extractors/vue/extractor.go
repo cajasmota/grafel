@@ -111,6 +111,25 @@ var (
 
 	// methods: { block — used to scope options method extraction
 	reMethodsBlock = regexp.MustCompile(`(?m)\bmethods\s*:`)
+
+	// Context provide/inject (issue #2854 — Structure/context_extraction).
+	// provide(KEY, value) / provide('key', value) — the first argument is the
+	// injection key (Symbol identifier or string literal).
+	reProvide = regexp.MustCompile(`(?m)\bprovide\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*|['"][^'"]+['"])`)
+	// inject(KEY) / inject('key', default) — first argument is the key.
+	reInject = regexp.MustCompile(`(?m)\binject\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*|['"][^'"]+['"])`)
+
+	// Composable usage (issue #2854 — Structure/hook_recognition). Vue
+	// composables follow the `useXxx` convention, the framework's hook
+	// analogue. We capture imported/local composable call sites. The built-in
+	// useRouter/useRoute/useStore/useI18n/etc. are already captured by
+	// reCompositionCall as CALLS; here we additionally model the composable as
+	// a hook USE so the hook_recognition cell has a dedicated signal.
+	reComposableCall = regexp.MustCompile(`(?m)\b(use[A-Z][A-Za-z0-9_$]*)\s*\(`)
+
+	// Composable definition: `function useFoo(` / `const useFoo = (` —
+	// a local custom composable (hook) declaration.
+	reComposableDef = regexp.MustCompile(`(?m)\b(?:function\s+(use[A-Z][A-Za-z0-9_$]*)|(?:const|let)\s+(use[A-Z][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?(?:function|\())`)
 )
 
 // jsKeywords are identifiers that appear before "(" but are NOT method
@@ -231,6 +250,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		// 3c. Composition API and Options API calls → CALLS edges
 		calls := extractScriptCalls(scriptSrc, componentName)
 		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, calls...)
+
+		// 3c-i. Context provide/inject → context entities + edges (#2854).
+		ctxEntities, ctxRels := extractContext(scriptSrc, scriptOffset, src, file.Path, componentName)
+		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, ctxRels...)
+		entities = append(entities, ctxEntities...)
+
+		// 3c-ii. Composables (hooks) → hook entities + USES_HOOK edges (#2854).
+		hookEntities, hookRels := extractComposables(scriptSrc, scriptOffset, src, file.Path, componentName)
+		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, hookRels...)
+		entities = append(entities, hookEntities...)
 
 		// 3d. Options API methods (inside methods: { … })
 		if !isSetup {
@@ -448,6 +477,144 @@ func extractTemplateRenders(templateSrc, componentName string) []types.Relations
 		})
 	}
 	return out
+}
+
+// extractContext scans a <script> block for Vue dependency-injection context
+// provide()/inject() calls (issue #2854 — Structure/context_extraction). Each
+// distinct injection key yields a SCOPE.Operation entity (subtype
+// "provide_context" or "inject_context") and a USES edge from the component to
+// that context operation, with a "role" property distinguishing provider from
+// consumer.
+func extractContext(scriptSrc string, scriptOffset int, fullSrc, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+
+	emit := func(re *regexp.Regexp, subtype, role string) {
+		for _, m := range re.FindAllStringSubmatchIndex(scriptSrc, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			key := normalizeContextKey(scriptSrc[m[2]:m[3]])
+			if key == "" {
+				continue
+			}
+			dedupe := role + ":" + key
+			if seen[dedupe] {
+				continue
+			}
+			seen[dedupe] = true
+			lineNum := lineOf(fullSrc, scriptOffset+m[0])
+			name := role + ":" + key
+			ents = append(ents, types.EntityRecord{
+				Name:             name,
+				QualifiedName:    fmt.Sprintf("%s.%s", componentName, name),
+				Kind:             "SCOPE.Operation",
+				Subtype:          subtype,
+				SourceFile:       filePath,
+				Language:         "vue",
+				StartLine:        lineNum,
+				EndLine:          lineNum,
+				QualityScore:     0.8,
+				EnrichmentStatus: types.StatusPending,
+				Properties: map[string]string{
+					"component":    componentName,
+					"context_key":  key,
+					"context_role": role,
+					"framework":    "vue",
+				},
+			})
+			rels = append(rels, types.RelationshipRecord{
+				ToID: name,
+				Kind: "USES",
+				Properties: map[string]string{
+					"component":    componentName,
+					"context_key":  key,
+					"context_role": role,
+					"framework":    "vue",
+				},
+			})
+		}
+	}
+
+	emit(reProvide, "provide_context", "provider")
+	emit(reInject, "inject_context", "consumer")
+	return ents, rels
+}
+
+// normalizeContextKey strips quotes from a string-literal injection key, or
+// returns a Symbol/identifier key unchanged.
+func normalizeContextKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) >= 2 {
+		f, l := raw[0], raw[len(raw)-1]
+		if (f == '\'' || f == '"') && f == l {
+			return raw[1 : len(raw)-1]
+		}
+	}
+	return raw
+}
+
+// extractComposables scans a <script> block for Vue composable (hook) usage and
+// local composable definitions (issue #2854 — Structure/hook_recognition). A
+// `useXxx(` call site emits a USES_HOOK edge from the component to the
+// composable; a local `function useXxx`/`const useXxx =` definition emits a
+// SCOPE.Operation entity subtype="vue_composable".
+func extractComposables(scriptSrc string, scriptOffset int, fullSrc, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+
+	// Local composable definitions.
+	defined := map[string]bool{}
+	for _, m := range reComposableDef.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		name := ""
+		if m[2] >= 0 {
+			name = scriptSrc[m[2]:m[3]]
+		} else if len(m) >= 6 && m[4] >= 0 {
+			name = scriptSrc[m[4]:m[5]]
+		}
+		if name == "" || defined[name] {
+			continue
+		}
+		defined[name] = true
+		lineNum := lineOf(fullSrc, scriptOffset+m[0])
+		ents = append(ents, types.EntityRecord{
+			Name:             name,
+			QualifiedName:    fmt.Sprintf("%s.%s", componentName, name),
+			Kind:             "SCOPE.Operation",
+			Subtype:          "vue_composable",
+			SourceFile:       filePath,
+			Language:         "vue",
+			StartLine:        lineNum,
+			EndLine:          lineNum,
+			QualityScore:     0.8,
+			EnrichmentStatus: types.StatusPending,
+			Properties: map[string]string{
+				"component": componentName,
+				"framework": "vue",
+			},
+		})
+	}
+
+	// Composable call sites → USES_HOOK edges.
+	seen := map[string]bool{}
+	for _, m := range reComposableCall.FindAllStringSubmatch(scriptSrc, -1) {
+		hook := m[1]
+		if hook == "" || hook == componentName || seen[hook] {
+			continue
+		}
+		seen[hook] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: hook,
+			Kind: "USES_HOOK",
+			Properties: map[string]string{
+				"consumer":  componentName,
+				"hook":      hook,
+				"framework": "vue",
+			},
+		})
+	}
+	return ents, rels
 }
 
 // buildVueImportEntities scans import statements in the script block and emits

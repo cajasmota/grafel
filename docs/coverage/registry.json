@@ -10458,15 +10458,20 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2854_angular_test.go"],
+            "verified_at": "2026-05-28"
           },
           "context_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2854_angular_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2751",
+            "verified_at": "2026-05-28"
           },
           "hoc_wrapper_recognition": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2854",
+            "verified_at": "2026-05-28"
           },
           "hook_recognition": {
             "status": "not_applicable"
@@ -11876,8 +11881,8 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "partial",
-            "cites": ["internal/extractors/javascript/extractor.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/react.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2735",
             "verified_at": "2026-05-28"
           },
@@ -11892,8 +11897,8 @@
             "verified_at": "2026-05-28"
           },
           "hook_recognition": {
-            "status": "partial",
-            "cites": ["internal/extractors/javascript/destructure_bindings.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2854_react_test.go","internal/extractors/javascript/react.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2735",
             "verified_at": "2026-05-28"
           },
@@ -12381,15 +12386,20 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2854_test.go"],
+            "verified_at": "2026-05-28"
           },
           "context_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2854_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2751",
+            "verified_at": "2026-05-28"
           },
           "hoc_wrapper_recognition": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2854",
+            "verified_at": "2026-05-28"
           },
           "hook_recognition": {
             "status": "not_applicable"
@@ -12633,18 +12643,25 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2854_test.go"],
+            "verified_at": "2026-05-28"
           },
           "context_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2854_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2751",
+            "verified_at": "2026-05-28"
           },
           "hoc_wrapper_recognition": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2854",
+            "verified_at": "2026-05-28"
           },
           "hook_recognition": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2854_test.go"],
+            "verified_at": "2026-05-28"
           },
           "jsx_template": {
             "status": "not_applicable"
