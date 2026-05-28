@@ -10537,8 +10537,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/markup_script.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_angular/app.component.ts"],
             "verified_at": "2026-05-28"
           }
         }
@@ -10639,23 +10639,23 @@
         },
         "Substrate": {
           "sanitizer_recognition": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_astro/UserPage.astro"],
             "verified_at": "2026-05-28"
           },
           "taint_sink_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_astro/UserPage.astro"],
             "verified_at": "2026-05-28"
           },
           "taint_source_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_astro/UserPage.astro"],
             "verified_at": "2026-05-28"
           },
           "vulnerability_finding": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_astro/UserPage.astro"],
             "verified_at": "2026-05-28"
           }
         }
@@ -10792,8 +10792,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_mobile/App.tsx"],
             "verified_at": "2026-05-28"
           }
         }
@@ -11317,8 +11317,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_mobile/App.tsx"],
             "verified_at": "2026-05-28"
           }
         }
@@ -11564,8 +11564,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_mobile/App.tsx"],
             "verified_at": "2026-05-28"
           }
         }
@@ -12160,8 +12160,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_mobile/App.tsx"],
             "verified_at": "2026-05-28"
           }
         }
@@ -12460,28 +12460,28 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/markup_script.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_svelte/UserCard.svelte"],
             "verified_at": "2026-05-28"
           },
           "sanitizer_recognition": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_svelte/UserCard.svelte"],
             "verified_at": "2026-05-28"
           },
           "taint_sink_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_svelte/UserCard.svelte"],
             "verified_at": "2026-05-28"
           },
           "taint_source_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_svelte/UserCard.svelte"],
             "verified_at": "2026-05-28"
           },
           "vulnerability_finding": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_svelte/UserCard.svelte"],
             "verified_at": "2026-05-28"
           }
         }
@@ -12574,23 +12574,23 @@
         },
         "Substrate": {
           "sanitizer_recognition": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/substrate.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_sveltekit/+page.server.ts"],
             "verified_at": "2026-05-28"
           },
           "taint_sink_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/substrate.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_sveltekit/+page.server.ts"],
             "verified_at": "2026-05-28"
           },
           "taint_source_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/substrate.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_sveltekit/+page.server.ts"],
             "verified_at": "2026-05-28"
           },
           "vulnerability_finding": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/substrate.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_sveltekit/+page.server.ts"],
             "verified_at": "2026-05-28"
           }
         }
@@ -12712,28 +12712,28 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/markup_script.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_vue/UserCard.vue"],
             "verified_at": "2026-05-28"
           },
           "sanitizer_recognition": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_vue/UserCard.vue"],
             "verified_at": "2026-05-28"
           },
           "taint_sink_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_vue/UserCard.vue"],
             "verified_at": "2026-05-28"
           },
           "taint_source_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_vue/UserCard.vue"],
             "verified_at": "2026-05-28"
           },
           "vulnerability_finding": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_markup_script.go"],
+            "status": "full",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_markup_script.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_vue/UserCard.vue"],
             "verified_at": "2026-05-28"
           }
         }
@@ -22650,32 +22650,6 @@
         "service_extraction": {
           "status": "full",
           "cites": ["internal/engine/grpc_edges.go"],
-          "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "protocol.jcl-cobol",
-      "category": "protocol",
-      "language": "multi",
-      "label": "JCL → COBOL job bridge",
-      "capabilities": {
-        "cross_repo_linkage": {
-          "status": "full",
-          "cites": ["internal/extractors/cobol/testdata/payroll.cbl","internal/extractors/jcl/extractor.go","internal/extractors/jcl/extractor_test.go"],
-          "issue": "2843",
-          "verified_at": "2026-05-28"
-        },
-        "method_attribution": {
-          "status": "full",
-          "cites": ["internal/extractors/jcl/extractor.go","internal/extractors/jcl/testdata/payjob.jcl"],
-          "issue": "2843",
-          "verified_at": "2026-05-28"
-        },
-        "service_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/jcl/extractor.go"],
-          "issue": "2843",
           "verified_at": "2026-05-28"
         }
       }

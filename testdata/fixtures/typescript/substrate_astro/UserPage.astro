@@ -1,0 +1,33 @@
+---
+// Astro component fixture — proves taint-source, taint-sink, sanitizer,
+// and vulnerability-finding for the jsts/markup-script substrate sniffers
+// (issue #2850).  Hand-written; no node_modules.
+import { UserService } from './user.service';
+import DOMPurify from 'dompurify';
+
+const API_URL = 'https://api.example.com';
+const SECRET = import.meta.env['SECRET_KEY'] ?? 'dev-only';
+
+// Source: Astro.params is a taint source (route parameter).
+const { id } = Astro.params;
+
+// Source: Astro.url.searchParams is a taint source.
+const q = Astro.url.searchParams.get('q');
+
+// Sink: eval — command injection sink.
+function badHandler(input: string) {
+  eval(input);
+}
+
+// Sanitizer: DOMPurify.sanitize.
+const safeContent = DOMPurify.sanitize(q ?? '');
+
+// Sink: fetch with non-literal URL (potential SSRF in SSR context).
+const result = await fetch(q ?? '/fallback');
+---
+
+<!-- Sink: set:html bypasses Astro auto-escaping — XSS sink. -->
+<div set:html={safeContent} />
+
+<!-- Source + sink chain proving vulnerability_finding. -->
+<div set:html={id} />
