@@ -23,7 +23,7 @@ Back to [summary](../summary.md).
 | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
 | [Polka](../detail/lang.jsts.framework.polka.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
 | [Restify](../detail/lang.jsts.framework.restify.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ⚠️ 0/1 | — | — 0/1 | — | — | — | ✅ 6/6 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ✅ 1/1 | — | — 0/1 | — | — | — | ✅ 6/6 | |
 
 
 ### UI Frontend

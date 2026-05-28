@@ -199,4 +199,93 @@ func TestAuth_SailsPolicies(t *testing.T) {
 	if pm.DefaultPolicy != "'isLoggedIn'" {
 		t.Errorf("DefaultPolicy=%q, want 'isLoggedIn'", pm.DefaultPolicy)
 	}
+	if !pm.HasDefault {
+		t.Error("HasDefault=false, want true")
+	}
+	// AuthController object block: per-action overrides.
+	ac, ok := pm.Controllers["AuthController"]
+	if !ok {
+		t.Fatalf("AuthController block not parsed (controllers: %v)", pm.Controllers)
+	}
+	if ac.Actions["login"] != "true" {
+		t.Errorf("AuthController.login=%q, want true", ac.Actions["login"])
+	}
+	if ac.Actions["logout"] != "'isLoggedIn'" {
+		t.Errorf("AuthController.logout=%q, want 'isLoggedIn'", ac.Actions["logout"])
+	}
+	// DashboardController bare value: controller-level catch-all.
+	dc, ok := pm.Controllers["DashboardController"]
+	if !ok || !dc.HasControllerPolicy {
+		t.Fatalf("DashboardController controller-level policy not parsed (controllers: %v)", pm.Controllers)
+	}
+	if dc.ControllerPolicy != "'isLoggedIn'" {
+		t.Errorf("DashboardController catch-all=%q, want 'isLoggedIn'", dc.ControllerPolicy)
+	}
+}
+
+// TestAuth_SailsCrossFileAttribution — the #2897 cross-file join. Synthesises
+// the Sails endpoints from config/routes.js, then runs the corpus-wide
+// ApplySailsAuthPolicy pass with a reader serving config/policies.js, and
+// asserts the resolved posture per precedence level (action > controller >
+// global '*').
+func TestAuth_SailsCrossFileAttribution(t *testing.T) {
+	routesSrc := readBackendFixture(t, "sails_routes.ts")
+	policiesSrc := readBackendFixture(t, "sails_policies.ts")
+
+	// 1. Synthesise the Sails endpoints from config/routes.js (per-file pass).
+	rules, err := LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules: %v", err)
+	}
+	det := New(rules)
+	res, err := det.Detect(context.Background(), extractor.FileInput{
+		Path:     "config/routes.js",
+		Content:  []byte(routesSrc),
+		Language: "javascript",
+	})
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+
+	// 2. Run the corpus-wide policy attribution pass with both files available.
+	reader := func(p string) []byte {
+		switch p {
+		case "config/policies.js":
+			return []byte(policiesSrc)
+		case "config/routes.js":
+			return []byte(routesSrc)
+		}
+		return nil
+	}
+	paths := []string{"config/routes.js", "config/policies.js"}
+	stats := ApplySailsAuthPolicy(res.Entities, paths, reader)
+	if stats.PolicyFiles != 1 {
+		t.Fatalf("PolicyFiles=%d, want 1", stats.PolicyFiles)
+	}
+	if stats.Attributed == 0 {
+		t.Fatal("Attributed=0, want >0 (cross-file join produced no postures)")
+	}
+
+	eps := map[string]types.EntityRecord{}
+	for _, e := range res.Entities {
+		if e.Kind != httpEndpointDefinitionKind {
+			continue
+		}
+		eps[e.Properties["verb"]+" "+e.Properties["path"]] = e
+	}
+
+	// Global '*' default protects UsersController.* (no override).
+	requireProtected(t, eps, "GET /users", "config")
+	if eps["GET /users"].Properties["auth_confidence"] != "medium" {
+		t.Errorf("GET /users: confidence=%q, want medium", eps["GET /users"].Properties["auth_confidence"])
+	}
+	// Controller-level catch-all gates DashboardController.index.
+	requireProtected(t, eps, "GET /dashboard", "config")
+	// Action-level override: AuthController.login is explicitly public (true).
+	requirePublic(t, eps, "POST /login")
+	if eps["POST /login"].Properties["auth_method"] != "config" {
+		t.Errorf("POST /login: method=%q, want config", eps["POST /login"].Properties["auth_method"])
+	}
+	// Action-level override: AuthController.logout is gated.
+	requireProtected(t, eps, "POST /logout", "config")
 }

@@ -12665,9 +12665,10 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/sails_policies.ts"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","internal/engine/http_endpoint_jsts_sails_auth.go","testdata/fixtures/typescript/sails_policies.ts","testdata/fixtures/typescript/sails_routes.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2897",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -12721,9 +12722,9 @@
         "Sails Policies": {
           "policy_map_recognition": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/sails_policies.ts"],
-            "notes": "Sails gates actions via config/policies.js policy maps (e.g. '*': 'isLoggedIn'), a bespoke auth idiom no generic middleware/guard cell captures. ParseSailsPolicies recognises the global default posture (fixture-proven). The standard Security/auth_coverage cell is partial because cross-file policies.js-\u003eroutes.js per-endpoint attribution is deferred (#2852 follow-up).",
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_sails_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/sails_policies.ts","testdata/fixtures/typescript/sails_routes.ts"],
+            "notes": "Sails gates actions via config/policies.js policy maps (e.g. '*': 'isLoggedIn'), a bespoke auth idiom no generic middleware/guard cell captures. ParseSailsPolicies parses the full map (global '*' default, per-controller object blocks with action-level overrides, controller-level catch-all values). #2897 ApplySailsAuthPolicy is a corpus-wide pass joining this map to the endpoints synthesised from config/routes.js, resolving each route's controller/action with action over controller over global precedence and stamping a config-method medium-confidence auth_policy (fixture-proven, cross-file), lifting the standard Security/auth_coverage cell from partial to full. Prior history: policies.js-\u003eroutes.js per-endpoint attribution was deferred at #2852 and is now delivered.",
+            "verified_at": "2026-05-29"
           }
         }
       }

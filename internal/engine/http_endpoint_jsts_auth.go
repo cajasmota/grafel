@@ -867,6 +867,33 @@ var sailsGlobalPolicyRe = regexp.MustCompile(
 	`['"` + "`" + `]\*['"` + "`" + `]\s*:\s*(false|true|\[[^\]]*\]|['"` + "`" + `][^'"` + "`" + `]+['"` + "`" + `])`,
 )
 
+// sailsControllerBlockRe captures a per-controller object entry
+// `AuthController: { ... }`. Group 1 = controller name, group 2 = the position
+// of the opening brace is recovered via index match (the braces are balanced
+// by findMatchingBrace, since action values may themselves be arrays). The
+// controller name is a bare identifier ending in `Controller` (the Sails
+// convention) — matching only the suffix keeps this from firing on the
+// `'*'` global or arbitrary nested objects.
+var sailsControllerBlockRe = regexp.MustCompile(
+	`(?m)['"` + "`" + `]?([A-Za-z_$][\w$]*Controller)['"` + "`" + `]?\s*:\s*\{`,
+)
+
+// sailsControllerValueRe captures a controller-level bare value entry
+// `AuthController: 'isLoggedIn'` / `AuthController: true` / `AuthController:
+// ['a','b']` (object form is handled separately by sailsControllerBlockRe).
+// Group 1 = controller name, group 2 = the raw value.
+var sailsControllerValueRe = regexp.MustCompile(
+	`(?m)['"` + "`" + `]?([A-Za-z_$][\w$]*Controller)['"` + "`" + `]?\s*:\s*` +
+		`(false|true|\[[^\]]*\]|['"` + "`" + `][^'"` + "`" + `]+['"` + "`" + `])`,
+)
+
+// sailsActionRe captures one `actionName: <value>` line inside a controller
+// block. Group 1 = action name, group 2 = raw value.
+var sailsActionRe = regexp.MustCompile(
+	`(?m)['"` + "`" + `]?([A-Za-z_$][\w$]*)['"` + "`" + `]?\s*:\s*` +
+		`(false|true|\[[^\]]*\]|['"` + "`" + `][^'"` + "`" + `]+['"` + "`" + `])`,
+)
+
 // SailsPolicyMap is the parsed result of a config/policies.js file.
 type SailsPolicyMap struct {
 	// DefaultProtected is true when the global `'*'` default names a real policy
@@ -875,8 +902,30 @@ type SailsPolicyMap struct {
 	DefaultProtected bool
 	// DefaultPolicy is the raw global default value (policy name / true / false).
 	DefaultPolicy string
+	// HasDefault reports whether a global `'*'` key was present at all.
+	HasDefault bool
+	// Controllers maps each controller name (e.g. "AuthController") to its
+	// per-controller policy block. The block carries an optional
+	// controller-level catch-all policy plus per-action overrides. #2897.
+	Controllers map[string]SailsControllerPolicy
 	// File is the source path the map was parsed from.
 	File string
+}
+
+// SailsControllerPolicy is the policy block for one controller in a Sails
+// config/policies.js map. A controller entry can be either a single policy
+// value applied to every action (`AuthController: 'isLoggedIn'`) or an object
+// of per-action overrides (`AuthController: { login: true, logout: 'x' }`).
+type SailsControllerPolicy struct {
+	// ControllerPolicy is the controller-level catch-all value when the entry
+	// is a bare value (`AuthController: 'isLoggedIn'`). Empty when the entry is
+	// an object of per-action overrides.
+	ControllerPolicy string
+	// HasControllerPolicy reports whether a controller-level value was present.
+	HasControllerPolicy bool
+	// Actions maps action name → raw policy value (`true` | `false` |
+	// `'policyName'` | `['a','b']`) for object-form entries.
+	Actions map[string]string
 }
 
 // sailsPoliciesFile reports whether filePath is a Sails policies-config file.
@@ -893,22 +942,59 @@ func ParseSailsPolicies(content, file string) (SailsPolicyMap, bool) {
 	if !strings.Contains(content, "policies") {
 		return SailsPolicyMap{}, false
 	}
-	m := sailsGlobalPolicyRe.FindStringSubmatch(content)
-	if m == nil {
+	pm := SailsPolicyMap{File: file, Controllers: map[string]SailsControllerPolicy{}}
+
+	// Global default `'*': <value>`.
+	if m := sailsGlobalPolicyRe.FindStringSubmatch(content); m != nil {
+		val := strings.TrimSpace(m[1])
+		pm.DefaultPolicy = val
+		pm.HasDefault = true
+		pm.DefaultProtected = sailsPolicyValueProtected(val)
+	}
+
+	// Per-controller object blocks: `AuthController: { login: true, ... }`.
+	// Parse the balanced `{...}` body and capture each action override.
+	for _, loc := range sailsControllerBlockRe.FindAllStringSubmatchIndex(content, -1) {
+		name := content[loc[2]:loc[3]]
+		braceOpen := loc[1] - 1 // the `{` the regex anchored on
+		braceClose := findMatchingBrace(content, braceOpen)
+		if braceClose < 0 {
+			continue
+		}
+		body := content[braceOpen+1 : braceClose]
+		cp := SailsControllerPolicy{Actions: map[string]string{}}
+		for _, am := range sailsActionRe.FindAllStringSubmatch(body, -1) {
+			cp.Actions[am[1]] = strings.TrimSpace(am[2])
+		}
+		if len(cp.Actions) > 0 {
+			pm.Controllers[name] = cp
+		}
+	}
+
+	// Per-controller bare-value entries: `AuthController: 'isLoggedIn'`.
+	// Skip names already captured as an object block above.
+	for _, m := range sailsControllerValueRe.FindAllStringSubmatch(content, -1) {
+		name := m[1]
+		if _, ok := pm.Controllers[name]; ok {
+			continue
+		}
+		pm.Controllers[name] = SailsControllerPolicy{
+			ControllerPolicy:    strings.TrimSpace(m[2]),
+			HasControllerPolicy: true,
+		}
+	}
+
+	// A file with neither a global default nor any controller block is not a
+	// recognisable Sails policy map.
+	if !pm.HasDefault && len(pm.Controllers) == 0 {
 		return SailsPolicyMap{}, false
 	}
-	val := strings.TrimSpace(m[1])
-	pm := SailsPolicyMap{DefaultPolicy: val, File: file}
-	switch {
-	case val == "false":
-		// Default-deny with no policy → blanket block; treat as protected
-		// (no anonymous access).
-		pm.DefaultProtected = true
-	case val == "true":
-		pm.DefaultProtected = false
-	default:
-		// Named policy (quoted string or array) → protected.
-		pm.DefaultProtected = true
-	}
 	return pm, true
+}
+
+// sailsPolicyValueProtected reports whether a raw Sails policy value gates the
+// action. `true` = public (no policy) → not protected. `false` = blanket deny
+// → protected (no anonymous access). A named policy / array → protected.
+func sailsPolicyValueProtected(val string) bool {
+	return val != "true"
 }

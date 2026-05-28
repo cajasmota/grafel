@@ -1068,8 +1068,10 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	if !i.skipPasses[PassFramework] && len(classified) > 0 {
 		// Build a file-content lookup from the classified slice.
 		contentByPath := make(map[string][]byte, len(classified))
+		allPaths := make([]string, 0, len(classified))
 		for k := range classified {
 			cf := &classified[k]
+			allPaths = append(allPaths, cf.relPath)
 			if cf.content != nil {
 				contentByPath[cf.relPath] = cf.content
 			}
@@ -1091,6 +1093,26 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				shapeStats.HandlerResolved,
 				shapeStats.ShapeExtracted,
 				shapeStats.NoHandlerFound)
+		}
+
+		// Pass 2.7b — corpus-wide Sails policy → endpoint auth attribution
+		// (#2897). Sails gates actions via config/policies.js policy maps, but
+		// the endpoints are synthesised from config/routes.js — a different
+		// file — so the per-file auth pass (#2852) cannot join them. This pass
+		// parses every config/policies.{js,ts}, resolves each Sails endpoint's
+		// controller/action policy chain (action > controller > global '*'),
+		// and stamps the config-method, medium-confidence auth_policy contract.
+		sailsAuthStats := engine.ApplySailsAuthPolicy(
+			concatRecords(pass1Records, pass2Records, pass3Records),
+			allPaths,
+			reader,
+		)
+		if sailsAuthStats.PolicyFiles > 0 {
+			fmt.Fprintf(os.Stderr,
+				"sails-auth-corpus: policy_files=%d endpoints=%d attributed=%d\n",
+				sailsAuthStats.PolicyFiles,
+				sailsAuthStats.Endpoints,
+				sailsAuthStats.Attributed)
 		}
 	}
 
