@@ -1,23 +1,23 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `pkg.npm` — package.json (npm/yarn/pnpm)
+# `lang.python.framework.starlette` — Starlette
 
 Auto-generated. Back to [summary](../summary.md).
 
-- **Language:** [JS/TS](../by-language/jsts.md)
-- **Category:** [package_manager](../by-category/package_manager.md)
+- **Language:** [python](../by-language/python.md)
+- **Category:** [http_framework](../by-category/http_framework.md)
 - **Capability cells:** 2
 
 ## Capabilities
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Lockfile parsing | ✅ `full` | — | — | 2865 | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/extractor_test.go` | — |
-| Manifest parsing | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/cross/manifest/extractor.go` | — |
+| Endpoint synthesis | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Handler attribution | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
-(or use `go run ./tools/coverage update pkg.npm ...`) then regenerate:
+(or use `go run ./tools/coverage update lang.python.framework.starlette ...`) then regenerate:
 
 ```
 go run ./tools/coverage validate

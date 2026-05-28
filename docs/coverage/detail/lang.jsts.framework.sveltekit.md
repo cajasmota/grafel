@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Component extraction | ✅ `full` | — | — | [link](2880) | `internal/custom/javascript/issue2880_metafw_routing_test.go`<br>`internal/custom/javascript/svelte.go` | — |
+| Component extraction | ✅ `full` | — | — | 2880 | `internal/custom/javascript/issue2880_metafw_routing_test.go`<br>`internal/custom/javascript/svelte.go` | — |
 | Hook recognition | — `not_applicable` | — | — | — | — | — |
 
 ### Data Flow
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 | Route extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml` | — |
-| Router pattern | ✅ `full` | — | — | [link](2880) | `internal/custom/javascript/issue2880_metafw_routing_test.go`<br>`internal/custom/javascript/svelte.go` | — |
+| Router pattern | ✅ `full` | — | — | 2880 | `internal/custom/javascript/issue2880_metafw_routing_test.go`<br>`internal/custom/javascript/svelte.go` | — |
 
 ### Build
 

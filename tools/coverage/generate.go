@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"text/template"
 )
 
@@ -464,6 +466,27 @@ func languageDisplay(slug string) string {
 	return slug
 }
 
+// issueRefRe matches bare GitHub issue refs: #NNNN or owner/repo#NNNN.
+var issueRefRe = regexp.MustCompile(`^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+$`)
+
+// renderIssue formats a capability's issue field for markdown:
+//   - empty string → "—"
+//   - http(s) URL → "[link](<url>)"
+//   - #NNNN or owner/repo#NNNN → "[link](<ref>)"
+//   - anything else (e.g. "backfill:dictionary-completeness") → plain text
+func renderIssue(issue string) string {
+	if issue == "" {
+		return "—"
+	}
+	if strings.HasPrefix(issue, "https://") || strings.HasPrefix(issue, "http://") {
+		return "[link](" + issue + ")"
+	}
+	if issueRefRe.MatchString(issue) {
+		return "[link](" + issue + ")"
+	}
+	return issue
+}
+
 // templateFuncs are the helpers exposed to templates.
 var templateFuncs = template.FuncMap{
 	"glyph":            statusGlyph,
@@ -472,6 +495,7 @@ var templateFuncs = template.FuncMap{
 	"humanizeCapKey":   humanizeCapKey,
 	"subHeading":       subcategoryHeading,
 	"groupCell":        groupCell,
+	"renderIssue":      renderIssue,
 }
 
 // groupCell returns the digest string for groupName on a recordView or

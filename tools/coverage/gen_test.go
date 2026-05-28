@@ -292,6 +292,101 @@ func TestGenHidesStrandedGroupColumns(t *testing.T) {
 	}
 }
 
+// TestRenderIssue verifies that renderIssue formats issue values correctly:
+// real URLs and #NNNN refs become markdown links, while non-URL tags
+// (e.g. backfill:dictionary-completeness) render as plain text.
+func TestRenderIssue(t *testing.T) {
+	cases := []struct {
+		issue string
+		want  string
+	}{
+		// empty → em-dash
+		{"", "—"},
+		// https URL → link
+		{"https://github.com/cajasmota/archigraph/issues/2953", "[link](https://github.com/cajasmota/archigraph/issues/2953)"},
+		// http URL → link
+		{"http://example.com/issues/1", "[link](http://example.com/issues/1)"},
+		// bare #NNNN → link
+		{"#2953", "[link](#2953)"},
+		// owner/repo#NNNN → link
+		{"owner/repo#42", "[link](owner/repo#42)"},
+		// backfill tag → plain text (the primary bug fix)
+		{"backfill:dictionary-completeness", "backfill:dictionary-completeness"},
+		// other non-URL tags → plain text
+		{"wontfix", "wontfix"},
+		{"n/a", "n/a"},
+	}
+	for _, tc := range cases {
+		got := renderIssue(tc.issue)
+		if got != tc.want {
+			t.Errorf("renderIssue(%q) = %q, want %q", tc.issue, got, tc.want)
+		}
+	}
+}
+
+// TestGenBackfillIssueRendersAsPlainText confirms end-to-end that a record
+// with issue:"backfill:dictionary-completeness" renders as plain text in the
+// generated detail page (not as a broken markdown link).
+func TestGenBackfillIssueRendersAsPlainText(t *testing.T) {
+	reg := &Registry{
+		SchemaVersion: SchemaVersion,
+		Records: []Record{
+			{
+				ID:       "lang.python.framework.starlette",
+				Category: "http_framework",
+				Language: "python",
+				Label:    "Starlette",
+				Capabilities: map[string]Capability{
+					"endpoint_synthesis": {Status: StatusMissing, Issue: "backfill:dictionary-completeness"},
+				},
+			},
+		},
+	}
+	root := t.TempDir()
+	if err := generate(reg, root); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "docs", "coverage", "detail", "lang.python.framework.starlette.md"))
+	if err != nil {
+		t.Fatalf("read detail: %v", err)
+	}
+	body := string(data)
+	// Must appear as plain text, not as a broken markdown link.
+	if strings.Contains(body, "[link](backfill:dictionary-completeness)") {
+		t.Errorf("backfill tag rendered as broken markdown link:\n%s", body)
+	}
+	if !strings.Contains(body, "backfill:dictionary-completeness") {
+		t.Errorf("backfill tag not present as plain text:\n%s", body)
+	}
+	// Real issue URLs must still render as links (regression guard).
+	reg2 := &Registry{
+		SchemaVersion: SchemaVersion,
+		Records: []Record{
+			{
+				ID:       "lang.python.framework.flask",
+				Category: "http_framework",
+				Language: "python",
+				Label:    "Flask",
+				Capabilities: map[string]Capability{
+					"endpoint_synthesis": {Status: StatusPartial, Issue: "https://github.com/cajasmota/archigraph/issues/2953"},
+				},
+			},
+		},
+	}
+	root2 := t.TempDir()
+	if err := generate(reg2, root2); err != nil {
+		t.Fatalf("generate2: %v", err)
+	}
+	data2, err := os.ReadFile(filepath.Join(root2, "docs", "coverage", "detail", "lang.python.framework.flask.md"))
+	if err != nil {
+		t.Fatalf("read detail2: %v", err)
+	}
+	body2 := string(data2)
+	if !strings.Contains(body2, "[link](https://github.com/cajasmota/archigraph/issues/2953)") {
+		t.Errorf("real issue URL not rendered as link:\n%s", body2)
+	}
+}
+
 func TestGenSubcommandWiring(t *testing.T) {
 	reg, err := loadRegistry(fixturePath(t))
 	if err != nil {

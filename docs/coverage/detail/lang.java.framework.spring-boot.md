@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/java/frameworks/spring_boot.yaml`<br>`internal/engine/rules/java/frameworks/spring_mvc.yaml`<br>`internal/engine/spring_routes.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/spring_routes.go` | — |
-| Route extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| Route extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
 
@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
-| Request validation | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| DTO extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Request validation | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### Middleware
 
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| Tests linkage | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### Type System
 
@@ -50,40 +50,40 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | Enum extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/java/java.go` | — |
 | Interface extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/java/java.go` | — |
-| Type alias extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| Type alias extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 | Type extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/java/java.go` | — |
 
 ### DI
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| DI binding extraction | ⚠️ `partial` | `2026-05-28` | — | [link](backfill:dictionary-completeness) | `internal/custom/java/spring_boot.go` | — |
-| DI injection point | ⚠️ `partial` | `2026-05-28` | — | [link](backfill:dictionary-completeness) | `internal/custom/java/spring_boot.go` | — |
-| DI scope resolution | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| DI binding extraction | ⚠️ `partial` | `2026-05-28` | — | backfill:dictionary-completeness | `internal/custom/java/spring_boot.go` | — |
+| DI injection point | ⚠️ `partial` | `2026-05-28` | — | backfill:dictionary-completeness | `internal/custom/java/spring_boot.go` | — |
+| DI scope resolution | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Transaction boundary extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
-| Transaction propagation | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
-| Transaction rollback rules | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| Transaction boundary extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Transaction propagation | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Transaction rollback rules | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### AOP
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Advice attribution | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
-| Aspect extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
-| Pointcut resolution | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| Advice attribution | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Aspect extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Pointcut resolution | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### Observability
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Log extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
-| Metric extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
-| Trace extraction | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| Log extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Metric extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Trace extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### Data
 
@@ -94,7 +94,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Confidence overlay | ❌ `missing` | — | — | [link](backfill:dictionary-completeness) | — | — |
+| Confidence overlay | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
 | DB effect | ⚠️ `partial` | `2026-05-28` | — | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
 | Dead code detection | ✅ `full` | `2026-05-28` | — | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |

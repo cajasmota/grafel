@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Endpoint synthesis | ✅ `full` | `2026-05-28` | — | [link](2932) | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/express.yaml`<br>`internal/extractors/javascript/framework_dsl.go` | — |
-| Handler attribution | ✅ `full` | `2026-05-28` | — | [link](2932) | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/javascript_typescript/frameworks/express.yaml` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-28` | — | 2932 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/express.yaml`<br>`internal/extractors/javascript/framework_dsl.go` | — |
+| Handler attribution | ✅ `full` | `2026-05-28` | — | 2932 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/javascript_typescript/frameworks/express.yaml` | — |
 
 ### Auth
 
@@ -28,7 +28,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Request validation | ✅ `full` | — | — | [link](2904) | `internal/extractors/javascript/issue2904_validation_linkage_test.go`<br>`internal/extractors/javascript/validation_linkage.go`<br>`testdata/fixtures/typescript/express_validation.ts` | — |
+| Request validation | ✅ `full` | — | — | 2904 | `internal/extractors/javascript/issue2904_validation_linkage_test.go`<br>`internal/extractors/javascript/validation_linkage.go`<br>`testdata/fixtures/typescript/express_validation.ts` | — |
 
 ### Middleware
 
@@ -50,19 +50,19 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Log extraction | ✅ `full` | — | — | [link](2905) | `internal/extractors/javascript/testdata/substrate_backend_observability/express.ts`<br>`internal/patterns/observability_jsts_extractor.go` | — |
+| Log extraction | ✅ `full` | — | — | 2905 | `internal/extractors/javascript/testdata/substrate_backend_observability/express.ts`<br>`internal/patterns/observability_jsts_extractor.go` | — |
 
 ### Data
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| DB effect | ✅ `full` | — | — | [link](2903) | `internal/extractors/javascript/testdata/substrate_backend_db/express.ts`<br>`internal/substrate/backend_db_effect_test.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
+| DB effect | ✅ `full` | — | — | 2903 | `internal/extractors/javascript/testdata/substrate_backend_db/express.ts`<br>`internal/substrate/backend_db_effect_test.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Confidence overlay | ✅ `full` | `2026-05-28` | — | [link](2932) | `internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/jsts.go` | — |
+| Confidence overlay | ✅ `full` | `2026-05-28` | — | 2932 | `internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/jsts.go` | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/testdata/substrate_import_resolution/app.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/config.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts`<br>`internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |

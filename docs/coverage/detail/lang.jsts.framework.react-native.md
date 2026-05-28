@@ -21,7 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Deep link extraction | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`testdata/fixtures/real-world/typescript/react_native_navigator.tsx` | — |
+| Deep link extraction | ✅ `full` | — | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`testdata/fixtures/real-world/typescript/react_native_navigator.tsx` | — |
 | Navigation extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/react_native.yaml` | — |
 | Screen detection | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/react_native.yaml` | — |
 
@@ -29,13 +29,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Platform branching | ✅ `full` | `2026-05-28` | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/platform_variants.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/AppNavigator.tsx` | — |
+| Platform branching | ✅ `full` | `2026-05-28` | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/platform_variants.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/AppNavigator.tsx` | — |
 
 ### Native Bridge
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Native module imports | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/AppNavigator.tsx`<br>`testdata/fixtures/real-world/typescript/react_native_navigator.tsx` | — |
+| Native module imports | ✅ `full` | — | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/AppNavigator.tsx`<br>`testdata/fixtures/real-world/typescript/react_native_navigator.tsx` | — |
 
 ### Data Flow
 

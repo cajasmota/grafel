@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Auth coverage | ✅ `full` | `2026-05-28` | — | [link](2816) | `internal/extractors/python/config_module.go`<br>`internal/extractors/python/django_drf_permissions.go`<br>`internal/mcp/auth_coverage.go` | — |
+| Auth coverage | ✅ `full` | `2026-05-28` | — | 2816 | `internal/extractors/python/config_module.go`<br>`internal/extractors/python/django_drf_permissions.go`<br>`internal/mcp/auth_coverage.go` | — |
 
 ### Validation
 

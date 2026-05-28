@@ -15,20 +15,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Procedure extraction | ✅ `full` | `2026-05-28` | — | [link](2932) | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/graphql/frameworks/apollo_server.yaml`<br>`internal/engine/rules/graphql/frameworks/graphql_yoga.yaml`<br>`internal/extractors/graphql/graphql.go` | — |
-| Schema extraction | ✅ `full` | `2026-05-28` | — | [link](2932) | `internal/engine/rules/graphql/frameworks/graphql_schema.yaml`<br>`internal/extractors/graphql/graphql.go` | — |
+| Procedure extraction | ✅ `full` | `2026-05-28` | — | 2932 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/graphql/frameworks/apollo_server.yaml`<br>`internal/engine/rules/graphql/frameworks/graphql_yoga.yaml`<br>`internal/extractors/graphql/graphql.go` | — |
+| Schema extraction | ✅ `full` | `2026-05-28` | — | 2932 | `internal/engine/rules/graphql/frameworks/graphql_schema.yaml`<br>`internal/extractors/graphql/graphql.go` | — |
 
 ### Codegen
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Client codegen | — `not_applicable` | — | — | [link](2865) | — | Server-side resolver record: client codegen (graphql-codegen/Apollo) generates a typed CLIENT elsewhere, not in resolver source. |
+| Client codegen | — `not_applicable` | — | — | 2865 | — | Server-side resolver record: client codegen (graphql-codegen/Apollo) generates a typed CLIENT elsewhere, not in resolver source. |
 
 ### Transport
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Transport binding | ✅ `full` | `2026-05-28` | — | [link](2906) | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_transport_binding.go`<br>`internal/engine/http_endpoint_transport_binding_test.go`<br>`testdata/fixtures/typescript/graphql_transport_http.ts`<br>`testdata/fixtures/typescript/graphql_transport_http_ws.ts` | — |
+| Transport binding | ✅ `full` | `2026-05-28` | — | 2906 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_transport_binding.go`<br>`internal/engine/http_endpoint_transport_binding_test.go`<br>`testdata/fixtures/typescript/graphql_transport_http.ts`<br>`testdata/fixtures/typescript/graphql_transport_http_ws.ts` | — |
 
 ### Substrate
 
