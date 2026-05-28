@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | ❌ `missing` | — | — | — | — | — |
+| `auth_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`testdata/fixtures/typescript/sails_policies.ts` | — |
 
 ### Validation
 
@@ -60,6 +60,14 @@ Auto-generated. Back to [summary](../summary.md).
 | `request_shape_extraction` | ✅ `full` | `2026-05-27` | — | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
 | `response_shape_extraction` | ✅ `full` | `2026-05-27` | — | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
 | `schema_drift_detection` | ✅ `full` | `2026-05-27` | — | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
+
+## Framework-specific
+
+### Sails Policies
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `policy_map_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`testdata/fixtures/typescript/sails_policies.ts` | Sails gates actions via config/policies.js policy maps (e.g. '*': 'isLoggedIn'), a bespoke auth idiom no generic middleware/guard cell captures. ParseSailsPolicies recognises the global default posture (fixture-proven). The standard Security/auth_coverage cell is partial because cross-file policies.js->routes.js per-endpoint attribution is deferred (#2852 follow-up). |
 
 ## Provenance
 

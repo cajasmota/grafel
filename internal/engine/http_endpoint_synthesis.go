@@ -363,6 +363,10 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Now emits FETCHES edges at extraction time.
 		synthesizePyClientWithRuntime(string(content), emitClientRuntime)
 	case "javascript", "typescript":
+		// Capture the producer-side entity count before the JS/TS backend
+		// synthesizers run so #2852 can resolve auth_coverage over exactly the
+		// http_endpoint_definition entities this file just emitted.
+		jstsAuthBefore := len(entities)
 		// Producer side (#2851): Polka / Restify are Express-shaped but use
 		// distinct receiver/import conventions. Run BEFORE synthesizeExpress
 		// so their endpoints are tagged with the correct framework — the
@@ -420,6 +424,15 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// shared resolver short-circuits the rebind and preserves the
 		// precise attribution this synthesizer produces.
 		synthesizeTRPC(string(content), emitDef)
+		// #2852 — resolve auth_coverage over the producer-side endpoints emitted
+		// above. Detects passport/express-jwt/session middleware, Nest
+		// @UseGuards (class + method), Hapi route auth, AdonisJS .middleware('auth')
+		// and Marble.js auth effects, stamping the auth_policy property contract
+		// (auth_policy/auth_method/auth_confidence/auth_required + the MCP
+		// signal-1 auth_middleware/auth_guard keys). Runs before the consumer
+		// (client) synthesizers so it only sees producer http_endpoint_definition
+		// entities.
+		applyJSTSAuthPolicy(string(content), path, entities, jstsAuthBefore)
 		// Consumer side (#721): fetch / axios / generic *Client
 		// HTTP client calls. Now emits FETCHES edges at extraction time.
 		//
