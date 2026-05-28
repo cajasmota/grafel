@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — | — |
-| Model extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/ruby/frameworks/rom_rb_ruby_object_mapper.yaml`<br>`internal/engine/rules/ruby/orms/rom_rb_as_orm.yaml` | — |
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/ruby/orms/rom_rb_as_orm.yaml` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Migration parsing | ❌ `missing` | — | — | — | — |
+| Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/frameworks/rom_rb_ruby_object_mapper.yaml`<br>`internal/engine/rules/ruby/orms/rom_rb_as_orm.yaml` | — |
+| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/orms/rom_rb_as_orm.yaml` | — |
 
 ## Provenance
 

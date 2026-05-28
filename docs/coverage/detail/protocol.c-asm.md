@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Cross repo linkage | ✅ `full` | `2026-05-28` | — | 2837 | `internal/extractors/cross/abibridge/extractor.go`<br>`internal/extractors/cross/abibridge/extractor_test.go` | — |
-| Method attribution | ✅ `full` | `2026-05-28` | — | 2837 | `internal/extractors/cross/abibridge/extractor.go`<br>`internal/extractors/cross/abibridge/testdata/crypt.s.fixture` | — |
-| Service extraction | ✅ `full` | `2026-05-28` | — | 2837 | `internal/extractors/cross/abibridge/extractor.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Cross repo linkage | ✅ `full` | `2026-05-28` | 2837 | `internal/extractors/cross/abibridge/extractor.go`<br>`internal/extractors/cross/abibridge/extractor_test.go` | — |
+| Method attribution | ✅ `full` | `2026-05-28` | 2837 | `internal/extractors/cross/abibridge/extractor.go`<br>`internal/extractors/cross/abibridge/testdata/crypt.s.fixture` | — |
+| Service extraction | ✅ `full` | `2026-05-28` | 2837 | `internal/extractors/cross/abibridge/extractor.go` | — |
 
 ## Provenance
 

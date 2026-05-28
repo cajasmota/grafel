@@ -9,10 +9,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Call line precision | ✅ `full` | `2026-05-28` | — | 2843 | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/extractor_test.go` | — |
-| Core extraction | ✅ `full` | `2026-05-28` | — | 2843 | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/testdata/payjob.jcl` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Call line precision | ✅ `full` | `2026-05-28` | 2843 | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/extractor_test.go` | — |
+| Core extraction | ✅ `full` | `2026-05-28` | 2843 | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/testdata/payjob.jcl` | — |
 
 ## Provenance
 

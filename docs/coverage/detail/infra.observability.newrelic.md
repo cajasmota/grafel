@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Log extraction | ❌ `missing` | — | — | — | — | — |
-| Metric extraction | ❌ `missing` | — | — | — | — | — |
-| Trace extraction | ❌ `missing` | — | — | — | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Log extraction | ❌ `missing` | — | — | — | — |
+| Metric extraction | ❌ `missing` | — | — | — | — |
+| Trace extraction | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

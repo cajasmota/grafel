@@ -9,10 +9,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Endpoint synthesis | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
-| Handler attribution | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Endpoint synthesis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Handler attribution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

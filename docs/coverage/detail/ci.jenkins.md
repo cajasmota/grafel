@@ -9,10 +9,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Env resolution | ❌ `missing` | — | — | — | — | — |
-| File parsing | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/cicd/_manifest.yaml` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Env resolution | ❌ `missing` | — | — | — | — |
+| File parsing | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/cicd/_manifest.yaml` | — |
 
 ## Provenance
 

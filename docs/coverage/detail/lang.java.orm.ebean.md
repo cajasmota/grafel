@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — | — |
-| Model extraction | ❌ `missing` | — | — | — | — | — |
-| Query attribution | ❌ `missing` | — | — | — | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Migration parsing | ❌ `missing` | — | — | — | — |
+| Model extraction | ❌ `missing` | — | — | — | — |
+| Query attribution | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

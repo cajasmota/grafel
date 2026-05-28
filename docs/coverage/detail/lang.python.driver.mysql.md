@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Migration parsing | — `not_applicable` | — | — | — | — | — |
-| Model extraction | — `not_applicable` | — | — | — | — | — |
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/mysql_py.yaml`<br>`internal/extractors/python/raw_sql_db_calls.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Migration parsing | — `not_applicable` | — | — | — | — |
+| Model extraction | — `not_applicable` | — | — | — | — |
+| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/mysql_py.yaml`<br>`internal/extractors/python/raw_sql_db_calls.go` | — |
 
 ## Provenance
 

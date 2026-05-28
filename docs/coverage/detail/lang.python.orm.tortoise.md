@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — | — |
-| Model extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/tortoise_orm.yaml` | — |
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/orm_queries_python.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Migration parsing | ❌ `missing` | — | — | — | — |
+| Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/python/orms/tortoise_orm.yaml` | — |
+| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/orm_queries_python.go` | — |
 
 ## Provenance
 

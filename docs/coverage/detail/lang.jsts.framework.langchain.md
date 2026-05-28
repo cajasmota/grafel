@@ -13,21 +13,21 @@ Auto-generated. Back to [summary](../summary.md).
 
 ### Prompts
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Prompt template extraction | ✅ `full` | `2026-05-28` | — | 2865 | `internal/engine/langchain_detect_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/langchain.yaml`<br>`testdata/fixtures/typescript/langchain_chain.ts` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Prompt template extraction | ✅ `full` | `2026-05-28` | 2865 | `internal/engine/langchain_detect_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/langchain.yaml`<br>`testdata/fixtures/typescript/langchain_chain.ts` | — |
 
 ### Composition
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Chain composition | ✅ `full` | `2026-05-28` | — | 2865 | `internal/engine/langchain_detect_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/langchain.yaml`<br>`testdata/fixtures/typescript/langchain_chain.ts` | — |
-| Tool use detection | ✅ `full` | — | — | 2865 | `internal/engine/langchain_detect_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/langchain.yaml`<br>`testdata/fixtures/typescript/langchain_chain.ts` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Chain composition | ✅ `full` | `2026-05-28` | 2865 | `internal/engine/langchain_detect_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/langchain.yaml`<br>`testdata/fixtures/typescript/langchain_chain.ts` | — |
+| Tool use detection | ✅ `full` | — | 2865 | `internal/engine/langchain_detect_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/langchain.yaml`<br>`testdata/fixtures/typescript/langchain_chain.ts` | — |
 
 ### Tracking
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 
 ## Provenance
 

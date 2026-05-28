@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Migration parsing | — `not_applicable` | — | — | — | — | — |
-| Model extraction | — `not_applicable` | — | — | — | — | — |
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/redix.yaml` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Migration parsing | — `not_applicable` | — | — | — | — |
+| Model extraction | — `not_applicable` | — | — | — | — |
+| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/redix.yaml` | — |
 
 ## Provenance
 

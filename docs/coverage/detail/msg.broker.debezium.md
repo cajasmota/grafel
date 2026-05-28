@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Consumer extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/debezium_cdc_edges.go` | — |
-| Producer extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/debezium_cdc_edges.go` | — |
-| Topic attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/debezium_cdc_edges.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Consumer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/debezium_cdc_edges.go` | — |
+| Producer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/debezium_cdc_edges.go` | — |
+| Topic attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/debezium_cdc_edges.go` | — |
 
 ## Provenance
 

@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Call line precision | ✅ `full` | `2026-05-28` | — | 2744 | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
-| Core extraction | ⚠️ `partial` | `2026-05-28` | — | 2744 | `internal/extractors/assembly/extractor.go` | — |
-| Import resolution quality | ⚠️ `partial` | `2026-05-28` | — | 2744 | `internal/extractors/assembly/extractor.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Call line precision | ✅ `full` | `2026-05-28` | 2744 | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
+| Core extraction | ⚠️ `partial` | `2026-05-28` | 2744 | `internal/extractors/assembly/extractor.go` | — |
+| Import resolution quality | ⚠️ `partial` | `2026-05-28` | 2744 | `internal/extractors/assembly/extractor.go` | — |
 
 ## Provenance
 

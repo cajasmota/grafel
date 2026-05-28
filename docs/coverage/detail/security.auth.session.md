@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Auth policy | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/java_auth_policy.go` | — |
-| Secret detection | ❌ `missing` | — | — | — | — | — |
-| SQL injection | — `not_applicable` | — | — | — | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth policy | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/java_auth_policy.go` | — |
+| Secret detection | ❌ `missing` | — | — | — | — |
+| SQL injection | — `not_applicable` | — | — | — | — |
 
 ## Provenance
 

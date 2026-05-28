@@ -9,19 +9,19 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Dependency graph | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/build_tools.yaml`<br>`internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
-| Target extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/build_tools.yaml`<br>`internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Dependency graph | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/build_tools.yaml`<br>`internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
+| Target extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/build_tools.yaml`<br>`internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
 
 ## Framework-specific
 
 ### Monorepo Task Graph
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Task pipeline graph | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
-| Workspace project graph | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Task pipeline graph | ✅ `full` | `2026-05-28` | — | `internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
+| Workspace project graph | ✅ `full` | `2026-05-28` | — | `internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
 
 ## Provenance
 

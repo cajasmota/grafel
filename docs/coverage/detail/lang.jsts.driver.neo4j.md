@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Migration parsing | — `not_applicable` | — | — | — | — | — |
-| Model extraction | — `not_applicable` | — | — | — | — | — |
-| Query attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts_drivers.go`<br>`internal/engine/orm_queries_jsts_drivers_test.go` | Includes Cypher node-label attribution: session.run('MATCH (n:Label) ...') resolves the graph node label as the queried resource and maps MATCH/CREATE/MERGE/SET/DELETE clauses to canonical operations. |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Migration parsing | — `not_applicable` | — | — | — | — |
+| Model extraction | — `not_applicable` | — | — | — | — |
+| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries_jsts_drivers.go`<br>`internal/engine/orm_queries_jsts_drivers_test.go` | Includes Cypher node-label attribution: session.run('MATCH (n:Label) ...') resolves the graph node label as the queried resource and maps MATCH/CREATE/MERGE/SET/DELETE clauses to canonical operations. |
 
 ## Provenance
 

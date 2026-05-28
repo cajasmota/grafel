@@ -9,11 +9,11 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Log extraction | ❌ `missing` | — | — | — | — | — |
-| Metric extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/event_bus_edges.go` | — |
-| Trace extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/event_flow.go`<br>`internal/engine/process_flow.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Log extraction | ❌ `missing` | — | — | — | — |
+| Metric extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/event_bus_edges.go` | — |
+| Trace extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/event_flow.go`<br>`internal/engine/process_flow.go` | — |
 
 ## Provenance
 

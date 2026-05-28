@@ -13,27 +13,27 @@ Auto-generated. Back to [summary](../summary.md).
 
 ### {{.Name}}
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 {{- range .CapList}}
-| {{humanizeCapKey .Key}} | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{if .Cap.VerifiedSHA}}`{{.Cap.VerifiedSHA}}`{{else}}—{{end}} | {{renderIssue .Cap.Issue}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} | {{if .Cap.Notes}}{{.Cap.Notes}}{{else}}—{{end}} |
+| {{humanizeCapKey .Key}} | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{renderIssue .Cap.Issue}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} | {{if .Cap.Notes}}{{.Cap.Notes}}{{else}}—{{end}} |
 {{- end}}
 {{- end}}
 {{else}}
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 {{- range .CapList}}
-| {{humanizeCapKey .Key}} | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{if .Cap.VerifiedSHA}}`{{.Cap.VerifiedSHA}}`{{else}}—{{end}} | {{renderIssue .Cap.Issue}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} | {{if .Cap.Notes}}{{.Cap.Notes}}{{else}}—{{end}} |
+| {{humanizeCapKey .Key}} | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{renderIssue .Cap.Issue}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} | {{if .Cap.Notes}}{{.Cap.Notes}}{{else}}—{{end}} |
 {{- end}}
 {{end}}
 {{if .FrameworkSpecific}}## Framework-specific
 {{range .FrameworkSpecific}}
 ### {{.Name}}
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 {{- range .CapList}}
-| {{humanizeCapKey .Key}} | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{if .Cap.VerifiedSHA}}`{{.Cap.VerifiedSHA}}`{{else}}—{{end}} | {{renderIssue .Cap.Issue}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} | {{if .Cap.Notes}}{{.Cap.Notes}}{{else}}—{{end}} |
+| {{humanizeCapKey .Key}} | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{renderIssue .Cap.Issue}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} | {{if .Cap.Notes}}{{.Cap.Notes}}{{else}}—{{end}} |
 {{- end}}
 {{end}}
 {{end}}## Provenance

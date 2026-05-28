@@ -13,21 +13,21 @@ Auto-generated. Back to [summary](../summary.md).
 
 ### Prompts
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Prompt template extraction | ❌ `missing` | — | — | — | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Prompt template extraction | ❌ `missing` | — | — | — | — |
 
 ### Composition
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Chain composition | ❌ `missing` | — | — | — | — | — |
-| Tool use detection | ❌ `missing` | — | — | — | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Chain composition | ❌ `missing` | — | — | — | — |
+| Tool use detection | ❌ `missing` | — | — | — | — |
 
 ### Tracking
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 
 ## Provenance
 

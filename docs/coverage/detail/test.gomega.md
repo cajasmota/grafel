@@ -9,10 +9,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Dependency graph | ❌ `missing` | — | — | — | — | — |
-| Target extraction | ❌ `missing` | — | — | — | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Dependency graph | ❌ `missing` | — | — | — | — |
+| Target extraction | ❌ `missing` | — | — | — | — |
 
 ## Provenance
 

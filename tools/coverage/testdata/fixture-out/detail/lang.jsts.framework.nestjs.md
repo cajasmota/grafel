@@ -13,62 +13,62 @@ Auto-generated. Back to [summary](../summary.md).
 
 ### Routing
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Endpoint synthesis | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
-| Handler attribution | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Endpoint synthesis | ✅ `full` | `2026-05-27` | — | `internal/engine/http_endpoint_synthesis.go` | — |
+| Handler attribution | ✅ `full` | `2026-05-27` | — | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Auth coverage | ⚠️ `partial` | `2026-05-27` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | ⚠️ `partial` | `2026-05-27` | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ### Validation
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Request validation | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Request validation | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ### Middleware
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 
 ### Type System
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 
 ### Testing
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 
 ### Observability
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 
 ### Data
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
 
 ### Substrate
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Import resolution quality | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Import resolution quality | ✅ `full` | `2026-05-27` | — | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ## Framework-specific
 
 ### NestJS Internals
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Dependency injection | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
-| Module graph | ⚠️ `partial` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Dependency injection | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Module graph | ⚠️ `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ## Provenance
 

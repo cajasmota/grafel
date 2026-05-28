@@ -9,10 +9,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Capabilities
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Dependency graph | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/just/just.go` | — |
-| Target extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/just/just.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Dependency graph | ✅ `full` | `2026-05-28` | — | `internal/extractors/just/just.go` | — |
+| Target extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/just/just.go` | — |
 
 ## Provenance
 
