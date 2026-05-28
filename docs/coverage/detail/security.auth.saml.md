@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_policy` | ❌ `missing` | — | — | — | — | — |
-| `secret_detection` | ❌ `missing` | — | — | — | — | — |
-| `sql_injection` | — `not_applicable` | — | — | — | — | — |
+| Auth policy | ❌ `missing` | — | — | — | — | — |
+| Secret detection | ❌ `missing` | — | — | — | — | — |
+| SQL injection | — `not_applicable` | — | — | — | — | — |
 
 ## Provenance
 

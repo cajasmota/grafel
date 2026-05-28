@@ -17,6 +17,6 @@ Back to [summary](../summary.md).
 
 ### Other
 
-| Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
+| Name | Auth coverage | Endpoint synthesis | Handler attribution | Middleware coverage | Notes |
 |---|---|---|---|---|---|
 | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | — | |

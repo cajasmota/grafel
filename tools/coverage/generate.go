@@ -247,6 +247,13 @@ type categorySubSection struct {
 // legacy single capability table (CapList) is used. FrameworkSpecific
 // renders as an additional top-level section below canonical capabilities
 // when the record carries framework-unique capability groups (#2739).
+//
+// TotalCells is the grand total of capability cells rendered on the page:
+// len(CapList) (canonical) + the sum of CapList lengths across all
+// FrameworkSpecific groups (#2946). This is the number that the
+// "Capability cells:" header must display so it stays consistent with the
+// completeness metric that AllCapabilitiesIncludingFrameworkSpecific()
+// powers.
 type detailPageData struct {
 	Marker            string
 	Record            Record
@@ -254,6 +261,7 @@ type detailPageData struct {
 	GroupViews        []groupView
 	Grouped           bool
 	FrameworkSpecific []frameworkSpecificView
+	TotalCells        int
 }
 
 // frameworkSpecificView is one free-form capability group rendered on a
@@ -458,11 +466,12 @@ func languageDisplay(slug string) string {
 
 // templateFuncs are the helpers exposed to templates.
 var templateFuncs = template.FuncMap{
-	"glyph":      statusGlyph,
-	"langDsp":    languageDisplay,
-	"prettyKey":  prettyKey,
-	"subHeading": subcategoryHeading,
-	"groupCell":  groupCell,
+	"glyph":            statusGlyph,
+	"langDsp":          languageDisplay,
+	"prettyKey":        prettyKey,
+	"humanizeCapKey":   humanizeCapKey,
+	"subHeading":       subcategoryHeading,
+	"groupCell":        groupCell,
 }
 
 // groupCell returns the digest string for groupName on a recordView or
@@ -752,6 +761,14 @@ func generate(reg *Registry, outRoot string) error {
 
 	for _, rec := range sortedRecs {
 		view := recordToView(rec)
+		fsViews := buildFrameworkSpecificViews(rec)
+		// TotalCells: canonical cells + all framework_specific cells (#2946).
+		// This matches the completeness metric powered by
+		// AllCapabilitiesIncludingFrameworkSpecific().
+		totalCells := len(view.CapList)
+		for _, fsv := range fsViews {
+			totalCells += len(fsv.CapList)
+		}
 		if err := renderToFile(tmpls, "detail.md.tmpl",
 			filepath.Join(root, "detail", rec.ID+".md"),
 			detailPageData{
@@ -760,7 +777,8 @@ func generate(reg *Registry, outRoot string) error {
 				CapList:           view.CapList,
 				GroupViews:        view.GroupViews,
 				Grouped:           view.Grouped,
-				FrameworkSpecific: buildFrameworkSpecificViews(rec),
+				FrameworkSpecific: fsViews,
+				TotalCells:        totalCells,
 			}); err != nil {
 			return err
 		}

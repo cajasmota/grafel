@@ -33,7 +33,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [Cargo (Cargo.toml)](../detail/build.cargo.md) | ✅ | — | — | ✅ | |
 | [Cargo.toml](../detail/pkg.cargo.md) | — | ❌ | ✅ | — | |
@@ -44,7 +44,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [Diesel](../detail/lang.rust.orm.diesel.md) | ❌ | ✅ | ✅ | |
 | [Rbatis](../detail/lang.rust.orm.rbatis.md) | ❌ | ❌ | ❌ | |

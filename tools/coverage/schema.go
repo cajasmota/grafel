@@ -38,6 +38,96 @@ var acronyms = map[string]string{
 	"ci":   "CI",
 }
 
+// humanizeAcronyms is the extended acronym map used by humanizeCapKey for
+// rendering capability keys as human-readable Sentence-case labels on detail
+// pages and pivot column headers. It is a superset of the prettyKey acronym
+// map, extended with the domain-specific terms listed in #2947. Keys must be
+// lowercase snake_case segments (single underscore-split token).
+var humanizeAcronyms = map[string]string{
+	// carried forward from prettyKey
+	"dto":  "DTO",
+	"jsx":  "JSX",
+	"tsx":  "TSX",
+	"ipc":  "IPC",
+	"http": "HTTP",
+	"api":  "API",
+	"orm":  "ORM",
+	"sdk":  "SDK",
+	"isr":  "ISR",
+	"ios":  "iOS",
+	"jni":  "JNI",
+	"ui":   "UI",
+	"ai":   "AI",
+	"rpc":  "RPC",
+	"ci":   "CI",
+	// #2947 additions
+	"sql":   "SQL",
+	"https": "HTTPS",
+	"url":   "URL",
+	"json":  "JSON",
+	"xml":   "XML",
+	"html":  "HTML",
+	"css":   "CSS",
+	"jwt":   "JWT",
+	"jpa":   "JPA",
+	"jpql":  "JPQL",
+	"cdi":   "CDI",
+	"ejb":   "EJB",
+	"aop":   "AOP",
+	"di":    "DI",
+	"rxjs":  "RxJS",
+	"rsc":   "RSC",
+	"ssg":   "SSG",
+	"cli":   "CLI",
+	"otel":  "OTel",
+	"wsgi":  "WSGI",
+	"asgi":  "ASGI",
+	"grpc":  "gRPC",
+	"hoc":   "HOC",
+	"db":    "DB",
+	"io":    "IO",
+}
+
+// humanizeCapKey converts a snake_case capability key into a human-readable
+// Sentence-case label suitable for rendered docs. Algorithm: split on "_",
+// apply humanizeAcronyms for known acronyms, capitalize the first token if it
+// is not an acronym, lowercase all other non-acronym tokens, then join with
+// spaces. The key is never changed in the registry or dictionary — this is a
+// display-only transformation applied in templates via the "humanizeCapKey"
+// func map entry. Empty input returns "".
+//
+// Examples:
+//
+//	"guard_interceptor_recognition" → "Guard interceptor recognition"
+//	"dto_extraction"                → "DTO extraction"
+//	"rxjs_pattern_detection"        → "RxJS pattern detection"
+//	"jpql_query_parsing"            → "JPQL query parsing"
+//	"di_binding_extraction"         → "DI binding extraction"
+func humanizeCapKey(s string) string {
+	if s == "" {
+		return ""
+	}
+	parts := strings.Split(s, "_")
+	for i, p := range parts {
+		lower := strings.ToLower(p)
+		if a, ok := humanizeAcronyms[lower]; ok {
+			parts[i] = a
+			continue
+		}
+		if p == "" {
+			continue
+		}
+		if i == 0 {
+			// Capitalize first token (sentence case).
+			parts[i] = strings.ToUpper(p[:1]) + strings.ToLower(p[1:])
+		} else {
+			// All subsequent non-acronym tokens are lowercase.
+			parts[i] = strings.ToLower(p)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // prettyKey converts a snake_case capability or subcategory slug into
 // a human-readable label: split on underscores, Title-case each segment,
 // substitute known acronyms, and re-join with spaces. Empty input

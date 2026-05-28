@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `lockfile_parsing` | ❌ `missing` | — | — | — | — | — |
-| `manifest_parsing` | ❌ `missing` | — | — | — | — | — |
+| Lockfile parsing | ❌ `missing` | — | — | — | — | — |
+| Manifest parsing | ❌ `missing` | — | — | — | — | — |
 
 ## Provenance
 

@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_policy` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/1942) | — | — |
+| Auth policy | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/1942) | — | — |
 
 ## Provenance
 

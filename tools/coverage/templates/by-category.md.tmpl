@@ -6,7 +6,7 @@
 Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 
 {{if eq .Bucket "Other" -}}
-| Language | Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Status | Notes |
+| Language | Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Status | Notes |
 |---|---|{{range .CapabilityKeys}}---|{{end}}---|---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
@@ -27,7 +27,7 @@ Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 | [{{langDsp .Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $groups}} {{groupCell $rec.GroupDigestByName .}} |{{end}} |
 {{- end}}
 {{else}}
-| Language | Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+| Language | Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Notes |
 |---|---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
@@ -40,7 +40,7 @@ Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 
 ## Other
 
-| Language | Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+| Language | Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Notes |
 |---|---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
@@ -49,7 +49,7 @@ Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 {{- end}}
 {{- end}}
 {{- else}}
-| Language | Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+| Language | Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Notes |
 |---|---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}

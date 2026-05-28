@@ -24,7 +24,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [Bundler (Gemfile)](../detail/build.bundler.md) | ✅ | — | — | ✅ | |
 | [Cucumber](../detail/test.cucumber.md) | ❌ | — | — | ❌ | |
@@ -35,7 +35,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | — | — | ⚠️ | |
 | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | ❌ | ✅ | ✅ | |

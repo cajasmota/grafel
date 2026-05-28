@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `cross_repo_linkage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go` | — |
-| `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/proto` | — |
-| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/protobuf/_manifest.yaml`<br>`internal/extractors/proto` | — |
+| Cross repo linkage | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/grpc_edges.go` | — |
+| Method attribution | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/proto` | — |
+| Service extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/protobuf/_manifest.yaml`<br>`internal/extractors/proto` | — |
 
 ## Provenance
 

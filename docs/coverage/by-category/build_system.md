@@ -6,7 +6,7 @@
 Back to [summary](../summary.md). Bucket: **Tools**.
 
 
-| Language | Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Language | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|---|
 | [C/C++](../by-language/c-cpp.md) | [Boost.Test](../detail/test.boost-test.md) | ❌ | — | — | ❌ | |
 | [C/C++](../by-language/c-cpp.md) | [Buck2](../detail/lang.c-cpp.tool.buck2.md) | ❌ | — | — | ❌ | |

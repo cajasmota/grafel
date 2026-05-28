@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `prompt_template_extraction` | ❌ `missing` | — | — | — | — | — |
+| Prompt template extraction | ❌ `missing` | — | — | — | — | — |
 
 ### Composition
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `chain_composition` | ❌ `missing` | — | — | — | — | — |
-| `tool_use_detection` | ❌ `missing` | — | — | — | — | — |
+| Chain composition | ❌ `missing` | — | — | — | — | — |
+| Tool use detection | ❌ `missing` | — | — | — | — | — |
 
 ### Tracking
 

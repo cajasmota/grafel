@@ -31,7 +31,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [ExUnit](../detail/test.exunit.md) | ✅ | — | — | ✅ | |
 | [Hex](../detail/build.hex.md) | ⚠️ | — | — | ⚠️ | |
@@ -41,7 +41,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [Ecto](../detail/lang.elixir.orm.ecto.md) | ❌ | ✅ | ✅ | |
 | [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | — | — | ⚠️ | |

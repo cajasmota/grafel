@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ❌ `missing` | — | — | — | — | — |
-| `model_extraction` | ❌ `missing` | — | — | — | — | — |
-| `query_attribution` | ❌ `missing` | — | — | — | — | — |
+| Migration parsing | ❌ `missing` | — | — | — | — | — |
+| Model extraction | ❌ `missing` | — | — | — | — | — |
+| Query attribution | ❌ `missing` | — | — | — | — | — |
 
 ## Provenance
 

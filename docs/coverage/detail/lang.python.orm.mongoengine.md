@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | — `not_applicable` | — | — | — | — | — |
-| `model_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/mongoengine.yaml` | — |
-| `query_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/mongoengine.yaml` | — |
+| Migration parsing | — `not_applicable` | — | — | — | — | — |
+| Model extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/mongoengine.yaml` | — |
+| Query attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/mongoengine.yaml` | — |
 
 ## Provenance
 

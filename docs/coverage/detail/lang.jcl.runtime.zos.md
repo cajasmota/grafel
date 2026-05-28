@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `call_line_precision` | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/extractor_test.go` | — |
-| `core_extraction` | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/testdata/payjob.jcl` | — |
+| Call line precision | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/extractor_test.go` | — |
+| Core extraction | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/testdata/payjob.jcl` | — |
 
 ## Provenance
 

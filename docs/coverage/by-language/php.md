@@ -28,7 +28,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [Behat](../detail/test.behat.md) | ❌ | — | — | ❌ | |
 | [Codeception](../detail/test.codeception.md) | ❌ | — | — | ❌ | |
@@ -39,7 +39,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | — | — | ⚠️ | |
 | [CycleORM](../detail/lang.php.orm.cycleorm.md) | ❌ | ❌ | ❌ | |

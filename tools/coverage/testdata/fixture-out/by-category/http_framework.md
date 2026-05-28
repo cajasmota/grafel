@@ -16,7 +16,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 ## Other
 
-| Language | Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
+| Language | Name | Auth coverage | Endpoint synthesis | Handler attribution | Middleware coverage | Notes |
 |---|---|---|---|---|---|---|
 | [JS/TS](../by-language/jsts.md) | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | — | |
 | [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ⚠️ | ✅ | ✅ | — | |

@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | Log Extraction | Metric Extraction | Trace Extraction | Status | Notes |
+| Language | Name | Log extraction | Metric extraction | Trace extraction | Status | Notes |
 |---|---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [Datadog](../detail/infra.observability.datadog.md) | ❌ | ❌ | ❌ | ❌ | |
 | [multi](../by-language/multi.md) | [Elastic APM](../detail/infra.observability.elastic-apm.md) | ❌ | ❌ | ❌ | ❌ | |

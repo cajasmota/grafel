@@ -42,7 +42,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [Flit](../detail/build.flit.md) | ❌ | — | — | ❌ | |
 | [Hatch](../detail/build.hatch.md) | ❌ | — | — | ❌ | |
@@ -62,7 +62,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ⚠️ | — | — | |
 | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | — | ⚠️ | ⚠️ | |

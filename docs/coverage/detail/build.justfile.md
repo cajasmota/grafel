@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_graph` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/just/just.go` | — |
-| `target_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/just/just.go` | — |
+| Dependency graph | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/just/just.go` | — |
+| Target extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/just/just.go` | — |
 
 ## Provenance
 

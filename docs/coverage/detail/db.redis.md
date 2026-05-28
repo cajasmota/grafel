@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/redis_pubsub_edges.go` | — |
-| `resource_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/redis_pubsub_edges.go` | — |
+| Dependency attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/redis_pubsub_edges.go` | — |
+| Resource extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/redis_pubsub_edges.go` | — |
 
 ## Provenance
 

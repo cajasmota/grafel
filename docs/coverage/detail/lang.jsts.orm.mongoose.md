@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | — `not_applicable` | — | — | — | — | — |
-| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/mongoose.yaml` | — |
-| `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go` | — |
+| Migration parsing | — `not_applicable` | — | — | — | — | — |
+| Model extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/mongoose.yaml` | — |
+| Query attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go` | — |
 
 ## Provenance
 

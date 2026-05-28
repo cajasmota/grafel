@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `secret_detection` | ✅ `full` | `2026-05-28` | — | — | `internal/secrets/secrets.go` | — |
+| Secret detection | ✅ `full` | `2026-05-28` | — | — | `internal/secrets/secrets.go` | — |
 
 ## Provenance
 

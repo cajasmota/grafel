@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_signal_pubsub_edges.go` | — |
-| `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_signal_pubsub_edges.go` | — |
-| `topic_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/django_signal_pubsub_edges.go` | — |
+| Consumer extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_signal_pubsub_edges.go` | — |
+| Producer extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_signal_pubsub_edges.go` | — |
+| Topic attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/django_signal_pubsub_edges.go` | — |
 
 ## Provenance
 

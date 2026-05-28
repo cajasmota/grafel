@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ❌ `missing` | — | — | — | — | — |
-| `model_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/orms/spring_data_cassandra.yaml` | — |
-| `query_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/orms/spring_data_cassandra.yaml` | — |
+| Migration parsing | ❌ `missing` | — | — | — | — | — |
+| Model extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/orms/spring_data_cassandra.yaml` | — |
+| Query attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/orms/spring_data_cassandra.yaml` | — |
 
 ## Provenance
 

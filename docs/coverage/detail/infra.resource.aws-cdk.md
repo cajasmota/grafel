@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `resource_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/hcl/extractor.go` | — |
+| Resource extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/hcl/extractor.go` | — |
 
 ## Provenance
 

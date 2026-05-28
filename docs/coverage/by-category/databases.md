@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | Dependency Attribution | Resource Extraction | Status | Notes |
+| Language | Name | Dependency attribution | Resource extraction | Status | Notes |
 |---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [AWS DynamoDB](../detail/db.dynamodb.md) | ⚠️ | ⚠️ | ⚠️ | |
 | [multi](../by-language/multi.md) | [Apache Cassandra (schema)](../detail/db.cassandra.md) | ❌ | ❌ | ❌ | |

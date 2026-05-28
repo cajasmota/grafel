@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `cross_repo_linkage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/http_endpoint_match.go` | — |
-| `method_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/openapi/language.yaml` | — |
-| `service_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/openapi/language.yaml` | — |
+| Cross repo linkage | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/http_endpoint_match.go` | — |
+| Method attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/openapi/language.yaml` | — |
+| Service extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/openapi/language.yaml` | — |
 
 ## Provenance
 

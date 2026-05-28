@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/typeorm.go` | — |
-| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/typeorm.yaml` | — |
-| `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go` | — |
+| Migration parsing | ✅ `full` | `2026-05-28` | — | — | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/typeorm.go` | — |
+| Model extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/typeorm.yaml` | — |
+| Query attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go` | — |
 
 ## Provenance
 

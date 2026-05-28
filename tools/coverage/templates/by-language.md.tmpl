@@ -26,7 +26,7 @@ Back to [summary](../summary.md).
 | [{{.Label}}](../detail/{{.ID}}.md) |{{range $groups}} {{groupCell $rec.GroupDigestByName .}} |{{end}} |
 {{- end}}
 {{else}}
-| Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+| Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Notes |
 |---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
@@ -39,7 +39,7 @@ Back to [summary](../summary.md).
 
 ### Other
 
-| Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+| Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Notes |
 |---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
@@ -48,7 +48,7 @@ Back to [summary](../summary.md).
 {{- end}}
 {{- end}}
 {{- else}}
-| Name |{{range .CapabilityKeys}} {{prettyKey .}} |{{end}} Notes |
+| Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Notes |
 |---|{{range .CapabilityKeys}}---|{{end}}---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}

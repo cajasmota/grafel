@@ -27,6 +27,35 @@ func TestPrettyKey(t *testing.T) {
 	}
 }
 
+func TestHumanizeCapKey(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		// sentence case — only first token capitalised
+		{"guard_interceptor_recognition", "Guard interceptor recognition"},
+		{"auth_coverage", "Auth coverage"},
+		{"endpoint_synthesis", "Endpoint synthesis"},
+		// known acronyms preserved regardless of position
+		{"dto_extraction", "DTO extraction"},
+		{"rxjs_pattern_detection", "RxJS pattern detection"},
+		{"jpql_query_parsing", "JPQL query parsing"},
+		{"di_binding_extraction", "DI binding extraction"},
+		{"http_backend", "HTTP backend"},
+		{"jsx_template", "JSX template"},
+		{"grpc_streaming", "gRPC streaming"},
+		{"otel_tracing", "OTel tracing"},
+		// single-token
+		{"sql", "SQL"},
+		{"single", "Single"},
+	}
+	for _, c := range cases {
+		if got := humanizeCapKey(c.in); got != c.want {
+			t.Errorf("humanizeCapKey(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestValidSubcategory(t *testing.T) {
 	if !validSubcategory("http_framework", "ui_frontend") {
 		t.Errorf("ui_frontend should be valid for http_framework")

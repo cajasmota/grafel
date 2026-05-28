@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | Cross Repo Linkage | Method Attribution | Service Extraction | Status | Notes |
+| Language | Name | Cross repo linkage | Method attribution | Service extraction | Status | Notes |
 |---|---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [C ↔ asm ABI bridge](../detail/protocol.c-asm.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [GraphQL](../detail/protocol.graphql.md) | ⚠️ | ✅ | ✅ | ⚠️ | |

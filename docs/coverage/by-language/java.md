@@ -59,7 +59,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [AssertJ](../detail/test.assertj.md) | ❌ | — | — | ❌ | |
 | [Gradle (Groovy + Kotlin DSL)](../detail/build.gradle.md) | ✅ | — | — | ✅ | |
@@ -74,7 +74,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | — | ⚠️ | ⚠️ | |
 | [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ | ❌ | ❌ | |

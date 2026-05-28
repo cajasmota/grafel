@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/cdk/_manifest.yaml` | — |
-| `resource_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/cdk/_manifest.yaml` | — |
+| Dependency attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/cdk/_manifest.yaml` | — |
+| Resource extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/cdk/_manifest.yaml` | — |
 
 ## Provenance
 

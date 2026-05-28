@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `lockfile_parsing` | ✅ `full` | — | — | [link](2865) | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/extractor_test.go` | — |
-| `manifest_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/cross/manifest/extractor.go` | — |
+| Lockfile parsing | ✅ `full` | — | — | [link](2865) | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/extractor_test.go` | — |
+| Manifest parsing | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/cross/manifest/extractor.go` | — |
 
 ## Provenance
 

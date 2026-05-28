@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | Env Resolution | File Parsing | Status | Notes |
+| Language | Name | Env resolution | File parsing | Status | Notes |
 |---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [Azure Pipelines](../detail/ci.azure-pipelines.md) | ⚠️ | ✅ | ⚠️ | |
 | [multi](../by-language/multi.md) | [Bitbucket Pipelines](../detail/ci.bitbucket.md) | ⚠️ | ✅ | ⚠️ | |

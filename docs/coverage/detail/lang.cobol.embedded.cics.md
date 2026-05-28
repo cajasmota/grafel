@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `fs_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/substrate/effect_sinks_cobol.go` | — |
-| `http_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/substrate/effect_sinks_cobol.go` | — |
+| Fs effect | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/substrate/effect_sinks_cobol.go` | — |
+| HTTP effect | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/substrate/effect_sinks_cobol.go` | — |
 
 ## Provenance
 

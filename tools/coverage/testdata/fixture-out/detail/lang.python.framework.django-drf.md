@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | ⚠️ `partial` | `2026-05-27` | — | [link](https://github.com/cajasmota/archigraph/issues/1942) | `internal/engine/django_drf_actions.go` | — |
-| `endpoint_synthesis` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/django_drf_actions.go`<br>`internal/engine/http_endpoint_synthesis.go` | — |
-| `handler_attribution` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/django_drf_actions.go` | — |
+| Auth coverage | ⚠️ `partial` | `2026-05-27` | — | [link](https://github.com/cajasmota/archigraph/issues/1942) | `internal/engine/django_drf_actions.go` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-27` | — | — | `internal/engine/django_drf_actions.go`<br>`internal/engine/http_endpoint_synthesis.go` | — |
+| Handler attribution | ✅ `full` | `2026-05-27` | — | — | `internal/engine/django_drf_actions.go` | — |
 
 ## Provenance
 

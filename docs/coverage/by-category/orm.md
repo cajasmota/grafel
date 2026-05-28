@@ -6,7 +6,7 @@
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
 
-| Language | Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Language | Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|---|
 | [C/C++](../by-language/c-cpp.md) | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | ❌ | ❌ | ❌ | |
 | [C/C++](../by-language/c-cpp.md) | [ODB](../detail/lang.c-cpp.orm.odb.md) | ❌ | ❌ | ❌ | |

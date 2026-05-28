@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_policy` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/java_auth_policy.go` | — |
+| Auth policy | ✅ `full` | `2026-05-28` | — | — | `internal/engine/java_auth_policy.go` | — |
 
 ## Provenance
 

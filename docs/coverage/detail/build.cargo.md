@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_graph` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/build_tools.yaml` | — |
-| `target_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/build_tools.yaml` | — |
+| Dependency graph | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/build_tools.yaml` | — |
+| Target extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/build_tools.yaml` | — |
 
 ## Provenance
 

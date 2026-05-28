@@ -15,54 +15,54 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `component_extraction` | ❌ `missing` | — | — | — | — | — |
-| `hook_recognition` | ❌ `missing` | — | — | — | — | — |
+| Component extraction | ❌ `missing` | — | — | — | — | — |
+| Hook recognition | ❌ `missing` | — | — | — | — | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `data_loaders` | ❌ `missing` | — | — | — | — | — |
+| Data loaders | ❌ `missing` | — | — | — | — | — |
 
 ### Server
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `hydration_boundaries` | ❌ `missing` | — | — | — | — | — |
-| `server_components` | ❌ `missing` | — | — | — | — | — |
+| Hydration boundaries | ❌ `missing` | — | — | — | — | — |
+| Server components | ❌ `missing` | — | — | — | — | — |
 
 ### Routing
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `route_extraction` | ❌ `missing` | — | — | — | — | — |
-| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+| Route extraction | ❌ `missing` | — | — | — | — | — |
+| Router pattern | ❌ `missing` | — | — | — | — | — |
 
 ### Build
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `static_generation` | ❌ `missing` | — | — | — | — | — |
+| Static generation | ❌ `missing` | — | — | — | — | — |
 
 ### Type System
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `enum_extraction` | ❌ `missing` | — | — | — | — | — |
-| `interface_extraction` | ❌ `missing` | — | — | — | — | — |
-| `type_alias_extraction` | ❌ `missing` | — | — | — | — | — |
+| Enum extraction | ❌ `missing` | — | — | — | — | — |
+| Interface extraction | ❌ `missing` | — | — | — | — | — |
+| Type alias extraction | ❌ `missing` | — | — | — | — | — |
 
 ### Lifecycle
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `state_setter_emission` | ❌ `missing` | — | — | — | — | — |
+| State setter emission | ❌ `missing` | — | — | — | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `tests_linkage` | ❌ `missing` | — | — | — | — | — |
+| Tests linkage | ❌ `missing` | — | — | — | — | — |
 
 ### Substrate
 
