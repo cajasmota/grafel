@@ -210,6 +210,17 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 		}
 	}
 
+	// #2811 — propagate handler effect closures onto http_endpoint entities.
+	// Each http_endpoint synthetic carries an IMPLEMENTS edge from its handler
+	// (handler → endpoint). The handler's transitive effect set (already
+	// computed in `effects` above via the CALLS fixed-point) is the answer to
+	// "does this endpoint write to the DB / touch the filesystem / mutate
+	// state". We union every handler's set onto the endpoint so a route served
+	// by several handler methods reports the combined surface. Endpoints
+	// resolved this way are tagged source="endpoint" so MCP/docs can tell an
+	// endpoint annotation apart from a function's own direct/transitive set.
+	endpointDerived := propagateEndpointEffects(graphs, effects)
+
 	// Stamp results back onto entity.Properties so MCP/dashboard can read
 	// them without re-running the pass.
 	stamped := 0
@@ -225,7 +236,7 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 			if e.Properties == nil {
 				e.Properties = map[string]string{}
 			}
-			stampEffectProperties(e.Properties, *set, directByEntity[fullID] != nil)
+			stampEffectProperties(e.Properties, *set, directByEntity[fullID] != nil, endpointDerived[fullID])
 			stamped++
 		}
 	}
@@ -234,18 +245,87 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 
 	if paths.Links != "" {
 		sidecar := strings.TrimSuffix(paths.Links, ".json") + "-effects.json"
-		if err := writeEffectsDoc(sidecar, effects, directByEntity); err != nil {
+		if err := writeEffectsDoc(sidecar, effects, directByEntity, endpointDerived); err != nil {
 			return res, fmt.Errorf("write effects doc: %w", err)
 		}
 	}
 	return res, nil
 }
 
+// propagateEndpointEffects unions each http_endpoint synthetic's handler
+// effect closure onto the endpoint itself (#2811). The handler is resolved
+// via the IMPLEMENTS edge (handler → endpoint) that the HTTP synthesis pass
+// emits on the producer side; the handler's transitive effect set is already
+// present in `effects` (computed by the CALLS fixed-point above). The endpoint
+// inherits the union of all its handlers' sets so a route served by multiple
+// handler methods reports the combined surface.
+//
+// Returns the set of endpoint entity keys (repo::id) that received an
+// inherited annotation so the caller can tag them source="endpoint". Mutates
+// the shared `effects` map in place. Idempotent: re-running over the same
+// graph produces the same union; delta-aware because it derives purely from
+// the current in-memory edge set and handler effects with no persisted state.
+func propagateEndpointEffects(graphs []repoGraph, effects map[string]*substrate.EffectSet) map[string]bool {
+	derived := map[string]bool{}
+
+	for _, g := range graphs {
+		// handlersByEndpoint[endpointLocalID] = []handlerLocalID, from the
+		// producer-side IMPLEMENTS edge (handler → endpoint).
+		handlersByEndpoint := map[string][]string{}
+		for _, e := range g.Edges {
+			if !strings.EqualFold(e.Kind, "IMPLEMENTS") {
+				continue
+			}
+			handlersByEndpoint[e.ToID] = append(handlersByEndpoint[e.ToID], e.FromID)
+		}
+		if len(handlersByEndpoint) == 0 {
+			continue
+		}
+		for _, e := range g.Entities {
+			if !isHTTPEndpointLink(e.Kind) {
+				continue
+			}
+			handlers := handlersByEndpoint[e.ID]
+			if len(handlers) == 0 {
+				continue
+			}
+			var merged substrate.EffectSet
+			got := false
+			for _, hID := range handlers {
+				hs := effects[entityKey(g.Repo, hID)]
+				if hs == nil || hs.IsEmpty() {
+					continue
+				}
+				merged.Union(*hs)
+				got = true
+			}
+			if !got {
+				continue
+			}
+			epKey := entityKey(g.Repo, e.ID)
+			// Union onto any set the endpoint may already carry (e.g. when an
+			// endpoint entity is itself function-like and was annotated above);
+			// in practice synthetic endpoints have no direct effects of their own.
+			if existing := effects[epKey]; existing != nil {
+				existing.Union(merged)
+			} else {
+				cp := merged
+				effects[epKey] = &cp
+			}
+			derived[epKey] = true
+		}
+	}
+	return derived
+}
+
 // stampEffectProperties writes the effect annotation onto props using the
-// canonical key set documented above. effectsDirect indicates whether
-// the entity owns at least one direct sink (used to populate the
-// effect_source key).
-func stampEffectProperties(props map[string]string, set substrate.EffectSet, direct bool) {
+// canonical key set documented above. direct indicates whether the entity
+// owns at least one direct sink; endpoint indicates the set was inherited
+// from a handler closure via the IMPLEMENTS edge (#2811). Both feed the
+// effect_source key, with endpoint taking precedence so an http_endpoint
+// reads as source="endpoint" rather than the underlying direct/transitive
+// shape of its handler.
+func stampEffectProperties(props map[string]string, set substrate.EffectSet, direct, endpoint bool) {
 	effs := set.AsList()
 	if len(effs) == 0 {
 		return
@@ -265,9 +345,12 @@ func stampEffectProperties(props map[string]string, set substrate.EffectSet, dir
 	if len(sinks) > 0 {
 		props[EffectPropertyKeySinks] = strings.Join(sinks, ",")
 	}
-	if direct {
+	switch {
+	case endpoint:
+		props[EffectPropertyKeySource] = "endpoint"
+	case direct:
 		props[EffectPropertyKeySource] = "direct"
-	} else {
+	default:
 		props[EffectPropertyKeySource] = "transitive"
 	}
 }
@@ -409,7 +492,7 @@ type effectEntry struct {
 	Source      string             `json:"source"` // "direct" | "transitive"
 }
 
-func writeEffectsDoc(path string, effects, direct map[string]*substrate.EffectSet) error {
+func writeEffectsDoc(path string, effects, direct map[string]*substrate.EffectSet, endpointDerived map[string]bool) error {
 	ids := make([]string, 0, len(effects))
 	for id := range effects {
 		ids = append(ids, id)
@@ -433,7 +516,10 @@ func writeEffectsDoc(path string, effects, direct map[string]*substrate.EffectSe
 			}
 		}
 		src := "transitive"
-		if direct[id] != nil {
+		switch {
+		case endpointDerived[id]:
+			src = "endpoint"
+		case direct[id] != nil:
 			src = "direct"
 		}
 		entries = append(entries, effectEntry{

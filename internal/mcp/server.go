@@ -726,9 +726,10 @@ func (s *Server) registerTools() {
 	// format="terse" (default) returns one-line "lines" entries; "full" returns
 	// per-record structs with kind + deduplicated properties (path/verb stripped).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoints",
-		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats. kind=navigation: NAVIGATES_TO."),
+		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats. kind=navigation. effect= filter."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
+		mcpapi.WithAny("effect"), // #2811 — filter definitions by handler effect closure
 		mcpapi.WithBoolean("include_navigation", mcpapi.DefaultBool(false)), // #2665
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20)),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),

@@ -42,6 +42,7 @@ method: GET
 path: /api/orders
 auth: Bearer required
 tables_touched: [orders, users]
+effects: [db_write, mutation]
 ---
 
 ## Description
@@ -73,6 +74,12 @@ Free-form prose.
 	}
 	assertStr(t, "tables_touched[0]", fm.TablesTouched[0], "orders")
 	assertStr(t, "tables_touched[1]", fm.TablesTouched[1], "users")
+	// #2811 — effects list.
+	if len(fm.Effects) != 2 {
+		t.Errorf("effects: expected 2, got %d: %v", len(fm.Effects), fm.Effects)
+	}
+	assertStr(t, "effects[0]", fm.Effects[0], "db_write")
+	assertStr(t, "effects[1]", fm.Effects[1], "mutation")
 }
 
 func TestParseFrontmatterBytes_disqualified(t *testing.T) {
