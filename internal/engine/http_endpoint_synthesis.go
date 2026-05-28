@@ -433,6 +433,16 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// (client) synthesizers so it only sees producer http_endpoint_definition
 		// entities.
 		applyJSTSAuthPolicy(string(content), path, entities, jstsAuthBefore)
+		// #2853 — resolve middleware_coverage over the same producer-side
+		// endpoints. The middleware chain is the superset of auth (auth is one
+		// kind of middleware): app.use/router.use global chains, per-route
+		// middleware arrays (Express/Koa/Hono/Polka/Restify), Fastify hooks,
+		// NestJS interceptor/pipe/filter/guard decorators, Hapi ext/pre points,
+		// AdonisJS named middleware, Feathers hooks and Marble per-effect
+		// middleware. Stamps middleware_chain/middleware_count/middleware_names/
+		// middleware_scope. Shares the jstsAuthBefore window so it only sees the
+		// producer http_endpoint_definition entities this file emitted.
+		applyJSTSMiddlewareCoverage(string(content), path, entities, jstsAuthBefore)
 		// Consumer side (#721): fetch / axios / generic *Client
 		// HTTP client calls. Now emits FETCHES edges at extraction time.
 		//

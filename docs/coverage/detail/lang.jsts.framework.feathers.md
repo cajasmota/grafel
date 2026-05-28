@@ -33,7 +33,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `middleware_coverage` | ❌ `missing` | — | — | — | — | — |
+| `middleware_coverage` | ✅ `full` | — | — | — | `internal/engine/http_endpoint_jsts_middleware.go`<br>`internal/engine/http_endpoint_jsts_middleware_test.go`<br>`testdata/fixtures/typescript/feathers_middleware.ts` | — |
 
 ### Testing
 

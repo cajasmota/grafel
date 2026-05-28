@@ -33,7 +33,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `middleware_coverage` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/express.yaml` | — |
+| `middleware_coverage` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_jsts_middleware.go`<br>`internal/engine/http_endpoint_jsts_middleware_test.go`<br>`testdata/fixtures/typescript/express_middleware.ts` | — |
 
 ### Testing
 
