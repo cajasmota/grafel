@@ -116,6 +116,22 @@
           "verified_at": "2026-05-27"
         }
       }
+    },
+    {
+      "id": "lang.python.framework.starlette",
+      "category": "http_framework",
+      "language": "python",
+      "label": "Starlette",
+      "capabilities": {
+        "endpoint_synthesis": {
+          "status": "missing",
+          "issue": "backfill:dictionary-completeness"
+        },
+        "handler_attribution": {
+          "status": "missing",
+          "issue": "backfill:dictionary-completeness"
+        }
+      }
     }
   ]
 }

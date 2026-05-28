@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 5 records · **JS/TS**: 2 · **python**: 3
+**Total**: 6 records · **JS/TS**: 2 · **python**: 4
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -22,3 +22,4 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ⚠️ | ✅ | ✅ | — | |
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | — | ✅ | — | — | |
 | [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | — | ✅ | — | — | |
+| [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | — | ❌ | ❌ | — | |

@@ -21,21 +21,21 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Deep link extraction | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts` | — |
-| Navigation extraction | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
-| Screen detection | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
+| Deep link extraction | ✅ `full` | — | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts` | — |
+| Navigation extraction | ✅ `full` | — | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
+| Screen detection | ✅ `full` | — | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
 
 ### Platform
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Platform branching | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
+| Platform branching | ✅ `full` | — | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
 
 ### Native Bridge
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Native module imports | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx`<br>`internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts` | — |
+| Native module imports | ✅ `full` | — | — | 2860 | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx`<br>`internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts` | — |
 
 ### Data Flow
 

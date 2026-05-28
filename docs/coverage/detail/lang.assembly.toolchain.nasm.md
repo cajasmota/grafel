@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Call line precision | ✅ `full` | `2026-05-28` | — | [link](2744) | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
-| Core extraction | ✅ `full` | `2026-05-28` | — | [link](2744) | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
-| Import resolution quality | ✅ `full` | `2026-05-28` | — | [link](2744) | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
+| Call line precision | ✅ `full` | `2026-05-28` | — | 2744 | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
+| Core extraction | ✅ `full` | `2026-05-28` | — | 2744 | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
+| Import resolution quality | ✅ `full` | `2026-05-28` | — | 2744 | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
 
 ## Provenance
 

@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Route extraction | ✅ `full` | `2026-05-28` | — | [link](2932) | `internal/custom/javascript/nextjs.go`<br>`internal/engine/http_endpoint_jsts_extra.go`<br>`internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` | — |
+| Route extraction | ✅ `full` | `2026-05-28` | — | 2932 | `internal/custom/javascript/nextjs.go`<br>`internal/engine/http_endpoint_jsts_extra.go`<br>`internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` | — |
 | Router pattern | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` | — |
 
 ### Build
