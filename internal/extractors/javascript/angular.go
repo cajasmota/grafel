@@ -171,12 +171,51 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 		}
 	}
 
+	// Data Flow group (issue #2855) — collect data-flow signal entities for
+	// the component before emitting it so the class can CONTAIN them:
+	//   prop_extraction    : @Input()/@Output() decorated fields
+	//   data_fetching      : HttpClient.get/post/… call sites
+	//   branch_conditions  : *ngIf / @if / [ngSwitch] template branches
+	// state_management is emitted as edges (CALLS to ngrx select/dispatch) so
+	// it is attached to the component entity's relationship slice below.
+	var dfEnts []types.EntityRecord
+	if body := n.ChildByFieldName("body"); body != nil {
+		ioEnts := x.angularInputOutputProps(body, className)
+		fetchEnts, fetchRels := x.angularDataFetching(body, className)
+		stateRels := x.angularStateManagement(body, className)
+		dfEnts = append(dfEnts, ioEnts...)
+		dfEnts = append(dfEnts, fetchEnts...)
+		rels = append(rels, fetchRels...)
+		rels = append(rels, stateRels...)
+	}
+	if call != nil {
+		meta := x.angularDecoratorMeta(call)
+		if tmpl := meta["template"]; tmpl != "" {
+			brEnts := x.angularBranchConditions(tmpl, className, n)
+			dfEnts = append(dfEnts, brEnts...)
+		}
+	}
+
 	sig := fmt.Sprintf("@%s class %s", decorator, className)
+
+	// CONTAINS edges from the component to each data-flow entity (props,
+	// data-fetch call sites, branch conditions).
+	for i := range dfEnts {
+		rels = append(rels, types.RelationshipRecord{
+			ToID: dfEnts[i].ID,
+			Kind: "CONTAINS",
+			Properties: map[string]string{
+				"component": className,
+				"framework": "angular",
+			},
+		})
+	}
 
 	// Emit the Angular class entity, then attribute its body operations via
 	// CONTAINS (mirrors handleClassDeclaration).
 	classIdx := len(x.entities)
 	x.emitWithProps(className, "SCOPE.Component", n, subtype, sig, props, rels)
+	x.entities = append(x.entities, dfEnts...)
 
 	body := n.ChildByFieldName("body")
 	if body != nil {
@@ -314,6 +353,300 @@ func angularTemplateTags(template, selfSelector string) []string {
 		}
 		seen[tag] = true
 		out = append(out, tag)
+	}
+	return out
+}
+
+// angularTitle uppercases the first rune of s (a small replacement for the
+// deprecated strings.Title for our ASCII "input"/"output" inputs).
+func angularTitle(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// angularInputOutputDecorators maps an Angular member decorator to the
+// component_prop direction it represents. @Input() is an inbound prop (parent →
+// child); @Output() is an outbound event emitter (child → parent). Both are
+// part of a component's prop surface (Data Flow / prop_extraction).
+var angularInputOutputDecorators = map[string]string{
+	"Input":  "input",
+	"Output": "output",
+}
+
+// angularInputOutputProps scans a class body for @Input()/@Output() decorated
+// fields and returns one SCOPE.Operation subtype="component_prop" per field.
+// The Angular grammar shape is a `public_field_definition` whose first child is
+// a `decorator` (see the AST dump in this package's tests).
+func (x *extractor) angularInputOutputProps(body *sitter.Node, className string) []types.EntityRecord {
+	var out []types.EntityRecord
+	seen := map[string]bool{}
+	for i := 0; i < int(body.ChildCount()); i++ {
+		field := body.Child(i)
+		if field == nil {
+			continue
+		}
+		if field.Type() != "public_field_definition" && field.Type() != "field_definition" {
+			continue
+		}
+		dir := ""
+		for j := 0; j < int(field.ChildCount()); j++ {
+			c := field.Child(j)
+			if c == nil || c.Type() != "decorator" {
+				continue
+			}
+			name, _ := x.decoratorIdent(c)
+			if d, ok := angularInputOutputDecorators[name]; ok {
+				dir = d
+				break
+			}
+		}
+		if dir == "" {
+			continue
+		}
+		nameNode := field.ChildByFieldName("name")
+		if nameNode == nil {
+			nameNode = field.ChildByFieldName("property")
+		}
+		propName := x.nodeText(nameNode)
+		if propName == "" || seen[propName] {
+			continue
+		}
+		seen[propName] = true
+		start, end := lines(field)
+		e := types.EntityRecord{
+			Name:          propName,
+			QualifiedName: x.qualify(fmt.Sprintf("%s.%s", className, propName)),
+			Kind:          "SCOPE.Operation",
+			SourceFile:    x.filePath,
+			StartLine:     start,
+			EndLine:       end,
+			Language:      x.language,
+			Subtype:       "component_prop",
+			Signature:     fmt.Sprintf("@%s %s", angularTitle(dir), propName),
+			Properties: map[string]string{
+				"kind":           "SCOPE.Operation",
+				"subtype":        "component_prop",
+				"component":      className,
+				"prop":           propName,
+				"prop_direction": dir,
+				"framework":      "angular",
+			},
+			EnrichmentStatus: types.StatusPending,
+			QualityScore:     1.0,
+		}
+		e.ID = e.ComputeID()
+		out = append(out, e)
+	}
+	return out
+}
+
+// reAngularHTTPMethod matches the HttpClient verb methods that constitute a
+// data-fetch call site.
+var angularHTTPMethods = map[string]bool{
+	"get": true, "post": true, "put": true, "patch": true,
+	"delete": true, "head": true, "options": true, "request": true,
+}
+
+// angularDataFetching scans method bodies for `this.<http>.get(...)`-style
+// HttpClient call sites (Data Flow / data_fetching). It returns one
+// SCOPE.Operation subtype="data_fetch" per distinct (method, url) site plus a
+// CALLS edge from the component to the HTTP verb. The receiver name is not
+// fixed to "http" — any member_expression `this.X.<verb>(...)` where <verb> is
+// an HttpClient method is treated as a fetch site (the field's declared type is
+// HttpClient by Angular convention).
+func (x *extractor) angularDataFetching(body *sitter.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, call := range findAllNodes(body, "call_expression") {
+		fn := call.ChildByFieldName("function")
+		if fn == nil || fn.Type() != "member_expression" {
+			continue
+		}
+		propNode := fn.ChildByFieldName("property")
+		if propNode == nil {
+			continue
+		}
+		verb := x.nodeText(propNode)
+		if !angularHTTPMethods[verb] {
+			continue
+		}
+		// Receiver must be `this.<field>` (or `<field>`) — confirm the object is
+		// a member_expression rooted at `this` or a plain identifier, to avoid
+		// matching unrelated `.get`/`.delete` calls (Map.get, etc.) we cannot
+		// type-check. We require the receiver to look like an injected service.
+		recv := fn.ChildByFieldName("object")
+		if recv == nil || (recv.Type() != "member_expression" && recv.Type() != "identifier") {
+			continue
+		}
+		recvText := x.nodeText(recv)
+		// URL argument (first string literal), best-effort.
+		url := angularFirstStringArg(x, call)
+		key := verb + "|" + url
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		start, end := lines(call)
+		name := fmt.Sprintf("http.%s", verb)
+		e := types.EntityRecord{
+			Name:          name,
+			QualifiedName: x.qualify(fmt.Sprintf("%s.%s", className, name)),
+			Kind:          "SCOPE.Operation",
+			SourceFile:    x.filePath,
+			StartLine:     start,
+			EndLine:       end,
+			Language:      x.language,
+			Subtype:       "data_fetch",
+			Signature:     fmt.Sprintf("%s.%s(%s)", recvText, verb, url),
+			Properties: map[string]string{
+				"kind":        "SCOPE.Operation",
+				"subtype":     "data_fetch",
+				"component":   className,
+				"http_method": verb,
+				"url":         url,
+				"framework":   "angular",
+			},
+			EnrichmentStatus: types.StatusPending,
+			QualityScore:     1.0,
+		}
+		e.ID = e.ComputeID()
+		ents = append(ents, e)
+		rels = append(rels, types.RelationshipRecord{
+			ToID: e.ID,
+			Kind: "CALLS",
+			Properties: map[string]string{
+				"caller":      className,
+				"http_method": verb,
+				"framework":   "angular",
+			},
+		})
+	}
+	return ents, rels
+}
+
+// angularFirstStringArg returns the first string-literal argument of a call
+// expression, stripped of quotes, or "" when the first argument is not a
+// string literal.
+func angularFirstStringArg(x *extractor, call *sitter.Node) string {
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return ""
+	}
+	for i := 0; i < int(args.ChildCount()); i++ {
+		c := args.Child(i)
+		if c != nil && c.Type() == "string" {
+			return stringLiteralValue(x.nodeText(c))
+		}
+	}
+	return ""
+}
+
+// angularStateMethods are the ngrx Store methods that constitute state access.
+var angularStateMethods = map[string]bool{
+	"select": true, "dispatch": true, "pipe": true, "selectSignal": true,
+}
+
+// angularStateManagement scans method bodies for ngrx Store interactions
+// (`this.store.select(...)`, `this.store.dispatch(...)`) and returns CALLS
+// edges from the component to the store method (Data Flow / state_management).
+// ngrx is Angular's canonical Redux-style state container; select reads state
+// and dispatch mutates it.
+func (x *extractor) angularStateManagement(body *sitter.Node, className string) []types.RelationshipRecord {
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, call := range findAllNodes(body, "call_expression") {
+		fn := call.ChildByFieldName("function")
+		if fn == nil || fn.Type() != "member_expression" {
+			continue
+		}
+		propNode := fn.ChildByFieldName("property")
+		if propNode == nil {
+			continue
+		}
+		method := x.nodeText(propNode)
+		if !angularStateMethods[method] {
+			continue
+		}
+		// Require the receiver to mention a store-like identifier so `pipe`
+		// (which is also an RxJS operator) is only counted when chained off a
+		// store. We accept `store`/`Store`-suffixed receivers.
+		recv := fn.ChildByFieldName("object")
+		recvText := x.nodeText(recv)
+		if !angularLooksLikeStore(recvText) {
+			continue
+		}
+		if seen[method] {
+			continue
+		}
+		seen[method] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: "Store." + method,
+			Kind: "CALLS",
+			Properties: map[string]string{
+				"caller":       className,
+				"store_method": method,
+				"framework":    "angular",
+				"state_lib":    "ngrx",
+			},
+		})
+	}
+	return rels
+}
+
+// angularLooksLikeStore reports whether a receiver expression text references a
+// ngrx store (a `store` identifier or a `.store` member access).
+func angularLooksLikeStore(recvText string) bool {
+	lower := strings.ToLower(recvText)
+	return strings.HasSuffix(lower, "store") || strings.HasSuffix(lower, ".store")
+}
+
+// reAngularBranch matches Angular template control-flow branches: the
+// structural directive `*ngIf`/`*ngFor`/`*ngSwitchCase`, the new (v17) control
+// flow blocks `@if`/`@for`/`@switch`, and `[ngSwitch]`. Each is a
+// branch_conditions signal.
+var reAngularBranch = regexp.MustCompile(`(\*ngIf|\*ngFor|\*ngSwitchCase|\*ngSwitchDefault|\[ngSwitch\]|@if\b|@else\b|@for\b|@switch\b)`)
+
+// angularBranchConditions scans an inline template for conditional-rendering
+// constructs and returns one SCOPE.Operation subtype="branch_condition" per
+// distinct directive kind (Data Flow / branch_conditions). The component's
+// source node provides the location anchor (inline templates do not carry
+// independent line numbers in this extractor).
+func (x *extractor) angularBranchConditions(template, className string, anchor *sitter.Node) []types.EntityRecord {
+	var out []types.EntityRecord
+	seen := map[string]bool{}
+	start, end := lines(anchor)
+	for _, m := range reAngularBranch.FindAllString(template, -1) {
+		kind := strings.TrimSpace(m)
+		if kind == "" || seen[kind] {
+			continue
+		}
+		seen[kind] = true
+		safe := strings.NewReplacer("*", "", "[", "", "]", "", "@", "at_").Replace(kind)
+		e := types.EntityRecord{
+			Name:          safe,
+			QualifiedName: x.qualify(fmt.Sprintf("%s.%s", className, safe)),
+			Kind:          "SCOPE.Operation",
+			SourceFile:    x.filePath,
+			StartLine:     start,
+			EndLine:       end,
+			Language:      x.language,
+			Subtype:       "branch_condition",
+			Signature:     fmt.Sprintf("template %s", kind),
+			Properties: map[string]string{
+				"kind":        "SCOPE.Operation",
+				"subtype":     "branch_condition",
+				"component":   className,
+				"branch_kind": kind,
+				"framework":   "angular",
+			},
+			EnrichmentStatus: types.StatusPending,
+			QualityScore:     1.0,
+		}
+		e.ID = e.ComputeID()
+		out = append(out, e)
 	}
 	return out
 }

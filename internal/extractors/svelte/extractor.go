@@ -93,6 +93,21 @@ var (
 	// context key (Symbol identifier or string literal).
 	setContextRE = regexp.MustCompile(`\bsetContext\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*|['"][^'"]+['"])`)
 	getContextRE = regexp.MustCompile(`\bgetContext\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*|['"][^'"]+['"])`)
+
+	// ── Data Flow (issue #2855) ──────────────────────────────────────────────
+
+	// Svelte store declarations: `const count = writable(0)` /
+	// readable / derived / tweened / spring. Svelte stores are the framework's
+	// state container (state_management).
+	storeDeclRE = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:const|let)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(writable|readable|derived|tweened|spring)\s*\(`)
+
+	// Data fetching call sites: fetch(…) — including the SvelteKit `load`/form
+	// data layer which uses the platform fetch — plus axios.* clients.
+	dataFetchRE = regexp.MustCompile(`(?m)\bfetch\s*\(|\baxios\s*(?:\.\s*(?:get|post|put|patch|delete|request))?\s*\(`)
+
+	// Template branch conditions: {#if …}, {:else if …}, {#each …}, {#await …}.
+	// Svelte's logic blocks are its conditional/iterative rendering constructs.
+	branchBlockRE = regexp.MustCompile(`\{#(if|each|await)\b|\{:else\s+if\b|\{:else\b|\{:then\b|\{:catch\b`)
 )
 
 // Extract parses the Svelte SFC source and returns entity records.
@@ -143,9 +158,14 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		ctxEntities, ctxRels := extractContext(scriptContent, scriptStartLine, file.Path, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, ctxRels...)
 		entities = append(entities, ctxEntities...)
+
+		// Data Flow (#2855): state_management (stores) + data_fetching.
+		dfEntities, dfRels := extractScriptDataFlow(scriptContent, scriptStartLine, file.Path, componentName)
+		entities[0].Relationships = append(entities[0].Relationships, dfRels...)
+		entities = append(entities, dfEntities...)
 	}
 
-	// ── 3. Extract RENDERS edges from child components in the template ────────
+	// ── 3. Extract RENDERS edges + branch conditions from the template ───────
 	templateContent, templateStartLine := extractTemplateSection(src)
 	if templateContent != "" {
 		renderRels := extractChildComponents(templateContent, templateStartLine, file.Path, componentName)
@@ -153,6 +173,10 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 			// Attach RENDERS relationships to the component entity.
 			entities[0].Relationships = append(entities[0].Relationships, renderRels...)
 		}
+		// Data Flow (#2855): branch_conditions from {#if}/{#each}/{:else if}.
+		brEntities, brRels := extractBranchConditions(templateContent, templateStartLine, file.Path, componentName)
+		entities[0].Relationships = append(entities[0].Relationships, brRels...)
+		entities = append(entities, brEntities...)
 	}
 
 	span.SetAttributes(
@@ -413,6 +437,155 @@ func extractContext(script string, scriptStartLine int, filePath, componentName 
 	emit(setContextRE, "provide_context", "provider")
 	emit(getContextRE, "inject_context", "consumer")
 	return ents, rels
+}
+
+// extractScriptDataFlow scans the <script> content for Svelte Data-Flow signals
+// (issue #2855): state_management (writable/readable/derived/tweened/spring
+// stores — Svelte's reactive state container) and data_fetching (fetch/axios
+// call sites). Each emits a SCOPE.Operation entity and a USES edge from the
+// component file to it.
+func extractScriptDataFlow(script string, scriptStartLine int, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+
+	emit := func(name, subtype, sig string, props map[string]string, off int) {
+		lineNum := scriptStartLine + strings.Count(script[:off], "\n")
+		props["component"] = componentName
+		props["framework"] = "svelte"
+		ents = append(ents, types.EntityRecord{
+			Name:         name,
+			Kind:         "SCOPE.Operation",
+			Subtype:      subtype,
+			SourceFile:   filePath,
+			Language:     "svelte",
+			StartLine:    lineNum,
+			EndLine:      lineNum,
+			Signature:    sig,
+			QualityScore: 0.8,
+			Properties:   props,
+		})
+		rels = append(rels, types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   name,
+			Kind:   "USES",
+			Properties: map[string]string{
+				"component": componentName,
+				"framework": "svelte",
+				"subtype":   subtype,
+			},
+		})
+	}
+
+	// state_management: store declarations.
+	stateSeen := map[string]bool{}
+	for _, m := range storeDeclRE.FindAllStringSubmatchIndex(script, -1) {
+		name := script[m[2]:m[3]]
+		prim := script[m[4]:m[5]]
+		if stateSeen[name] {
+			continue
+		}
+		stateSeen[name] = true
+		emit(name, "state_store", prim+"() "+name,
+			map[string]string{"state_lib": "svelte-store", "primitive": prim}, m[0])
+	}
+
+	// data_fetching: fetch / axios call sites.
+	fetchSeen := map[string]bool{}
+	idx := 0
+	for _, m := range dataFetchRE.FindAllStringIndex(script, -1) {
+		raw := strings.TrimSpace(script[m[0]:m[1]])
+		kind := "fetch"
+		if strings.HasPrefix(raw, "axios") {
+			kind = "axios"
+		}
+		key := kind
+		if fetchSeen[key] {
+			continue
+		}
+		fetchSeen[key] = true
+		name := "fetch:" + kind
+		if idx > 0 {
+			name = fmt.Sprintf("fetch:%s_%d", kind, idx)
+		}
+		idx++
+		emit(name, "data_fetch", kind+"(…)",
+			map[string]string{"fetch_kind": kind}, m[0])
+	}
+
+	return ents, rels
+}
+
+// extractBranchConditions scans the Svelte template for logic-block branches
+// ({#if}, {:else if}, {#each}, {#await}) and returns SCOPE.Operation
+// subtype="branch_condition" entities + USES edges (issue #2855 — Data Flow /
+// branch_conditions).
+func extractBranchConditions(template string, templateStartLine int, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	seen := map[string]int{}
+	for _, m := range branchBlockRE.FindAllStringIndex(template, -1) {
+		raw := strings.TrimSpace(template[m[0]:m[1]])
+		// Canonicalise the block label.
+		kind := svelteBranchKind(raw)
+		if kind == "" {
+			continue
+		}
+		seen[kind]++
+		idx := seen[kind]
+		name := kind
+		if idx > 1 {
+			name = fmt.Sprintf("%s_%d", kind, idx)
+		}
+		lineNum := templateStartLine + strings.Count(template[:m[0]], "\n")
+		ents = append(ents, types.EntityRecord{
+			Name:         name,
+			Kind:         "SCOPE.Operation",
+			Subtype:      "branch_condition",
+			SourceFile:   filePath,
+			Language:     "svelte",
+			StartLine:    lineNum,
+			EndLine:      lineNum,
+			Signature:    "template " + raw,
+			QualityScore: 0.8,
+			Properties: map[string]string{
+				"component":   componentName,
+				"branch_kind": kind,
+				"framework":   "svelte",
+			},
+		})
+		rels = append(rels, types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   name,
+			Kind:   "USES",
+			Properties: map[string]string{
+				"component":   componentName,
+				"branch_kind": kind,
+				"framework":   "svelte",
+			},
+		})
+	}
+	return ents, rels
+}
+
+// svelteBranchKind maps a matched logic-block opener to a canonical label.
+func svelteBranchKind(raw string) string {
+	switch {
+	case strings.HasPrefix(raw, "{#if"):
+		return "if"
+	case strings.HasPrefix(raw, "{#each"):
+		return "each"
+	case strings.HasPrefix(raw, "{#await"):
+		return "await"
+	case strings.HasPrefix(raw, "{:else if"):
+		return "else_if"
+	case strings.HasPrefix(raw, "{:else"):
+		return "else"
+	case strings.HasPrefix(raw, "{:then"):
+		return "then"
+	case strings.HasPrefix(raw, "{:catch"):
+		return "catch"
+	}
+	return ""
 }
 
 // normalizeContextKey strips quotes from a string-literal context key, or

@@ -709,7 +709,12 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	// Issue #2854 — emit USES_HOOK edges from components / custom hooks to the
 	// hooks they call (Structure/hook_recognition).
 	rels = append(rels, x.extractHookCalls(body, name)...)
+	// Issue #2855 — generic React component prop extraction (Data Flow/
+	// prop_extraction): destructured / whole-bag props of a function component.
+	propEnts, propRels := x.extractComponentProps(params, name)
+	rels = append(rels, propRels...)
 	x.emitWithRels(name, "SCOPE.Operation", n, subtype, sig, rels)
+	x.entities = append(x.entities, propEnts...)
 	// Issue #2654 — stamp discriminator comparisons found in the body.
 	x.stampDiscriminators(body)
 
@@ -1311,7 +1316,11 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
 		// Issue #2854 — USES_HOOK edges (Structure/hook_recognition).
 		rels = append(rels, x.extractHookCalls(body, name)...)
+		// Issue #2855 — React component prop extraction (Data Flow).
+		propEnts, propRels := x.extractComponentProps(params, name)
+		rels = append(rels, propRels...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name), rels)
+		x.entities = append(x.entities, propEnts...)
 		// Issue #2654 — stamp discriminator comparisons found in the body.
 		x.stampDiscriminators(body)
 		if body != nil {
@@ -1339,7 +1348,11 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
 		// Issue #2854 — USES_HOOK edges (Structure/hook_recognition).
 		rels = append(rels, x.extractHookCalls(body, name)...)
+		// Issue #2855 — React component prop extraction (Data Flow).
+		propEnts, propRels := x.extractComponentProps(params, name)
+		rels = append(rels, propRels...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name), rels)
+		x.entities = append(x.entities, propEnts...)
 		// Issue #2654 — stamp discriminator comparisons found in the body.
 		x.stampDiscriminators(body)
 		if body != nil {

@@ -27,8 +27,8 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `branch_conditions` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/discriminator.go` | — |
 | `data_fetching` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/destructure_bindings.go`<br>`internal/extractors/javascript/extractor.go` | — |
-| `prop_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2665) | `internal/extractors/javascript/navigation.go` | Covers only JSX navigation props (Link to/href, Navigate to, state object); generic React component prop extraction is not yet implemented. |
-| `state_management` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2632) | `internal/extractors/javascript/destructure_bindings.go`<br>`internal/extractors/javascript/zustand_store.go` | — |
+| `prop_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2855) | `internal/extractors/javascript/dataflow_react.go`<br>`internal/extractors/javascript/issue2855_react_dataflow_test.go`<br>`internal/extractors/javascript/navigation.go`<br>`testdata/fixtures/real-world/typescript/react_dataflow_component.tsx` | — |
+| `state_management` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2855) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue2855_react_dataflow_test.go`<br>`internal/extractors/javascript/zustand_store.go`<br>`testdata/fixtures/real-world/typescript/react_dataflow_component.tsx` | — |
 
 ### Navigation
 
