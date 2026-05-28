@@ -2808,6 +2808,495 @@ func TestHTTPPass_CrossRepo_CaseNormalization_NoReorderMatch(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Issue #2808 — path-parameter NAME normalization
+// ---------------------------------------------------------------------------
+
+// TestExtractParamNames covers the placeholder-name extractor in isolation.
+func TestExtractParamNames(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"/clients/{clientId}", []string{"clientid"}},
+		{"/clients/{pk}", []string{"pk"}},
+		{"/users/{userId}/posts/{postId}", []string{"userid", "postid"}},
+		{"/users/<int:pk>", []string{"pk"}},
+		{"/items/<slug:name>", []string{"name"}},
+		{"/users/:id", []string{"id"}},
+		{"/static/path", nil},
+		{"/buildings/{buildingId}/floors/{pk}", []string{"buildingid", "pk"}},
+	}
+	for _, tc := range cases {
+		got := extractParamNames(tc.in)
+		if len(got) != len(tc.want) {
+			t.Errorf("extractParamNames(%q)=%v want %v", tc.in, got, tc.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Errorf("extractParamNames(%q)=%v want %v", tc.in, got, tc.want)
+				break
+			}
+		}
+	}
+}
+
+// TestParamOnlyMismatch covers the param-name normalization detector. (#2808)
+func TestParamOnlyMismatch(t *testing.T) {
+	cases := []struct {
+		name     string
+		consumer string
+		producer string
+		want     bool
+	}{
+		// {clientId} ↔ {pk}, producer carries /api/v1 prefix → param-only.
+		{"clientId_vs_pk_prefixed", "/clients/{clientId}", "/api/v1/clients/{pk}", true},
+		// Same shape, same param name → NOT a normalization (plain exact).
+		{"pk_vs_pk", "/clients/{pk}", "/api/v1/clients/{pk}", false},
+		{"id_vs_id", "/clients/{id}", "/clients/{id}", false},
+		// Multi-segment, multi-param name bridge.
+		{"buildingId_vs_pk", "/buildings/{buildingId}/floors/{floorId}", "/api/v1/buildings/{pk}/floors/{floor_pk}", true},
+		// Over-match guard: a STATIC segment differs → must NOT collapse.
+		{"static_segment_differs", "/clients/{pk}", "/users/{pk}", false},
+		{"static_segment_differs2", "/clients/{clientId}", "/users/{pk}", false},
+		// Different segment counts → not equal {*}-shape → false.
+		{"segment_count_differs", "/clients/{clientId}", "/clients/{clientId}/contracts", false},
+		// No params at all → false.
+		{"no_params", "/clients", "/api/v1/clients", false},
+		// Mixed param syntax with differing names → param-only.
+		{"colon_vs_angle", "/users/:userId", "/api/v1/users/<int:pk>", true},
+		// Empty inputs.
+		{"empty_consumer", "", "/api/v1/clients/{pk}", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := paramOnlyMismatch(tc.consumer, tc.producer); got != tc.want {
+				t.Errorf("paramOnlyMismatch(%q,%q)=%v want %v", tc.consumer, tc.producer, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHTTPPass_CrossRepo_ParamNormalization verifies that a frontend call to
+// `/clients/{clientId}` resolves to a DRF ViewSet endpoint defined as
+// `/api/v1/clients/{pk}`, the emitted link carries
+// Properties["resolve_strategy"] = "param_normalized", and the hit lands in
+// CrossRepoResolveHitsByStrategy["param_normalized"]. (#2808)
+func TestHTTPPass_CrossRepo_ParamNormalization(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "ClientViewSet.retrieve", "kind": "Controller", "source_file": "core/views/client_viewset.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/clients/{pk}", "kind": "http_endpoint",
+				"source_file": "core/views/client_viewset.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/clients/{pk}",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getClient", "kind": "Function", "source_file": "src/stores/clients/clientsServiceV2.js"},
+			{
+				"id": "ep2", "name": "http:GET:/clients/{clientId}", "kind": "http_endpoint",
+				"source_file": "src/stores/clients/clientsServiceV2.js",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/clients/{clientId}",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:getClient",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g2808-param")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := runHTTPPass(graphs, paths, nil)
+	if err != nil {
+		t.Fatalf("runHTTPPass: %v", err)
+	}
+	if res.CrossRepoResolveHitsByStrategy["param_normalized"] != 1 {
+		t.Errorf("hits[param_normalized]=%d want 1; full map=%v",
+			res.CrossRepoResolveHitsByStrategy["param_normalized"], res.CrossRepoResolveHitsByStrategy)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2808-param-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			found = true
+			if l.Properties["resolve_strategy"] != "param_normalized" {
+				t.Errorf("link resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "param_normalized")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("#2808: expected cross-repo link frontend::fn1 → backend::h1 for /clients/{clientId} ↔ /api/v1/clients/{pk}")
+	}
+}
+
+// TestHTTPPass_CrossRepo_ParamNormalization_LookupKwarg verifies that when the
+// producer ViewSet overrides its detail param via lookup_url_kwarg, the bridge
+// still resolves AND the overridden kwarg is recorded on the link for
+// traceability. (#2808)
+func TestHTTPPass_CrossRepo_ParamNormalization_LookupKwarg(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "BranchViewSet.retrieve", "kind": "Controller", "source_file": "core/views/branch_viewset.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/branches/{branch_id}", "kind": "http_endpoint",
+				"source_file": "core/views/branch_viewset.py",
+				"properties": map[string]any{
+					"verb":             "GET",
+					"path":             "/api/v1/branches/{branch_id}",
+					"framework":        "django",
+					"pattern_type":     "http_endpoint_synthesis",
+					"lookup_url_kwarg": "branch_id",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getBranch", "kind": "Function", "source_file": "src/stores/company/branchService.js"},
+			{
+				"id": "ep2", "name": "http:GET:/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "src/stores/company/branchService.js",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/branches/{branchId}",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:getBranch",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2808-kwarg", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2808-kwarg-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			found = true
+			if l.Properties["resolve_strategy"] != "param_normalized" {
+				t.Errorf("link resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "param_normalized")
+			}
+			if l.Properties["lookup_kwarg"] != "branch_id" {
+				t.Errorf("link lookup_kwarg=%q want %q", l.Properties["lookup_kwarg"], "branch_id")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("#2808: expected cross-repo link frontend::fn1 → backend::h1 for /branches/{branchId} ↔ /api/v1/branches/{branch_id} (lookup_url_kwarg)")
+	}
+}
+
+// TestHTTPPass_CrossRepo_ParamNormalization_NoStaticCollapse is the over-match
+// guard: two endpoints that differ ONLY by a static segment MUST NOT collapse
+// into a param_normalized link. `/clients/{clientId}` and `/users/{pk}` share
+// a {*}-collapsed arity but a different static segment, so no link is emitted.
+// (#2808 acceptance: guard against over-matching)
+func TestHTTPPass_CrossRepo_ParamNormalization_NoStaticCollapse(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "UserViewSet.retrieve", "kind": "Controller", "source_file": "core/views/user_viewset.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/users/{pk}", "kind": "http_endpoint",
+				"source_file": "core/views/user_viewset.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/users/{pk}",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getClient", "kind": "Function", "source_file": "src/stores/clients/clientsServiceV2.js"},
+			{
+				"id": "ep2", "name": "http:GET:/clients/{clientId}", "kind": "http_endpoint",
+				"source_file": "src/stores/clients/clientsServiceV2.js",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/clients/{clientId}",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:getClient",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2808-noStatic", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2808-noStatic-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			t.Errorf("#2808 over-match guard: /clients/{clientId} MUST NOT link to /users/{pk}; got %+v", l)
+		}
+	}
+}
+
+// TestLiteralFillsParamSlot covers the literal-fills-param detector. (#2808)
+func TestLiteralFillsParamSlot(t *testing.T) {
+	cases := []struct {
+		name     string
+		consumer string
+		producer string
+		want     bool
+	}{
+		// The live core-mobile case: literal `buildings` fills {pk} after the
+		// producer's /api/v1 prefix is stripped.
+		{"recents_buildings_vs_pk", "/recents/buildings", "/api/v1/recents/{pk}", true},
+		// Same, DELETE-style producer with a different param name.
+		{"literal_fills_named_param", "/recents/buildings", "/api/v1/recents/{recent_id}", true},
+		// A genuine static endpoint exists → still a fill at the detector level
+		// (the "prefer static" guard is enforced by sweep ordering, not here),
+		// but a fully-literal producer with identical segments is NOT a fill
+		// because there is no param slot to fill.
+		{"all_literal_no_fill", "/recents/buildings", "/api/v1/recents/buildings", false},
+		// Consumer carries its OWN param in the slot → that is param-name
+		// normalization, not a literal fill.
+		{"consumer_param_not_literal", "/recents/{id}", "/api/v1/recents/{pk}", false},
+		// Over-match guard: a static segment diverges.
+		{"static_segment_differs", "/recents/buildings", "/clients/{pk}", false},
+		// Segment-count mismatch.
+		{"segment_count_differs", "/recents/buildings", "/api/v1/recents/{pk}/floors", false},
+		// Multi-segment: literal `active` fills the {pk} slot, trailing
+		// `devices` literals match → fill.
+		{"multi_seg_literal_mid", "/buildings/active/devices", "/api/v1/buildings/{pk}/devices", true},
+		// Empty inputs.
+		{"empty_consumer", "", "/api/v1/recents/{pk}", false},
+		{"no_producer_param", "/recents/buildings", "/api/v1/recents", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := literalFillsParamSlot(tc.consumer, tc.producer); got != tc.want {
+				t.Errorf("literalFillsParamSlot(%q,%q)=%v want %v", tc.consumer, tc.producer, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHTTPPass_CrossRepo_LiteralParamFill verifies the live core-mobile case:
+// `GET /recents/buildings` resolves to the DRF detail route
+// `GET /api/v1/recents/{pk}` via the literal-fills-param strategy, the link is
+// stamped resolve_strategy=literal_param_fill, and it lands in the
+// CrossRepoResolveHitsByStrategy["literal_param_fill"] bucket. (#2808)
+func TestHTTPPass_CrossRepo_LiteralParamFill(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "RecentViewSet.retrieve", "kind": "Controller", "source_file": "core/views/recent_viewset.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/recents/{pk}", "kind": "http_endpoint",
+				"source_file": "core/views/recent_viewset.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/recents/{pk}",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "mobile",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getRecentBuildings", "kind": "Function", "source_file": "src/services/buildings/buildings.api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/recents/buildings", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/buildings.api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/recents/buildings",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:getRecentBuildings",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g2808-litfill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := runHTTPPass(graphs, paths, nil)
+	if err != nil {
+		t.Fatalf("runHTTPPass: %v", err)
+	}
+	if res.CrossRepoResolveHitsByStrategy["literal_param_fill"] != 1 {
+		t.Errorf("hits[literal_param_fill]=%d want 1; full map=%v",
+			res.CrossRepoResolveHitsByStrategy["literal_param_fill"], res.CrossRepoResolveHitsByStrategy)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2808-litfill-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "mobile::fn1" && l.Target == "backend::h1" {
+			found = true
+			if l.Properties["resolve_strategy"] != "literal_param_fill" {
+				t.Errorf("link resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "literal_param_fill")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("#2808: expected cross-repo link mobile::fn1 → backend::h1 for /recents/buildings ↔ /api/v1/recents/{pk}")
+	}
+}
+
+// TestHTTPPass_CrossRepo_LiteralParamFill_PrefersStatic verifies the
+// "prefer an exact static endpoint over a param-fill" guard: when BOTH a
+// concrete `/recents/buildings` producer and a `/recents/{pk}` producer exist,
+// the consumer resolves to the STATIC one (via exact/mount-prefix), never the
+// param-fill. (#2808 acceptance: don't shadow a real static definition)
+func TestHTTPPass_CrossRepo_LiteralParamFill_PrefersStatic(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "hStatic", "name": "RecentBuildings.list", "kind": "Controller", "source_file": "core/views/recent_buildings.py"},
+			{
+				"id": "epStatic", "name": "http:GET:/api/v1/recents/buildings", "kind": "http_endpoint",
+				"source_file": "core/views/recent_buildings.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/recents/buildings",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+			{"id": "hDetail", "name": "RecentViewSet.retrieve", "kind": "Controller", "source_file": "core/views/recent_viewset.py"},
+			{
+				"id": "epDetail", "name": "http:GET:/api/v1/recents/{pk}", "kind": "http_endpoint",
+				"source_file": "core/views/recent_viewset.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/recents/{pk}",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "hStatic", "to_id": "epStatic", "kind": "IMPLEMENTS"},
+			{"from_id": "hDetail", "to_id": "epDetail", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "mobile",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getRecentBuildings", "kind": "Function", "source_file": "src/services/buildings/buildings.api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/recents/buildings", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/buildings.api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/recents/buildings",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:getRecentBuildings",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2808-static", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2808-static-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var linkedStatic, linkedDetail bool
+	for _, l := range doc.Links {
+		if l.Method != MethodHTTP || l.Source != "mobile::fn1" {
+			continue
+		}
+		switch l.Target {
+		case "backend::hStatic":
+			linkedStatic = true
+			if l.Properties["resolve_strategy"] == "literal_param_fill" {
+				t.Errorf("static endpoint must NOT be reached via literal_param_fill; got %+v", l.Properties)
+			}
+		case "backend::hDetail":
+			linkedDetail = true
+		}
+	}
+	if !linkedStatic {
+		t.Errorf("#2808: consumer /recents/buildings should resolve to the STATIC /api/v1/recents/buildings producer")
+	}
+	if linkedDetail {
+		t.Errorf("#2808 prefer-static guard: consumer must NOT also link to the {pk} detail route via param-fill")
+	}
+}
+
 // TestCaseNormalizePathSegments covers the per-segment canonical-id
 // transformation in isolation. (#2703)
 func TestCaseNormalizePathSegments(t *testing.T) {
