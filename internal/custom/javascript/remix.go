@@ -55,6 +55,13 @@ var (
 		`export\s+(?:default\s+)?function\s+ErrorBoundary\s*\(`,
 	)
 	reRemixDynParam = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+	// Static generation (issue #2858). Remix is SSR-first; prerendering is opt-in
+	// and configured at build level: the Vite plugin's `prerender: [...]` option,
+	// or SPA mode via `ssr: false` in the @remix-run/dev preset. Either marks the
+	// app for static generation.
+	reRemixPrerender = regexp.MustCompile(`\bprerender\s*:\s*(?:true|\[)`)
+	reRemixSPAMode   = regexp.MustCompile(`\bssr\s*:\s*false\b`)
 )
 
 func normalizeRemixPath(fp string) string {
@@ -114,23 +121,27 @@ func (e *remixExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		routePath = "/" + routePath
 	}
 
-	// loader function/const
+	// loader function/const — Remix's server-side data-loading function
+	// (data_loaders). A loader always runs on the server, so it is also a
+	// server boundary (server_components). Both run server-side; Remix has no
+	// 'use client' opt-in (every route module is server-rendered then hydrated).
 	hasLoader := reRemixLoaderFn.MatchString(src) || reRemixLoaderConst.MatchString(src)
 	if hasLoader {
 		name := fmt.Sprintf("loader:%s", routePath)
-		ent := makeEntity(name, "SCOPE.Operation", "loader", file.Path, file.Language, 1)
+		ent := makeEntity(name, "SCOPE.Operation", "data_loader", file.Path, file.Language, 1)
 		setProps(&ent, "framework", "remix", "route_path", routePath, "stem", stem,
+			"loader_kind", "loader", "rendering", "server",
 			"provenance", "INFERRED_FROM_REMIX_LOADER")
 		addEntity(ent)
 	}
 
-	// action function/const
+	// action function/const — server-side mutation handler (server boundary).
 	hasAction := reRemixActionFn.MatchString(src) || reRemixActionConst.MatchString(src)
 	if hasAction {
 		name := fmt.Sprintf("action:%s", routePath)
 		ent := makeEntity(name, "SCOPE.Operation", "action", file.Path, file.Language, 1)
 		setProps(&ent, "framework", "remix", "route_path", routePath, "stem", stem,
-			"provenance", "INFERRED_FROM_REMIX_ACTION")
+			"rendering", "server", "provenance", "INFERRED_FROM_REMIX_ACTION")
 		addEntity(ent)
 	}
 
@@ -197,6 +208,44 @@ func (e *remixExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		strings.Contains(fp, "/app/root.") || strings.HasPrefix(fp, "app/root.")
 	if isRoutesFile {
 		extractReactStructure(src, file.Path, file.Language, "remix", addEntity)
+	}
+
+	// Server components / hydration boundaries (issue #2858).
+	//
+	// A route module that exports a loader or action is a server boundary
+	// (server_components) — those functions execute only on the server. Remix
+	// also honours the `.server.{ts,tsx}` / `.client.{ts,tsx}` module-suffix
+	// convention: `.server` code is stripped from the client bundle, `.client`
+	// code from the server bundle — the explicit hydration boundary.
+	if hasLoader || hasAction {
+		sb := makeEntity(fmt.Sprintf("server_boundary:%s", routePath), "SCOPE.Pattern", "server_boundary", file.Path, file.Language, 1)
+		setProps(&sb, "framework", "remix", "route_path", routePath, "rendering", "server",
+			"provenance", "INFERRED_FROM_REMIX_SERVER_BOUNDARY")
+		addEntity(sb)
+	}
+	switch {
+	case strings.HasSuffix(fp, ".server.ts") || strings.HasSuffix(fp, ".server.tsx") ||
+		strings.HasSuffix(fp, ".server.js") || strings.HasSuffix(fp, ".server.jsx"):
+		emitServerOnlyModule(stem, file.Path, file.Language, "remix", addEntity)
+	case strings.HasSuffix(fp, ".client.ts") || strings.HasSuffix(fp, ".client.tsx") ||
+		strings.HasSuffix(fp, ".client.js") || strings.HasSuffix(fp, ".client.jsx"):
+		cb := makeEntity(stem, "SCOPE.Pattern", "client_boundary", file.Path, file.Language, 1)
+		setProps(&cb, "framework", "remix", "module_scope", "client", "hydration", "client",
+			"provenance", "INFERRED_FROM_CLIENT_MODULE_SUFFIX")
+		addEntity(cb)
+	}
+
+	// Static generation (issue #2858): prerender list / SPA mode in the Vite
+	// config or Remix preset.
+	if reRemixPrerender.MatchString(src) || reRemixSPAMode.MatchString(src) {
+		marker := "prerender"
+		if reRemixSPAMode.MatchString(src) && !reRemixPrerender.MatchString(src) {
+			marker = "spa_mode"
+		}
+		sg := makeEntity("static_generation:"+marker, "SCOPE.Pattern", "static_generation", file.Path, file.Language, 1)
+		setProps(&sg, "framework", "remix", "marker", marker, "rendering", "ssg",
+			"provenance", "INFERRED_FROM_REMIX_PRERENDER")
+		addEntity(sg)
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))

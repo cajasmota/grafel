@@ -40,6 +40,18 @@ var (
 		`export\s+default\s+defineNuxtPlugin`,
 	)
 	reNuxtDynParam = regexp.MustCompile(`\[([^\]]+)\]`)
+
+	// Data loaders (issue #2858): Nuxt's data-fetching composables. These run
+	// during SSR on the server and on the client during navigation.
+	reNuxtDataLoader = regexp.MustCompile(`\b(useAsyncData|useLazyAsyncData|useFetch|useLazyFetch)\s*\(`)
+	// `<ClientOnly>` template tag — an explicit client-only hydration boundary.
+	reNuxtClientOnly = regexp.MustCompile(`<ClientOnly\b`)
+	// Static generation: `routeRules: { '…': { prerender: true } }` (in
+	// nuxt.config) and `defineRouteRules({ prerender: true })` (page-level).
+	reNuxtPrerenderRule = regexp.MustCompile(`\bprerender\s*:\s*true\b`)
+	reNuxtRouteRules    = regexp.MustCompile(`\b(routeRules|defineRouteRules)\b`)
+	// `ssr: false` in nuxt.config switches the app to client-only SPA build.
+	reNuxtSSRFalse = regexp.MustCompile(`\bssr\s*:\s*false\b`)
 )
 
 var (
@@ -187,6 +199,59 @@ func (e *nuxtExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 		ent := makeEntity(stem, "SCOPE.Component", "plugin", file.Path, file.Language, 1)
 		setProps(&ent, "framework", "nuxt", "provenance", "INFERRED_FROM_NUXT_PLUGIN")
 		addEntity(ent)
+	}
+
+	// Data loaders (issue #2858): useAsyncData / useFetch family. Nuxt resolves
+	// these on the server during SSR and re-hydrates the payload on the client.
+	for _, m := range reNuxtDataLoader.FindAllStringSubmatchIndex(src, -1) {
+		fnName := src[m[2]:m[3]]
+		ent := makeEntity(fnName, "SCOPE.Operation", "data_loader", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "nuxt", "loader_kind", fnName, "rendering", "universal",
+			"provenance", "INFERRED_FROM_NUXT_DATA_LOADER")
+		addEntity(ent)
+	}
+
+	// Server components / boundaries (issue #2858).
+	//
+	//   - A server-route handler (server/api, server/routes — detected above as
+	//     subtype="endpoint") is server-only code → server boundary.
+	//   - `*.server.vue` / `*.server.ts` components run only on the server;
+	//     `*.client.vue` / `*.client.ts` only on the client (hydration boundary).
+	//   - `<ClientOnly>` wraps client-only markup — an explicit hydration island.
+	if isServerAPI && reNuxtHTTPHandler.MatchString(src) {
+		sb := makeEntity("server_boundary:"+stem, "SCOPE.Pattern", "server_boundary", file.Path, file.Language, 1)
+		setProps(&sb, "framework", "nuxt", "rendering", "server",
+			"provenance", "INFERRED_FROM_NUXT_SERVER_ROUTE")
+		addEntity(sb)
+	}
+	switch {
+	case strings.HasSuffix(fp, ".server.vue") || strings.HasSuffix(fp, ".server.ts") ||
+		strings.HasSuffix(fp, ".server.js"):
+		emitServerOnlyModule(stem, file.Path, file.Language, "nuxt", addEntity)
+	case strings.HasSuffix(fp, ".client.vue") || strings.HasSuffix(fp, ".client.ts") ||
+		strings.HasSuffix(fp, ".client.js"):
+		cb := makeEntity(stem, "SCOPE.Pattern", "client_boundary", file.Path, file.Language, 1)
+		setProps(&cb, "framework", "nuxt", "module_scope", "client", "hydration", "client",
+			"provenance", "INFERRED_FROM_CLIENT_MODULE_SUFFIX")
+		addEntity(cb)
+	}
+	if m := reNuxtClientOnly.FindStringIndex(src); m != nil {
+		cb := makeEntity("ClientOnly", "SCOPE.Pattern", "client_boundary", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&cb, "framework", "nuxt", "hydration", "client",
+			"provenance", "INFERRED_FROM_NUXT_CLIENT_ONLY")
+		addEntity(cb)
+	}
+
+	// Static generation (issue #2858): prerender route rules / SPA mode.
+	if (reNuxtRouteRules.MatchString(src) && reNuxtPrerenderRule.MatchString(src)) || reNuxtSSRFalse.MatchString(src) {
+		marker := "route_rules_prerender"
+		if reNuxtSSRFalse.MatchString(src) && !reNuxtPrerenderRule.MatchString(src) {
+			marker = "spa_mode"
+		}
+		sg := makeEntity("static_generation:"+marker, "SCOPE.Pattern", "static_generation", file.Path, file.Language, 1)
+		setProps(&sg, "framework", "nuxt", "marker", marker, "rendering", "ssg",
+			"provenance", "INFERRED_FROM_NUXT_PRERENDER")
+		addEntity(sg)
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))

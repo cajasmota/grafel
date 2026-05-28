@@ -52,6 +52,18 @@ var jstsSourceReqRe = regexp.MustCompile(
 	`\b(?:req|request|ctx\s*\.\s*request)\s*\.\s*(?:body|query|params|headers|cookies|rawBody)\b`,
 )
 
+// jstsSourceLoaderParamsRe matches the meta-framework loader / data-function
+// route-parameter source (#2858, gap surfaced by #2868). SvelteKit `load`,
+// Remix `loader`/`action`, Next.js route handlers and Nuxt routes all receive a
+// `params` object on their argument and read route segments off it
+// (`params.id`, `params['slug']`). The generic `jstsSourceReqRe` only matches
+// `req.*`-shaped access, so these bare `params.*` reads went undetected as taint
+// sources. The leading `\b` prevents matching inside `searchParams` /
+// `useParams` (the `p` there is preceded by a word char, so no boundary).
+var jstsSourceLoaderParamsRe = regexp.MustCompile(
+	`\bparams\s*(?:\.\s*[A-Za-z_$][\w$]*|\[\s*['"][^'"]+['"]\s*\])`,
+)
+
 // jstsSourceEnvRe matches process.env access. The fallback-literal
 // case is handled by the constant-binding pass; here we only mark the
 // access site as a taint source.
@@ -142,6 +154,7 @@ func sniffTaintJSTS(content string) []TaintMatch {
 	headers := scanJSTSFuncHeaders(content)
 	var out []TaintMatch
 	out = appendTaintMatches(out, content, headers, jstsSourceReqRe, TaintKindSource, TaintCategoryGeneric, "req.body/query/headers", 1.0)
+	out = appendTaintMatches(out, content, headers, jstsSourceLoaderParamsRe, TaintKindSource, TaintCategoryGeneric, "loader params.*", 0.8)
 	out = appendTaintMatches(out, content, headers, jstsSourceEnvRe, TaintKindSource, TaintCategoryGeneric, "process.env", 0.85)
 	out = appendTaintMatches(out, content, headers, jstsSourceJSONParseRe, TaintKindSource, TaintCategoryDeserialization, "JSON.parse(ident)", 0.7)
 	// Sanitizers MUST be appended before sinks of the same category so

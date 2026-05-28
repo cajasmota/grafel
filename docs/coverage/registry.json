@@ -10722,15 +10722,21 @@
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/extractors/astro/extractor.go","internal/extractors/astro/issue2858_server_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/extractors/astro/extractor.go","internal/extractors/astro/issue2858_server_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           },
           "server_components": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/extractors/astro/extractor.go","internal/extractors/astro/issue2858_server_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Routing": {
@@ -10748,7 +10754,9 @@
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/extractors/astro/extractor.go","internal/extractors/astro/issue2858_server_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Type System": {
@@ -10770,8 +10778,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/astro/extractor.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Testing": {
@@ -11207,15 +11216,21 @@
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/gatsby.go","internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/gatsby.go","internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           },
           "server_components": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/gatsby.go","internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/metafw_server.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Routing": {
@@ -11234,7 +11249,9 @@
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/gatsby.go","internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Type System": {
@@ -11256,8 +11273,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2858_metafw_state_setter_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Testing": {
@@ -11954,18 +11972,21 @@
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/metafw_server.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           },
           "server_components": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/metafw_server.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Routing": {
@@ -11982,8 +12003,9 @@
         },
         "Build": {
           "static_generation": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Type System": {
@@ -12005,8 +12027,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2858_metafw_state_setter_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Testing": {
@@ -12047,15 +12070,21 @@
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/nuxt.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/nuxt.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           },
           "server_components": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/metafw_server.go","internal/custom/javascript/nuxt.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Routing": {
@@ -12070,7 +12099,9 @@
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/nuxt.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Type System": {
@@ -12092,8 +12123,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/nuxt.go","internal/extractors/vue/extractor.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Testing": {
@@ -12615,15 +12647,21 @@
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/remix.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/metafw_server.go","internal/custom/javascript/remix.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           },
           "server_components": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/metafw_server.go","internal/custom/javascript/remix.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Routing": {
@@ -12641,7 +12679,9 @@
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/remix.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Type System": {
@@ -12663,8 +12703,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2858_metafw_state_setter_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Testing": {
@@ -12838,7 +12879,7 @@
         "Sails Policies": {
           "policy_map_recognition": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_sails_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/sails_policies.ts","testdata/fixtures/typescript/sails_routes.ts"],
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","internal/engine/http_endpoint_jsts_sails_auth.go","testdata/fixtures/typescript/sails_policies.ts","testdata/fixtures/typescript/sails_routes.ts"],
             "notes": "Sails gates actions via config/policies.js policy maps (e.g. '*': 'isLoggedIn'), a bespoke auth idiom no generic middleware/guard cell captures. ParseSailsPolicies parses the full map (global '*' default, per-controller object blocks with action-level overrides, controller-level catch-all values). #2897 ApplySailsAuthPolicy is a corpus-wide pass joining this map to the endpoints synthesised from config/routes.js, resolving each route's controller/action with action over controller over global precedence and stamping a config-method medium-confidence auth_policy (fixture-proven, cross-file), lifting the standard Security/auth_coverage cell from partial to full. Prior history: policies.js-\u003eroutes.js per-endpoint attribution was deferred at #2852 and is now delivered.",
             "verified_at": "2026-05-29"
           }
@@ -13043,15 +13084,21 @@
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/svelte.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/svelte.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           },
           "server_components": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/metafw_server.go","internal/custom/javascript/svelte.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Routing": {
@@ -13066,7 +13113,9 @@
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_metafw_server_test.go","internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/svelte.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Type System": {
@@ -13088,8 +13137,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2858_realdata_test.go","internal/custom/javascript/svelte.go","internal/extractors/svelte/extractor.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2858"
           }
         },
         "Testing": {
@@ -13317,7 +13367,7 @@
           },
           "pinia_store": {
             "status": "full",
-            "cites": ["internal/extractors/javascript/testdata/vue_internals/CounterStore.vue","internal/extractors/vue/pinia_store.go","internal/extractors/vue/issue2890_pinia_test.go"],
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/CounterStore.vue","internal/extractors/vue/issue2890_pinia_test.go","internal/extractors/vue/pinia_store.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2890",
             "verified_at": "2026-05-29"
           },

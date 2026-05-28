@@ -85,6 +85,22 @@ var (
 
 	// styleBlockRE strips <style …>…</style> from the body before template scan.
 	styleBlockRE = regexp.MustCompile(`(?si)<style(?:[^>]*)>.*?</style>`)
+
+	// ── Server / Data Flow / Build markers (issue #2858) ─────────────────────
+
+	// getStaticPathsRE matches the `export function getStaticPaths()` / `export
+	// const getStaticPaths = …` data loader that drives static generation of an
+	// Astro dynamic route ([slug]) — data_loaders + static_generation.
+	getStaticPathsRE = regexp.MustCompile(`export\s+(?:async\s+)?(?:function\s+getStaticPaths|const\s+getStaticPaths\s*=)`)
+
+	// contentCollectionRE matches Astro content-collection data loaders:
+	// getCollection('blog') / getEntry('blog', slug) — build-time data loading.
+	contentCollectionRE = regexp.MustCompile(`\b(getCollection|getEntry|getEntryBySlug|getEntries)\s*\(`)
+
+	// prerenderRE matches `export const prerender = true|false`. true forces a
+	// statically-generated page; false opts a page into on-demand (server)
+	// rendering when the project output is "server"/"hybrid".
+	prerenderRE = regexp.MustCompile(`export\s+const\s+prerender\s*=\s*(true|false)`)
 )
 
 // Extract parses the Astro SFC source and returns entity records.
@@ -145,6 +161,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		// 2b. Astro.props bindings → SCOPE.Operation entities
 		propEntities := extractPropsEntities(frontmatter, fmStartLine, file.Path)
 		entities = append(entities, propEntities...)
+
+		// 2c. Server / Data Flow / Build markers (issue #2858). The Astro
+		// frontmatter (between --- markers) executes on the server (at build time
+		// for static output, per request for SSR) — it is the component's server
+		// boundary (server_components). It is also where Astro's data loaders run.
+		entities = append(entities,
+			extractServerBuildEntities(frontmatter, fmStartLine, file.Path, subtype)...)
 	}
 
 	// ── 3. Template: child components (RENDERS) and islands (IMPLEMENTS) ─────
@@ -153,6 +176,32 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		renderRels, islandRels := extractTemplateRelationships(body, file.Path, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, renderRels...)
 		entities[0].Relationships = append(entities[0].Relationships, islandRels...)
+
+		// Hydration boundaries (issue #2858): each `client:*` island is an
+		// explicit boundary where the server-rendered HTML becomes an interactive
+		// client component. Emit a marker entity per island so the
+		// hydration_boundaries capability is directly queryable (the IMPLEMENTS
+		// edges above attribute it to the host; this gives it a first-class node).
+		for _, isl := range islandRels {
+			ent := types.EntityRecord{
+				Name:         "island:" + isl.ToID,
+				Kind:         "SCOPE.Pattern",
+				Subtype:      "client_boundary",
+				SourceFile:   file.Path,
+				Language:     "astro",
+				StartLine:    1,
+				EndLine:      1,
+				Signature:    isl.Properties["island_directive"] + " " + isl.ToID,
+				QualityScore: 0.85,
+				Properties: map[string]string{
+					"framework":        "astro",
+					"hydration":        "client",
+					"island_directive": isl.Properties["island_directive"],
+					"island_component": isl.ToID,
+				},
+			}
+			entities = append(entities, ent)
+		}
 	}
 
 	span.SetAttributes(
@@ -339,6 +388,76 @@ func extractPropsEntities(fm string, fmStartLine int, filePath string) []types.E
 	}
 
 	return entities
+}
+
+// extractServerBuildEntities scans the Astro frontmatter for the
+// meta-framework Server / Data Flow / Build markers (issue #2858):
+//
+//   - The frontmatter itself runs server-side → one server_component marker per
+//     page/component (server_components).
+//   - getStaticPaths() → a build-time data loader that statically generates the
+//     dynamic route's pages (data_loaders + static_generation).
+//   - getCollection / getEntry (content collections) → build-time data loaders
+//     (data_loaders).
+//   - `export const prerender = true|false` → explicit static/server render
+//     selector (static_generation when true).
+//
+// All markers are SCOPE.Pattern / SCOPE.Operation entities; no new Kinds.
+func extractServerBuildEntities(fm string, fmStartLine int, filePath, subtype string) []types.EntityRecord {
+	var out []types.EntityRecord
+	lineOf := func(idx int) int { return fmStartLine + strings.Count(fm[:idx], "\n") }
+
+	mk := func(name, kind, st string, line int, props map[string]string) types.EntityRecord {
+		props["framework"] = "astro"
+		return types.EntityRecord{
+			Name:         name,
+			Kind:         kind,
+			Subtype:      st,
+			SourceFile:   filePath,
+			Language:     "astro",
+			StartLine:    line,
+			EndLine:      line,
+			QualityScore: 0.85,
+			Properties:   props,
+		}
+	}
+
+	// Server component: the frontmatter is server-rendered. Emit one marker for
+	// the file (named by its route subtype) so server_components is provable.
+	out = append(out, mk("server:"+componentNameFromPath(filePath), "SCOPE.Pattern", "server_component", 1,
+		map[string]string{"rendering": "server", "component_kind": "server",
+			"provenance": "INFERRED_FROM_ASTRO_FRONTMATTER"}))
+
+	// getStaticPaths → data loader + static generation.
+	if m := getStaticPathsRE.FindStringIndex(fm); m != nil {
+		ln := lineOf(m[0])
+		out = append(out, mk("getStaticPaths", "SCOPE.Operation", "data_loader", ln,
+			map[string]string{"loader_kind": "getStaticPaths", "rendering": "ssg",
+				"provenance": "INFERRED_FROM_ASTRO_GET_STATIC_PATHS"}))
+		out = append(out, mk("ssg:getStaticPaths", "SCOPE.Pattern", "static_generation", ln,
+			map[string]string{"marker": "getStaticPaths", "rendering": "ssg",
+				"provenance": "INFERRED_FROM_ASTRO_GET_STATIC_PATHS"}))
+	}
+
+	// Content-collection loaders.
+	if m := contentCollectionRE.FindStringSubmatchIndex(fm); m != nil {
+		fn := fm[m[2]:m[3]]
+		out = append(out, mk(fn, "SCOPE.Operation", "data_loader", lineOf(m[0]),
+			map[string]string{"loader_kind": fn, "rendering": "ssg",
+				"provenance": "INFERRED_FROM_ASTRO_CONTENT_COLLECTION"}))
+	}
+
+	// export const prerender = true → static generation marker.
+	if m := prerenderRE.FindStringSubmatchIndex(fm); m != nil {
+		val := fm[m[2]:m[3]]
+		if val == "true" {
+			out = append(out, mk("prerender", "SCOPE.Pattern", "static_generation", lineOf(m[0]),
+				map[string]string{"marker": "prerender", "rendering": "ssg",
+					"provenance": "INFERRED_FROM_ASTRO_PRERENDER"}))
+		}
+	}
+
+	return out
 }
 
 // extractTemplateRelationships scans the HTML body for:

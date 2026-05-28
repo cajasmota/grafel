@@ -50,6 +50,19 @@ var (
 	// Import from the 'gatsby' package — marks a file as Gatsby context even
 	// when it lives outside src/pages or src/templates.
 	reGatsbyImport = regexp.MustCompile(`(?m)(?:from\s+['"]gatsby['"]|require\(\s*['"]gatsby['"]\s*\))`)
+
+	// Data loaders + server / static markers (issue #2858).
+	//
+	// `export const query = graphql\`…\`` — the page GraphQL query: Gatsby runs
+	// it at build time and injects the result as `data` props (data_loaders +
+	// static_generation, since the query result is baked into the static page).
+	reGatsbyPageQuery = regexp.MustCompile(`export\s+const\s+query\s*=\s*graphql`)
+	// `useStaticQuery(graphql\`…\`)` — component-level build-time query.
+	reGatsbyStaticQuery = regexp.MustCompile(`\buseStaticQuery\s*\(`)
+	// `export async function getServerData(…)` — Gatsby's SSR data loader; its
+	// presence switches the page from SSG to server-side rendering (a server
+	// boundary + data loader).
+	reGatsbyServerData = regexp.MustCompile(`export\s+(?:async\s+)?function\s+getServerData\s*\(`)
 )
 
 func normalizeGatsbyPath(fp string) string {
@@ -128,6 +141,56 @@ func (e *gatsbyExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		setProps(&ent, "framework", "gatsby", "route_path", routePath, "stem", stem,
 			"router", "file_system", "provenance", "INFERRED_FROM_GATSBY_FILE_PATH")
 		addEntity(ent)
+
+		// A Gatsby page under src/pages/ is statically generated at build time
+		// by default unless it exports getServerData (handled below). Emit the
+		// SSG marker (static_generation) + the implicit Server Component marker
+		// (server_components) — Gatsby renders pages to HTML on the server/build,
+		// then hydrates them on the client (the hydration boundary, below).
+		if !reGatsbyServerData.MatchString(src) {
+			sg := makeEntity("ssg:"+routePath, "SCOPE.Pattern", "static_generation", file.Path, file.Language, 1)
+			setProps(&sg, "framework", "gatsby", "route_path", routePath, "rendering", "ssg",
+				"marker", "default_static_page", "provenance", "INFERRED_FROM_GATSBY_STATIC_PAGE")
+			addEntity(sg)
+			addEntity(metafwServerComponentEntity("page:"+routePath, file.Path, file.Language, "gatsby"))
+		}
+		// Every Gatsby page is hydrated on the client after the static HTML is
+		// served (gatsby-react-router-scroll + ReactDOM.hydrate) — the page is a
+		// hydration boundary (hydration_boundaries).
+		hb := makeEntity("hydrate:"+routePath, "SCOPE.Pattern", "client_boundary", file.Path, file.Language, 1)
+		setProps(&hb, "framework", "gatsby", "route_path", routePath, "hydration", "client",
+			"provenance", "INFERRED_FROM_GATSBY_HYDRATION")
+		addEntity(hb)
+	}
+
+	// Build-time GraphQL page query → data loader + static generation.
+	if m := reGatsbyPageQuery.FindStringIndex(src); m != nil {
+		dl := makeEntity("pageQuery", "SCOPE.Operation", "data_loader", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&dl, "framework", "gatsby", "loader_kind", "page_query", "rendering", "ssg",
+			"provenance", "INFERRED_FROM_GATSBY_PAGE_QUERY")
+		addEntity(dl)
+		sg := makeEntity("ssg:pageQuery", "SCOPE.Pattern", "static_generation", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&sg, "framework", "gatsby", "marker", "page_query", "rendering", "ssg",
+			"provenance", "INFERRED_FROM_GATSBY_PAGE_QUERY")
+		addEntity(sg)
+	}
+	// useStaticQuery → component-level build-time data loader.
+	if m := reGatsbyStaticQuery.FindStringIndex(src); m != nil {
+		dl := makeEntity("useStaticQuery", "SCOPE.Operation", "data_loader", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&dl, "framework", "gatsby", "loader_kind", "static_query", "rendering", "ssg",
+			"provenance", "INFERRED_FROM_GATSBY_STATIC_QUERY")
+		addEntity(dl)
+	}
+	// getServerData → SSR data loader + server boundary (overrides default SSG).
+	if m := reGatsbyServerData.FindStringIndex(src); m != nil {
+		dl := makeEntity("getServerData", "SCOPE.Operation", "data_loader", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&dl, "framework", "gatsby", "loader_kind", "getServerData", "rendering", "ssr",
+			"provenance", "INFERRED_FROM_GATSBY_SERVER_DATA")
+		addEntity(dl)
+		sb := makeEntity("server_boundary:getServerData", "SCOPE.Pattern", "server_boundary", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&sb, "framework", "gatsby", "rendering", "server",
+			"provenance", "INFERRED_FROM_GATSBY_SERVER_DATA")
+		addEntity(sb)
 	}
 
 	// Programmatic routing: createPage({ path, component }) in gatsby-node.
@@ -138,6 +201,11 @@ func (e *gatsbyExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		setProps(&ent, "framework", "gatsby", "route_path", routePath,
 			"router", "create_pages_api", "provenance", "INFERRED_FROM_GATSBY_CREATE_PAGE")
 		addEntity(ent)
+		// createPage() runs at build time in gatsby-node → static generation.
+		sg := makeEntity("ssg:"+routePath, "SCOPE.Pattern", "static_generation", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&sg, "framework", "gatsby", "route_path", routePath, "rendering", "ssg",
+			"marker", "create_page", "provenance", "INFERRED_FROM_GATSBY_CREATE_PAGE")
+		addEntity(sg)
 	}
 
 	// React structure: page/template components + custom hooks + hook calls

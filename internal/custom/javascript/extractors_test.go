@@ -564,8 +564,8 @@ func TestReactNoMatch(t *testing.T) {
 func TestRemixLoader(t *testing.T) {
 	src := `export async function loader({ request }: LoaderFunctionArgs) { return json({}) }`
 	ents := extract(t, "custom_js_remix", fi("app/routes/users.tsx", "typescript", src))
-	if !containsSubtype(ents, "loader") {
-		t.Error("expected loader entity")
+	if !containsSubtype(ents, "data_loader") {
+		t.Error("expected data_loader entity")
 	}
 }
 
@@ -656,8 +656,8 @@ func TestSvelteHTTPHandler(t *testing.T) {
 func TestSvelteLoad(t *testing.T) {
 	src := `export const load = async ({ fetch }) => { const data = await fetch('/api'); return { data } }`
 	ents := extract(t, "custom_js_svelte", fi("src/routes/users/+page.ts", "typescript", src))
-	if !containsSubtype(ents, "loader") {
-		t.Error("expected loader entity from svelte load function")
+	if !containsSubtype(ents, "data_loader") {
+		t.Error("expected data_loader entity from svelte load function")
 	}
 }
 

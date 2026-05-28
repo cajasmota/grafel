@@ -1,0 +1,23 @@
+---
+// Astro dynamic page — server frontmatter, content-collection data loader,
+// static generation via getStaticPaths + prerender, and a hydrated island.
+import Layout from '../../layouts/Layout.astro'
+import Counter from '../../components/Counter.jsx'
+import { getCollection } from 'astro:content'
+
+export const prerender = true
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog')
+  return posts.map((post) => ({ params: { slug: post.slug }, props: { post } }))
+}
+
+const { slug } = Astro.params
+const { post } = Astro.props
+---
+
+<Layout>
+  <h1>{post.data.title}</h1>
+  <p>{slug}</p>
+  <Counter client:visible />
+</Layout>

@@ -30,14 +30,30 @@ var (
 	reNextjsServerSideProps = regexp.MustCompile(
 		`export\s+(?:async\s+)?function\s+(getServerSideProps|getStaticProps|getStaticPaths)\s*\(`,
 	)
-	reNextjsServerAction = regexp.MustCompile(
-		`['"]use server['"]`,
-	)
 	reNextjsServerActionFn = regexp.MustCompile(
 		`export\s+(?:async\s+)?function\s+(\w+)\s*\(`,
 	)
 	reNextjsDynParam  = regexp.MustCompile(`\[([^\]]+)\]`)
 	reNextjsGroupPath = regexp.MustCompile(`\([^)]+\)`)
+
+	// App-Router data loaders + SSG markers (issue #2858).
+	// generateStaticParams() is the App-Router equivalent of the Pages-Router
+	// getStaticPaths — it drives static generation of dynamic segments.
+	reNextjsGenerateStaticParams = regexp.MustCompile(
+		`export\s+(?:async\s+)?function\s+(generateStaticParams)\s*\(`,
+	)
+	reNextjsGenerateMetadata = regexp.MustCompile(
+		`export\s+(?:async\s+)?function\s+(generateMetadata)\s*\(`,
+	)
+	// `export const dynamic = 'force-static'|'force-dynamic'|'auto'|'error'`
+	// and `export const revalidate = N` are the App-Router route-segment config
+	// knobs that select static vs dynamic rendering.
+	reNextjsRouteSegmentDynamic = regexp.MustCompile(
+		`export\s+const\s+dynamic\s*=\s*['"](force-static|force-dynamic|auto|error)['"]`,
+	)
+	reNextjsRouteSegmentRevalidate = regexp.MustCompile(
+		`export\s+const\s+revalidate\s*=\s*(\d+|false)`,
+	)
 )
 
 var (
@@ -188,17 +204,53 @@ func (e *nextjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		addEntity(ent)
 	}
 
-	// getServerSideProps / getStaticProps / getStaticPaths
+	// Data loaders + static-generation markers (issue #2858).
+	//
+	// Pages Router: getServerSideProps (SSR), getStaticProps + getStaticPaths
+	// (SSG). App Router: generateStaticParams (SSG of dynamic segments),
+	// generateMetadata (server-side metadata loader). These are the
+	// framework data-loading functions (data_loaders) and the ones that mark a
+	// route for static generation (static_generation).
+	emitNextDataLoader := func(fnName string, off int, loaderKind, rendering string, ssg bool) {
+		ent := makeEntity(fnName, "SCOPE.Operation", "data_loader", file.Path, file.Language, lineOf(src, off))
+		setProps(&ent, "framework", "nextjs", "loader_kind", loaderKind, "rendering", rendering,
+			"provenance", "INFERRED_FROM_NEXTJS_DATA_LOADER")
+		addEntity(ent)
+		if ssg {
+			sgent := makeEntity("ssg:"+fnName, "SCOPE.Pattern", "static_generation", file.Path, file.Language, lineOf(src, off))
+			setProps(&sgent, "framework", "nextjs", "marker", fnName, "rendering", "ssg",
+				"provenance", "INFERRED_FROM_NEXTJS_SSG_MARKER")
+			addEntity(sgent)
+		}
+	}
 	for _, m := range reNextjsServerSideProps.FindAllStringSubmatchIndex(src, -1) {
 		fnName := src[m[2]:m[3]]
-		rendering := map[string]string{
-			"getServerSideProps": "ssr",
-			"getStaticProps":     "ssg",
-			"getStaticPaths":     "ssg",
-		}[fnName]
-		ent := makeEntity(fnName, "SCOPE.Operation", "data_fetcher", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "nextjs", "rendering", rendering,
-			"provenance", "INFERRED_FROM_NEXTJS_DATA_FETCHER")
+		switch fnName {
+		case "getServerSideProps":
+			emitNextDataLoader(fnName, m[0], fnName, "ssr", false)
+		case "getStaticProps", "getStaticPaths":
+			emitNextDataLoader(fnName, m[0], fnName, "ssg", true)
+		}
+	}
+	for _, m := range reNextjsGenerateStaticParams.FindAllStringSubmatchIndex(src, -1) {
+		emitNextDataLoader("generateStaticParams", m[0], "generateStaticParams", "ssg", true)
+	}
+	for _, m := range reNextjsGenerateMetadata.FindAllStringSubmatchIndex(src, -1) {
+		emitNextDataLoader("generateMetadata", m[0], "generateMetadata", "server", false)
+	}
+	// Route-segment config: `export const dynamic = 'force-static'` /
+	// `export const revalidate = 3600` (static_generation).
+	if m := reNextjsRouteSegmentDynamic.FindStringSubmatchIndex(src); m != nil {
+		mode := src[m[2]:m[3]]
+		ent := makeEntity("dynamic:"+mode, "SCOPE.Pattern", "static_generation", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "nextjs", "segment_config", "dynamic", "mode", mode,
+			"provenance", "INFERRED_FROM_NEXTJS_ROUTE_SEGMENT_CONFIG")
+		addEntity(ent)
+	}
+	if m := reNextjsRouteSegmentRevalidate.FindStringSubmatchIndex(src); m != nil {
+		ent := makeEntity("revalidate:"+src[m[2]:m[3]], "SCOPE.Pattern", "static_generation", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "nextjs", "segment_config", "revalidate", "value", src[m[2]:m[3]],
+			"provenance", "INFERRED_FROM_NEXTJS_ROUTE_SEGMENT_CONFIG")
 		addEntity(ent)
 	}
 
@@ -213,12 +265,34 @@ func (e *nextjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		extractReactStructure(src, file.Path, file.Language, "nextjs", addEntity)
 	}
 
+	// Server components / hydration boundaries (issue #2858).
+	//
+	// Next.js App Router uses the React Server Components model: every component
+	// is a Server Component by default and opts into client-side interactivity
+	// (hydration) with the `'use client'` directive; a `'use server'` directive
+	// marks a Server Action module. The `*.server.{ts,tsx}` suffix forces a
+	// server-only module in both routers. Gated to the JSX page/layout files of
+	// the App Router so non-route .ts utilities don't get tagged.
+	hasUseClient := emitRSCBoundary(src, file.Path, file.Language, "nextjs", addEntity)
+	isServerModule := strings.HasSuffix(fp, ".server.ts") || strings.HasSuffix(fp, ".server.tsx") ||
+		strings.HasSuffix(fp, ".server.js") || strings.HasSuffix(fp, ".server.jsx")
+	if isServerModule {
+		emitServerOnlyModule(stem, file.Path, file.Language, "nextjs", addEntity)
+	}
+	// App-Router JSX page/layout with no `'use client'` → implicit Server
+	// Component (the RSC default). Gated to genuine route component files so
+	// non-route .ts utilities don't get the implicit-server marker.
+	if isJSXFile && isAppRouter && nextjsPageFiles[stem] && !hasUseClient {
+		addEntity(metafwServerComponentEntity(stem, file.Path, file.Language, "nextjs"))
+	}
+
 	// Server actions ("use server" + exported async functions)
-	if reNextjsServerAction.MatchString(src) {
+	if reUseServerDirective.MatchString(src) {
 		for _, m := range reNextjsServerActionFn.FindAllStringSubmatchIndex(src, -1) {
 			fnName := src[m[2]:m[3]]
 			ent := makeEntity(fnName, "SCOPE.Operation", "server_action", file.Path, file.Language, lineOf(src, m[0]))
-			setProps(&ent, "framework", "nextjs", "provenance", "INFERRED_FROM_NEXTJS_SERVER_ACTION")
+			setProps(&ent, "framework", "nextjs", "rendering", "server",
+				"provenance", "INFERRED_FROM_NEXTJS_SERVER_ACTION")
 			addEntity(ent)
 		}
 	}

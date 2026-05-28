@@ -41,6 +41,15 @@ var (
 	)
 	reSvelteDynParam  = regexp.MustCompile(`\[([^\]]+)\]`)
 	reSvelteGroupPath = regexp.MustCompile(`\([^)]+\)`)
+
+	// Static generation + render-mode page options (issue #2858). SvelteKit
+	// page-options exports select the render strategy per route:
+	//   `export const prerender = true`  → static generation
+	//   `export const ssr = false`       → client-only (SPA) — no server render
+	//   `export const csr = false`       → server-only, no client hydration
+	reSveltePrerender = regexp.MustCompile(`export\s+const\s+prerender\s*=\s*(true|['"]auto['"])`)
+	reSvelteSSROption = regexp.MustCompile(`export\s+const\s+ssr\s*=\s*(false|true)`)
+	reSvelteCSROption = regexp.MustCompile(`export\s+const\s+csr\s*=\s*(false|true)`)
 )
 
 func normalizeSveltePath(fp string) string {
@@ -153,11 +162,20 @@ func (e *svelteExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		addEntity(ent)
 	}
 
-	// SvelteKit load() function
+	// SvelteKit load() function — the framework data loader (data_loaders).
+	// A load() in a `+page.server.ts` / `+layout.server.ts` is server-only (a
+	// universal load() in `+page.ts` runs on both). Tag rendering accordingly.
+	isServerLoadFile := strings.HasSuffix(fp, "+page.server.ts") || strings.HasSuffix(fp, "+page.server.js") ||
+		strings.HasSuffix(fp, "+layout.server.ts") || strings.HasSuffix(fp, "+layout.server.js")
 	if reSvelteLoad.MatchString(src) {
 		name := fmt.Sprintf("load:%s", routePath)
-		ent := makeEntity(name, "SCOPE.Operation", "loader", file.Path, file.Language, 1)
+		rendering := "universal"
+		if isServerLoadFile {
+			rendering = "server"
+		}
+		ent := makeEntity(name, "SCOPE.Operation", "data_loader", file.Path, file.Language, 1)
 		setProps(&ent, "framework", "svelte", "route_path", routePath,
+			"loader_kind", "load", "rendering", rendering,
 			"provenance", "INFERRED_FROM_SVELTE_LOAD")
 		addEntity(ent)
 	}
@@ -201,6 +219,49 @@ func (e *svelteExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 			setProps(&pent, "framework", "svelte", "provenance", "INFERRED_FROM_SVELTE_PROPS")
 			addEntity(pent)
 		}
+	}
+
+	// Server components / hydration boundaries (issue #2858).
+	//
+	// SvelteKit's render model is file-name-driven:
+	//   - `+page.server.ts` / `+layout.server.ts` / `+server.ts` run only on the
+	//     server (a server boundary — server_components).
+	//   - `+page.svelte` is server-rendered then hydrated on the client (a
+	//     hydration boundary — hydration_boundaries) unless `csr = false`.
+	if isServerLoadFile || isServerFile {
+		sb := makeEntity("server_boundary:"+routePath, "SCOPE.Pattern", "server_boundary", file.Path, file.Language, 1)
+		setProps(&sb, "framework", "svelte", "route_path", routePath, "rendering", "server",
+			"provenance", "INFERRED_FROM_SVELTEKIT_SERVER_MODULE")
+		addEntity(sb)
+	}
+	if isVueFile && strings.HasPrefix(filepath.Base(fp), "+page") {
+		hb := makeEntity("hydrate:"+routePath, "SCOPE.Pattern", "client_boundary", file.Path, file.Language, 1)
+		setProps(&hb, "framework", "svelte", "route_path", routePath, "hydration", "client",
+			"provenance", "INFERRED_FROM_SVELTEKIT_HYDRATION")
+		addEntity(hb)
+	}
+
+	// Static generation + render-mode page options (issue #2858).
+	if m := reSveltePrerender.FindStringIndex(src); m != nil {
+		sg := makeEntity("static_generation:prerender", "SCOPE.Pattern", "static_generation", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&sg, "framework", "svelte", "route_path", routePath, "marker", "prerender", "rendering", "ssg",
+			"provenance", "INFERRED_FROM_SVELTEKIT_PRERENDER")
+		addEntity(sg)
+	}
+	if m := reSvelteSSROption.FindStringSubmatchIndex(src); m != nil && src[m[2]:m[3]] == "false" {
+		// `export const ssr = false` → client-only SPA route (no server render);
+		// the whole page is a client hydration boundary.
+		cb := makeEntity("spa:"+routePath, "SCOPE.Pattern", "client_boundary", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&cb, "framework", "svelte", "route_path", routePath, "render_mode", "csr_only", "hydration", "client",
+			"provenance", "INFERRED_FROM_SVELTEKIT_SSR_OPTION")
+		addEntity(cb)
+	}
+	if m := reSvelteCSROption.FindStringSubmatchIndex(src); m != nil && src[m[2]:m[3]] == "false" {
+		// `export const csr = false` → server-only route, no client hydration.
+		sb := makeEntity("ssr-only:"+routePath, "SCOPE.Pattern", "server_boundary", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&sb, "framework", "svelte", "route_path", routePath, "render_mode", "ssr_only", "rendering", "server",
+			"provenance", "INFERRED_FROM_SVELTEKIT_CSR_OPTION")
+		addEntity(sb)
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
