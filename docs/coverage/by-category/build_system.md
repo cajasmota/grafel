@@ -47,22 +47,22 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [java](../by-language/java.md) | [REST-assured](../detail/test.restassured.md) | ❌ | — | — | ❌ | |
 | [java](../by-language/java.md) | [TestNG](../detail/test.testng.md) | ❌ | — | — | ⚠️ | |
 | [JS/TS](../by-language/jsts.md) | [AVA](../detail/test.ava.md) | ❌ | — | — | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Bun (runtime + manager)](../detail/build.bun.md) | ⚠️ | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Bun (runtime + manager)](../detail/build.bun.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Cypress](../detail/test.cypress.md) | ❌ | — | — | ❌ | |
 | [JS/TS](../by-language/jsts.md) | [Jasmine](../detail/test.jasmine.md) | ❌ | — | — | ❌ | |
 | [JS/TS](../by-language/jsts.md) | [Jest](../detail/test.jest.md) | ✅ | — | — | ✅ | |
-| [JS/TS](../by-language/jsts.md) | [Lerna](../detail/build.lerna.md) | ❌ | — | — | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Lerna](../detail/build.lerna.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Mocha](../detail/test.mocha.md) | ⚠️ | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [Nx (monorepo)](../detail/build.nx.md) | ❌ | — | — | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Parcel](../detail/build.parcel.md) | ❌ | — | — | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Nx (monorepo)](../detail/build.nx.md) | ✅ | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [Parcel](../detail/build.parcel.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Playwright](../detail/test.playwright.md) | ❌ | — | — | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Rollup](../detail/build.rollup.md) | ❌ | — | — | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Turborepo](../detail/build.turborepo.md) | ❌ | — | — | ❌ | |
-| [JS/TS](../by-language/jsts.md) | [Vite](../detail/build.vite.md) | ❌ | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Rollup](../detail/build.rollup.md) | ✅ | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [Turborepo](../detail/build.turborepo.md) | ✅ | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [Vite](../detail/build.vite.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Vitest](../detail/test.vitest.md) | ⚠️ | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [Webpack](../detail/build.webpack.md) | ❌ | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Webpack](../detail/build.webpack.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Yarn](../detail/build.yarn.md) | ✅ | — | — | ✅ | |
-| [JS/TS](../by-language/jsts.md) | [esbuild](../detail/build.esbuild.md) | ❌ | — | — | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [esbuild](../detail/build.esbuild.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [npm](../detail/build.npm.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [pnpm](../detail/build.pnpm.md) | ✅ | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [tap / node:test](../detail/test.tap.md) | ❌ | — | — | ❌ | |

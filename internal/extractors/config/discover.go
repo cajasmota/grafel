@@ -70,6 +70,8 @@ const (
 	formatGradle       configKind = "gradle"
 	formatGoMod        configKind = "go_mod"
 	formatJSConfig     configKind = "javascript"
+	formatBundlerJSON  configKind = "bundler_json"
+	formatBundlerJS    configKind = "bundler_js"
 )
 
 // configSpec describes one recognised config file. Subtype is the value
@@ -105,6 +107,16 @@ var exactBasenames = map[string]configSpec{
 	"package.json":  {"node_project", formatJSON},
 	"tsconfig.json": {"typescript_project", formatJSON},
 
+	// JS/TS build & monorepo tools (issue #2863). JSON/JSONC configs are
+	// deeply mined for build targets (target_extraction) and inter-target /
+	// inter-package dependency edges (dependency_graph).
+	"turbo.json":   {"turborepo_config", formatBundlerJSON},
+	"nx.json":      {"nx_config", formatBundlerJSON},
+	"project.json": {"nx_project", formatBundlerJSON},
+	"lerna.json":   {"lerna_config", formatBundlerJSON},
+	".parcelrc":    {"parcel_config", formatBundlerJSON},
+	"bunfig.toml":  {"bun_config", formatTOML},
+
 	"go.mod": {"go_module", formatGoMod},
 	"go.sum": {"go_sum", formatGoMod}, // existence only
 
@@ -134,6 +146,12 @@ var (
 	nextConfigRe     = regexp.MustCompile(`^next\.config\.(js|ts|mjs|cjs)$`)
 	eslintConfigRe   = regexp.MustCompile(`^\.eslintrc(\.(js|cjs|json|yml|yaml))?$`)
 	prettierConfigRe = regexp.MustCompile(`^\.prettierrc(\.(js|cjs|json|yml|yaml|toml))?$`)
+
+	// JS/TS bundler config variants (issue #2863). Matched as JS source so the
+	// bundler parser can mine entry points, output dirs, and workspace hints.
+	webpackConfigRe = regexp.MustCompile(`^webpack\.config\.(js|ts|mjs|cjs)$`)
+	rollupConfigRe  = regexp.MustCompile(`^rollup\.config\.(js|ts|mjs|cjs)$`)
+	esbuildConfigRe = regexp.MustCompile(`^esbuild\.config\.(js|ts|mjs|cjs)$`)
 )
 
 // classify returns the configSpec for filePath, or false when the file is
@@ -151,7 +169,13 @@ func classify(relPath string) (configSpec, bool) {
 	case dockerfileVariant.MatchString(base) && strings.Contains(strings.ToLower(base), "dockerfile"):
 		return configSpec{"docker_image", formatDockerfile}, true
 	case viteConfigRe.MatchString(base):
-		return configSpec{"vite_config", formatJSConfig}, true
+		return configSpec{"vite_config", formatBundlerJS}, true
+	case webpackConfigRe.MatchString(base):
+		return configSpec{"webpack_config", formatBundlerJS}, true
+	case rollupConfigRe.MatchString(base):
+		return configSpec{"rollup_config", formatBundlerJS}, true
+	case esbuildConfigRe.MatchString(base):
+		return configSpec{"esbuild_config", formatBundlerJS}, true
 	case nextConfigRe.MatchString(base):
 		return configSpec{"next_config", formatJSConfig}, true
 	case eslintConfigRe.MatchString(base):
@@ -315,8 +339,10 @@ func languageForFormat(f configKind) string {
 		return "env"
 	case formatGradle:
 		return "groovy"
-	case formatJSConfig:
+	case formatJSConfig, formatBundlerJS:
 		return "javascript"
+	case formatBundlerJSON:
+		return "json"
 	}
 	return "text"
 }
@@ -354,6 +380,10 @@ func parseInto(props map[string]string, spec configSpec, content []byte) {
 	case formatJSConfig:
 		// JS/TS config files: only record top-level export/identifier hints.
 		parseJSConfig(props, content)
+	case formatBundlerJSON:
+		parseBundlerJSON(props, spec, content)
+	case formatBundlerJS:
+		parseBundlerJS(props, spec, content)
 	}
 }
 
@@ -377,6 +407,10 @@ func parseJSON(props map[string]string, spec configSpec, content []byte) {
 			Dependencies     map[string]string `json:"dependencies"`
 			DevDependencies  map[string]string `json:"devDependencies"`
 			PeerDependencies map[string]string `json:"peerDependencies"`
+			// Workspaces drives the monorepo dependency graph for Bun / npm /
+			// Yarn / pnpm. It is either a string array or an object with a
+			// "packages" array; json.RawMessage lets us accept both forms.
+			Workspaces json.RawMessage `json:"workspaces"`
 		}
 		if err := json.Unmarshal(content, &pkg); err != nil {
 			return
@@ -404,7 +438,32 @@ func parseJSON(props map[string]string, spec configSpec, content []byte) {
 			sort.Strings(allDeps)
 			props["dependencies"] = capJoin(allDeps)
 		}
+		if ws := parseWorkspaces(pkg.Workspaces); len(ws) > 0 {
+			sort.Strings(ws)
+			props["workspaces"] = capJoin(ws)
+		}
 	}
+}
+
+// parseWorkspaces accepts the two package.json "workspaces" shapes:
+//
+//	"workspaces": ["packages/*", "apps/*"]
+//	"workspaces": { "packages": ["packages/*"], "nohoist": [...] }
+func parseWorkspaces(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var arr []string
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return arr
+	}
+	var obj struct {
+		Packages []string `json:"packages"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.Packages
+	}
+	return nil
 }
 
 // tomlSectionRE matches a section header `[name]` or `[name.subname]`.
@@ -801,6 +860,283 @@ func parseJSConfig(props map[string]string, content []byte) {
 	sort.Strings(keys)
 	if len(keys) > 0 {
 		props["keys_top_level"] = capJoin(keys)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// JS/TS bundler & monorepo config parsers (issue #2863)
+//
+// These power the build_system capabilities for the JS bundler/monorepo tools:
+//   - target_extraction: emit build targets / entry points
+//       → Properties["scripts"]      (named build targets / tasks)
+//       → Properties["entry_points"] (bundler entry/input modules)
+//   - dependency_graph: inter-target / inter-package dependency edges
+//       → Properties["target_dependencies"] (task graph: target -> dependsOn)
+//       → Properties["workspaces"]           (monorepo package globs)
+//
+// JSON configs (turbo.json, nx.json, project.json, lerna.json, .parcelrc) are
+// JSONC-tolerant. JS configs (webpack/vite/rollup/esbuild) are mined with
+// permissive regexes — no JS evaluation, just stable structural signal.
+// ---------------------------------------------------------------------------
+
+// stripJSONC removes // line comments and /* */ block comments so JSONC files
+// (turbo.json, tsconfig-style) decode with encoding/json. String contents are
+// preserved; this is a best-effort lexer good enough for config mining.
+func stripJSONC(content []byte) []byte {
+	var out []byte
+	src := content
+	inStr := false
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		if inStr {
+			out = append(out, c)
+			if c == '\\' && i+1 < len(src) {
+				out = append(out, src[i+1])
+				i++
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		switch {
+		case c == '"':
+			inStr = true
+			out = append(out, c)
+		case c == '/' && i+1 < len(src) && src[i+1] == '/':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			if i < len(src) {
+				out = append(out, '\n')
+			}
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			i += 2
+			for i+1 < len(src) && !(src[i] == '*' && src[i+1] == '/') {
+				i++
+			}
+			i++ // land on the closing '/'
+		default:
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func parseBundlerJSON(props map[string]string, spec configSpec, content []byte) {
+	clean := stripJSONC(content)
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(clean, &generic); err != nil {
+		return
+	}
+	props["keys_top_level"] = joinSortedKeys(generic)
+
+	switch spec.subtype {
+	case "turborepo_config":
+		parseTurboConfig(props, clean)
+	case "nx_config":
+		parseNxConfig(props, clean)
+	case "nx_project":
+		parseNxProject(props, clean)
+	case "lerna_config":
+		parseLernaConfig(props, clean)
+	case "parcel_config":
+		parseParcelConfig(props, clean)
+	}
+}
+
+// parseTurboConfig mines turbo.json. Build targets live under "tasks" (Turbo
+// 2.x) or "pipeline" (Turbo 1.x); each task's "dependsOn" forms the task graph.
+func parseTurboConfig(props map[string]string, content []byte) {
+	var turbo struct {
+		Tasks    map[string]turboTask `json:"tasks"`
+		Pipeline map[string]turboTask `json:"pipeline"`
+	}
+	if err := json.Unmarshal(content, &turbo); err != nil {
+		return
+	}
+	tasks := turbo.Tasks
+	if len(tasks) == 0 {
+		tasks = turbo.Pipeline
+	}
+	var names []string
+	var edges []string
+	for name, t := range tasks {
+		names = append(names, name)
+		for _, dep := range t.DependsOn {
+			edges = append(edges, name+"->"+dep)
+		}
+	}
+	sort.Strings(names)
+	sort.Strings(edges)
+	if len(names) > 0 {
+		props["scripts"] = capJoin(names)
+	}
+	if len(edges) > 0 {
+		props["target_dependencies"] = capJoin(edges)
+	}
+}
+
+type turboTask struct {
+	DependsOn []string `json:"dependsOn"`
+}
+
+// parseNxConfig mines nx.json. Reusable target defaults define the canonical
+// build targets; targetDefaults[*].dependsOn forms the inter-target graph.
+func parseNxConfig(props map[string]string, content []byte) {
+	var nx struct {
+		TargetDefaults map[string]struct {
+			DependsOn []json.RawMessage `json:"dependsOn"`
+		} `json:"targetDefaults"`
+	}
+	if err := json.Unmarshal(content, &nx); err != nil {
+		return
+	}
+	var names, edges []string
+	for name, def := range nx.TargetDefaults {
+		names = append(names, name)
+		for _, raw := range def.DependsOn {
+			dep := strings.Trim(string(raw), `"`)
+			edges = append(edges, name+"->"+dep)
+		}
+	}
+	sort.Strings(names)
+	sort.Strings(edges)
+	if len(names) > 0 {
+		props["scripts"] = capJoin(names)
+	}
+	if len(edges) > 0 {
+		props["target_dependencies"] = capJoin(edges)
+	}
+}
+
+// parseNxProject mines an Nx project.json. "targets" are the build targets;
+// "implicitDependencies" are inter-package edges to other workspace projects.
+func parseNxProject(props map[string]string, content []byte) {
+	var proj struct {
+		Name                 string                     `json:"name"`
+		Targets              map[string]json.RawMessage `json:"targets"`
+		ImplicitDependencies []string                   `json:"implicitDependencies"`
+	}
+	if err := json.Unmarshal(content, &proj); err != nil {
+		return
+	}
+	if proj.Name != "" {
+		props["project_name"] = proj.Name
+	}
+	if len(proj.Targets) > 0 {
+		props["scripts"] = joinSortedKeys(proj.Targets)
+	}
+	if len(proj.ImplicitDependencies) > 0 {
+		deps := append([]string(nil), proj.ImplicitDependencies...)
+		sort.Strings(deps)
+		props["workspaces"] = capJoin(deps)
+	}
+}
+
+// parseLernaConfig mines lerna.json. "packages" (or top-level workspaces) are
+// the monorepo package globs; "command" keys are configured lifecycle targets.
+func parseLernaConfig(props map[string]string, content []byte) {
+	var lerna struct {
+		Packages []string                   `json:"packages"`
+		Command  map[string]json.RawMessage `json:"command"`
+	}
+	if err := json.Unmarshal(content, &lerna); err != nil {
+		return
+	}
+	if len(lerna.Packages) > 0 {
+		ws := append([]string(nil), lerna.Packages...)
+		sort.Strings(ws)
+		props["workspaces"] = capJoin(ws)
+	}
+	if len(lerna.Command) > 0 {
+		props["scripts"] = joinSortedKeys(lerna.Command)
+	}
+}
+
+// parseParcelConfig mines a .parcelrc. The pipeline plugin maps (transformers,
+// bundlers, packagers, …) are the configured build targets; "extends" is the
+// upstream config dependency.
+func parseParcelConfig(props map[string]string, content []byte) {
+	var parcel struct {
+		Extends      json.RawMessage            `json:"extends"`
+		Transformers map[string]json.RawMessage `json:"transformers"`
+		Bundlers     map[string]json.RawMessage `json:"bundlers"`
+		Packagers    map[string]json.RawMessage `json:"packagers"`
+		Resolvers    json.RawMessage            `json:"resolvers"`
+		Optimizers   map[string]json.RawMessage `json:"optimizers"`
+	}
+	if err := json.Unmarshal(content, &parcel); err != nil {
+		return
+	}
+	var targets []string
+	for _, m := range []map[string]json.RawMessage{
+		parcel.Transformers, parcel.Bundlers, parcel.Packagers, parcel.Optimizers,
+	} {
+		for k := range m {
+			targets = append(targets, k)
+		}
+	}
+	sort.Strings(targets)
+	if len(targets) > 0 {
+		props["scripts"] = capJoin(targets)
+	}
+	if len(parcel.Extends) > 0 {
+		ext := strings.Trim(string(parcel.Extends), `"[] `)
+		if ext != "" {
+			props["dependencies"] = ext
+		}
+	}
+}
+
+// Regexes mining JS/TS bundler configs. We do not evaluate JS — these capture
+// the canonical literal forms the docs recommend.
+var (
+	// entry / input: `entry: './src/main.ts'`, `input: 'src/index.js'`,
+	// entryPoints array members `'src/app.tsx'`.
+	bundlerEntryKeyRE = regexp.MustCompile(`(?m)\b(?:entry|input|entryPoints)\s*:\s*(['"][^'"]+['"]|\[[^\]]*\]|\{[^}]*\})`)
+	bundlerStringRE   = regexp.MustCompile(`['"]([^'"]+)['"]`)
+	// output dir/file: `outDir: 'dist'`, `outfile: 'out.js'`, `dir: 'build'`,
+	// `output: { dir: 'dist' }`, `filename: 'bundle.js'`.
+	bundlerOutRE = regexp.MustCompile(`(?m)\b(?:outDir|outfile|outdir|dir|filename|file)\s*:\s*['"]([^'"]+)['"]`)
+	// webpack `path: path.resolve(__dirname, 'dist')` — capture the final
+	// string literal of a path.resolve / path.join call assigned to `path:`.
+	bundlerPathResolveRE = regexp.MustCompile(`(?m)\bpath\s*:\s*path\.(?:resolve|join)\([^)]*['"]([^'"]+)['"]\s*\)`)
+)
+
+// parseBundlerJS mines webpack/vite/rollup/esbuild JS config files for entry
+// points (dependency_graph roots) and output targets (target_extraction).
+func parseBundlerJS(props map[string]string, spec configSpec, content []byte) {
+	parseJSConfig(props, content) // keep top-level export hints
+	src := string(content)
+
+	var entries []string
+	for _, m := range bundlerEntryKeyRE.FindAllStringSubmatch(src, -1) {
+		for _, sm := range bundlerStringRE.FindAllStringSubmatch(m[1], -1) {
+			val := sm[1]
+			if val != "" && !strings.Contains(val, "${") {
+				entries = append(entries, val)
+			}
+		}
+	}
+	sort.Strings(entries)
+	entries = dedup(entries)
+	if len(entries) > 0 {
+		props["entry_points"] = capJoin(entries)
+	}
+
+	var outs []string
+	for _, m := range bundlerOutRE.FindAllStringSubmatch(src, -1) {
+		outs = append(outs, m[1])
+	}
+	for _, m := range bundlerPathResolveRE.FindAllStringSubmatch(src, -1) {
+		outs = append(outs, m[1])
+	}
+	sort.Strings(outs)
+	outs = dedup(outs)
+	if len(outs) > 0 {
+		props["scripts"] = capJoin(outs)
 	}
 }
 

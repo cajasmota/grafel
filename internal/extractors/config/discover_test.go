@@ -399,6 +399,368 @@ func TestDiscover_DeterministicOrder(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// JS/TS bundler & monorepo build tools (issue #2863)
+// ---------------------------------------------------------------------------
+
+func TestDiscover_TurboConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "turbo.json", `{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "test": { "dependsOn": ["build"] },
+    "lint": {},
+    "deploy": { "dependsOn": ["build", "test"] }
+  }
+}`)
+	ents, _ := runDiscover(t, dir, []string{"turbo.json"})
+	e := findBySource(ents, "turbo.json")
+	if e == nil {
+		t.Fatalf("turbo.json entity missing")
+	}
+	if e.Subtype != "turborepo_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	scripts := e.Properties["scripts"]
+	for _, s := range []string{"build", "test", "lint", "deploy"} {
+		if !strings.Contains(scripts, s) {
+			t.Errorf("scripts missing %q: %q", s, scripts)
+		}
+	}
+	edges := e.Properties["target_dependencies"]
+	for _, want := range []string{"build->^build", "test->build", "deploy->build", "deploy->test"} {
+		if !strings.Contains(edges, want) {
+			t.Errorf("target_dependencies missing %q: %q", want, edges)
+		}
+	}
+}
+
+func TestDiscover_TurboPipelineLegacy(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "turbo.json", `{
+  // Turbo 1.x legacy "pipeline" key with JSONC comments
+  "pipeline": {
+    "build": { "dependsOn": ["^build"] },
+    "dev": { "cache": false }
+  }
+}`)
+	ents, _ := runDiscover(t, dir, []string{"turbo.json"})
+	e := findBySource(ents, "turbo.json")
+	if e == nil {
+		t.Fatalf("entity missing")
+	}
+	scripts := e.Properties["scripts"]
+	if !strings.Contains(scripts, "build") || !strings.Contains(scripts, "dev") {
+		t.Errorf("scripts wrong: %q", scripts)
+	}
+	if !strings.Contains(e.Properties["target_dependencies"], "build->^build") {
+		t.Errorf("target_dependencies wrong: %q", e.Properties["target_dependencies"])
+	}
+}
+
+func TestDiscover_NxConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "nx.json", `{
+  "targetDefaults": {
+    "build": { "dependsOn": ["^build"], "cache": true },
+    "test": { "dependsOn": ["build"] },
+    "lint": {}
+  }
+}`)
+	ents, _ := runDiscover(t, dir, []string{"nx.json"})
+	e := findBySource(ents, "nx.json")
+	if e == nil {
+		t.Fatalf("nx.json entity missing")
+	}
+	if e.Subtype != "nx_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	scripts := e.Properties["scripts"]
+	for _, s := range []string{"build", "test", "lint"} {
+		if !strings.Contains(scripts, s) {
+			t.Errorf("scripts missing %q: %q", s, scripts)
+		}
+	}
+	edges := e.Properties["target_dependencies"]
+	if !strings.Contains(edges, "build->^build") || !strings.Contains(edges, "test->build") {
+		t.Errorf("target_dependencies wrong: %q", edges)
+	}
+}
+
+func TestDiscover_NxProject(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "apps/api/project.json", `{
+  "name": "api",
+  "targets": {
+    "build": { "executor": "@nx/webpack:webpack" },
+    "serve": { "executor": "@nx/js:node" }
+  },
+  "implicitDependencies": ["shared-utils", "data-access"]
+}`)
+	ents, _ := runDiscover(t, dir, []string{"apps/api/project.json"})
+	e := findBySource(ents, "apps/api/project.json")
+	if e == nil {
+		t.Fatalf("project.json entity missing")
+	}
+	if e.Subtype != "nx_project" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	if e.Properties["project_name"] != "api" {
+		t.Errorf("project_name=%q", e.Properties["project_name"])
+	}
+	scripts := e.Properties["scripts"]
+	if !strings.Contains(scripts, "build") || !strings.Contains(scripts, "serve") {
+		t.Errorf("scripts wrong: %q", scripts)
+	}
+	ws := e.Properties["workspaces"]
+	if !strings.Contains(ws, "shared-utils") || !strings.Contains(ws, "data-access") {
+		t.Errorf("workspaces (implicitDependencies) wrong: %q", ws)
+	}
+}
+
+func TestDiscover_LernaConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "lerna.json", `{
+  "version": "independent",
+  "npmClient": "yarn",
+  "packages": ["packages/*", "tools/*"],
+  "command": {
+    "publish": { "conventionalCommits": true },
+    "bootstrap": { "ignore": "component-*" }
+  }
+}`)
+	ents, _ := runDiscover(t, dir, []string{"lerna.json"})
+	e := findBySource(ents, "lerna.json")
+	if e == nil {
+		t.Fatalf("lerna.json entity missing")
+	}
+	if e.Subtype != "lerna_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	ws := e.Properties["workspaces"]
+	if !strings.Contains(ws, "packages/*") || !strings.Contains(ws, "tools/*") {
+		t.Errorf("workspaces wrong: %q", ws)
+	}
+	scripts := e.Properties["scripts"]
+	if !strings.Contains(scripts, "publish") || !strings.Contains(scripts, "bootstrap") {
+		t.Errorf("scripts (command) wrong: %q", scripts)
+	}
+}
+
+func TestDiscover_ParcelConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".parcelrc", `{
+  "extends": "@parcel/config-default",
+  "transformers": {
+    "*.{ts,tsx}": ["@parcel/transformer-typescript-tsc"],
+    "*.svg": ["@parcel/transformer-svg-react"]
+  },
+  "bundlers": {
+    "*": "@parcel/bundler-default"
+  }
+}`)
+	ents, _ := runDiscover(t, dir, []string{".parcelrc"})
+	e := findBySource(ents, ".parcelrc")
+	if e == nil {
+		t.Fatalf(".parcelrc entity missing")
+	}
+	if e.Subtype != "parcel_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	scripts := e.Properties["scripts"]
+	if !strings.Contains(scripts, "*.{ts,tsx}") || !strings.Contains(scripts, "*.svg") {
+		t.Errorf("scripts (pipeline) wrong: %q", scripts)
+	}
+	if e.Properties["dependencies"] != "@parcel/config-default" {
+		t.Errorf("extends dependency wrong: %q", e.Properties["dependencies"])
+	}
+}
+
+func TestDiscover_BunfigTOML(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "bunfig.toml", `[install]
+registry = "https://registry.npmjs.org"
+
+[run]
+bun = true
+`)
+	ents, _ := runDiscover(t, dir, []string{"bunfig.toml"})
+	e := findBySource(ents, "bunfig.toml")
+	if e == nil {
+		t.Fatalf("bunfig.toml entity missing")
+	}
+	if e.Subtype != "bun_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	keys := e.Properties["keys_top_level"]
+	if !strings.Contains(keys, "install") || !strings.Contains(keys, "run") {
+		t.Errorf("keys_top_level wrong: %q", keys)
+	}
+}
+
+func TestDiscover_PackageJSON_Workspaces(t *testing.T) {
+	dir := t.TempDir()
+	// Bun/Yarn array form.
+	writeFixture(t, dir, "package.json", `{
+  "name": "monorepo-root",
+  "workspaces": ["packages/*", "apps/web"],
+  "scripts": { "build": "bun run --filter '*' build" }
+}`)
+	ents, _ := runDiscover(t, dir, []string{"package.json"})
+	e := findBySource(ents, "package.json")
+	if e == nil {
+		t.Fatalf("package.json entity missing")
+	}
+	ws := e.Properties["workspaces"]
+	if !strings.Contains(ws, "packages/*") || !strings.Contains(ws, "apps/web") {
+		t.Errorf("workspaces (array) wrong: %q", ws)
+	}
+	// Object form.
+	dir2 := t.TempDir()
+	writeFixture(t, dir2, "package.json", `{
+  "name": "monorepo-root2",
+  "workspaces": { "packages": ["libs/*"], "nohoist": ["**/react-native"] }
+}`)
+	ents2, _ := runDiscover(t, dir2, []string{"package.json"})
+	e2 := findBySource(ents2, "package.json")
+	if e2 == nil || !strings.Contains(e2.Properties["workspaces"], "libs/*") {
+		t.Errorf("workspaces (object) wrong: %+v", e2)
+	}
+}
+
+func TestDiscover_WebpackConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "webpack.config.js", `const path = require('path');
+module.exports = {
+  entry: './src/index.js',
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: 'bundle.js',
+  },
+};`)
+	ents, _ := runDiscover(t, dir, []string{"webpack.config.js"})
+	e := findBySource(ents, "webpack.config.js")
+	if e == nil {
+		t.Fatalf("webpack.config.js entity missing")
+	}
+	if e.Subtype != "webpack_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	if !strings.Contains(e.Properties["entry_points"], "./src/index.js") {
+		t.Errorf("entry_points wrong: %q", e.Properties["entry_points"])
+	}
+	if !strings.Contains(e.Properties["scripts"], "dist") {
+		t.Errorf("output (scripts) wrong: %q", e.Properties["scripts"])
+	}
+}
+
+func TestDiscover_RollupConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "rollup.config.js", `export default {
+  input: 'src/main.js',
+  output: {
+    dir: 'output',
+    format: 'cjs',
+  },
+};`)
+	ents, _ := runDiscover(t, dir, []string{"rollup.config.js"})
+	e := findBySource(ents, "rollup.config.js")
+	if e == nil {
+		t.Fatalf("rollup.config.js entity missing")
+	}
+	if e.Subtype != "rollup_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	if !strings.Contains(e.Properties["entry_points"], "src/main.js") {
+		t.Errorf("entry_points wrong: %q", e.Properties["entry_points"])
+	}
+	if !strings.Contains(e.Properties["scripts"], "output") {
+		t.Errorf("output dir wrong: %q", e.Properties["scripts"])
+	}
+}
+
+func TestDiscover_EsbuildConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "esbuild.config.js", `require('esbuild').build({
+  entryPoints: ['src/app.ts', 'src/worker.ts'],
+  bundle: true,
+  outfile: 'out.js',
+});`)
+	ents, _ := runDiscover(t, dir, []string{"esbuild.config.js"})
+	e := findBySource(ents, "esbuild.config.js")
+	if e == nil {
+		t.Fatalf("esbuild.config.js entity missing")
+	}
+	if e.Subtype != "esbuild_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	entries := e.Properties["entry_points"]
+	if !strings.Contains(entries, "src/app.ts") || !strings.Contains(entries, "src/worker.ts") {
+		t.Errorf("entry_points wrong: %q", entries)
+	}
+	if !strings.Contains(e.Properties["scripts"], "out.js") {
+		t.Errorf("outfile wrong: %q", e.Properties["scripts"])
+	}
+}
+
+func TestDiscover_ViteConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "vite.config.ts", `import { defineConfig } from 'vite';
+export default defineConfig({
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      input: 'src/main.ts',
+    },
+  },
+});`)
+	ents, _ := runDiscover(t, dir, []string{"vite.config.ts"})
+	e := findBySource(ents, "vite.config.ts")
+	if e == nil {
+		t.Fatalf("vite.config.ts entity missing")
+	}
+	if e.Subtype != "vite_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	if !strings.Contains(e.Properties["entry_points"], "src/main.ts") {
+		t.Errorf("entry_points wrong: %q", e.Properties["entry_points"])
+	}
+	if !strings.Contains(e.Properties["scripts"], "dist") {
+		t.Errorf("outDir wrong: %q", e.Properties["scripts"])
+	}
+}
+
+func TestClassify_BundlerTools(t *testing.T) {
+	cases := []struct {
+		path    string
+		subtype string
+	}{
+		{"turbo.json", "turborepo_config"},
+		{"nx.json", "nx_config"},
+		{"apps/api/project.json", "nx_project"},
+		{"lerna.json", "lerna_config"},
+		{".parcelrc", "parcel_config"},
+		{"bunfig.toml", "bun_config"},
+		{"webpack.config.js", "webpack_config"},
+		{"webpack.config.ts", "webpack_config"},
+		{"rollup.config.mjs", "rollup_config"},
+		{"esbuild.config.js", "esbuild_config"},
+		{"vite.config.ts", "vite_config"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			spec, ok := classify(tc.path)
+			if !ok {
+				t.Fatalf("classify(%q) returned false", tc.path)
+			}
+			if spec.subtype != tc.subtype {
+				t.Errorf("subtype=%q want %q", spec.subtype, tc.subtype)
+			}
+		})
+	}
+}
+
 func TestClassify_KnownBasenames(t *testing.T) {
 	cases := []struct {
 		path    string

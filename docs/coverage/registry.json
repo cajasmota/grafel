@@ -26,13 +26,13 @@
       "label": "Bun (runtime + manager)",
       "capabilities": {
         "dependency_graph": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml"],
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml"],
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         }
       }
@@ -134,10 +134,14 @@
       "label": "esbuild",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         }
       }
     },
@@ -248,10 +252,23 @@
       "label": "Lerna",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
+        }
+      },
+      "framework_specific": {
+        "Monorepo Task Graph": {
+          "workspace_project_graph": {
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -378,10 +395,28 @@
       "label": "Nx (monorepo)",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
+        }
+      },
+      "framework_specific": {
+        "Monorepo Task Graph": {
+          "task_pipeline_graph": {
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+            "verified_at": "2026-05-28"
+          },
+          "workspace_project_graph": {
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -392,10 +427,14 @@
       "label": "Parcel",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         }
       }
     },
@@ -494,10 +533,14 @@
       "label": "Rollup",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         }
       }
     },
@@ -558,10 +601,23 @@
       "label": "Turborepo",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
+        }
+      },
+      "framework_specific": {
+        "Monorepo Task Graph": {
+          "task_pipeline_graph": {
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -590,11 +646,13 @@
       "label": "Vite",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml"],
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         }
       }
@@ -606,11 +664,13 @@
       "label": "Webpack",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml"],
+          "status": "full",
+          "cites": ["internal/engine/rules/javascript_typescript/build_tools.yaml","internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         }
       }

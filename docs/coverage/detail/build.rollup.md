@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_graph` | ❌ `missing` | — | — | — | — | — |
-| `target_extraction` | ❌ `missing` | — | — | — | — | — |
+| `dependency_graph` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/build_tools.yaml`<br>`internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
+| `target_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/build_tools.yaml`<br>`internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
 
 ## Provenance
 

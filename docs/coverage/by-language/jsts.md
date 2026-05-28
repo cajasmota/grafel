@@ -85,22 +85,22 @@ Back to [summary](../summary.md).
 | Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
 |---|---|---|---|---|---|
 | [AVA](../detail/test.ava.md) | ❌ | — | — | ❌ | |
-| [Bun (runtime + manager)](../detail/build.bun.md) | ⚠️ | — | — | ⚠️ | |
+| [Bun (runtime + manager)](../detail/build.bun.md) | ✅ | — | — | ✅ | |
 | [Cypress](../detail/test.cypress.md) | ❌ | — | — | ❌ | |
 | [Jasmine](../detail/test.jasmine.md) | ❌ | — | — | ❌ | |
 | [Jest](../detail/test.jest.md) | ✅ | — | — | ✅ | |
-| [Lerna](../detail/build.lerna.md) | ❌ | — | — | ❌ | |
+| [Lerna](../detail/build.lerna.md) | ✅ | — | — | ✅ | |
 | [Mocha](../detail/test.mocha.md) | ⚠️ | — | — | ⚠️ | |
-| [Nx (monorepo)](../detail/build.nx.md) | ❌ | — | — | ❌ | |
-| [Parcel](../detail/build.parcel.md) | ❌ | — | — | ❌ | |
+| [Nx (monorepo)](../detail/build.nx.md) | ✅ | — | — | ✅ | |
+| [Parcel](../detail/build.parcel.md) | ✅ | — | — | ✅ | |
 | [Playwright](../detail/test.playwright.md) | ❌ | — | — | ❌ | |
-| [Rollup](../detail/build.rollup.md) | ❌ | — | — | ❌ | |
-| [Turborepo](../detail/build.turborepo.md) | ❌ | — | — | ❌ | |
-| [Vite](../detail/build.vite.md) | ❌ | — | — | ⚠️ | |
+| [Rollup](../detail/build.rollup.md) | ✅ | — | — | ✅ | |
+| [Turborepo](../detail/build.turborepo.md) | ✅ | — | — | ✅ | |
+| [Vite](../detail/build.vite.md) | ✅ | — | — | ✅ | |
 | [Vitest](../detail/test.vitest.md) | ⚠️ | — | — | ⚠️ | |
-| [Webpack](../detail/build.webpack.md) | ❌ | — | — | ⚠️ | |
+| [Webpack](../detail/build.webpack.md) | ✅ | — | — | ✅ | |
 | [Yarn](../detail/build.yarn.md) | ✅ | — | — | ✅ | |
-| [esbuild](../detail/build.esbuild.md) | ❌ | — | — | ❌ | |
+| [esbuild](../detail/build.esbuild.md) | ✅ | — | — | ✅ | |
 | [npm](../detail/build.npm.md) | ✅ | — | — | ✅ | |
 | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ❌ | ✅ | — | |
 | [pnpm](../detail/build.pnpm.md) | ✅ | — | — | ✅ | |
