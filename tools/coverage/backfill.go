@@ -43,20 +43,22 @@ func planBackfill(reg *Registry, langFilter, subFilter string) []seedPlan {
 	var plans []seedPlan
 	for i := range reg.Records {
 		rec := &reg.Records[i]
-		if !rec.IsGrouped() {
+		// Gate on whether the record's SUBCATEGORY declares a group
+		// taxonomy, not on the record's current IsGrouped() state. A
+		// freshly `add`-ed record has an empty flat capabilities map
+		// and IsGrouped()==false, but if its subcategory has a group
+		// taxonomy it still needs backfilling into that taxonomy.
+		if rec.Subcategory == "" || !validSubcategory(rec.Category, rec.Subcategory) {
 			continue
 		}
-		if rec.Subcategory == "" || !validSubcategory(rec.Category, rec.Subcategory) {
+		groups := groupsForSubcategory(rec.Subcategory)
+		if len(groups) == 0 {
 			continue
 		}
 		if langFilter != "" && rec.Language != langFilter {
 			continue
 		}
 		if subFilter != "" && rec.Subcategory != subFilter {
-			continue
-		}
-		groups := groupsForSubcategory(rec.Subcategory)
-		if len(groups) == 0 {
 			continue
 		}
 		existing := rec.AllCapabilities()
