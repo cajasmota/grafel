@@ -159,6 +159,10 @@ type PassResult struct {
 	//                           param slot, e.g. /recents/buildings ↔
 	//                           /api/v1/recents/{pk} (#2808)
 	//   - "url_pattern"         normalizeURLPattern fallback (#2588)
+	//   - "dynamic_suffix_match" dynamic-baseURL call (`${apiUrl}/x/y`) whose
+	//                           static suffix uniquely + specifically matched a
+	//                           backend endpoint after stripping the runtime
+	//                           prefix (#2813)
 	//   - "graphql_root"        consumer pointed at /graphql root, producer
 	//                           per-field synthetic registered there (#1496)
 	// (#2669)
@@ -175,6 +179,15 @@ type PassResult struct {
 	//                          be matched without runtime context
 	// (#2669)
 	CrossRepoResolveMissesByReason map[string]int
+
+	// ResidualCandidates is the total number of ranked producer candidates the
+	// #2813 dynamic-baseurl static-suffix matcher surfaced for consumers it
+	// could NOT auto-link (ambiguous: multiple candidates, or a too-generic
+	// suffix). These consumers stay orphaned (counted under the
+	// "dynamic_baseurl" miss reason) and are exposed to archigraph-resolve via
+	// the per-repo dynamic_baseurl_endpoint enrichment candidate; this counter
+	// reports how much candidate signal the suffix matcher found for them. (#2813)
+	ResidualCandidates int
 }
 
 // RunResult is the aggregate of all three passes from RunAllPasses.
@@ -514,6 +527,10 @@ type HTTPResolveStats struct {
 	Attempts       int            `json:"cross_repo_resolve_attempts"`
 	HitsByStrategy map[string]int `json:"cross_repo_resolve_hits_by_strategy,omitempty"`
 	MissesByReason map[string]int `json:"cross_repo_resolve_misses_by_reason,omitempty"`
+	// ResidualCandidates is the total ranked producer candidates the #2813
+	// dynamic-baseurl static-suffix matcher surfaced for orphans it declined to
+	// auto-link. Surfaced so the resolve surface can report candidate signal.
+	ResidualCandidates int `json:"residual_candidates,omitempty"`
 }
 
 // writeLinkPassStats serialises every PassResult counter on res to the
@@ -539,9 +556,10 @@ func writeLinkPassStats(path string, res *RunResult) error {
 		})
 		if r.Pass == "http" {
 			doc.HTTPSummary = &HTTPResolveStats{
-				Attempts:       r.CrossRepoResolveAttempts,
-				HitsByStrategy: r.CrossRepoResolveHitsByStrategy,
-				MissesByReason: r.CrossRepoResolveMissesByReason,
+				Attempts:           r.CrossRepoResolveAttempts,
+				HitsByStrategy:     r.CrossRepoResolveHitsByStrategy,
+				MissesByReason:     r.CrossRepoResolveMissesByReason,
+				ResidualCandidates: r.ResidualCandidates,
 			}
 		}
 	}

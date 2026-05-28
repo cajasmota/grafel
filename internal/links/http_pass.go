@@ -63,6 +63,7 @@ import (
 	"log"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -445,6 +446,90 @@ func literalFillsParamSlot(consumerPath, producerPath string) bool {
 		}
 	}
 	return filled
+}
+
+// dynamicSuffixMinStaticSegments is the floor on how many concrete (non-param)
+// path segments a dynamic-baseurl suffix MUST carry before the dynamic-suffix
+// matcher (#2813) will consider auto-linking it. Two static segments
+// (e.g. `/schedule/confirm`) is the minimum specificity that makes a unique
+// producer match defensible; a one-segment suffix like `/list` is too generic
+// and is always demoted to a residual instead.
+const dynamicSuffixMinStaticSegments = 2
+
+// dynamicSuffixTemplate normalizes a dynamic-baseurl consumer path into the
+// static SUFFIX template the #2813 matcher fuzzy-matches against the backend
+// endpoint set. The transform is:
+//
+//  1. Strip exactly ONE leading dynamic-prefix segment — the first path
+//     segment, when it is a `{placeholder}` (after normalizePathForIndex
+//     collapses every placeholder, including the `${apiUrl}` template-literal
+//     form, to `{*}`). This peels off the base-of-URL variable (`${apiUrl}`,
+//     `${baseURL}`, …) and nothing more.
+//  2. The remaining path is the suffix template, keyed for index lookup via
+//     normalizePathForIndex (params already `{*}`, lower-cased).
+//
+// It returns the normalized suffix key, the count of leading STATIC (non-param)
+// segments the suffix carries, and ok.
+//
+// ok is false — meaning the call is genuinely-runtime and MUST stay tagged
+// data-flow-runtime rather than suffix-matched — when:
+//   - the path does not lead with a dynamic placeholder (the ordinary
+//     byPath/prefix stages own it); or
+//   - after stripping the SINGLE base-URL prefix the next segment is STILL a
+//     param. That is the `/{companyType}/{companyId}/branches/...` shape: the
+//     base is a render-time choice (companyType) followed by another runtime
+//     id, so there is no clean static anchor. We deliberately strip only one
+//     segment so a second leading param is recognised as runtime rather than
+//     greedily peeled away.
+//
+// Examples (input → suffixKey, leadingStatic, ok):
+//
+//	/{apiUrl}/schedule/import                 → /schedule/import, 2, true
+//	/{apiUrl}/schedule/confirm/{token}        → /schedule/confirm/{*}, 2, true
+//	/{apiUrl}/list                            → /list, 1, true (gate demotes it)
+//	/{companyType}/{companyId}/branches/{id}  → "", 0, false (param-led suffix)
+//	/{param}/{companyId}/activity             → "", 0, false (param-led suffix)
+//	/schedule/import                          → "", 0, false (no dynamic prefix)
+func dynamicSuffixTemplate(consumerPath string) (suffixKey string, leadingStatic int, ok bool) {
+	if consumerPath == "" {
+		return "", 0, false
+	}
+	norm := normalizePathForIndex(consumerPath)
+	segs := strings.Split(norm, "/")
+	// segs[0] is the empty leading-slash segment. The path must lead with a
+	// single dynamic placeholder occupying the base-of-URL position.
+	if len(segs) < 2 || !isDynamicPrefixSegment(segs[1]) {
+		return "", 0, false
+	}
+	// Strip exactly ONE leading dynamic prefix segment.
+	rest := segs[2:]
+	if len(rest) == 0 {
+		return "", 0, false
+	}
+	// Genuinely-runtime guard: a suffix that is STILL param-led after peeling
+	// the single base-URL prefix has no static anchor (companyType/{companyId}/…).
+	if rest[0] == "{*}" {
+		return "", 0, false
+	}
+	// Count leading static (non-param) segments for the specificity score.
+	for _, s := range rest {
+		if s == "{*}" {
+			break
+		}
+		leadingStatic++
+	}
+	suffixKey = normalizePathForIndex("/" + strings.Join(rest, "/"))
+	return suffixKey, leadingStatic, true
+}
+
+// isDynamicPrefixSegment reports whether a normalized path segment is a
+// dynamic placeholder occupying the base-of-URL position. After
+// normalizePathForIndex a `{apiUrl}` / `<id>` / `:id` placeholder is `{*}`; a
+// raw `${apiUrl}` template literal that the synthesizer did not fully collapse
+// shows up as `${*}` (the leading `$` survives the `{…}` → `{*}` rewrite), so
+// both forms are recognised here.
+func isDynamicPrefixSegment(seg string) bool {
+	return seg == "{*}" || seg == "${*}"
 }
 
 // patternTypeURLMountPoint is the synthesis marker set by
@@ -898,6 +983,16 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	resolveAttempts := 0
 	hitsByStrategy := map[string]int{}
 	missesByReason := map[string]int{}
+
+	// #2813: dynamic-baseurl static-suffix sweep bookkeeping. residualCandidates
+	// counts the total ranked producer candidates emitted for ambiguous /
+	// generic dynamic-baseurl suffixes (below the auto-link threshold) so the
+	// resolve surface can report how much candidate signal exists.
+	// dynamicSuffixCounted marks consumers the suffix sweep already classified
+	// into missesByReason so the generic classification loop does not
+	// double-count them.
+	residualCandidates := 0
+	dynamicSuffixCounted := map[string]bool{}
 
 	// Deterministic iteration order: sort names.
 	names := make([]string, 0, len(hits))
@@ -1874,9 +1969,159 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		}
 	}
 
+	// #2813 — dynamic-baseurl static-suffix orphan-retry sweep (PRIMARY
+	// strategy). A consumer whose URL was built from a prop-drilled / env-
+	// injected base (e.g. `axios.post(`${apiUrl}/schedule/import`)`) is emitted
+	// with a `dynamic_baseurl` synthetic whose canonical path leads with a
+	// `{placeholder}` segment (`/{apiurl}/schedule/import`). The base cannot be
+	// resolved statically, but the STATIC SUFFIX carries enough signal: strip
+	// the leading dynamic prefix, then fuzzy-match the suffix against the
+	// backend endpoint set (reusing #2808's param/literal normalization via the
+	// byPath / case-norm / literal-fill stages).
+	//
+	// Scoring = suffix specificity × candidate uniqueness:
+	//   - exactly 1 verb-compatible producer candidate AND the suffix carries
+	//     ≥ dynamicSuffixMinStaticSegments static segments → high confidence,
+	//     auto-link with resolve_strategy = "dynamic_suffix_match".
+	//   - multiple candidates OR a short/generic suffix → DO NOT guess. The
+	//     consumer stays orphaned and is surfaced as a ranked residual by the
+	//     per-repo dynamic_baseurl_endpoint enrichment candidate (#708), which
+	//     archigraph-resolve consumes. We record the candidate set on the link-
+	//     pass telemetry (residual_candidates) so the resolve surface can show
+	//     candidate endpoints + confidence without re-deriving them.
+	//
+	// Genuinely-runtime values (e.g. `/{companyType}/{companyId}/branches/...`
+	// where companyType is chosen at render) leave a param-led suffix after the
+	// prefix strip; dynamicSuffixTemplate returns ok=false for those so they
+	// stay tagged data-flow-runtime (the dynamic_baseurl miss bucket) and are
+	// never force-linked. Running dead-last guarantees a consumer with any
+	// exact/normalized producer was already matched by an earlier stage.
+	for _, byRepo := range hits {
+		for _, perRepo := range byRepo {
+			for _, c := range perRepo {
+				if c.side != sideConsumer {
+					continue
+				}
+				cKey := entityKey(c.repo, c.stampedID)
+				if matchedConsumers[cKey] {
+					continue // resolved by an earlier stage
+				}
+				consumerPath := c.canonicalPath
+				if consumerPath == "" {
+					if _, p, ok := parseHTTPName(c.name); ok {
+						consumerPath = p
+					}
+				}
+				suffixKey, leadingStatic, ok := dynamicSuffixTemplate(consumerPath)
+				if !ok {
+					continue // not a static-suffix-resolvable dynamic baseURL
+				}
+				allConsumers[cKey] = true
+
+				// Probe the byPath index for the suffix and its well-known
+				// API/version-prefixed variants, restricted to verb-compatible
+				// producers in OTHER repos. The prefixed probes let a bare
+				// suffix `/schedule/import` find a producer mounted at
+				// `/api/v1/schedule/import`.
+				probeKeys := []string{suffixKey}
+				if _, hasPfx := stripAPIPrefix(suffixKey); !hasPfx {
+					for _, pfx := range crossRepoPrefixCandidates {
+						probeKeys = append(probeKeys, normalizePathForIndex(pfx+suffixKey))
+					}
+				}
+				var candidates []*httpEndpointHit
+				seenCand := map[string]bool{}
+				for _, pk := range probeKeys {
+					for _, ph := range byPath[pk] {
+						if ph.side != sideProducer || ph.repo == c.repo {
+							continue
+						}
+						if !verbsCompatible(c.verb, ph.verb) {
+							continue
+						}
+						pid := entityKey(ph.repo, ph.stampedID)
+						if seenCand[pid] {
+							continue
+						}
+						seenCand[pid] = true
+						candidates = append(candidates, ph)
+					}
+				}
+				if len(candidates) == 0 {
+					// Specific suffix but no producer serves it — leave as a
+					// dynamic_baseurl miss (data-flow-runtime / external). The
+					// classification loop below counts it via classifyOrphanReason.
+					continue
+				}
+				sort.SliceStable(candidates, func(i, j int) bool { return less(candidates[i], candidates[j]) })
+
+				// Specificity × uniqueness gate. Auto-link only when exactly one
+				// candidate AND the suffix is specific enough. Otherwise emit a
+				// ranked residual for archigraph-resolve and stop (no edge).
+				if len(candidates) != 1 || leadingStatic < dynamicSuffixMinStaticSegments {
+					residualCandidates += len(candidates)
+					missesByReason["dynamic_baseurl"]++
+					dynamicSuffixCounted[cKey] = true
+					continue
+				}
+
+				p := candidates[0]
+				srcID := c.callerID
+				if srcID == "" {
+					srcID = c.stampedID
+				}
+				tgtID := p.handlerID
+				if tgtID == "" {
+					tgtID = p.stampedID
+				}
+				source := entityKey(c.repo, srcID)
+				target := entityKey(p.repo, tgtID)
+				id := MakeID(source, target, MethodHTTP)
+				if emitted[id] {
+					matchedConsumers[cKey] = true
+					continue
+				}
+				emitted[id] = true
+				matchedConsumers[cKey] = true
+				hitsByStrategy["dynamic_suffix_match"]++
+				ident := canonicalIdentifier(c, p)
+				ch := httpChannel
+				link := Link{
+					ID:           id,
+					Source:       source,
+					Target:       target,
+					Relation:     RelationCalls,
+					Method:       MethodHTTP,
+					Confidence:   ScoreImport(),
+					Channel:      &ch,
+					Identifier:   &ident,
+					DiscoveredAt: now,
+					SourceLocations: [][]string{
+						{c.sourceFile},
+						{p.sourceFile},
+					},
+					MatchQuality: matchQualityAnyFallback,
+					Properties: map[string]string{
+						"resolve_strategy":  "dynamic_suffix_match",
+						"dynamic_suffix":    suffixKey,
+						"dynamic_prefix":    "stripped",
+						"suffix_static_seg": strconv.Itoa(leadingStatic),
+					},
+				}
+				fresh = append(fresh, link)
+			}
+		}
+	}
+
 	// #2669: classify every unmatched consumer hit by likely miss reason.
 	// We re-walk allConsumers (set in both the main loop and the retry sweep)
 	// and exclude matchedConsumers to find the residual orphans.
+	//
+	// #2813: dynamic-baseurl consumers that the static-suffix sweep already
+	// classified (ranked residual or no producer) are NOT re-counted here —
+	// the suffix sweep incremented missesByReason["dynamic_baseurl"] for the
+	// ranked-residual sub-case directly. We guard with dynamicSuffixCounted so
+	// classifyOrphanReason does not double-count them.
 	for _, byRepo := range hits {
 		for _, perRepo := range byRepo {
 			for _, c := range perRepo {
@@ -1885,6 +2130,9 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				}
 				cKey := entityKey(c.repo, c.stampedID)
 				if !allConsumers[cKey] || matchedConsumers[cKey] {
+					continue
+				}
+				if dynamicSuffixCounted[cKey] {
 					continue
 				}
 				consumerPath := c.canonicalPath
@@ -1929,6 +2177,8 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	if len(missesByReason) > 0 {
 		res.CrossRepoResolveMissesByReason = missesByReason
 	}
+	// #2813: surface the ranked-residual candidate count for the resolve surface.
+	res.ResidualCandidates = residualCandidates
 
 	// Diagnostic logging: #2558 tracking of empty canonicalPath handling.
 	// These counters help identify if the fallback path resolution is covering

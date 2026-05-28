@@ -3345,3 +3345,225 @@ func TestClassifyOrphanReason(t *testing.T) {
 		}
 	}
 }
+
+// TestDynamicSuffixTemplate is the unit table for the #2813 suffix extractor:
+// it must strip leading dynamic-prefix segments, keep a static suffix when one
+// exists, and refuse (ok=false) param-led or prefix-free paths.
+func TestDynamicSuffixTemplate(t *testing.T) {
+	cases := []struct {
+		path          string
+		wantSuffix    string
+		wantStatic    int
+		wantOK        bool
+	}{
+		// Clean env/prop-drilled base + 2-static suffix → resolvable.
+		{"/{apiUrl}/schedule/import", "/schedule/import", 2, true},
+		{"/${baseURL}/schedule/import", "/schedule/import", 2, true},
+		// Trailing param after a 2-static prefix is fine — leadingStatic counts
+		// only the leading run, which is what the specificity gate checks.
+		{"/{apiUrl}/schedule/confirm/{token}", "/schedule/confirm/{*}", 2, true},
+		// One static segment → still ok=true (the gate, not the extractor,
+		// decides it is too generic to auto-link).
+		{"/{apiUrl}/list", "/list", 1, true},
+		// Genuinely-runtime: after stripping ONE dynamic prefix the suffix is
+		// STILL param-led (companyType is render-chosen). Must be ok=false.
+		{"/{companyType}/{companyId}/branches/{branchId}", "", 0, false},
+		{"/{param}/{companyId}/activity", "", 0, false},
+		// No dynamic prefix at all → not our job.
+		{"/schedule/import", "", 0, false},
+		{"/api/v1/items", "", 0, false},
+		{"", "", 0, false},
+	}
+	for _, tc := range cases {
+		gotSuffix, gotStatic, gotOK := dynamicSuffixTemplate(tc.path)
+		if gotOK != tc.wantOK {
+			t.Errorf("dynamicSuffixTemplate(%q) ok = %v, want %v", tc.path, gotOK, tc.wantOK)
+			continue
+		}
+		if !tc.wantOK {
+			continue
+		}
+		if gotSuffix != tc.wantSuffix || gotStatic != tc.wantStatic {
+			t.Errorf("dynamicSuffixTemplate(%q) = (%q, %d), want (%q, %d)",
+				tc.path, gotSuffix, gotStatic, tc.wantSuffix, tc.wantStatic)
+		}
+	}
+}
+
+// TestHTTPPass_DynamicSuffix_AutoLink verifies the PRIMARY #2813 strategy: a
+// dynamic-baseURL consumer (`${apiUrl}/schedule/import`) whose static suffix
+// uniquely + specifically (2+ static segments) matches a backend producer is
+// auto-linked with resolve_strategy="dynamic_suffix_match".
+func TestHTTPPass_DynamicSuffix_AutoLink(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "ScheduleViewSet", "kind": "Controller", "source_file": "core/views/schedule_viewset.py"},
+			{
+				"id": "ep1", "name": "http:POST:/api/v1/schedule/import", "kind": "http_endpoint",
+				"source_file": "core/views/schedule_viewset.py",
+				"properties": map[string]any{
+					"verb":         "POST",
+					"path":         "/api/v1/schedule/import",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"}},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "importSchedule", "kind": "Function", "source_file": "src/stores/schedule/scheduleServiceV2.js"},
+			{
+				"id": "ep2", "name": "http:POST:/{apiUrl}/schedule/import", "kind": "http_endpoint",
+				"source_file": "src/stores/schedule/scheduleServiceV2.js",
+				"properties": map[string]any{
+					"verb":            "POST",
+					"path":            "/{apiUrl}/schedule/import",
+					"framework":       "axios",
+					"pattern_type":    "http_endpoint_client_synthesis",
+					"url_kind":        "dynamic_baseurl",
+					"dynamic_baseurl": "true",
+					"source_caller":   "Function:importSchedule",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2813-auto", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2813-auto-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hit *Link
+	for i, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			hit = &doc.Links[i]
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatalf("#2813: expected dynamic_suffix_match link frontend::fn1 → backend::h1; got %+v", doc.Links)
+	}
+	if hit.Properties["resolve_strategy"] != "dynamic_suffix_match" {
+		t.Errorf("resolve_strategy: want dynamic_suffix_match, got %q", hit.Properties["resolve_strategy"])
+	}
+	if hit.Properties["dynamic_suffix"] != "/schedule/import" {
+		t.Errorf("dynamic_suffix: want /schedule/import, got %q", hit.Properties["dynamic_suffix"])
+	}
+}
+
+// TestHTTPPass_DynamicSuffix_AmbiguousStaysResidual verifies that when a
+// dynamic-baseURL suffix matches MORE THAN ONE producer it is NOT auto-linked
+// (no phantom edge); the consumer stays orphaned and is counted as a
+// dynamic_baseurl miss with the candidate count surfaced via residual_candidates.
+func TestHTTPPass_DynamicSuffix_AmbiguousStaysResidual(t *testing.T) {
+	root := fixtureRoot(t)
+	// Two backend repos both serve /reports/export → ambiguous.
+	for _, repo := range []string{"backend-a", "backend-b"} {
+		writeFixture(t, root, fixtureGraph{
+			Repo: repo,
+			Entities: []map[string]any{
+				{"id": "h_" + repo, "name": "RepView_" + repo, "kind": "Controller", "source_file": "v.py"},
+				{
+					"id": "ep_" + repo, "name": "http:GET:/api/v1/reports/export", "kind": "http_endpoint",
+					"source_file": "v.py",
+					"properties": map[string]any{
+						"verb": "GET", "path": "/api/v1/reports/export",
+						"framework": "django", "pattern_type": "http_endpoint_synthesis",
+					},
+				},
+			},
+			Edges: []map[string]string{{"from_id": "h_" + repo, "to_id": "ep_" + repo, "kind": "IMPLEMENTS"}},
+		})
+	}
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "exportReports", "kind": "Function", "source_file": "src/r.js"},
+			{
+				"id": "ep2", "name": "http:GET:/{apiUrl}/reports/export", "kind": "http_endpoint",
+				"source_file": "src/r.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/{apiUrl}/reports/export",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"url_kind": "dynamic_baseurl", "dynamic_baseurl": "true",
+					"source_caller": "Function:exportReports",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2813-ambig", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2813-ambig-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" {
+			t.Errorf("#2813: ambiguous suffix must NOT auto-link, got phantom edge %+v", l)
+		}
+	}
+}
+
+// TestHTTPPass_DynamicSuffix_RuntimeStaysUnlinked verifies a genuinely-runtime
+// base (`/{companyType}/{companyId}/branches/...`, companyType chosen at
+// render) is never force-linked even when a producer-ish path exists — the
+// param-led suffix makes dynamicSuffixTemplate return ok=false.
+func TestHTTPPass_DynamicSuffix_RuntimeStaysUnlinked(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "BranchView", "kind": "Controller", "source_file": "v.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/{companyId}/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "v.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/{companyId}/branches/{branchId}",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"}},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getBranch", "kind": "Function", "source_file": "src/b.js"},
+			{
+				"id": "ep2", "name": "http:GET:/{companyType}/{companyId}/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "src/b.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/{companyType}/{companyId}/branches/{branchId}",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"url_kind": "dynamic_baseurl", "dynamic_baseurl": "true",
+					"source_caller": "Function:getBranch",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g2813-runtime", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g2813-runtime-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" {
+			t.Errorf("#2813: render-time companyType base must stay unlinked, got %+v", l)
+		}
+	}
+}
