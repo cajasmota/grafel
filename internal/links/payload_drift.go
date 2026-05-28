@@ -53,6 +53,68 @@ const MethodPayloadDrift = "payload_drift"
 // effect-propagation pass's convention.
 const driftSidecarSuffix = "-payload-drift.json"
 
+// DriftClass classifies a finding as an envelope-level mismatch vs a
+// true domain-field mismatch. See issue #2809.
+//
+//   - envelope: ALL the missing/extra fields are known DRF/standard
+//     response-envelope keys (success, message, error, errors, payload,
+//     status, data, count, results, detail). These are technically true
+//     drift but are noise on every DRF endpoint because the consumer
+//     reads .data and never destructures the outer wrapper.
+//
+//   - schema: at least one missing/extra field is NOT an envelope key.
+//     These are actionable domain-field mismatches.
+//
+// Mixed findings (some envelope + some domain fields) are classified
+// schema because the domain component dominates actionability.
+type DriftClass string
+
+const (
+	// DriftClassSchema — one or more non-envelope fields diverge. This
+	// is the actionable class that surfaces first in tool output.
+	DriftClassSchema DriftClass = "schema"
+
+	// DriftClassEnvelope — all diverging fields are standard
+	// response-envelope keys. Technically true but typically noise on
+	// DRF backends; surfaced last / collapsible.
+	DriftClassEnvelope DriftClass = "envelope"
+)
+
+// envelopeKeys is the configurable set of standard response-envelope
+// field names (case-normalised). A finding is classified envelope only
+// when EVERY diverging field normalises to one of these keys.
+var envelopeKeys = map[string]struct{}{
+	"success": {}, "message": {}, "error": {}, "errors": {},
+	"payload": {}, "status": {}, "data": {}, "count": {},
+	"results": {}, "detail": {},
+}
+
+// classifyDrift returns DriftClassEnvelope when every entry in
+// missingInProducer and missingInConsumer is an envelope key;
+// otherwise DriftClassSchema.
+func classifyDrift(missingInProducer, missingInConsumer []string) DriftClass {
+	all := append(missingInProducer, missingInConsumer...) //nolint:gocritic
+	if len(all) == 0 {
+		// No diverging fields at all — treat as schema (shouldn't
+		// normally reach classification with no fields, but be safe).
+		return DriftClassSchema
+	}
+	for _, f := range all {
+		k := strings.ToLower(strings.ReplaceAll(f, "_", ""))
+		// Normalise: strip underscores and lowercase, then check.
+		// Also try the raw lower-cased form for hyphenated names.
+		norm := strings.ToLower(f)
+		if _, ok := envelopeKeys[norm]; ok {
+			continue
+		}
+		if _, ok := envelopeKeys[k]; ok {
+			continue
+		}
+		return DriftClassSchema
+	}
+	return DriftClassEnvelope
+}
+
 // DriftSeverity classifies a finding for sort ordering in the MCP
 // tool. Higher severity surfaces first.
 type DriftSeverity string
@@ -95,6 +157,7 @@ type SchemaDrift struct {
 	MissingInProducer  []string      `json:"missing_in_producer,omitempty"`
 	MissingInConsumer  []string      `json:"missing_in_consumer,omitempty"`
 	Severity           DriftSeverity `json:"severity"`
+	DriftClass         DriftClass    `json:"drift_class"`
 	Confidence         float64       `json:"confidence"`
 	ProducerConfidence float64       `json:"producer_confidence,omitempty"`
 	ConsumerConfidence float64       `json:"consumer_confidence,omitempty"`
@@ -103,11 +166,13 @@ type SchemaDrift struct {
 
 // payloadDriftDocument is the on-disk shape of the sidecar JSON.
 type payloadDriftDocument struct {
-	Version int           `json:"version"`
-	Method  string        `json:"method"`
-	Group   string        `json:"group"`
-	Total   int           `json:"total"`
-	Findings []SchemaDrift `json:"findings"`
+	Version        int           `json:"version"`
+	Method         string        `json:"method"`
+	Group          string        `json:"group"`
+	Total          int           `json:"total"`
+	SchemaCount    int           `json:"schema_count"`
+	EnvelopeCount  int           `json:"envelope_count"`
+	Findings       []SchemaDrift `json:"findings"`
 }
 
 // shapeKey identifies one shape bucket — the unique attribution of a
@@ -211,8 +276,12 @@ func runPayloadDriftPass(group string, graphs []repoGraph, paths Paths) (PassRes
 		}
 	}
 
-	// Sort: severity desc, then endpoint name, then direction.
+	// Sort: drift_class (schema first), then severity desc, then endpoint name, then direction.
 	sort.SliceStable(findings, func(i, j int) bool {
+		ci, cj := driftClassRank(findings[i].DriftClass), driftClassRank(findings[j].DriftClass)
+		if ci != cj {
+			return ci > cj
+		}
 		si, sj := severityRank(findings[i].Severity), severityRank(findings[j].Severity)
 		if si != sj {
 			return si > sj
@@ -223,12 +292,23 @@ func runPayloadDriftPass(group string, graphs []repoGraph, paths Paths) (PassRes
 		return findings[i].Direction < findings[j].Direction
 	})
 
+	schemaCount, envelopeCount := 0, 0
+	for _, f := range findings {
+		if f.DriftClass == DriftClassEnvelope {
+			envelopeCount++
+		} else {
+			schemaCount++
+		}
+	}
+
 	doc := payloadDriftDocument{
-		Version:  1,
-		Method:   MethodPayloadDrift,
-		Group:    group,
-		Total:    len(findings),
-		Findings: findings,
+		Version:       1,
+		Method:        MethodPayloadDrift,
+		Group:         group,
+		Total:         len(findings),
+		SchemaCount:   schemaCount,
+		EnvelopeCount: envelopeCount,
+		Findings:      findings,
 	}
 	if err := writeDriftSidecar(paths, doc); err != nil {
 		return res, err
@@ -526,6 +606,7 @@ func buildDriftFinding(
 		ProducerEntity:   producerEntity,
 		ConsumerEntity:   consumerEntity,
 		Severity:         severity,
+		DriftClass:       classifyDrift(missingInProducer, missingInConsumer),
 		MissingInProducer: missingInProducer,
 		MissingInConsumer: missingInConsumer,
 	}
@@ -646,6 +727,18 @@ func severityRank(s DriftSeverity) int {
 	return 0
 }
 
+// driftClassRank returns the sort rank for DriftClass. Schema (actionable)
+// surfaces before envelope (noise), so schema=2, envelope=1.
+func driftClassRank(c DriftClass) int {
+	switch c {
+	case DriftClassSchema:
+		return 2
+	case DriftClassEnvelope:
+		return 1
+	}
+	return 0
+}
+
 // explainDrift returns a single-sentence human-facing summary of the
 // finding for the MCP tool to relay back to agents.
 func explainDrift(d SchemaDrift) string {
@@ -733,4 +826,46 @@ func LoadDriftFindings(paths Paths) ([]SchemaDrift, error) {
 // the two never disagree on the filename convention.
 func DriftSidecarPath(paths Paths) string {
 	return driftSidecarPath(paths)
+}
+
+// DriftDocument is the public projection of payloadDriftDocument
+// returned by LoadDriftDocument. It exposes the envelope/schema split
+// counts in addition to the findings slice so the MCP tool can
+// surface them without a second pass.
+type DriftDocument struct {
+	Version       int           `json:"version"`
+	Method        string        `json:"method"`
+	Group         string        `json:"group"`
+	Total         int           `json:"total"`
+	SchemaCount   int           `json:"schema_count"`
+	EnvelopeCount int           `json:"envelope_count"`
+	Findings      []SchemaDrift `json:"findings"`
+}
+
+// LoadDriftDocument reads the persisted findings sidecar and returns
+// the full document (including SchemaCount / EnvelopeCount). Returns
+// (nil, nil) when the file is missing so the MCP tool can gracefully
+// report the no-data case.
+func LoadDriftDocument(paths Paths) (*DriftDocument, error) {
+	path := driftSidecarPath(paths)
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var doc payloadDriftDocument
+	if err := json.Unmarshal(buf, &doc); err != nil {
+		return nil, err
+	}
+	return &DriftDocument{
+		Version:       doc.Version,
+		Method:        doc.Method,
+		Group:         doc.Group,
+		Total:         doc.Total,
+		SchemaCount:   doc.SchemaCount,
+		EnvelopeCount: doc.EnvelopeCount,
+		Findings:      doc.Findings,
+	}, nil
 }

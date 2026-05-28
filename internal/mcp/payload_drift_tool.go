@@ -3,29 +3,33 @@
 // Returns schema-drift findings produced by the generic drift
 // detector at internal/links/payload_drift.go. Schema:
 //
-//   {
-//     "group":   "<group>",
-//     "total":   <int>,
-//     "findings": [
-//       {
-//         "endpoint_id":         "<repo>::<id>",
-//         "endpoint_name":       "http:POST:/api/users",
-//         "direction":           "request" | "response",
-//         "producer_repo":       "<slug>",
-//         "consumer_repo":       "<slug>",
-//         "producer_function":   "create_user",
-//         "consumer_function":   "submitNewUserForm",
-//         "missing_in_producer": ["foo", "bar"],
-//         "missing_in_consumer": ["baz"],
-//         "severity":            "high" | "medium" | "low",
-//         "confidence":          0.0..1.0,
-//         "explanation":         "..."
-//       }
-//     ]
-//   }
+//	{
+//	  "group":          "<group>",
+//	  "total":          <int>,
+//	  "schema_count":   <int>,
+//	  "envelope_count": <int>,
+//	  "findings": [
+//	    {
+//	      "endpoint_id":         "<repo>::<id>",
+//	      "endpoint_name":       "http:POST:/api/users",
+//	      "direction":           "request" | "response",
+//	      "producer_repo":       "<slug>",
+//	      "consumer_repo":       "<slug>",
+//	      "producer_function":   "create_user",
+//	      "consumer_function":   "submitNewUserForm",
+//	      "missing_in_producer": ["foo", "bar"],
+//	      "missing_in_consumer": ["baz"],
+//	      "severity":            "high" | "medium" | "low",
+//	      "drift_class":         "schema" | "envelope",
+//	      "confidence":          0.0..1.0,
+//	      "explanation":         "..."
+//	    }
+//	  ]
+//	}
 //
-// Findings are sorted by severity (desc) then endpoint name (asc) then
-// direction (asc) — same order the pass emits them in.
+// Findings are sorted by drift_class (schema first), then severity
+// (desc), then endpoint name (asc), then direction (asc) — same order
+// the pass emits them in.
 //
 // Optional arguments:
 //   - severity: "high" | "medium" | "low" — return only findings at or
@@ -35,6 +39,8 @@
 //     canonicalised).
 //   - repo: substring match against producer_repo / consumer_repo to
 //     narrow to one side of the wire.
+//   - drift_class: "schema" | "envelope" — return only findings of
+//     this class. Default: "" (return all, schema first).
 //   - limit: max number of findings to return. Default: 50. Honours
 //     the #1639 token-ceiling pattern; clients can paginate by
 //     re-calling with a tighter severity/endpoint filter.
@@ -62,22 +68,26 @@ func (s *Server) handlePayloadDrift(_ context.Context, req mcpapi.CallToolReques
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
-	findings, err := links.LoadDriftFindings(paths)
+	doc, err := links.LoadDriftDocument(paths)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	if doc == nil {
+		return mcpapi.NewToolResultError("no payload_drift sidecar found — run the drift pass first"), nil
 	}
 
 	severityFloor := argString(req, "severity", "low")
 	endpointFilter := argString(req, "endpoint", "")
 	repoFilter := argString(req, "repo", "")
+	driftClassFilter := argString(req, "drift_class", "")
 	limit := argInt(req, "limit", 50)
 	if limit <= 0 {
 		limit = 50
 	}
 
 	floor := driftSeverityRank(severityFloor)
-	out := make([]map[string]any, 0, len(findings))
-	for _, f := range findings {
+	out := make([]map[string]any, 0, len(doc.Findings))
+	for _, f := range doc.Findings {
 		if driftSeverityRank(string(f.Severity)) < floor {
 			continue
 		}
@@ -89,6 +99,9 @@ func (s *Server) handlePayloadDrift(_ context.Context, req mcpapi.CallToolReques
 			!strings.Contains(f.ConsumerRepo, repoFilter) {
 			continue
 		}
+		if driftClassFilter != "" && string(f.DriftClass) != driftClassFilter {
+			continue
+		}
 		out = append(out, driftFindingToMap(f))
 		if len(out) >= limit {
 			break
@@ -96,11 +109,13 @@ func (s *Server) handlePayloadDrift(_ context.Context, req mcpapi.CallToolReques
 	}
 
 	return jsonResult(map[string]any{
-		"group":     group,
-		"total":     len(findings),
-		"returned":  len(out),
-		"sidecar":   links.DriftSidecarPath(paths),
-		"findings":  out,
+		"group":          group,
+		"total":          doc.Total,
+		"schema_count":   doc.SchemaCount,
+		"envelope_count": doc.EnvelopeCount,
+		"returned":       len(out),
+		"sidecar":        links.DriftSidecarPath(paths),
+		"findings":       out,
 	}), nil
 }
 
@@ -128,6 +143,7 @@ func driftFindingToMap(f links.SchemaDrift) map[string]any {
 		"endpoint_name": f.EndpointName,
 		"direction":     f.Direction,
 		"severity":      string(f.Severity),
+		"drift_class":   string(f.DriftClass),
 		"confidence":    f.Confidence,
 		"explanation":   f.Explanation,
 	}
