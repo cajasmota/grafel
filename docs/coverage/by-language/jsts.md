@@ -10,20 +10,20 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Validation | Middleware | Data | Substrate | Notes |
-|---|---|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | — 0/1 | ✅ 1/1 | ✅ 6/6 | |
+| Name | Routing | Security | Validation | Middleware | Observability | Data | Substrate | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Express](../detail/lang.jsts.framework.express.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | — 0/1 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
 
 
 ### UI Frontend

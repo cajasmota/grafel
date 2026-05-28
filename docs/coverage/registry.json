@@ -10493,6 +10493,13 @@
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/adonisjs_middleware.ts"]
           }
         },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/adonisjs.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
+          }
+        },
         "Data": {
           "db_effect": {
             "status": "full",
@@ -11026,6 +11033,13 @@
             "verified_at": "2026-05-28"
           }
         },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/express.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
+          }
+        },
         "Data": {
           "db_effect": {
             "status": "full",
@@ -11104,6 +11118,13 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/fastify_middleware.ts"]
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/fastify.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
           }
         },
         "Data": {
@@ -11186,6 +11207,13 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/feathers_middleware.ts"]
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/feathers.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
           }
         },
         "Data": {
@@ -11400,6 +11428,13 @@
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/hapi_middleware.ts"]
           }
         },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/hapi.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
+          }
+        },
         "Data": {
           "db_effect": {
             "status": "full",
@@ -11478,6 +11513,13 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/hono_middleware.ts"]
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/hono.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
           }
         },
         "Data": {
@@ -11672,6 +11714,13 @@
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/koa_middleware.ts"]
           }
         },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/koa.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
+          }
+        },
         "Data": {
           "db_effect": {
             "status": "full",
@@ -11782,6 +11831,13 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/marblejs_middleware.ts"]
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/marblejs.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
           }
         },
         "Data": {
@@ -11979,6 +12035,13 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/nestjs_middleware.ts"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Observability": {
+          "trace_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/nestjs.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
           }
         },
         "Data": {
@@ -12253,6 +12316,13 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/polka_middleware.ts"]
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/polka.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
           }
         },
         "Data": {
@@ -12846,6 +12916,13 @@
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/restify_middleware.ts"]
           }
         },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/restify.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
+          }
+        },
         "Data": {
           "db_effect": {
             "status": "full",
@@ -12927,6 +13004,13 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "Sails does not attach middleware to individual endpoints; its global middleware pipeline is the declarative `order` array under `middleware` in config/http.js. Covered by the framework_specific Middleware Pipeline / middleware_order_recognition cell (ParseSailsMiddlewareOrder)."
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_backend_observability/sails.ts","internal/patterns/observability_jsts_extractor.go"],
+            "issue": "2905"
           }
         },
         "Data": {

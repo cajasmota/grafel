@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 12
+- **Capability cells:** 13
 
 ## Capabilities
 
@@ -45,6 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
+| `log_extraction` | ✅ `full` | — | — | [link](2905) | `internal/extractors/javascript/testdata/substrate_backend_observability/express.ts`<br>`internal/patterns/observability_jsts_extractor.go` | — |
 
 ### Data
 

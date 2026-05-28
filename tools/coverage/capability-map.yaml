@@ -900,6 +900,16 @@ records:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
           verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
+          verified_at: "2026-05-29"
 
   lang.jsts.framework.nestjs:
     capabilities:
@@ -954,6 +964,16 @@ records:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
           verified_at: "2026-05-29"
+      Observability:
+        trace_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
+          verified_at: "2026-05-29"
 
   lang.jsts.framework.fastify:
     capabilities:
@@ -978,6 +998,16 @@ records:
           tests:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
+          verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
           verified_at: "2026-05-29"
 
   lang.jsts.framework.koa:
@@ -1004,6 +1034,16 @@ records:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
           verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
+          verified_at: "2026-05-29"
 
   lang.jsts.framework.hapi:
     capabilities:
@@ -1028,6 +1068,16 @@ records:
           tests:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
+          verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
           verified_at: "2026-05-29"
 
   lang.jsts.framework.adonisjs:
@@ -1054,6 +1104,16 @@ records:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
           verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
+          verified_at: "2026-05-29"
 
   lang.jsts.framework.feathers:
     capabilities:
@@ -1078,6 +1138,16 @@ records:
           tests:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
+          verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
           verified_at: "2026-05-29"
 
   lang.jsts.framework.hono:
@@ -1104,6 +1174,16 @@ records:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
           verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
+          verified_at: "2026-05-29"
 
   lang.jsts.framework.marblejs:
     capabilities:
@@ -1128,6 +1208,16 @@ records:
           tests:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
+          verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
           verified_at: "2026-05-29"
 
   lang.jsts.framework.polka:
@@ -1154,6 +1244,16 @@ records:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
           verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
+          verified_at: "2026-05-29"
 
   lang.jsts.framework.restify:
     capabilities:
@@ -1179,6 +1279,16 @@ records:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
           verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
+          verified_at: "2026-05-29"
 
   lang.jsts.framework.sails:
     capabilities:
@@ -1203,6 +1313,16 @@ records:
           tests:
             - file: internal/extractors/javascript/issue2904_validation_linkage_test.go
           issues_implemented: ["2904"]
+          verified_at: "2026-05-29"
+      Observability:
+        log_extraction:
+          status: full
+          symbols:
+            - file: internal/patterns/observability_jsts_extractor.go
+              functions: [Detect, AppliesTo, importToken]
+          tests:
+            - file: internal/patterns/observability_jsts_extractor_test.go
+          issues_implemented: ["2905"]
           verified_at: "2026-05-29"
 
   lang.jsts.framework.next-api:

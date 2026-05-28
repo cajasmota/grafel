@@ -104,6 +104,9 @@ subcategories:
       - module_cycle_detection
       - def_use_chain_extraction
       - template_pattern_catalog
+      - trace_extraction
+      - log_extraction
+      - metric_extraction
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction]
@@ -116,7 +119,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Observability
-        keys: []
+        keys: [trace_extraction, log_extraction, metric_extraction]
       - name: Data
         keys: [db_effect]
       - name: Substrate
