@@ -486,6 +486,16 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_effects", s.handleEffects))
 
+	// #2770 — Phase 2A payload-shape drift findings. Optional args
+	// (read off the request map, undeclared per #1639 token-ceiling
+	// pattern): severity (low|medium|high), endpoint substring, repo
+	// substring, limit.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_payload_drift",
+		mcpapi.WithDescription("Schema-drift findings on cross-repo HTTP endpoints (Phase 2A)."),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_payload_drift", s.handlePayloadDrift))
+
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_stats",
 		mcpapi.WithDescription("Corpus-level metrics. breakdown=unresolved_imports adds edge taxonomy."),
 		mcpapi.WithAny("group"),

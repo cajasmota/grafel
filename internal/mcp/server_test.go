@@ -583,6 +583,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_dead_code",
 		// #2764 Phase 1A effect classification surface
 		"archigraph_effects",
+		// #2770 Phase 2A payload-shape drift findings.
+		"archigraph_payload_drift",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -667,8 +669,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_navigates (#2658 NAVIGATES_TO Phase 2 query tool).
 	// +1 archigraph_dead_code (#2766 Phase 1B reachability + dead-code).
 	// +1 archigraph_effects (#2764 Phase 1A effect classification).
-	if got := len(allRegisteredTools); got != 47 {
-		t.Errorf("expected 47 registered tools, got %d — update this count if tools are added/removed (added archigraph_dead_code #2766 + archigraph_effects #2764)", got)
+	// +1 archigraph_payload_drift (#2770 Phase 2A drift findings).
+	if got := len(allRegisteredTools); got != 48 {
+		t.Errorf("expected 48 registered tools, got %d — update this count if tools are added/removed (added archigraph_dead_code #2766 + archigraph_effects #2764 + archigraph_payload_drift #2770)", got)
 	}
 }
 
@@ -3169,6 +3172,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_dead_code": {"group": "g"},
 		// #2764 Phase 1A effect classification — entity_id required.
 		"archigraph_effects": {"group": "g", "entity_id": "DashboardScreen"},
+		// #2770 Phase 2A payload-shape drift — no required args.
+		"archigraph_payload_drift": {"group": "g"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3213,8 +3218,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 47 {
-		t.Errorf("expected 47 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_dead_code #2766 + archigraph_effects #2764)", len(tools))
+	if len(tools) != 48 {
+		t.Errorf("expected 48 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_dead_code #2766 + archigraph_effects #2764 + archigraph_payload_drift #2770)", len(tools))
 	}
 
 	for _, st := range tools {

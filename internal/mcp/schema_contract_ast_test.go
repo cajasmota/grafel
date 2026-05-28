@@ -159,6 +159,12 @@ var intentionalGaps = []intentionalGap{
 	{"archigraph_license_audit", "include_transitive", "#2427 token ceiling pattern — optional transitive flag"},
 	{"archigraph_license_audit", "severity", "#2427 token ceiling pattern — optional severity filter"},
 	{"archigraph_license_audit", "limit", "#2427 token ceiling pattern — optional result limit"},
+
+	// archigraph_payload_drift: optional filter args undeclared for token budget (#2770 / #1639 pattern).
+	{"archigraph_payload_drift", "severity", "#2770 token ceiling pattern — optional severity floor"},
+	{"archigraph_payload_drift", "endpoint", "#2770 token ceiling pattern — optional endpoint substring filter"},
+	{"archigraph_payload_drift", "repo", "#2770 token ceiling pattern — optional repo substring filter"},
+	{"archigraph_payload_drift", "limit", "#2770 token ceiling pattern — optional result limit"},
 }
 
 // handlerToTool and dispatchTree have been REMOVED.
