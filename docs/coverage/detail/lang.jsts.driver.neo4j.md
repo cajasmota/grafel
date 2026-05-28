@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `migration_parsing` | — `not_applicable` | — | — | — | — | — |
 | `model_extraction` | — `not_applicable` | — | — | — | — | — |
-| `query_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/neo4j.yaml` | — |
+| `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts_drivers.go`<br>`internal/engine/orm_queries_jsts_drivers_test.go` | Includes Cypher node-label attribution: session.run('MATCH (n:Label) ...') resolves the graph node label as the queried resource and maps MATCH/CREATE/MERGE/SET/DELETE clauses to canonical operations. |
 
 ## Provenance
 
