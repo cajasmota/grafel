@@ -52,7 +52,35 @@ var (
 	reNuxtRouteRules    = regexp.MustCompile(`\b(routeRules|defineRouteRules)\b`)
 	// `ssr: false` in nuxt.config switches the app to client-only SPA build.
 	reNuxtSSRFalse = regexp.MustCompile(`\bssr\s*:\s*false\b`)
+
+	// Nuxt auto-import (issue #2878, nuxt_auto_import). Nuxt's build-time
+	// auto-import makes its composables, the Vue reactivity API, and `#imports`
+	// virtual-module helpers callable WITHOUT an explicit `import` statement — the
+	// idiom a plain AST import-graph misses. We detect a call to a known
+	// auto-imported helper that has no matching import in the file, and emit one
+	// auto_import marker naming the resolved source module.
+	reNuxtImportStmt    = regexp.MustCompile(`(?m)^\s*import\b`)
+	reNuxtImportsAlias  = regexp.MustCompile(`from\s+['"]#imports['"]`)
+	reNuxtAutoImportUse = regexp.MustCompile(`\b(useRoute|useRouter|useState|useRuntimeConfig|useNuxtApp|useRequestHeaders|useCookie|useHead|useSeoMeta|navigateTo|defineNuxtRouteMiddleware|definePageMeta)\s*\(`)
 )
+
+// nuxtAutoImportModule maps an auto-imported Nuxt helper to the virtual module
+// that provides it, so the emitted auto_import marker records the resolved
+// origin (what `#imports` / nuxt/dist would expose).
+var nuxtAutoImportModule = map[string]string{
+	"useRoute":                  "vue-router",
+	"useRouter":                 "vue-router",
+	"useState":                  "#app",
+	"useRuntimeConfig":          "#app",
+	"useNuxtApp":                "#app",
+	"useRequestHeaders":         "#app",
+	"useCookie":                 "#app",
+	"useHead":                   "@unhead/vue",
+	"useSeoMeta":                "@unhead/vue",
+	"navigateTo":                "#app",
+	"defineNuxtRouteMiddleware": "#app",
+	"definePageMeta":            "#app",
+}
 
 var (
 	nuxtServerDirs   = map[string]bool{"server/api": true, "server/routes": true}
@@ -91,6 +119,37 @@ func emitNuxtRouteParams(fp, routePath, filePath, language string, add func(type
 			"provenance", "INFERRED_FROM_NUXT_ROUTE_PARAM")
 		add(ent)
 	}
+}
+
+// nuxtImportsHelper reports whether src has an `import` statement that names the
+// given helper, so a normally-imported helper is not misclassified as an
+// auto-import. It scans each import line for the helper as a whole identifier.
+func nuxtImportsHelper(src, helper string) bool {
+	for _, line := range strings.Split(src, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "import") {
+			continue
+		}
+		if idx := strings.Index(trimmed, helper); idx >= 0 {
+			before := byte(' ')
+			if idx > 0 {
+				before = trimmed[idx-1]
+			}
+			after := byte(' ')
+			if end := idx + len(helper); end < len(trimmed) {
+				after = trimmed[end]
+			}
+			if !isIdentByte(before) && !isIdentByte(after) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isIdentByte reports whether b can be part of a JS identifier.
+func isIdentByte(b byte) bool {
+	return b == '_' || b == '$' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }
 
 func (e *nuxtExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
@@ -293,6 +352,48 @@ func (e *nuxtExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 		setProps(&cb, "framework", "nuxt", "hydration", "client",
 			"provenance", "INFERRED_FROM_NUXT_CLIENT_ONLY")
 		addEntity(cb)
+	}
+
+	// Nuxt server routes (issue #2878, nuxt_server_routes). Files under
+	// `server/api/**` and `server/routes/**` that export a `defineEventHandler`
+	// are Nitro server routes — Nuxt's file-system server-route convention. The
+	// directory chooses the mount prefix (`/api` vs root) and the `.<method>.ts`
+	// filename suffix the HTTP verb. This idiom is the server-routing convention
+	// itself (distinct from the generic endpoint node emitted above).
+	if isServerAPI && reNuxtHTTPHandler.MatchString(src) {
+		mount := "routes"
+		if strings.Contains(fp, "/server/api/") || strings.HasPrefix(fp, "server/api/") {
+			mount = "api"
+		}
+		sr := makeEntity("server_route:"+stem, "SCOPE.Pattern", "server_route", file.Path, file.Language, 1)
+		setProps(&sr, "framework", "nuxt", "mount", mount, "router", "file_system",
+			"provenance", "INFERRED_FROM_NUXT_SERVER_ROUTE_CONVENTION")
+		addEntity(sr)
+	}
+
+	// Nuxt auto-import (issue #2878, nuxt_auto_import). A call to a known
+	// auto-imported helper with NO `import` for it in the file is resolved by
+	// Nuxt's build-time auto-import. Emit one auto_import marker per distinct
+	// helper used, naming the virtual module that provides it, so the dependency
+	// a plain import-graph cannot see becomes a first-class node.
+	hasExplicitImport := reNuxtImportStmt.MatchString(src) || reNuxtImportsAlias.MatchString(src)
+	emittedAutoImport := make(map[string]bool)
+	for _, m := range reNuxtAutoImportUse.FindAllStringSubmatchIndex(src, -1) {
+		helper := src[m[2]:m[3]]
+		if emittedAutoImport[helper] {
+			continue
+		}
+		// If the file explicitly imports this exact helper, it is a normal import,
+		// not an auto-import — skip it.
+		if hasExplicitImport && nuxtImportsHelper(src, helper) {
+			continue
+		}
+		emittedAutoImport[helper] = true
+		ai := makeEntity("auto_import:"+helper, "SCOPE.Pattern", "auto_import", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ai, "framework", "nuxt", "helper", helper,
+			"source_module", nuxtAutoImportModule[helper], "resolution", "auto_import",
+			"provenance", "INFERRED_FROM_NUXT_AUTO_IMPORT")
+		addEntity(ai)
 	}
 
 	// Static generation (issue #2858): prerender route rules / SPA mode.

@@ -75,8 +75,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `middleware_runtime_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
-| `next_config_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
+| `middleware_runtime_detection` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nextjs.go` | — |
+| `next_config_detection` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nextjs.go` | — |
+| `server_actions` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nextjs.go` | — |
+| `use_client_server_directive` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/metafw_server.go`<br>`internal/custom/javascript/nextjs.go` | — |
 
 ## Provenance
 

@@ -34,7 +34,7 @@ var (
 		`export\s+(?:async\s+)?(?:const\s+load|function\s+load)\b`,
 	)
 	reSvelteFormActions = regexp.MustCompile(
-		`export\s+const\s+actions\s*=`,
+		`export\s+const\s+actions\s*(?::\s*[A-Za-z_$][\w.$<>\[\] ]*)?=`,
 	)
 	reSvelteHTTPHandler = regexp.MustCompile(
 		`export\s+(?:async\s+)?function\s+(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(`,
@@ -198,7 +198,9 @@ func (e *svelteExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 	}
 	// Strip file suffixes
 	for _, suffix := range []string{"/+page.svelte", "/+layout.svelte", "/+error.svelte",
-		"/+server.ts", "/+server.js", "/+page.server.ts", "/+page.server.js"} {
+		"/+server.ts", "/+server.js", "/+page.server.ts", "/+page.server.js",
+		"/+page.ts", "/+page.js", "/+layout.server.ts", "/+layout.server.js",
+		"/+layout.ts", "/+layout.js"} {
 		routePath = strings.TrimSuffix(routePath, suffix)
 	}
 	if ext2 := filepath.Ext(routePath); ext2 != "" {

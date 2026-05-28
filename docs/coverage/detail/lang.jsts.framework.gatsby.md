@@ -69,6 +69,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 
+## Framework-specific
+
+### Gatsby Internals
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `gatsby_graphql_pagequery` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/custom/javascript/gatsby.go`<br>`internal/custom/javascript/issue2878_metafw_idioms_test.go` | — |
+
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON

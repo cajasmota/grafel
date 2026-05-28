@@ -10827,6 +10827,22 @@
             "verified_at": "2026-05-28"
           }
         }
+      },
+      "framework_specific": {
+        "Astro Internals": {
+          "astro_frontmatter_fetch": {
+            "status": "full",
+            "cites": ["internal/extractors/astro/extractor.go","internal/extractors/astro/issue2878_idioms_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
+          },
+          "astro_island_directive": {
+            "status": "full",
+            "cites": ["internal/extractors/astro/extractor.go","internal/extractors/astro/issue2878_idioms_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
+          }
+        }
       }
     },
     {
@@ -11347,6 +11363,16 @@
             "status": "full",
             "cites": ["internal/extractors/javascript/tests.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      },
+      "framework_specific": {
+        "Gatsby Internals": {
+          "gatsby_graphql_pagequery": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/gatsby.go","internal/custom/javascript/issue2878_metafw_idioms_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -12179,12 +12205,28 @@
       "framework_specific": {
         "Next.js Internals": {
           "middleware_runtime_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
           },
           "next_config_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
+          },
+          "server_actions": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
+          },
+          "use_client_server_directive": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/metafw_server.go","internal/custom/javascript/nextjs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -12273,6 +12315,22 @@
             "status": "full",
             "cites": ["internal/extractors/javascript/tests.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      },
+      "framework_specific": {
+        "Nuxt Internals": {
+          "nuxt_auto_import": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/nuxt.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
+          },
+          "nuxt_server_routes": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/nuxt.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -12901,6 +12959,16 @@
             "verified_at": "2026-05-28"
           }
         }
+      },
+      "framework_specific": {
+        "Remix Internals": {
+          "remix_loader_action_pair": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/remix.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
+          }
+        }
       }
     },
     {
@@ -13387,6 +13455,22 @@
             "status": "full",
             "cites": ["internal/links/taint_flow.go","internal/substrate/substrate.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_sveltekit/+page.server.ts"],
             "verified_at": "2026-05-28"
+          }
+        }
+      },
+      "framework_specific": {
+        "SvelteKit Internals": {
+          "sveltekit_form_actions": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/svelte.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
+          },
+          "sveltekit_load_function": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/svelte.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2878",
+            "verified_at": "2026-05-29"
           }
         }
       }

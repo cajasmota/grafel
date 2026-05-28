@@ -69,6 +69,15 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 
+## Framework-specific
+
+### Nuxt Internals
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `nuxt_auto_import` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nuxt.go` | — |
+| `nuxt_server_routes` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nuxt.go` | — |
+
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
