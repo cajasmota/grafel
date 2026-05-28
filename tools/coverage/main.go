@@ -240,11 +240,19 @@ func cmdUpdate(args []string, out io.Writer) error {
 	} else if !validCapabilityKey(rec.Category, *cap) {
 		return fmt.Errorf("update: capability %q not valid for category %q", *cap, rec.Category)
 	}
-	// Route the write to the right shape. Grouped records auto-place
-	// the cell into its canonical group (per subcategoryGroups); keys
-	// outside the taxonomy fall into the synthetic Uncategorized
-	// group so we never lose data.
-	if rec.IsGrouped() {
+	// Route the write to the right shape. The routing decision is made
+	// by whether the record's SUBCATEGORY declares a group taxonomy
+	// (dictionary lookup), NOT by the record's current IsGrouped() state.
+	// A freshly `add`-ed record has an empty flat capabilities map and
+	// IsGrouped()==false, but if its subcategory has a group taxonomy
+	// the cell must be placed into the canonical group so the record
+	// is valid after the first `update`. Records with no subcategory or
+	// a subcategory without a taxonomy fall through to the flat path.
+	subcatHasGroups := rec.Subcategory != "" && len(groupsForSubcategory(rec.Subcategory)) > 0
+	if subcatHasGroups {
+		if rec.Groups == nil {
+			rec.Groups = map[string]map[string]Capability{}
+		}
 		group := groupForCapability(rec.Subcategory, *cap)
 		if group == "" {
 			group = uncategorizedGroup
