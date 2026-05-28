@@ -357,6 +357,20 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, dfRels...)
 		entities = append(entities, dfEntities...)
 
+		// 3c-iii-b. Cross-framework TanStack Query + Redux/RTK (#2910).
+		// @tanstack/vue-query (useQuery/useMutation/useInfiniteQuery) and
+		// framework-agnostic Redux Toolkit (configureStore/createSlice/createApi/
+		// createAsyncThunk) used inside a Vue component are decorated as
+		// SCOPE.Operation entities with CONTAINS edges. Reuses the shared detector
+		// (internal/extractor/cross_framework_query.go) rather than the React-only
+		// AST pass. No-op unless a TanStack/Redux package is imported.
+		cfHits := extractor.DetectCrossFrameworkQuery(scriptSrc)
+		cfEnts, cfRels := extractor.BuildCrossFrameworkQueryEntities(cfHits, "vue", file.Path, componentName, func(off int) int {
+			return lineOf(src, scriptOffset+off)
+		})
+		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, cfRels...)
+		entities = append(entities, cfEnts...)
+
 		// 3c-iv. Navigation (#2856) — vue-router route table (createRouter)
 		// and imperative router.push/replace. Both emit NAVIGATES_TO edges
 		// on the component entity.

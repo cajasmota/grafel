@@ -10713,6 +10713,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2847",
             "notes": "AUDIT(#2847) NEW idiom cell: @Injectable -\u003e angular_service subtype. Verified on angular-realworld (angular_service x6).",
             "verified_at": "2026-05-28"
+          },
+          "tanstack_query_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2910_angular_tanstack_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/angular_internals/tanstack_query.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2910",
+            "notes": "Cross-framework reuse of the React-ecosystem TanStack Query detector (#2907) for Angular: the @tanstack/angular-query-experimental adapter (injectQuery/injectMutation/injectInfiniteQuery/injectQueries) inside an Angular class body is decorated SCOPE.Operation subtype=tanstack_query (query_kind + query_call stamped, via=tanstack_query) with a CONTAINS edge from the component class. Angular .ts is parsed by the javascript tree-sitter extractor, so this lives in react_ecosystem.go (isTanstackQueryPkg extended to match the angular-query-experimental adapter) wired into angular.go. NgRx (Angular's own store) and RTK/RTK-Query are already covered (angular.go state_management + the framework-agnostic react_ecosystem.go createApi/configureStore AST pass that fires on any .ts importing @reduxjs/toolkit). Decorate-only (#2839).",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -13342,6 +13349,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2877",
             "verified_at": "2026-05-28"
           },
+          "redux_store_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractor/cross_framework_query.go","internal/extractors/javascript/testdata/svelte_internals/CrossFrameworkQuery.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2910_cross_framework_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2910",
+            "notes": "Cross-framework reuse of the React-ecosystem Redux detector (#2907) for Svelte: framework-agnostic Redux Toolkit configureStore/createStore (redux_store), createSlice (redux_slice), createApi (rtk_query_api), createAsyncThunk, createEntityAdapter used in a Svelte component \u003cscript\u003e are decorated SCOPE.Operation (via=redux) with a CONTAINS edge. Shared detector in internal/extractor/cross_framework_query.go; gated on the @reduxjs/toolkit import. Partial: the regex SFC pass decorates the factory call site only (no per-reducer/per-endpoint decomposition like the React .tsx tree-sitter pass); Redux+RTK is React-dominant and rare in Svelte (svelte/store + runes dominate, covered by stores).",
+            "verified_at": "2026-05-29"
+          },
           "runes": {
             "status": "full",
             "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
@@ -13359,6 +13373,13 @@
             "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2877",
             "verified_at": "2026-05-28"
+          },
+          "tanstack_query_extraction": {
+            "status": "full",
+            "cites": ["internal/extractor/cross_framework_query.go","internal/extractors/javascript/testdata/svelte_internals/CrossFrameworkQuery.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2910_cross_framework_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2910",
+            "notes": "Cross-framework reuse of the React-ecosystem TanStack Query detector (#2907) for Svelte: @tanstack/svelte-query createQuery/createMutation/createInfiniteQuery/createQueries in a Svelte component \u003cscript\u003e are decorated SCOPE.Operation subtype=tanstack_query (query_kind + query_call stamped) with a CONTAINS edge from the component. Shared detector in internal/extractor/cross_framework_query.go (the Svelte create* names share one implementation with the Vue use* / Angular inject* shapes); gated on the @tanstack/*-query import. Decorate-only (#2839).",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -13700,6 +13721,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2876",
             "verified_at": "2026-05-28"
           },
+          "redux_store_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractor/cross_framework_query.go","internal/extractors/javascript/testdata/vue_internals/CrossFrameworkQuery.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2910_cross_framework_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2910",
+            "notes": "Cross-framework reuse of the React-ecosystem Redux detector (#2907) for Vue: framework-agnostic Redux Toolkit configureStore/createStore (redux_store), createSlice (redux_slice), createApi (rtk_query_api), createAsyncThunk (redux_async_thunk), createEntityAdapter used in a Vue SFC \u003cscript\u003e are decorated SCOPE.Operation (via=redux) with a CONTAINS edge from the component. Shared detector in internal/extractor/cross_framework_query.go; gated on the @reduxjs/toolkit import. Partial: the regex SFC pass decorates the factory call site only; it does not decompose slices into per-reducer operations / actions or RTK-Query apis into per-endpoint operations the way the React .tsx tree-sitter pass (react_ecosystem.go) does — Redux+RTK is a React-dominant idiom and rare in Vue (Pinia/Vuex dominate, covered by pinia_store).",
+            "verified_at": "2026-05-29"
+          },
           "scoped_style_extraction": {
             "status": "not_applicable",
             "issue": "https://github.com/cajasmota/archigraph/issues/2876",
@@ -13716,6 +13744,13 @@
             "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2876",
             "verified_at": "2026-05-28"
+          },
+          "tanstack_query_extraction": {
+            "status": "full",
+            "cites": ["internal/extractor/cross_framework_query.go","internal/extractors/javascript/testdata/vue_internals/CrossFrameworkQuery.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2910_cross_framework_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2910",
+            "notes": "Cross-framework reuse of the React-ecosystem TanStack Query detector (#2907) for Vue: @tanstack/vue-query useQuery/useMutation/useInfiniteQuery/useQueries/useQueryClient composables in a Vue SFC \u003cscript\u003e are decorated SCOPE.Operation subtype=tanstack_query (query_kind + query_call stamped) with a CONTAINS edge from the component. Shared detector in internal/extractor/cross_framework_query.go; gated on the @tanstack/*-query import so a local useQuery is not mis-tagged. Decorate-only (#2839).",
+            "verified_at": "2026-05-29"
           }
         }
       }

@@ -223,6 +223,32 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		entities[0].Relationships = append(entities[0].Relationships, dfRels...)
 		entities = append(entities, dfEntities...)
 
+		// Cross-framework TanStack Query + Redux/RTK (#2910).
+		// @tanstack/svelte-query (createQuery/createMutation/createInfiniteQuery)
+		// and framework-agnostic Redux Toolkit (configureStore/createSlice/
+		// createApi/createAsyncThunk) used in a Svelte component are decorated as
+		// SCOPE.Operation entities. Reuses the shared detector
+		// (internal/extractor/cross_framework_query.go); no-op unless a
+		// TanStack/Redux package is imported.
+		cfHits := extractor.DetectCrossFrameworkQuery(scriptContent)
+		cfEnts, _ := extractor.BuildCrossFrameworkQueryEntities(cfHits, "svelte", file.Path, componentName, func(off int) int {
+			return scriptStartLine + strings.Count(scriptContent[:off], "\n")
+		})
+		for i := range cfEnts {
+			entities[0].Relationships = append(entities[0].Relationships, types.RelationshipRecord{
+				FromID: file.Path,
+				ToID:   cfEnts[i].Name,
+				Kind:   "CONTAINS",
+				Properties: map[string]string{
+					"component": componentName,
+					"framework": "svelte",
+					"subtype":   cfEnts[i].Subtype,
+					"via":       cfEnts[i].Properties["via"],
+				},
+			})
+		}
+		entities = append(entities, cfEnts...)
+
 		// Navigation (#2856): imperative svelte-routing navigate()/push().
 		navRels := extractScriptNavigation(scriptContent, scriptStartLine, file.Path, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, navRels...)

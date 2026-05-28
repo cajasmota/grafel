@@ -175,7 +175,10 @@ func isTanstackQueryPkg(p string) bool {
 	return p == "react-query" ||
 		p == "@tanstack/react-query" ||
 		(strings.HasPrefix(p, "@tanstack/") && strings.HasSuffix(p, "-query")) ||
-		strings.HasPrefix(p, "@tanstack/query")
+		strings.HasPrefix(p, "@tanstack/query") ||
+		// Angular adapter — @tanstack/angular-query-experimental (#2910). Does not
+		// end in "-query", so it needs its own prefix check.
+		strings.HasPrefix(p, "@tanstack/angular-query")
 }
 
 // atomStoreLibrary returns the canonical atom-store library name for an import
@@ -1123,6 +1126,104 @@ func (x *extractor) decorateReduxAsyncFlow(root *sitter.Node) {
 			scan(x.nodeText(nameNode), d, valNode.ChildByFieldName("body"))
 		}
 	}
+}
+
+// fileImportsTanstackAngular reports whether the TanStack Query Angular adapter
+// (@tanstack/angular-query-experimental) is imported in this file (#2910). The
+// Angular adapter is the only TanStack Query entry point whose call shapes are
+// inject* (injectQuery/injectMutation/injectInfiniteQuery) rather than the
+// React/Vue use* or Svelte create* names, and Angular .ts files are parsed by
+// this extractor — so it is detected here, alongside the React idioms, and
+// surfaced on the Angular class via angularTanstackQuery (angular.go).
+func (x *extractor) fileImportsTanstackAngular() bool {
+	for _, b := range x.importByLocal {
+		if b != nil && strings.HasPrefix(b.importPath, "@tanstack/angular-query") {
+			return true
+		}
+	}
+	return false
+}
+
+// angularTanstackInjectKind maps a TanStack Query Angular inject* call leaf to
+// its canonical query kind, or "" when the leaf is not a TanStack entry point.
+func angularTanstackInjectKind(leaf string) string {
+	switch leaf {
+	case "injectQuery":
+		return "query"
+	case "injectMutation":
+		return "mutation"
+	case "injectInfiniteQuery":
+		return "infinite_query"
+	case "injectQueries":
+		return "queries"
+	case "injectQueryClient":
+		return "query_client"
+	}
+	return ""
+}
+
+// angularTanstackQuery scans an Angular class body for TanStack Query Angular
+// adapter calls (injectQuery/injectMutation/injectInfiniteQuery/…) and emits one
+// decorated SCOPE.Operation subtype="tanstack_query" per call, plus a CONTAINS
+// edge from the component class (#2910). No-op unless
+// @tanstack/angular-query-experimental is imported. Decorate-only (#2839): the
+// SCOPE.Operation kind is reused, mirroring how angularDataFetching models
+// HttpClient call sites.
+func (x *extractor) angularTanstackQuery(body *sitter.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	if body == nil || !x.fileImportsTanstackAngular() {
+		return nil, nil
+	}
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, call := range findAllNodes(body, "call_expression") {
+		leaf := factoryLeaf(x, call)
+		kind := angularTanstackInjectKind(leaf)
+		if kind == "" {
+			continue
+		}
+		if seen[leaf] {
+			continue
+		}
+		seen[leaf] = true
+		start, end := lines(call)
+		name := "tanstack." + leaf
+		e := types.EntityRecord{
+			Name:          name,
+			QualifiedName: x.qualify(className + "." + name),
+			Kind:          "SCOPE.Operation",
+			SourceFile:    x.filePath,
+			StartLine:     start,
+			EndLine:       end,
+			Language:      x.language,
+			Subtype:       "tanstack_query",
+			Signature:     leaf + "(…)",
+			Properties: map[string]string{
+				"kind":       "SCOPE.Operation",
+				"subtype":    "tanstack_query",
+				"via":        propViaTanstackQuery,
+				"component":  className,
+				"query_kind": kind,
+				"query_call": leaf,
+				"framework":  "angular",
+			},
+			EnrichmentStatus: types.StatusPending,
+			QualityScore:     0.9,
+		}
+		e.ID = e.ComputeID()
+		ents = append(ents, e)
+		rels = append(rels, types.RelationshipRecord{
+			ToID: e.ID,
+			Kind: "CONTAINS",
+			Properties: map[string]string{
+				"component": className,
+				"subtype":   "tanstack_query",
+				"via":       propViaTanstackQuery,
+				"framework": "angular",
+			},
+		})
+	}
+	return ents, rels
 }
 
 // fileImportsReduxObservable reports whether redux-observable is imported.

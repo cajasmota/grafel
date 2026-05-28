@@ -212,6 +212,15 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 		// new Subject/BehaviorSubject construction (rxjs_pattern_detection).
 		rxjsEnts := x.angularRxjsPatterns(body, className)
 		dfEnts = append(dfEnts, rxjsEnts...)
+
+		// Cross-framework TanStack Query (issue #2910) — the Angular adapter
+		// (@tanstack/angular-query-experimental) injectQuery/injectMutation/
+		// injectInfiniteQuery calls inside the class body emit a decorated
+		// tanstack_query SCOPE.Operation + CONTAINS edge. No-op unless the
+		// adapter is imported.
+		tsqEnts, tsqRels := x.angularTanstackQuery(body, className)
+		dfEnts = append(dfEnts, tsqEnts...)
+		rels = append(rels, tsqRels...)
 	}
 
 	// Angular Internals (issue #2874) — class-based route guards / HTTP
