@@ -73,6 +73,26 @@ func normalizeNuxtPath(fp string) string {
 	return result
 }
 
+// emitNuxtRouteParams emits one route_param node per dynamic `[name]` (or
+// catch-all `[...name]`) segment in a Nuxt pages/ path. These are the declared
+// source of `useRoute().params.<name>` reads, so def-use / data-flow can resolve
+// the param's origin (router_pattern, issue #2880).
+func emitNuxtRouteParams(fp, routePath, filePath, language string, add func(types.EntityRecord)) {
+	for _, m := range reNuxtDynParam.FindAllStringSubmatch(fp, -1) {
+		inner := m[1]
+		catchAll := strings.HasPrefix(inner, "...")
+		name := strings.TrimPrefix(inner, "...")
+		if name == "" {
+			continue
+		}
+		ent := makeEntity("param:"+name, "SCOPE.Pattern", "route_param", filePath, language, 1)
+		setProps(&ent, "framework", "nuxt", "param_name", name, "route_path", routePath,
+			"source_segment", "["+inner+"]", "catch_all", fmt.Sprintf("%v", catchAll),
+			"provenance", "INFERRED_FROM_NUXT_ROUTE_PARAM")
+		add(ent)
+	}
+}
+
 func (e *nuxtExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/javascript")
 	_, span := tracer.Start(ctx, "indexer.nuxt_extractor.extract",
@@ -146,11 +166,15 @@ func (e *nuxtExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 		addEntity(ent)
 	}
 
-	// Pages → route endpoints
+	// Pages → route endpoints + page component (Structure/component_extraction +
+	// Routing/router_pattern, issue #2880). A `pages/**/*.vue` file is both a
+	// file-system route (the `pages/` convention) and a Vue SFC page component.
 	if isPagesFile {
 		routePath := normalizeNuxtPath(fp)
 		if idx := strings.Index(routePath, "/pages/"); idx >= 0 {
 			routePath = routePath[idx+6:]
+		} else if strings.HasPrefix(routePath, "pages/") {
+			routePath = routePath[len("pages"):]
 		}
 		if ext2 := filepath.Ext(routePath); ext2 != "" {
 			routePath = strings.TrimSuffix(routePath, ext2)
@@ -165,10 +189,39 @@ func (e *nuxtExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 		if !strings.HasPrefix(routePath, "/") {
 			routePath = "/" + routePath
 		}
+		// Routing/router_pattern: the route endpoint, tagged with the
+		// file-system router convention so route discovery is provable.
 		ent := makeEntity(routePath, "SCOPE.Operation", "endpoint", file.Path, file.Language, 1)
 		setProps(&ent, "framework", "nuxt", "route_path", routePath,
+			"router", "file_system",
 			"provenance", "INFERRED_FROM_NUXT_FILE_PATH")
 		addEntity(ent)
+
+		// Structure/component_extraction: the Vue SFC page component. Mirror the
+		// vue.go SFC model (is_setup / defineProps / defineEmits) and carry the
+		// route_path + router convention so the page node is both a component and
+		// a routable entity.
+		// Derive a clean component name from the filename, stripping dynamic
+		// `[param]` / catch-all `[...param]` bracket notation (e.g. `[id]` → `Id`).
+		cleanStem := strings.NewReplacer("[", "", "]", "", "...", "").Replace(stem)
+		compName := toPascalCase(cleanStem)
+		if nm := reVueDefineComponentName.FindStringSubmatch(src); nm != nil {
+			compName = nm[1]
+		}
+		comp := makeEntity(compName, "SCOPE.UIComponent", "page", file.Path, file.Language, 1)
+		setProps(&comp, "framework", "nuxt",
+			"is_setup", fmt.Sprintf("%v", reVueScriptSetupAttr.MatchString(src)),
+			"has_define_props", fmt.Sprintf("%v", reVueDefineProps.MatchString(src)),
+			"has_define_emits", fmt.Sprintf("%v", reVueDefineEmits.MatchString(src)),
+			"route_path", routePath, "router", "file_system",
+			"provenance", "INFERRED_FROM_NUXT_PAGE_COMPONENT")
+		addEntity(comp)
+
+		// Routing/router_pattern: a dedicated route-param node per dynamic
+		// `[name]` segment so def-use/data-flow can resolve the route's declared
+		// params as their source (the page's useAsyncData/useFetch read them via
+		// `useRoute().params`).
+		emitNuxtRouteParams(fp, routePath, file.Path, file.Language, addEntity)
 	}
 
 	// Composables (use*)

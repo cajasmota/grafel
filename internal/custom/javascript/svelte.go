@@ -41,6 +41,9 @@ var (
 	)
 	reSvelteDynParam  = regexp.MustCompile(`\[([^\]]+)\]`)
 	reSvelteGroupPath = regexp.MustCompile(`\([^)]+\)`)
+	// `params.<name>` access inside a load()/actions handler — a read of a route
+	// param whose declared source is the `[name]` route segment (issue #2880).
+	reSvelteParamsRead = regexp.MustCompile(`\bparams\.([A-Za-z_$][A-Za-z0-9_$]*)`)
 
 	// Static generation + render-mode page options (issue #2858). SvelteKit
 	// page-options exports select the render strategy per route:
@@ -65,6 +68,63 @@ func normalizeSveltePath(fp string) string {
 		result = strings.ReplaceAll(result, "//", "/")
 	}
 	return result
+}
+
+// svelteRouteParamNames returns the dynamic param names declared by a
+// SvelteKit route path, stripping the `...` rest prefix and SvelteKit matcher
+// suffixes (`[id=integer]` → `id`).
+func svelteRouteParamNames(fp string) []string {
+	var names []string
+	for _, m := range reSvelteDynParam.FindAllStringSubmatch(fp, -1) {
+		inner := strings.TrimPrefix(m[1], "...")
+		if eq := strings.IndexByte(inner, '='); eq >= 0 {
+			inner = inner[:eq] // drop `=matcher`
+		}
+		if inner != "" {
+			names = append(names, inner)
+		}
+	}
+	return names
+}
+
+// svelteRouteParamSet returns the declared route params as a lookup set.
+func svelteRouteParamSet(fp string) map[string]bool {
+	set := make(map[string]bool)
+	for _, n := range svelteRouteParamNames(fp) {
+		set[n] = true
+	}
+	return set
+}
+
+// emitSvelteRouteParams emits one route_param node per dynamic segment in a
+// SvelteKit route — the declared source for `params.<name>` reads.
+func emitSvelteRouteParams(fp, routePath, filePath, language string, add func(types.EntityRecord)) {
+	for _, m := range reSvelteDynParam.FindAllStringSubmatch(fp, -1) {
+		raw := m[1]
+		catchAll := strings.HasPrefix(raw, "...")
+		inner := strings.TrimPrefix(raw, "...")
+		if eq := strings.IndexByte(inner, '='); eq >= 0 {
+			inner = inner[:eq]
+		}
+		if inner == "" {
+			continue
+		}
+		ent := makeEntity("param:"+inner, "SCOPE.Pattern", "route_param", filePath, language, 1)
+		setProps(&ent, "framework", "svelte", "param_name", inner, "route_path", routePath,
+			"source_segment", "["+raw+"]", "catch_all", fmt.Sprintf("%v", catchAll),
+			"provenance", "INFERRED_FROM_SVELTEKIT_ROUTE_PARAM")
+		add(ent)
+	}
+}
+
+// contains reports whether s is present in xs.
+func contains(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 // toPascalCase converts kebab-case or underscore_case to PascalCase.
@@ -127,7 +187,10 @@ func (e *svelteExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		// Derive from directory name
 		stem = filepath.Base(filepath.Dir(fp))
 	}
-	compName := toPascalCase(stem)
+	// Strip dynamic `[param]` / matcher / catch-all bracket notation from the
+	// name (e.g. `[id]` → `Id`, `[page=integer]` → `PageInteger`).
+	cleanStem := strings.NewReplacer("[", "", "]", "", "...", "", "=", "_").Replace(stem)
+	compName := toPascalCase(cleanStem)
 
 	routePath := normalizeSveltePath(fp)
 	if idx := strings.Index(routePath, "/routes/"); idx >= 0 {
@@ -156,11 +219,21 @@ func (e *svelteExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		} else if strings.HasPrefix(base, "+page") {
 			subtype = "page"
 		}
+		// Structure/component_extraction + Routing/router_pattern (issue #2880):
+		// the Svelte SFC page/layout/error component, tagged with the derived
+		// route_path and the SvelteKit file-system router convention.
 		ent := makeEntity(compName, "SCOPE.UIComponent", subtype, file.Path, file.Language, 1)
 		setProps(&ent, "framework", "svelte", "route_path", routePath,
+			"router", "file_system",
 			"provenance", "INFERRED_FROM_SVELTE_COMPONENT")
 		addEntity(ent)
 	}
+
+	// Routing/router_pattern (issue #2880): one route_param node per dynamic
+	// `[name]` (or rest `[...name]`) segment in the route. These are the declared
+	// source for `params.<name>` reads inside load()/actions, so def-use can
+	// resolve a param read back to its route-segment definition.
+	emitSvelteRouteParams(fp, routePath, file.Path, file.Language, addEntity)
 
 	// SvelteKit load() function — the framework data loader (data_loaders).
 	// A load() in a `+page.server.ts` / `+layout.server.ts` is server-only (a
@@ -177,6 +250,20 @@ func (e *svelteExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		setProps(&ent, "framework", "svelte", "route_path", routePath,
 			"loader_kind", "load", "rendering", rendering,
 			"provenance", "INFERRED_FROM_SVELTE_LOAD")
+		// Route-param source detection (issue #2880): record which declared
+		// `[name]` route segments this load() reads via `params.<name>`. Only
+		// params backed by a real route segment are recorded, so def-use can
+		// resolve the read to its route_param source node.
+		declared := svelteRouteParamSet(fp)
+		var read []string
+		for _, m := range reSvelteParamsRead.FindAllStringSubmatch(src, -1) {
+			if declared[m[1]] && !contains(read, m[1]) {
+				read = append(read, m[1])
+			}
+		}
+		if len(read) > 0 {
+			setProps(&ent, "params_read", strings.Join(read, ","))
+		}
 		addEntity(ent)
 	}
 

@@ -12062,7 +12062,9 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2880_metafw_routing_test.go","internal/custom/javascript/nuxt.go"],
+            "issue": "2880"
           },
           "hook_recognition": {
             "status": "not_applicable"
@@ -12094,7 +12096,9 @@
             "verified_at": "2026-05-28"
           },
           "router_pattern": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2880_metafw_routing_test.go","internal/custom/javascript/nuxt.go"],
+            "issue": "2880"
           }
         },
         "Build": {
@@ -13076,7 +13080,9 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2880_metafw_routing_test.go","internal/custom/javascript/svelte.go"],
+            "issue": "2880"
           },
           "hook_recognition": {
             "status": "not_applicable"
@@ -13108,7 +13114,9 @@
             "verified_at": "2026-05-28"
           },
           "router_pattern": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/issue2880_metafw_routing_test.go","internal/custom/javascript/svelte.go"],
+            "issue": "2880"
           }
         },
         "Build": {
