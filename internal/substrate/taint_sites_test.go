@@ -295,6 +295,275 @@ int main(int argc, char *argv[]) {
 	}
 }
 
+// TestTaintSniffer_Dart_RawQueryIsSink asserts that sqflite rawQuery with
+// a non-literal SQL string is recognised as a SQL sink, and that the
+// whereArgs parameterised form is a sanitizer.
+func TestTaintSniffer_Dart_RawQueryIsSink(t *testing.T) {
+	src := `
+Future<void> loadUser(Database db, String userId) async {
+  final bad = await db.rawQuery('SELECT * FROM users WHERE id = ' + userId);
+  final good = await db.query('users', where: 'id = ?', whereArgs: [userId]);
+}
+`
+	var hasSink, hasSan bool
+	for _, m := range sniffTaintDart(src) {
+		if m.Kind == TaintKindSink && m.Category == TaintCategorySQL {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer && m.Category == TaintCategorySQL {
+			hasSan = true
+		}
+	}
+	if !hasSink {
+		t.Error("expected db.rawQuery(non-literal) to be flagged as SQL sink")
+	}
+	if !hasSan {
+		t.Error("expected db.query(whereArgs:) to be flagged as SQL sanitizer")
+	}
+}
+
+// TestTaintSniffer_Swift_ProcessIsCommandSink confirms that Process() usage
+// (command injection vector) is recognised as a sink, and that a Codable
+// decoding form counts as a sanitizer.
+func TestTaintSniffer_Swift_ProcessIsCommandSink(t *testing.T) {
+	src := `
+func run(req: Request) throws -> Response {
+    let cmd = req.parameters.get("cmd") ?? ""
+    let p = Process()
+    p.launchPath = "/bin/sh"
+    p.arguments = ["-c", cmd]
+    let body = try req.content.decode(UserInput.self)
+    return Response(status: .ok)
+}
+`
+	var hasSrc, hasSink, hasSan bool
+	for _, m := range sniffTaintSwift(src) {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+		if m.Kind == TaintKindSink && m.Category == TaintCategoryCommand {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer {
+			hasSan = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected req.parameters.get to be flagged as source")
+	}
+	if !hasSink {
+		t.Error("expected Process() to be flagged as command sink")
+	}
+	if !hasSan {
+		t.Error("expected req.content.decode(T.self) to be flagged as sanitizer")
+	}
+}
+
+// TestTaintSniffer_Nim_ExecProcessIsSink confirms that osproc.execProcess
+// with a non-literal is a command sink, and parameterised db.exec is safe.
+func TestTaintSniffer_Nim_ExecProcessIsSink(t *testing.T) {
+	src := `
+proc handleRequest(request: Request): Future[void] {async.} =
+  let cmd = request.params["cmd"]
+  let output = execProcess(cmd)
+  let safe = db.exec(sql"SELECT * FROM users WHERE id = ?", userId)
+`
+	var hasSrc, hasSink, hasSan bool
+	for _, m := range sniffTaintNim(src) {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+		if m.Kind == TaintKindSink && m.Category == TaintCategoryCommand {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer && m.Category == TaintCategorySQL {
+			hasSan = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected request.params to be flagged as source")
+	}
+	if !hasSink {
+		t.Error("expected execProcess(cmd) to be flagged as command sink")
+	}
+	if !hasSan {
+		t.Error("expected db.exec(sql\"...?\",args) to be flagged as SQL sanitizer")
+	}
+}
+
+// TestTaintSniffer_Crystal_DBExecInterpolationIsSink asserts that Crystal
+// db.exec with string interpolation is a SQL sink, and the parameterised
+// form is recognised as a sanitizer.
+func TestTaintSniffer_Crystal_DBExecInterpolationIsSink(t *testing.T) {
+	src := `
+def find_user(env)
+  name = env.params.query["name"]
+  db.exec("SELECT * FROM users WHERE name = '#{name}'")
+  db.exec("SELECT * FROM users WHERE name = ?", name)
+end
+`
+	var hasSrc, hasSink, hasSan bool
+	for _, m := range sniffTaintCrystal(src) {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+		if m.Kind == TaintKindSink && m.Category == TaintCategorySQL {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer && m.Category == TaintCategorySQL {
+			hasSan = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected env.params.query to be flagged as source")
+	}
+	if !hasSink {
+		t.Error("expected db.exec(\"...#{var}\") to be flagged as SQL sink")
+	}
+	if !hasSan {
+		t.Error("expected db.exec(\"...?\",args) to be flagged as SQL sanitizer")
+	}
+}
+
+// TestTaintSniffer_Zig_ChildProcessIsSink asserts that std.ChildProcess
+// usage is flagged as a command sink, and std.json.parseFromSlice to a
+// typed struct is a sanitizer.
+func TestTaintSniffer_Zig_ChildProcessIsSink(t *testing.T) {
+	src := `
+fn handleRequest(server: *Server) !void {
+    const req = try server.accept();
+    const body = try req.readBody();
+    const parsed = try std.json.parseFromSlice(UserInput, allocator, body);
+    var child = Child.init(&[_][]const u8{body}, allocator);
+    try child.spawn();
+}
+`
+	var hasSrc, hasSink, hasSan bool
+	for _, m := range sniffTaintZig(src) {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+		if m.Kind == TaintKindSink && m.Category == TaintCategoryCommand {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer {
+			hasSan = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected server.accept/req.readBody to be flagged as source")
+	}
+	if !hasSink {
+		t.Error("expected Child.init to be flagged as command sink")
+	}
+	if !hasSan {
+		t.Error("expected std.json.parseFromSlice(TypedStruct) to be flagged as sanitizer")
+	}
+}
+
+// TestTaintSniffer_Solidity_DelegatecallWithMsgDataIsSink asserts that
+// `.delegatecall(msg.data)` is a high-confidence sink, and nonReentrant
+// is recognised as a sanitizer.
+func TestTaintSniffer_Solidity_DelegatecallWithMsgDataIsSink(t *testing.T) {
+	src := `
+pragma solidity ^0.8.0;
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+contract Proxy is ReentrancyGuard {
+    function forward(address impl) external nonReentrant {
+        (bool ok, ) = impl.delegatecall(msg.data);
+        require(ok, "failed");
+    }
+}
+`
+	var hasSrc, hasSink, hasSan bool
+	for _, m := range sniffTaintSolidity(src) {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+		if m.Kind == TaintKindSink {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer {
+			hasSan = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected msg.data to be flagged as source")
+	}
+	if !hasSink {
+		t.Error("expected delegatecall(msg.data) to be flagged as sink")
+	}
+	if !hasSan {
+		t.Error("expected nonReentrant/ReentrancyGuard to be flagged as sanitizer")
+	}
+}
+
+// TestTaintSniffer_Vue_VHtmlIsSink asserts that v-html with a user-bound
+// expression is a XSS sink in a Vue SFC, and DOMPurify.sanitize is a sanitizer.
+func TestTaintSniffer_Vue_VHtmlIsSink(t *testing.T) {
+	src := `
+<template>
+  <div v-html="userContent"></div>
+  <div v-html="DOMPurify.sanitize(userContent)"></div>
+</template>
+<script setup>
+import { ref } from 'vue'
+import { useRoute } from 'vue-router'
+import DOMPurify from 'dompurify'
+const route = useRoute()
+const userContent = route.query.content
+</script>
+`
+	var hasSrc, hasSink, hasSan bool
+	for _, m := range sniffTaintMarkupScript(src) {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+		if m.Kind == TaintKindSink && m.Category == TaintCategoryXSS {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer && m.Category == TaintCategoryXSS {
+			hasSan = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected route.query.content to be flagged as source")
+	}
+	if !hasSink {
+		t.Error("expected v-html=\"userContent\" to be flagged as XSS sink")
+	}
+	if !hasSan {
+		t.Error("expected DOMPurify.sanitize to be flagged as XSS sanitizer")
+	}
+}
+
+// TestTaintSniffer_Svelte_AtHtmlIsSink asserts that {\\@html userContent}
+// is recognised as an XSS sink in a Svelte component.
+func TestTaintSniffer_Svelte_AtHtmlIsSink(t *testing.T) {
+	src := `
+<script>
+  import { page } from '$app/stores'
+  $: content = $page.params.content
+</script>
+{@html content}
+`
+	var hasSrc, hasSink bool
+	for _, m := range sniffTaintMarkupScript(src) {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+		if m.Kind == TaintKindSink && m.Category == TaintCategoryXSS {
+			hasSink = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected $page.params to be flagged as source")
+	}
+	if !hasSink {
+		t.Error("expected {@html content} to be flagged as XSS sink")
+	}
+}
+
 // TestTaintSniffer_Go_ParameterisedQueryIsSanitizer asserts that a
 // placeholder-based db.Query call counts as a sanitizer and not as a
 // sink.
