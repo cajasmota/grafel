@@ -1,0 +1,41 @@
+# Polka framework extraction rules (#2851)
+# Schema: FrameworkExtractionSchema
+# NPM: polka
+#
+# Polka is an Express-compatible micro-router. Routing endpoint synthesis +
+# handler attribution are implemented in
+# internal/engine/http_endpoint_jsts_backend.go (synthesizePolkaRestify):
+# app.<verb>('/path', handler) with the :param convention. This rule supplies
+# detection metadata.
+
+frameworks:
+  name: polka
+  category: web
+  npm_packages:
+  - polka
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - polka
+    import_patterns:
+    - from 'polka'
+    - require('polka')
+    code_patterns:
+    - polka()
+    - app.get(
+    - app.post(
+    - app.listen(
+  framework_specific:
+  - polka()
+  - req, res, next
+  notes: Express-compatible micro-router; detect via polka() + dep
+
+file_conventions: []
+
+source_patterns:
+  - pattern: "(?:app|router)\\.(?:get|post|put|patch|delete|head|options)\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+relationship_rules: []

@@ -378,6 +378,23 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 				drop[i] = true
 				continue
 			}
+			// #2851 — when a `handler_file` hint was supplied but no entity
+			// in that file matched (e.g. a declarative Sails / AdonisJS-
+			// resource route whose controller class is out of the indexed
+			// scope, or whose object-literal action methods the extractor
+			// did not surface as symbols), do NOT fall through to the
+			// unscoped global (kind, name) index. The hint asserts a
+			// SPECIFIC file; resolving the bare method name globally would
+			// misattribute the endpoint to an unrelated same-named method in
+			// a different module (every controller has a `create` / `show`).
+			// Keep the synthetic with its source_handler property intact —
+			// the handler IS attributed (as a property), just not cross-
+			// linked to an extracted entity. This preserves the route in the
+			// graph instead of dropping a genuine endpoint.
+			if handlerFileHint != "" {
+				stats.NoHandlerProp++
+				continue
+			}
 			handlerIdx, found = globalIdx[knKey{hk, hn}]
 			if !found {
 				// Cross-kind fallback. Synthesizers historically emit
@@ -599,7 +616,6 @@ func splitHandlerRef(ref string) (kind, name string, ok bool) {
 	}
 	return ref[:i], ref[i+1:], true
 }
-
 
 // resolveCallerToFetchesEdge attempts to resolve a consumer synthetic's
 // `source_caller` property into a real caller entity in the same file

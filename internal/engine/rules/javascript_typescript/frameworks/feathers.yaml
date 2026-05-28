@@ -1,0 +1,47 @@
+# Feathers framework extraction rules (#2851)
+# Schema: FrameworkExtractionSchema
+# NPM: @feathersjs/feathers
+#
+# Routing endpoint synthesis + handler attribution are implemented in
+# internal/engine/http_endpoint_jsts_backend.go (synthesizeFeathers):
+# app.use('/svc', service) registers a REST service whose find/get/create/
+# update/patch/remove methods expand to the standard verb set. This rule
+# supplies detection metadata.
+
+frameworks:
+  name: feathers
+  category: web
+  npm_packages:
+  - "@feathersjs/feathers"
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - "@feathersjs/feathers"
+    import_patterns:
+    - from '@feathersjs/feathers'
+    - require('@feathersjs/feathers')
+    code_patterns:
+    - feathers()
+    - app.use(
+    - app.service(
+  framework_specific:
+  - app.service
+  - hooks
+  - find/get/create/update/patch/remove
+  notes: Service-based; routes are implicit from app.use('/svc', service)
+
+file_conventions:
+  - glob: "*/services/*/*.service.ts"
+    entity_type: Controller
+    name_from: filename
+  - glob: "*/services/*/*.service.js"
+    entity_type: Controller
+    name_from: filename
+
+source_patterns:
+  - pattern: "(?:app|feathers)\\.use\\s*\\(\\s*['\"`](/[^'\"` ]*)['\"`]"
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+relationship_rules: []

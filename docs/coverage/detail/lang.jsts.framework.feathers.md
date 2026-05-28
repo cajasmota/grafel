@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `endpoint_synthesis` | ❌ `missing` | — | — | — | — | — |
-| `handler_attribution` | ❌ `missing` | — | — | — | — | — |
+| `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/feathers.yaml`<br>`testdata/fixtures/typescript/feathers_routes.ts` | — |
+| `handler_attribution` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/feathers.yaml`<br>`testdata/fixtures/typescript/feathers_routes.ts` | — |
 
 ### Security
 

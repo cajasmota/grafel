@@ -1,0 +1,46 @@
+# Hapi framework extraction rules (#2851)
+# Schema: FrameworkExtractionSchema
+# NPM: @hapi/hapi
+#
+# Routing endpoint synthesis + handler attribution are implemented in
+# internal/engine/http_endpoint_jsts_backend.go (synthesizeHapi):
+# server.route({ method, path, handler }) with single- or array-method and
+# {id?} / {path*} param modifiers. This rule supplies detection metadata.
+
+frameworks:
+  name: hapi
+  category: web
+  npm_packages:
+  - "@hapi/hapi"
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - "@hapi/hapi"
+    import_patterns:
+    - from '@hapi/hapi'
+    - require('@hapi/hapi')
+    code_patterns:
+    - Hapi.server(
+    - server.route(
+    - server.register(
+  framework_specific:
+  - server.route
+  - request.params
+  - h.response
+  notes: Detect via Hapi.server() / server.route() + dep
+
+file_conventions:
+  - glob: "*/routes/*.js"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/routes/*.ts"
+    entity_type: Route
+    name_from: filename
+
+source_patterns:
+  - pattern: "(?:server|hapi|srv)\\.route\\s*\\("
+    entity_type: Route
+    name_group: 0
+    scope: file
+
+relationship_rules: []

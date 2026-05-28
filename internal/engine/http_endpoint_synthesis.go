@@ -363,6 +363,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Now emits FETCHES edges at extraction time.
 		synthesizePyClientWithRuntime(string(content), emitClientRuntime)
 	case "javascript", "typescript":
+		// Producer side (#2851): Polka / Restify are Express-shaped but use
+		// distinct receiver/import conventions. Run BEFORE synthesizeExpress
+		// so their endpoints are tagged with the correct framework — the
+		// side-scoped dedup in makeEmit lets whichever synthesizer claims a
+		// (verb, path) ID first win, and Express would otherwise mislabel
+		// these as "express". The file-signal gate (polka() / restify /
+		// createServer()) keeps this a no-op on plain Express files.
+		synthesizePolkaRestify(string(content), emit)
 		// Producer side: Express (also catches Hono and Koa-Router whose
 		// receivers match the `app`/`router` allowlist).
 		synthesizeExpress(string(content), emit)
@@ -372,6 +380,27 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// The Express synthesizer's receiver allowlist does not include
 		// "fastify", so a dedicated pass is needed (#2678 audit).
 		synthesizeFastify(string(content), emit)
+		// Producer side (#2851): backend-HTTP frameworks with no prior
+		// routing extraction. Each synthesizer is import-/path-guarded so it
+		// no-ops on files that don't use that framework.
+		//   AdonisJS  — Route.get(...) + Route.resource(...)
+		//   Hapi      — server.route({ method, path, handler })
+		//   Feathers  — app.use('/svc', service) → REST verb expansion
+		//   Marble.js — r.pipe(r.matchPath(...), r.matchType(...))
+		//   Polka/Restify — Express-shaped app.<verb>(...) with distinct receivers
+		//   Sails     — config/routes.js declarative map
+		// Adonis / Feathers / Sails attribute handlers to a Controller class
+		// (or service) by NAME — `UsersController.index`, `MessageService`,
+		// `WidgetController.find`. The resolver's same-name symbol match can't
+		// bind the dotted `Controller.method` ref directly, so these
+		// synthesizers emit a `handler_file` hint (the controller/service
+		// basename) and reference the bare method name, mirroring the Rails
+		// (#2691) / Phoenix (#2692) cross-file attribution mechanism.
+		synthesizeAdonis(string(content), emitFile)
+		synthesizeHapi(string(content), emit)
+		synthesizeFeathers(string(content), emitFile)
+		synthesizeMarble(string(content), emit)
+		synthesizeSails(path, string(content), emitFile)
 		// Producer side: Next.js API routes (pages/api/*, app/api/*/route.ts).
 		// The route is implicit from the file path, not from a call site.
 		synthesizeNextAPIRoute(path, string(content), emit)

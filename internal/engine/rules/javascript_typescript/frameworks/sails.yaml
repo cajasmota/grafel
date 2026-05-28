@@ -1,0 +1,48 @@
+# Sails framework extraction rules (#2851)
+# Schema: FrameworkExtractionSchema
+# NPM: sails
+#
+# Routing endpoint synthesis + handler attribution are implemented in
+# internal/engine/http_endpoint_jsts_backend.go (synthesizeSails): the
+# declarative config/routes.js map `'GET /path': 'Ctrl.action'`. This rule
+# supplies detection metadata + file conventions.
+
+frameworks:
+  name: sails
+  category: web
+  npm_packages:
+  - sails
+  config_files:
+  - config/routes.js
+  detection_signals:
+    package_json_deps:
+    - sails
+    import_patterns:
+    - require('sails')
+    code_patterns:
+    - module.exports.routes
+    - "Controller."
+  framework_specific:
+  - config/routes.js
+  - actions
+  - blueprints
+  notes: Convention-based; explicit routes in config/routes.js
+
+file_conventions:
+  - glob: "*/api/controllers/*.js"
+    entity_type: Controller
+    name_from: filename
+  - glob: "*/api/controllers/*.ts"
+    entity_type: Controller
+    name_from: filename
+  - glob: "*/config/routes.js"
+    entity_type: Route
+    name_from: filename
+
+source_patterns:
+  - pattern: "['\"`](?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|ALL)?\\s*(/[^'\"` ]*)['\"`]\\s*:\\s*['\"`][\\w$./]+['\"`]"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+relationship_rules: []

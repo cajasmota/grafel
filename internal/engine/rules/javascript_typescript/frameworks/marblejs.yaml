@@ -1,0 +1,49 @@
+# Marble.js framework extraction rules (#2851)
+# Schema: FrameworkExtractionSchema
+# NPM: @marblejs/http
+#
+# Routing endpoint synthesis + handler attribution are implemented in
+# internal/engine/http_endpoint_jsts_backend.go (synthesizeMarble):
+# r.pipe(r.matchPath('/x'), r.matchType('GET'), r.useEffect(...)) EffectRoutes.
+# This rule supplies detection metadata.
+
+frameworks:
+  name: marblejs
+  category: web
+  npm_packages:
+  - "@marblejs/http"
+  - "@marblejs/core"
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - "@marblejs/http"
+    - "@marblejs/core"
+    import_patterns:
+    - from '@marblejs/http'
+    - from '@marblejs/core'
+    code_patterns:
+    - r.pipe(
+    - r.matchPath(
+    - r.matchType(
+    - r.useEffect(
+  framework_specific:
+  - EffectRoute
+  - r.matchPath
+  - r.matchType
+  notes: RxJS Effect-based routing via r.pipe composition
+
+file_conventions:
+  - glob: "*/*.effects.ts"
+    entity_type: Operation
+    name_from: filename
+  - glob: "*/effects/*.ts"
+    entity_type: Operation
+    name_from: filename
+
+source_patterns:
+  - pattern: "r\\.matchPath\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+relationship_rules: []

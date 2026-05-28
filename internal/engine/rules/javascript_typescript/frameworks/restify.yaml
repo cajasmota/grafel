@@ -1,0 +1,47 @@
+# Restify framework extraction rules (#2851)
+# Schema: FrameworkExtractionSchema
+# NPM: restify
+#
+# Routing endpoint synthesis + handler attribution are implemented in
+# internal/engine/http_endpoint_jsts_backend.go (synthesizePolkaRestify):
+# server.<verb>('/path', handler) including the del/opts short aliases, with
+# the :param convention. This rule supplies detection metadata.
+
+frameworks:
+  name: restify
+  category: web
+  npm_packages:
+  - restify
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - restify
+    import_patterns:
+    - from 'restify'
+    - require('restify')
+    code_patterns:
+    - restify.createServer(
+    - server.get(
+    - server.post(
+    - server.del(
+  framework_specific:
+  - restify.createServer
+  - req, res, next
+  - server.del
+  notes: Express-shaped; detect via restify.createServer() + dep
+
+file_conventions:
+  - glob: "*/routes/*.js"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/routes/*.ts"
+    entity_type: Route
+    name_from: filename
+
+source_patterns:
+  - pattern: "(?:server|srv)\\.(?:get|post|put|patch|del|delete|head|opts|options)\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+relationship_rules: []

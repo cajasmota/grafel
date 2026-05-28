@@ -59,6 +59,30 @@ const (
 	// FrameworkRocket (#2692) — Rust Rocket attribute macros use `<name>` angle-
 	// bracket path parameters (`#[get("/users/<id>")]`), like Django/Flask.
 	FrameworkRocket = "rocket"
+	// FrameworkAdonis (#2851) — AdonisJS `Route.get('/users/:id', ...)` uses
+	// the Express-style `:name` colon-prefixed path parameter convention.
+	FrameworkAdonis = "adonisjs"
+	// FrameworkHapi (#2851) — Hapi `server.route({ path: '/users/{id}' })` uses
+	// `{name}` curly-brace path parameters (and `{name?}` / `{name*}` modifiers,
+	// which canonicalizeCurlyBraces normalises by stripping the suffix marker).
+	FrameworkHapi = "hapi"
+	// FrameworkFeathers (#2851) — Feathers `app.use('/messages', service)`
+	// registers a REST service at a mount path; the synthesizer expands the
+	// service to its standard verb set. Paths are plain strings with no param
+	// syntax, so canonicalisation is identity + slash normalisation.
+	FrameworkFeathers = "feathers"
+	// FrameworkMarble (#2851) — Marble.js `r.pipe(r.matchPath('/users/:id'),
+	// r.matchType('GET'))` uses the Express-style `:name` colon convention.
+	FrameworkMarble = "marblejs"
+	// FrameworkPolka (#2851) — Polka is an Express-compatible micro-router;
+	// `app.get('/users/:id', ...)` uses the `:name` colon convention.
+	FrameworkPolka = "polka"
+	// FrameworkRestify (#2851) — Restify `server.get('/users/:id', ...)` uses
+	// the Express-style `:name` colon convention.
+	FrameworkRestify = "restify"
+	// FrameworkSails (#2851) — Sails config/routes.js maps `'GET /users/:id':
+	// 'UserController.find'`; the path uses the `:name` colon convention.
+	FrameworkSails = "sails"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -88,7 +112,7 @@ func Canonicalize(framework, raw string) string {
 		out = stripPythonNamedGroups(raw)
 		out = canonicalizeAngleBrackets(out)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
-		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore:
+		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkTornado:
 		// Tornado paths arrive already pre-processed by the synthesizer
@@ -96,7 +120,8 @@ func Canonicalize(framework, raw string) string {
 		// strips any stray `:regex` constraints, mirroring the other
 		// curly-brace frameworks.
 		out = canonicalizeCurlyBraces(raw)
-	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi, FrameworkPhoenix:
+	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi, FrameworkPhoenix,
+		FrameworkAdonis, FrameworkMarble, FrameworkPolka, FrameworkRestify, FrameworkSails:
 		out = canonicalizeColonParams(raw)
 	default:
 		// Unknown framework: pass through but still normalise slashes.

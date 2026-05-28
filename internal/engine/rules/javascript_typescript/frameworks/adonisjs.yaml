@@ -1,0 +1,52 @@
+# AdonisJS framework extraction rules (#2851)
+# Schema: FrameworkExtractionSchema
+# NPM: @adonisjs/core
+#
+# Routing endpoint synthesis + handler attribution are implemented in
+# internal/engine/http_endpoint_jsts_backend.go (synthesizeAdonis): Route.get
+# /post/put/patch/delete/any plus the Route.resource / apiResource RESTful
+# expansion. This rule supplies detection metadata + file conventions.
+
+frameworks:
+  name: adonisjs
+  category: web
+  npm_packages:
+  - "@adonisjs/core"
+  config_files:
+  - .adonisrc.json
+  detection_signals:
+    package_json_deps:
+    - "@adonisjs/core"
+    import_patterns:
+    - "@ioc:Adonis/Core/Route"
+    - from '@adonisjs/core'
+    code_patterns:
+    - Route.get(
+    - Route.post(
+    - Route.resource(
+    - Route.group(
+  framework_specific:
+  - HttpContextContract
+  - Route.resource
+  - Route.group
+  notes: Detect via Route facade usage + @adonisjs/core dep
+
+file_conventions:
+  - glob: "*/app/Controllers/Http/*.ts"
+    entity_type: Controller
+    name_from: filename
+  - glob: "*/start/routes.ts"
+    entity_type: Route
+    name_from: filename
+
+source_patterns:
+  - pattern: "Route\\.(?:get|post|put|patch|delete|any)\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+  - pattern: "Route\\.(?:resource|apiResource)\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+relationship_rules: []
