@@ -12,4 +12,4 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| [Kemal](../detail/lang.crystal.framework.kemal.md) | — | — | — | — | — | — | — | ⚠️ 0/3 | |
+| [Lucky](../detail/lang.crystal.framework.lucky.md) | — | — | — | — | — | — | — | ⚠️ 0/4 | |

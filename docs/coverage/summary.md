@@ -1,13 +1,13 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 37 (21 active · 16 placeholder) · **Frameworks**: 188 · **ORMs**: 150 · **Tools**: 110 · **Other**: 99
+**Languages**: 37 (20 active · 17 placeholder) · **Frameworks**: 189 · **ORMs**: 150 · **Tools**: 110 · **Other**: 99
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-| [JS/TS](by-language/jsts.md) | 30 | 21 | 18 | 2 |
+| [JS/TS](by-language/jsts.md) | 32 | 21 | 18 | 2 |
 | [python](by-language/python.md) | 20 | 15 | 17 | 3 |
 | [java](by-language/java.md) | 19 | 10 | 13 | 2 |
 | [C/C++](by-language/c-cpp.md) | 17 | 16 | 7 | 0 |
@@ -20,13 +20,12 @@
 | [scala](by-language/scala.md) | 9 | 3 | 6 | 0 |
 | [ruby](by-language/ruby.md) | 8 | 6 | 13 | 1 |
 | [lua](by-language/lua.md) | 2 | 0 | 0 | 0 |
-| [nim](by-language/nim.md) | 2 | 0 | 0 | 0 |
-| [clojure](by-language/clojure.md) | 1 | 0 | 0 | 0 |
 | [crystal](by-language/crystal.md) | 1 | 0 | 0 | 0 |
-| [F#](by-language/fsharp.md) | 1 | 0 | 0 | 0 |
+| [dart](by-language/dart.md) | 1 | 1 | 0 | 0 |
+| [nim](by-language/nim.md) | 1 | 0 | 0 | 0 |
 | [solidity](by-language/solidity.md) | 1 | 0 | 0 | 0 |
 | [swift](by-language/swift.md) | 1 | 1 | 0 | 0 |
-| [dart](by-language/dart.md) | 0 | 1 | 0 | 0 |
+| [zig](by-language/zig.md) | 1 | 0 | 0 | 0 |
 | [groovy](by-language/groovy.md) | 0 | 1 | 0 | 0 |
 
 ## Cross-cutting infrastructure
@@ -50,8 +49,10 @@
 | Language |
 |---|
 | [Astro](by-language/astro.md) |
+| [Clojure](by-language/clojure.md) |
 | [Elm](by-language/elm.md) |
 | [Erlang](by-language/erlang.md) |
+| [F#](by-language/fsharp.md) |
 | [Haskell](by-language/haskell.md) |
 | [Idris](by-language/idris.md) |
 | [Lisp](by-language/lisp.md) |
@@ -64,6 +65,5 @@
 | [VHDL](by-language/vhdl.md) |
 | [Verilog](by-language/verilog.md) |
 | [Vue](by-language/vue.md) |
-| [Zig](by-language/zig.md) |
 
-Total: 188 frameworks · 110 tools · 150 ORMs · 99 other
+Total: 189 frameworks · 110 tools · 150 ORMs · 99 other

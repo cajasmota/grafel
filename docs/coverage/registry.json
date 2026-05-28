@@ -4467,88 +4467,44 @@
       }
     },
     {
-      "id": "lang.clojure.framework.ring",
-      "category": "http_framework",
-      "subcategory": "http_backend",
-      "language": "clojure",
-      "label": "Ring",
-      "capabilities": {
-        "Substrate": {
-          "request_shape_extraction": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "response_shape_extraction": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "schema_drift_detection": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          }
-        }
-      }
-    },
-    {
-      "id": "lang.crystal.framework.kemal",
+      "id": "lang.crystal.framework.lucky",
       "category": "http_framework",
       "subcategory": "http_backend",
       "language": "crystal",
-      "label": "Kemal",
+      "label": "Lucky",
       "capabilities": {
         "Substrate": {
-          "request_shape_extraction": {
+          "def_use_chain_extraction": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_crystal.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
+          "module_cycle_detection": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/module_cycle_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "schema_drift_detection": {
+          "pure_function_tagging": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
+            "verified_at": "2026-05-28"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": [
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_crystal.go"
+            ],
             "verified_at": "2026-05-28"
           }
         }
@@ -6917,6 +6873,50 @@
       }
     },
     {
+      "id": "lang.dart.framework.flutter",
+      "category": "http_framework",
+      "subcategory": "mobile",
+      "language": "dart",
+      "label": "Flutter",
+      "capabilities": {
+        "Substrate": {
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": [
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_dart.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": [
+              "internal/links/module_cycle_pass.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
+          "pure_function_tagging": {
+            "status": "partial",
+            "cites": [
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": [
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_dart.go"
+            ],
+            "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.elixir.driver.dynamodb",
       "category": "orm",
       "language": "elixir",
@@ -8510,44 +8510,6 @@
             "internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml"
           ],
           "verified_at": "2026-05-28"
-        }
-      }
-    },
-    {
-      "id": "lang.fsharp.framework.giraffe",
-      "category": "http_framework",
-      "subcategory": "http_backend",
-      "language": "fsharp",
-      "label": "Giraffe",
-      "capabilities": {
-        "Substrate": {
-          "request_shape_extraction": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "response_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "schema_drift_detection": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          }
         }
       }
     },
@@ -13169,37 +13131,37 @@
           }
         },
         "Substrate": {
-          "request_shape_extraction": {
+          "def_use_chain_extraction": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_markup_script.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
+          "module_cycle_detection": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/module_cycle_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "schema_drift_detection": {
+          "pure_function_tagging": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
+            "verified_at": "2026-05-28"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": [
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_markup_script.go"
+            ],
             "verified_at": "2026-05-28"
           }
         }
@@ -15559,6 +15521,15 @@
             ],
             "verified_at": "2026-05-28"
           },
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": [
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_markup_script.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
           "env_fallback_recognition": {
             "status": "full",
             "cites": [
@@ -15577,37 +15548,28 @@
             ],
             "verified_at": "2026-05-28"
           },
-          "request_shape_extraction": {
+          "module_cycle_detection": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/module_cycle_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
+          "pure_function_tagging": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "schema_drift_detection": {
+          "template_pattern_catalog": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_markup_script.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           }
         }
@@ -15624,6 +15586,14 @@
           }
         }
       }
+    },
+    {
+      "id": "lang.jsts.framework.svelte-kit",
+      "category": "http_framework",
+      "subcategory": "ui_frontend",
+      "language": "jsts",
+      "label": "Svelte / SvelteKit",
+      "capabilities": {}
     },
     {
       "id": "lang.jsts.framework.sveltekit",
@@ -15705,41 +15675,6 @@
             "cites": [
               "internal/extractors/javascript/tests.go"
             ],
-            "verified_at": "2026-05-28"
-          }
-        },
-        "Substrate": {
-          "request_shape_extraction": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "response_shape_extraction": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "schema_drift_detection": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           }
         }
@@ -15872,6 +15807,15 @@
             ],
             "verified_at": "2026-05-28"
           },
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": [
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_markup_script.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
           "env_fallback_recognition": {
             "status": "full",
             "cites": [
@@ -15890,37 +15834,28 @@
             ],
             "verified_at": "2026-05-28"
           },
-          "request_shape_extraction": {
+          "module_cycle_detection": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/module_cycle_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
+          "pure_function_tagging": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "schema_drift_detection": {
+          "template_pattern_catalog": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_markup_script.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           }
         }
@@ -15941,6 +15876,14 @@
           }
         }
       }
+    },
+    {
+      "id": "lang.jsts.framework.vue-nuxt",
+      "category": "http_framework",
+      "subcategory": "ui_frontend",
+      "language": "jsts",
+      "label": "Vue / Nuxt",
+      "capabilities": {}
     },
     {
       "id": "lang.jsts.orm.drizzle",
@@ -18060,21 +18003,6 @@
           },
           "mutation_effect": {
             "status": "not_applicable"
-          },
-          "request_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "response_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "schema_drift_detection": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
           }
         }
       }
@@ -18103,21 +18031,6 @@
           },
           "mutation_effect": {
             "status": "not_applicable"
-          },
-          "request_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "response_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "schema_drift_detection": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
           }
         }
       }
@@ -18130,69 +18043,37 @@
       "label": "Jester",
       "capabilities": {
         "Substrate": {
-          "request_shape_extraction": {
+          "def_use_chain_extraction": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_nim.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "schema_drift_detection": {
+          "module_cycle_detection": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/module_cycle_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          }
-        }
-      }
-    },
-    {
-      "id": "lang.nim.framework.prologue",
-      "category": "http_framework",
-      "subcategory": "http_backend",
-      "language": "nim",
-      "label": "Prologue",
-      "capabilities": {
-        "Substrate": {
-          "request_shape_extraction": {
-            "status": "partial",
-            "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
-            "verified_at": "2026-05-28"
-          },
-          "schema_drift_detection": {
+          "pure_function_tagging": {
             "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
+            "verified_at": "2026-05-28"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": [
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_nim.go"
+            ],
             "verified_at": "2026-05-28"
           }
         }
@@ -27699,38 +27580,44 @@
       }
     },
     {
-      "id": "lang.solidity.framework.solidity-abi",
+      "id": "lang.solidity.framework.hardhat",
       "category": "http_framework",
-      "subcategory": "rpc_framework",
+      "subcategory": "http_backend",
       "language": "solidity",
-      "label": "Solidity ABI / external functions",
+      "label": "Hardhat / Foundry",
       "capabilities": {
         "Substrate": {
-          "request_shape_extraction": {
-            "status": "full",
+          "def_use_chain_extraction": {
+            "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_solidity.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": [
+              "internal/links/module_cycle_pass.go"
+            ],
             "verified_at": "2026-05-28"
           },
-          "schema_drift_detection": {
-            "status": "full",
+          "pure_function_tagging": {
+            "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
+            "verified_at": "2026-05-28"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": [
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_solidity.go"
+            ],
             "verified_at": "2026-05-28"
           }
         }
@@ -27770,6 +27657,13 @@
               "internal/substrate/effect_sinks_swift.go"
             ]
           },
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": [
+              "internal/links/module_cycle_pass.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
           "mutation_effect": {
             "status": "partial",
             "cites": [
@@ -27777,37 +27671,74 @@
               "internal/substrate/effect_sinks_swift.go"
             ]
           },
-          "request_shape_extraction": {
-            "status": "full",
+          "pure_function_tagging": {
+            "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "response_shape_extraction": {
-            "status": "full",
+          "def_use_chain_extraction": {
+            "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_swift.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
             "verified_at": "2026-05-28"
           },
-          "schema_drift_detection": {
-            "status": "full",
+          "template_pattern_catalog": {
+            "status": "partial",
             "cites": [
-              "internal/links/payload_drift.go",
-              "internal/mcp/payload_drift_tool.go",
-              "internal/substrate/payload_shapes.go",
-              "internal/substrate/payload_shapes_t3.go"
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_swift.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2777",
+            "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.zig.framework.httpz",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "zig",
+      "label": "httpz",
+      "capabilities": {
+        "Substrate": {
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": [
+              "internal/links/def_use_pass.go",
+              "internal/substrate/def_use.go",
+              "internal/substrate/def_use_zig.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": [
+              "internal/links/module_cycle_pass.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
+          "pure_function_tagging": {
+            "status": "partial",
+            "cites": [
+              "internal/links/effect_propagation.go",
+              "internal/links/pure_function_pass.go"
+            ],
+            "verified_at": "2026-05-28"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": [
+              "internal/links/template_pattern_pass.go",
+              "internal/substrate/template_pattern.go",
+              "internal/substrate/template_pattern_zig.go"
+            ],
             "verified_at": "2026-05-28"
           }
         }

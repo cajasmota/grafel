@@ -8,8 +8,8 @@ Back to [summary](../summary.md).
 ## Frameworks
 
 
-### RPC Framework
+### Backend HTTP
 
-| Name | Schema | Codegen | Transport | Substrate | Notes |
-|---|---|---|---|---|---|
-| [Solidity ABI / external functions](../detail/lang.solidity.framework.solidity-abi.md) | — | — | — | ✅ 2/3 | |
+| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [Hardhat / Foundry](../detail/lang.solidity.framework.hardhat.md) | — | — | — | — | — | — | — | ⚠️ 0/4 | |

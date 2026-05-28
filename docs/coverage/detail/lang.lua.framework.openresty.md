@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [lua](../by-language/lua.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 8
+- **Capability cells:** 5
 
 ## Capabilities
 
@@ -55,9 +55,6 @@ Auto-generated. Back to [summary](../summary.md).
 | `fs_effect` | — `not_applicable` | — | — | — | — | — |
 | `http_effect` | — `not_applicable` | — | — | — | — | — |
 | `mutation_effect` | — `not_applicable` | — | — | — | — | — |
-| `request_shape_extraction` | — `not_applicable` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2777) | — | — |
-| `response_shape_extraction` | — `not_applicable` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2777) | — | — |
-| `schema_drift_detection` | — `not_applicable` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2777) | — | — |
 
 ## Provenance
 
