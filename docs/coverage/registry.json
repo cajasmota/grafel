@@ -10473,7 +10473,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/adonisjs_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -10970,7 +10972,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/express_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -11035,7 +11039,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/fastify_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -11100,7 +11106,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/feathers_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -11277,7 +11285,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/hapi_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -11340,7 +11350,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/hono_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -11505,7 +11517,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/koa_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -11599,7 +11613,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/marblejs_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -11768,8 +11784,8 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
+            "status": "full",
+            "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/nestjs_auth.ts"],
             "verified_at": "2026-05-28"
           }
         },
@@ -12011,7 +12027,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/polka_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -12506,7 +12524,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/restify_auth.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -12571,7 +12591,9 @@
         },
         "Security": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/sails_policies.ts"],
+            "verified_at": "2026-05-28"
           }
         },
         "Middleware": {
@@ -12609,6 +12631,16 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
+          }
+        }
+      },
+      "framework_specific": {
+        "Sails Policies": {
+          "policy_map_recognition": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/sails_policies.ts"],
+            "notes": "Sails gates actions via config/policies.js policy maps (e.g. '*': 'isLoggedIn'), a bespoke auth idiom no generic middleware/guard cell captures. ParseSailsPolicies recognises the global default posture (fixture-proven). The standard Security/auth_coverage cell is partial because cross-file policies.js-\u003eroutes.js per-endpoint attribution is deferred (#2852 follow-up).",
+            "verified_at": "2026-05-28"
           }
         }
       }
