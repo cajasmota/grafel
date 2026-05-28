@@ -69,24 +69,24 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [java](../by-language/java.md) | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ | ⚠️ | ⚠️ | |
 | [java](../by-language/java.md) | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ | ⚠️ | ⚠️ | |
 | [java](../by-language/java.md) | [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ | ⚠️ | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ✅ | ✅ | ✅ | |
-| [JS/TS](../by-language/jsts.md) | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ✅ | ✅ | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ✅ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | — | — | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | — | ✅ | ✅ | |
-| [JS/TS](../by-language/jsts.md) | [Objection.js](../detail/lang.jsts.orm.objection.md) | ✅ | ✅ | ❌ | |
+| [JS/TS](../by-language/jsts.md) | [Objection.js](../detail/lang.jsts.orm.objection.md) | ✅ | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Prisma](../detail/lang.jsts.orm.prisma.md) | ✅ | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ✅ | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ✅ | ✅ | ✅ | |
-| [JS/TS](../by-language/jsts.md) | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | — | — | ⚠️ | |
-| [JS/TS](../by-language/jsts.md) | [supabase-js](../detail/lang.jsts.driver.supabase.md) | — | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [supabase-js](../detail/lang.jsts.driver.supabase.md) | — | — | ✅ | |
 | [kotlin](../by-language/kotlin.md) | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | ❌ | ✅ | ✅ | |
 | [kotlin](../by-language/kotlin.md) | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | ❌ | ⚠️ | ⚠️ | |
 | [kotlin](../by-language/kotlin.md) | [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | ❌ | ⚠️ | ⚠️ | |

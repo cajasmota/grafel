@@ -140,6 +140,7 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		scanPythonORM(src, funcs, emit)
 	case "javascript", "typescript":
 		scanJSORM(src, funcs, emit)
+		scanJSDrivers(src, funcs, emit)
 	case "go":
 		scanGoORM(src, funcs, emit)
 	case "java":
