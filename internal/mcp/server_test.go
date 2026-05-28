@@ -587,6 +587,12 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_payload_drift",
 		// #2772 Phase 2B taint-flow security findings surface
 		"archigraph_security_findings",
+		// #2774 / #2775 Phase 3 misc — pure functions, module cycles,
+		// def-use chains, template-pattern catalog.
+		"archigraph_pure_functions",
+		"archigraph_import_cycles",
+		"archigraph_def_use",
+		"archigraph_template_patterns",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -673,8 +679,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_effects (#2764 Phase 1A effect classification).
 	// +1 archigraph_payload_drift (#2770 Phase 2A drift findings).
 	// +1 archigraph_security_findings (#2772 Phase 2B taint-flow).
-	if got := len(allRegisteredTools); got != 49 {
-		t.Errorf("expected 49 registered tools, got %d — update this count if tools are added/removed (added archigraph_security_findings #2772)", got)
+	// +4 archigraph_pure_functions/_import_cycles/_def_use/_template_patterns (#2774/#2775 Phase 3 misc).
+	if got := len(allRegisteredTools); got != 53 {
+		t.Errorf("expected 53 registered tools, got %d — update this count if tools are added/removed (added archigraph_security_findings #2772 + Phase 3 misc #2774/#2775: pure_functions, import_cycles, def_use, template_patterns)", got)
 	}
 }
 
@@ -3179,6 +3186,11 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_payload_drift": {"group": "g"},
 		// #2772 Phase 2B taint-flow — no required args.
 		"archigraph_security_findings": {"group": "g"},
+		// #2774 / #2775 Phase 3 misc — sidecar readers, no required args.
+		"archigraph_pure_functions":    {"group": "g"},
+		"archigraph_import_cycles":     {"group": "g"},
+		"archigraph_def_use":           {"group": "g"},
+		"archigraph_template_patterns": {"group": "g"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3223,8 +3235,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 49 {
-		t.Errorf("expected 49 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_security_findings #2772)", len(tools))
+	if len(tools) != 53 {
+		t.Errorf("expected 53 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_security_findings #2772 + Phase 3 misc #2774/#2775: pure_functions, import_cycles, def_use, template_patterns)", len(tools))
 	}
 
 	for _, st := range tools {

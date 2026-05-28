@@ -421,6 +421,48 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 	}
 	res.Results = append(res.Results, pDrift)
 
+	// #2774 / #2775 — Phase 3A pure-function tagging. Derivative of
+	// Phase 1A: every function-like entity without an effect set is
+	// marked pure=true with a low confidence floor. Runs after the
+	// effect propagation pass so it observes the in-memory effect
+	// annotations stamped on entity Properties.
+	pPure, err := runPureFunctionPass(graphs, paths)
+	if err != nil {
+		return nil, fmt.Errorf("pure-function pass: %w", err)
+	}
+	res.Results = append(res.Results, pPure)
+
+	// #2774 / #2775 — Phase 3B module-cycle detection via Tarjan SCC
+	// over IMPORTS edges. Language-agnostic; stamps `module_cycle_id`
+	// on every cycle participant and emits a sidecar with full SCC
+	// membership for the archigraph_import_cycles MCP tool.
+	pCycle, err := runModuleCyclePass(graphs, paths)
+	if err != nil {
+		return nil, fmt.Errorf("module-cycle pass: %w", err)
+	}
+	res.Results = append(res.Results, pCycle)
+
+	// #2774 / #2775 — Phase 3C intra-procedural def-use chains. Per-
+	// language sniffer lifts defs and uses, the pass composes reaching-
+	// definitions (last-write-wins), stamps a compact summary on the
+	// owning function entity, and persists the full chain set in a
+	// sidecar for the archigraph_def_use MCP tool.
+	pDU, err := runDefUsePass(graphs, paths)
+	if err != nil {
+		return nil, fmt.Errorf("def-use pass: %w", err)
+	}
+	res.Results = append(res.Results, pDU)
+
+	// #2774 / #2775 — Phase 3D template-pattern catalog (i18n / log-
+	// format / SQL templates). Per-language sniffer lifts every recog-
+	// nised template literal; the pass persists them in a sidecar for
+	// the archigraph_template_patterns MCP tool.
+	pTP, err := runTemplatePatternPass(graphs, paths)
+	if err != nil {
+		return nil, fmt.Errorf("template-pattern pass: %w", err)
+	}
+	res.Results = append(res.Results, pTP)
+
 	for _, r := range res.Results {
 		res.TotalLinks += r.LinksAdded
 		res.TotalCandid += r.Candidates

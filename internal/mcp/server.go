@@ -512,6 +512,56 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_security_findings", s.handleSecurityFindings))
 
+
+	// #2774 / #2775 — Phase 3A pure-function tagging. Lists function-
+	// like entities with no detected effects per the Phase 1A propag-
+	// ation pass. Confidence floor is 0.30 (absence of detection is
+	// not proof of purity).
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_pure_functions",
+		mcpapi.WithDescription("Functions with no detected effects (Phase 1A) — memoization candidates."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_pure_functions", s.handlePureFunctions))
+
+	// #2774 / #2775 — Phase 3B module-cycle detection. Surfaces
+	// strongly-connected components over IMPORTS edges (Tarjan SCC) of
+	// size >= min_size. Reads the persistent sidecar written by the
+	// Phase 3B link pass.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_import_cycles",
+		mcpapi.WithDescription("IMPORTS cycle clusters per repo (Tarjan SCC, default min_size=2)."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithNumber("min_size", mcpapi.DefaultNumber(2)),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_import_cycles", s.handleModuleCyclesSidecar))
+
+	// #2774 / #2775 — Phase 3C intra-procedural reaching-definitions /
+	// def-use chains. Per-function "where does <var> at line N come
+	// from?" answers using last-write-wins.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_def_use",
+		mcpapi.WithDescription("Intra-procedural def-use chains (last-write-wins) per function."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithString("entity_id", mcpapi.Description("Optional: restrict to one function entity id.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_def_use", s.handleDefUse))
+
+	// #2774 / #2775 — Phase 3D template-pattern catalog. Surfaces
+	// every i18n key, log-format string, and SQL template literal
+	// across the group's source files.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_template_patterns",
+		mcpapi.WithDescription("i18n / log_format / sql template literals lifted per file."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithString("kind", mcpapi.Description("Filter by template kind: i18n | log_format | sql.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_template_patterns", s.handleTemplatePatterns))
+
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_stats",
 		mcpapi.WithDescription("Corpus-level metrics. breakdown=unresolved_imports adds edge taxonomy."),
 		mcpapi.WithAny("group"),
