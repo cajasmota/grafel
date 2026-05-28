@@ -32,7 +32,7 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
 
 
 ### Desktop

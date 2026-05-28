@@ -257,28 +257,12 @@ records:
               functions: [isZustandHookName, isReactQueryHook]
           issues_implemented: ["2735"]
           verified_at: "2026-05-28"
-        jsx_template:
-          status: full
-          symbols:
-            - file: internal/extractors/javascript/extractor.go
-              functions: [extractJSXRendersRelationships]
-          tests:
-            - file: internal/extractors/javascript/issue610_jsx_renders_test.go
-          issues_implemented: ["610", "2665", "2735"]
-          verified_at: "2026-05-28"
         context_extraction:
           status: full
           symbols:
             - file: internal/extractors/javascript/extractor.go
               functions: [isContextFactory]
           issues_implemented: ["611"]
-          verified_at: "2026-05-28"
-        hoc_wrapper_recognition:
-          status: full
-          symbols:
-            - file: internal/extractors/javascript/extractor.go
-              functions: [isFunctionWrapperCall]
-          issues_implemented: []
           verified_at: "2026-05-28"
       Data Flow:
         state_management:

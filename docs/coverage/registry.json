@@ -3199,13 +3199,7 @@
           "context_extraction": {
             "status": "missing"
           },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
-          },
           "hook_recognition": {
-            "status": "missing"
-          },
-          "jsx_template": {
             "status": "missing"
           }
         },
@@ -4399,13 +4393,7 @@
           "context_extraction": {
             "status": "missing"
           },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
-          },
           "hook_recognition": {
-            "status": "missing"
-          },
-          "jsx_template": {
             "status": "missing"
           }
         },
@@ -4537,13 +4525,7 @@
           "context_extraction": {
             "status": "missing"
           },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
-          },
           "hook_recognition": {
-            "status": "missing"
-          },
-          "jsx_template": {
             "status": "missing"
           }
         },
@@ -4675,13 +4657,7 @@
           "context_extraction": {
             "status": "missing"
           },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
-          },
           "hook_recognition": {
-            "status": "missing"
-          },
-          "jsx_template": {
             "status": "missing"
           }
         },
@@ -5254,9 +5230,6 @@
         "Structure": {
           "context_extraction": {
             "status": "missing"
-          },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
           }
         },
         "Navigation": {
@@ -5686,9 +5659,6 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
-          },
-          "hoc_wrapper_recognition": {
             "status": "missing"
           }
         },
@@ -7957,9 +7927,6 @@
         "Structure": {
           "context_extraction": {
             "status": "missing"
-          },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
           }
         },
         "Navigation": {
@@ -8720,9 +8687,6 @@
         "Structure": {
           "context_extraction": {
             "status": "missing"
-          },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
           }
         },
         "Navigation": {
@@ -8803,9 +8767,6 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
-          },
-          "hoc_wrapper_recognition": {
             "status": "missing"
           }
         },
@@ -8955,13 +8916,7 @@
           "context_extraction": {
             "status": "missing"
           },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
-          },
           "hook_recognition": {
-            "status": "missing"
-          },
-          "jsx_template": {
             "status": "missing"
           }
         },
@@ -9844,13 +9799,7 @@
           "context_extraction": {
             "status": "missing"
           },
-          "hoc_wrapper_recognition": {
-            "status": "missing"
-          },
           "hook_recognition": {
-            "status": "missing"
-          },
-          "jsx_template": {
             "status": "missing"
           }
         },
@@ -10566,15 +10515,7 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2751",
             "verified_at": "2026-05-28"
           },
-          "hoc_wrapper_recognition": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2854",
-            "verified_at": "2026-05-28"
-          },
           "hook_recognition": {
-            "status": "not_applicable"
-          },
-          "jsx_template": {
             "status": "not_applicable"
           }
         },
@@ -10899,11 +10840,6 @@
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go"],
             "verified_at": "2026-05-28"
-          },
-          "hoc_wrapper_recognition": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go"],
-            "verified_at": "2026-05-28"
           }
         },
         "Navigation": {
@@ -11017,6 +10953,13 @@
           "expo_router_specifics": {
             "status": "full",
             "cites": ["internal/extractors/javascript/navigation.go"],
+            "verified_at": "2026-05-28"
+          }
+        },
+        "Expo Internals": {
+          "hoc_wrapper_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go"],
             "verified_at": "2026-05-28"
           }
         }
@@ -11649,11 +11592,6 @@
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2751"
-          },
-          "hoc_wrapper_recognition": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Navigation": {
@@ -11745,6 +11683,15 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_mobile/App.tsx"],
             "verified_at": "2026-05-28"
+          }
+        }
+      },
+      "framework_specific": {
+        "Ionic Internals": {
+          "hoc_wrapper_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         }
       }
@@ -11979,11 +11926,6 @@
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2859"
-          },
-          "hoc_wrapper_recognition": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Navigation": {
@@ -12079,6 +12021,16 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_mobile/App.tsx"],
             "verified_at": "2026-05-28"
+          }
+        }
+      },
+      "framework_specific": {
+        "NativeScript Internals": {
+          "hoc_wrapper_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859",
+            "notes": "Genuine HOC signal only for the react-nativescript flavor (memo/withOrientation, recognised by the framework-agnostic React HOC detector in extractor.go). Core/Angular/Vue NativeScript flavors have no HOC equivalent; re-homed out of the shared mobile Structure column so it no longer reads as a paradigm-wide claim."
           }
         }
       }
@@ -12518,20 +12470,10 @@
             "cites": ["internal/extractors/javascript/extractor.go"],
             "verified_at": "2026-05-28"
           },
-          "hoc_wrapper_recognition": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go"],
-            "verified_at": "2026-05-28"
-          },
           "hook_recognition": {
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2854_react_test.go","internal/extractors/javascript/react.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2735",
-            "verified_at": "2026-05-28"
-          },
-          "jsx_template": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go"],
             "verified_at": "2026-05-28"
           }
         },
@@ -12752,10 +12694,20 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2875",
             "notes": "Covered by generic Structure/context_extraction (createContext, #611) and Structure/hoc_wrapper_recognition (forwardRef/memo/lazy/connect/withX, extractor.go). Not duplicated here to avoid double-counting."
           },
+          "hoc_wrapper_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go"],
+            "verified_at": "2026-05-28"
+          },
           "hooks": {
             "status": "not_applicable",
             "issue": "https://github.com/cajasmota/archigraph/issues/2875",
             "notes": "Covered by generic Structure/hook_recognition (react.go USES_HOOK + custom-hook subtype). Not duplicated here to avoid double-counting."
+          },
+          "jsx_template": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go"],
+            "verified_at": "2026-05-28"
           },
           "lazy_code_splitting": {
             "status": "partial",
@@ -12790,11 +12742,6 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go"],
-            "verified_at": "2026-05-28"
-          },
-          "hoc_wrapper_recognition": {
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go"],
             "verified_at": "2026-05-28"
@@ -12959,6 +12906,13 @@
             "cites": ["internal/extractors/config/discover.go","internal/extractors/config/testdata/mobile/rn_cli/react-native.config.js"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2879",
             "verified_at": "2026-05-29"
+          }
+        },
+        "React Native Internals": {
+          "hoc_wrapper_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go"],
+            "verified_at": "2026-05-28"
           }
         }
       }
@@ -13294,15 +13248,7 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2751",
             "verified_at": "2026-05-28"
           },
-          "hoc_wrapper_recognition": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2854",
-            "verified_at": "2026-05-28"
-          },
           "hook_recognition": {
-            "status": "not_applicable"
-          },
-          "jsx_template": {
             "status": "not_applicable"
           }
         },
@@ -13652,18 +13598,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2751",
             "verified_at": "2026-05-28"
           },
-          "hoc_wrapper_recognition": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2854",
-            "verified_at": "2026-05-28"
-          },
           "hook_recognition": {
             "status": "full",
             "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2854_test.go"],
             "verified_at": "2026-05-28"
-          },
-          "jsx_template": {
-            "status": "not_applicable"
           }
         },
         "Data Flow": {
@@ -14159,9 +14097,6 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
-          },
-          "hoc_wrapper_recognition": {
             "status": "missing"
           }
         },
@@ -14773,9 +14708,6 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
-          },
-          "hoc_wrapper_recognition": {
             "status": "missing"
           }
         },

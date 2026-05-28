@@ -80,12 +80,12 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"enum_extraction",
 		"env_fallback_recognition",
 		"fs_effect",
-		"hoc_wrapper_recognition",
+		// #2938 jsx_template + hoc_wrapper_recognition removed from the shared
+		// ui_frontend Structure group; re-homed to React framework_specific.
 		"hook_recognition",
 		"http_effect",
 		"import_resolution_quality",
 		"interface_extraction",
-		"jsx_template",
 		// #2774 Phase 3B module cycles.
 		"module_cycle_detection",
 		"mutation_effect",
@@ -140,12 +140,11 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"env_fallback_recognition",
 		"fs_effect",
 		"handler_attribution",
-		"hoc_wrapper_recognition",
+		// #2938 jsx_template + hoc_wrapper_recognition removed from ui_frontend.
 		"hook_recognition",
 		"http_effect",
 		"import_resolution_quality",
 		"interface_extraction",
-		"jsx_template",
 		"middleware_coverage",
 		// #2774 Phase 3B module cycles.
 		"module_cycle_detection",

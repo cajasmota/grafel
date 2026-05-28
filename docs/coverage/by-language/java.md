@@ -31,8 +31,8 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
-| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
 
 
 ### Meta Framework
@@ -46,8 +46,8 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
-| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
 
 
 ### AI Integration

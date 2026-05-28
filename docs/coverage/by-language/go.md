@@ -33,7 +33,7 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
 
 
 ### Desktop

@@ -26,8 +26,8 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
 
 
 ### Desktop

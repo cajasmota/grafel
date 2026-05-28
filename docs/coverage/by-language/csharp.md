@@ -24,17 +24,17 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
 
 
 ### Mobile
 
 | Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
 
 
 ### Desktop

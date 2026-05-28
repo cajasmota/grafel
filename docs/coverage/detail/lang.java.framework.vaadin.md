@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 18
+- **Capability cells:** 16
 
 ## Capabilities
 
@@ -17,9 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `component_extraction` | ❌ `missing` | — | — | — | — | — |
 | `context_extraction` | ❌ `missing` | — | — | — | — | — |
-| `hoc_wrapper_recognition` | ❌ `missing` | — | — | — | — | — |
 | `hook_recognition` | ❌ `missing` | — | — | — | — | — |
-| `jsx_template` | ❌ `missing` | — | — | — | — | — |
 
 ### Data Flow
 

@@ -30,10 +30,10 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 2/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [React](../detail/lang.jsts.framework.react.md) | ✅ 5/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 18/18 | |
-| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 2/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
-| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
+| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 2/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 18/18 | |
+| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 2/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
+| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
 
 
 ### Meta Framework
@@ -52,10 +52,10 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
 
 
 ### Desktop

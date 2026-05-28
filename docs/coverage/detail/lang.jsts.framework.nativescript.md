@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Mobile
-- **Capability cells:** 17
+- **Capability cells:** 16
 
 ## Capabilities
 
@@ -16,7 +16,6 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `context_extraction` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx` | — |
-| `hoc_wrapper_recognition` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx` | — |
 
 ### Navigation
 
@@ -72,6 +71,14 @@ Auto-generated. Back to [summary](../summary.md).
 | `constant_propagation` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
 | `env_fallback_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
 | `import_resolution_quality` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_mobile/App.tsx` | — |
+
+## Framework-specific
+
+### NativeScript Internals
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `hoc_wrapper_recognition` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx` | Genuine HOC signal only for the react-nativescript flavor (memo/withOrientation, recognised by the framework-agnostic React HOC detector in extractor.go). Core/Angular/Vue NativeScript flavors have no HOC equivalent; re-homed out of the shared mobile Structure column so it no longer reads as a paradigm-wide claim. |
 
 ## Provenance
 

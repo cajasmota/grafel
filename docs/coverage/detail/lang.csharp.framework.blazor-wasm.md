@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 29
+- **Capability cells:** 27
 
 ## Capabilities
 
@@ -17,9 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `component_extraction` | ❌ `missing` | — | — | — | — | — |
 | `context_extraction` | ❌ `missing` | — | — | — | — | — |
-| `hoc_wrapper_recognition` | ❌ `missing` | — | — | — | — | — |
 | `hook_recognition` | ❌ `missing` | — | — | — | — | — |
-| `jsx_template` | ❌ `missing` | — | — | — | — | — |
 
 ### Data Flow
 

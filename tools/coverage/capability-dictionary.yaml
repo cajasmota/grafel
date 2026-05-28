@@ -135,9 +135,7 @@ subcategories:
       - state_management
       - data_fetching
       - router_pattern
-      - jsx_template
       - context_extraction
-      - hoc_wrapper_recognition
       - branch_conditions
       - interface_extraction
       - type_alias_extraction
@@ -167,7 +165,7 @@ subcategories:
       - template_pattern_catalog
     groups:
       - name: Structure
-        keys: [component_extraction, hook_recognition, jsx_template, context_extraction, hoc_wrapper_recognition]
+        keys: [component_extraction, hook_recognition, context_extraction]
       - name: Data Flow
         keys: [prop_extraction, state_management, data_fetching, branch_conditions]
       - name: Navigation
@@ -250,7 +248,6 @@ subcategories:
       - deep_link_extraction
       - state_management
       - context_extraction
-      - hoc_wrapper_recognition
       - branch_conditions
       - interface_extraction
       - type_alias_extraction
@@ -280,7 +277,7 @@ subcategories:
       - template_pattern_catalog
     groups:
       - name: Structure
-        keys: [context_extraction, hoc_wrapper_recognition]
+        keys: [context_extraction]
       - name: Navigation
         keys: [navigation_extraction, deep_link_extraction, screen_detection]
       - name: Platform

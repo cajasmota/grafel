@@ -153,16 +153,16 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
-| [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
-| [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 2/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 5/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 18/18 | |
-| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 2/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
-| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/5 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
+| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 2/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 18/18 | |
+| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 2/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
+| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 4/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 7/7 | |
 
 
 ## Meta Framework
@@ -184,17 +184,17 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
-| [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
-| [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
-| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
-| [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
+| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 3/3 | |
+| [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
 
 
 ## Desktop
