@@ -13143,6 +13143,20 @@
           "endpoint_synthesis": {
             "status": "missing"
           }
+        },
+        "Substrate": {
+          "db_effect": {
+            "status": "not_applicable"
+          },
+          "fs_effect": {
+            "status": "not_applicable"
+          },
+          "http_effect": {
+            "status": "not_applicable"
+          },
+          "mutation_effect": {
+            "status": "not_applicable"
+          }
         }
       }
     },
@@ -13156,6 +13170,20 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "missing"
+          }
+        },
+        "Substrate": {
+          "db_effect": {
+            "status": "not_applicable"
+          },
+          "fs_effect": {
+            "status": "not_applicable"
+          },
+          "http_effect": {
+            "status": "not_applicable"
+          },
+          "mutation_effect": {
+            "status": "not_applicable"
           }
         }
       }
@@ -19694,6 +19722,24 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "missing"
+          }
+        },
+        "Substrate": {
+          "db_effect": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_swift.go"]
+          },
+          "fs_effect": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_swift.go"]
+          },
+          "http_effect": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_swift.go"]
+          },
+          "mutation_effect": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_swift.go"]
           }
         }
       }

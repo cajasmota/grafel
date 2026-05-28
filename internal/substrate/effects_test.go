@@ -21,6 +21,16 @@ func TestEffectRegistry_T2Languages(t *testing.T) {
 	}
 }
 
+func TestEffectRegistry_T3Languages(t *testing.T) {
+	// Languages that have concrete effect-sink sniffers in Phase 1A T3.
+	// The others are not_applicable (hardware langs, pure-FP, no corpus).
+	for _, lang := range []string{"dart", "swift", "nim", "crystal", "zig", "solidity", "svelte", "vue", "astro"} {
+		if EffectSnifferFor(lang) == nil {
+			t.Errorf("expected T3 effect sniffer registered for %q", lang)
+		}
+	}
+}
+
 func TestEffectSet_AddUnion(t *testing.T) {
 	var s EffectSet
 	if !s.IsEmpty() {

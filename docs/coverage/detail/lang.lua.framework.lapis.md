@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [lua](../by-language/lua.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 1
+- **Capability cells:** 5
 
 ## Capabilities
 
@@ -51,6 +51,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
+| `db_effect` | — `not_applicable` | — | — | — | — | — |
+| `fs_effect` | — `not_applicable` | — | — | — | — | — |
+| `http_effect` | — `not_applicable` | — | — | — | — | — |
+| `mutation_effect` | — `not_applicable` | — | — | — | — | — |
 
 ## Provenance
 

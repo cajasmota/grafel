@@ -12,7 +12,7 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/1 | — | — | — | — | — | — | — | |
+| [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/1 | — | — | — | — | — | — | ⚠️ 0/4 | |
 
 
 ## Tools

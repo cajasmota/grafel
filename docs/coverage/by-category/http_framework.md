@@ -87,8 +87,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
 | [kotlin](../by-language/kotlin.md) | [http4k](../detail/lang.kotlin.framework.http4k.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 8/13 | |
-| [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/1 | — | — | — | — | — | — | — | |
-| [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/1 | — | — | — | — | — | — | — | |
+| [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/1 | — | — | — | — | — | — | — 0/4 | |
+| [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/1 | — | — | — | — | — | — | — 0/4 | |
 | [php](../by-language/php.md) | [CakePHP](../detail/lang.php.framework.cakephp.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
 | [php](../by-language/php.md) | [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
 | [php](../by-language/php.md) | [Drupal](../detail/lang.php.framework.drupal.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
@@ -146,7 +146,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [scala](../by-language/scala.md) | [Scalatra](../detail/lang.scala.framework.scalatra.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
 | [scala](../by-language/scala.md) | [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
 | [scala](../by-language/scala.md) | [http4s](../detail/lang.scala.framework.http4s.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/13 | |
-| [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/1 | — | — | — | — | — | — | — | |
+| [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/1 | — | — | — | — | — | — | ⚠️ 0/4 | |
 
 
 ## UI Frontend

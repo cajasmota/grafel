@@ -12,5 +12,5 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/1 | — | — | — | — | — | — | — | |
-| [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/1 | — | — | — | — | — | — | — | |
+| [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/1 | — | — | — | — | — | — | — 0/4 | |
+| [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/1 | — | — | — | — | — | — | — 0/4 | |
