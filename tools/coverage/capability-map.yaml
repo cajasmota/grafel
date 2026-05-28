@@ -502,19 +502,19 @@ records:
           status: partial
           symbols:
             - file: internal/substrate/taint_sites_python.go
-              functions: [sniffTaintPython]
+              functions: [sniffTaintPython, appendPyFSSinkMatches]
             - file: internal/links/taint_flow.go
               functions: [runTaintFlowPass, computeFindings]
-          issues_implemented: ["2772"]
+          issues_implemented: ["2772", "2805"]
           verified_at: "2026-05-28"
         sanitizer_recognition:
           status: partial
           symbols:
             - file: internal/substrate/taint_sites_python.go
-              functions: [sniffTaintPython]
+              functions: [sniffTaintPython, pyGeneratedPathLocals, pyStringRHSAllGenerated, pyFragmentAllSafe]
             - file: internal/links/taint_flow.go
               functions: [runTaintFlowPass, computeFindings]
-          issues_implemented: ["2772"]
+          issues_implemented: ["2772", "2805"]
           verified_at: "2026-05-28"
         vulnerability_finding:
           status: partial

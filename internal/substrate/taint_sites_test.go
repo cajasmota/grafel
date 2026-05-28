@@ -594,3 +594,157 @@ func get(id string) {
 		t.Error("parameterised db.Query must not be a SQL sink")
 	}
 }
+
+// pyPathSinksInFunc returns the path-traversal sink matches the Python
+// sniffer reports for the named function. Helper for the #2805
+// generated-path sanitizer tests.
+func pyPathSinksInFunc(src, fn string) []TaintMatch {
+	var out []TaintMatch
+	for _, m := range sniffTaintPython(src) {
+		if m.Kind == TaintKindSink && m.Category == TaintCategoryPath && m.Function == fn {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// TestTaintSniffer_Python_MkstempPathIsNotSink reproduces the
+// process_ecb_pdf_job false positive (#2805): the destructive os.remove
+// operates on a path produced by tempfile.mkstemp, so it is internally
+// generated and must NOT be reported as a path-traversal sink even
+// though the function also reads request data.
+func TestTaintSniffer_Python_MkstempPathIsNotSink(t *testing.T) {
+	src := `
+def process_ecb_pdf_job(request):
+    raw = request.body  # source present in same function
+    fd, temp_path = tempfile.mkstemp(suffix=".pdf")
+    os.remove(temp_path)
+`
+	if got := pyPathSinksInFunc(src, "process_ecb_pdf_job"); len(got) != 0 {
+		t.Errorf("mkstemp-derived os.remove must be suppressed, got sinks: %+v", got)
+	}
+}
+
+// TestTaintSniffer_Python_GeneratedPathVariantsAreNotSinks covers the
+// remaining generated-path producers behind the send_proposals false
+// positive: NamedTemporaryFile, uuid4, timestamp-derived names, and an
+// os.path.join over only-generated components.
+func TestTaintSniffer_Python_GeneratedPathVariantsAreNotSinks(t *testing.T) {
+	cases := map[string]string{
+		"named_temp": `
+def send_proposals(request):
+    _ = request.POST
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    os.remove(tmp)
+`,
+		"uuid": `
+def send_proposals(request):
+    _ = request.GET
+    name = str(uuid.uuid4())
+    os.unlink(name)
+`,
+		"timestamp": `
+def send_proposals(request):
+    _ = request.data
+    stamp = datetime.now().strftime("%Y%m%d")
+    os.remove(stamp)
+`,
+		"join_generated": `
+def send_proposals(request):
+    _ = request.FILES
+    base = tempfile.mkdtemp()
+    full = os.path.join(base, "out.pdf")
+    shutil.rmtree(full)
+`,
+		"join_with_settings_root": `
+def send_proposals(request):
+    _ = request.body
+    name = str(uuid.uuid4())
+    full = os.path.join(settings.MEDIA_ROOT, name)
+    os.remove(full)
+`,
+		// f-string filename built from an attribute + uuid, joined onto
+		// tempfile.gettempdir(), then os.remove'd.
+		"fstring_uuid_into_tempdir_join": `
+def send_proposals(request):
+    user = request.user
+    recipient = request.data.get("email")
+    filename = f"proposal_{proposal.id}_{uuid.uuid4().hex}.pdf"
+    temp_path = os.path.join(tempfile.gettempdir(), filename)
+    os.remove(temp_path)
+`,
+		// EXACT real-world send_proposals shape (#2805): the os.remove
+		// targets are helper-method returns whose arguments are an
+		// attribute f-string and an already-generated local — never a
+		// bare request value. Both os.remove sinks must be suppressed.
+		"helper_return_chain": `
+def send_proposals(request):
+    proposal_ids = request.data.get("proposal_ids")
+    temp_document_path = s3helper.download_file(f"{document_template.url}")
+    document_path = document_generate.generate_document(temp_document_path, document_replacements, "pdf")
+    os.remove(document_path)
+    os.remove(temp_document_path)
+`,
+	}
+	for label, src := range cases {
+		if got := pyPathSinksInFunc(src, "send_proposals"); len(got) != 0 {
+			t.Errorf("[%s] generated path must be suppressed, got sinks: %+v", label, got)
+		}
+	}
+}
+
+// TestTaintSniffer_Python_RequestPathStillFlagged is the positive
+// control for #2805: when a REQUEST value flows into the path argument
+// of a destructive filesystem op, the sink MUST still fire. The
+// generated-path sanitizer must not over-suppress genuine taint.
+func TestTaintSniffer_Python_RequestPathStillFlagged(t *testing.T) {
+	cases := map[string]string{
+		"direct_request_to_remove": `
+def delete_upload(request):
+    target = request.GET["path"]
+    os.remove(target)
+`,
+		"request_joined_path": `
+def delete_upload(request):
+    name = request.POST["filename"]
+    full = os.path.join(MEDIA_ROOT, name)
+    os.remove(full)
+`,
+		"request_via_local": `
+def delete_upload(request):
+    user_path = request.data["file"]
+    shutil.rmtree(user_path)
+`,
+		// Negative control for the f-string recognizer: a request value
+		// interpolated as a BARE local into the filename must NOT be
+		// trusted as generated — the sink stays flagged.
+		"fstring_with_request_bare_local": `
+def delete_upload(request):
+    user_name = request.GET["name"]
+    filename = f"upload_{user_name}_{uuid.uuid4().hex}.pdf"
+    full = os.path.join(tempfile.gettempdir(), filename)
+    os.remove(full)
+`,
+		// Negative control for the helper-return recognizer: a request
+		// value passed THROUGH a helper into the path must keep the sink
+		// flagged — the call return cannot launder request taint here.
+		"helper_return_of_request_local": `
+def delete_upload(request):
+    user_path = request.data["file"]
+    resolved = path_resolver.resolve(user_path)
+    os.remove(resolved)
+`,
+		// Negative control: request flows directly as a helper argument
+		// (request.X dotted form) — must stay flagged.
+		"helper_return_of_request_attr": `
+def delete_upload(request):
+    resolved = path_resolver.resolve(request.GET["file"])
+    os.remove(resolved)
+`,
+	}
+	for label, src := range cases {
+		if got := pyPathSinksInFunc(src, "delete_upload"); len(got) == 0 {
+			t.Errorf("[%s] request-derived path sink must STILL be flagged, but was suppressed", label)
+		}
+	}
+}
