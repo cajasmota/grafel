@@ -39,6 +39,8 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return cmdAdd(rest, stdout)
 	case "update":
 		return cmdUpdate(rest, stdout)
+	case "backfill":
+		return cmdBackfill(rest, stdout)
 	case "remove":
 		return cmdRemove(rest, stdout)
 	case "gaps":
@@ -72,6 +74,7 @@ subcommands:
   get       show one record by id (--json)
   add       insert a new record (--id, --category, [--subcategory], --language, --label)
   update    update one capability cell (id positional, --capability, --status, --cites, --verified-now, --issue)
+  backfill  seed missing lane cells declared by the group taxonomy (--file, --issue, --language, --subcategory, --dry-run, --check)
   remove    delete a record by id
   gaps      list missing/partial records (--language, --category, --json)
   stats     counters across the registry (--json)

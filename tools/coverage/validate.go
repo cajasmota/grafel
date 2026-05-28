@@ -20,6 +20,16 @@ var frameworkSpecificKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // stale-verification warning.
 const staleDays = 90
 
+// completenessGateIsError controls the severity of the grouped-
+// completeness check (validateGroupedCompleteness): a lane key declared
+// by a record's subcategory group taxonomy but absent from the record's
+// cells. While false (this PR, #2942) these surface as WARNINGS, which
+// never fail CI — the `backfill` subcommand exists to seed those cells so
+// they become explicit `missing` placeholders. A later PR flips this to
+// true once the registry is backfilled, turning dictionary completeness
+// into a hard gate.
+const completenessGateIsError = false
+
 // ValidationResult collects errors (block) and warnings (advisory).
 type ValidationResult struct {
 	Errors   []string
@@ -183,6 +193,54 @@ func validateGroupedRecord(res *ValidationResult, prefix string, rec Record, rep
 			}
 			validateCapabilityCell(res, capPrefix, caps[k], repoRoot)
 		}
+	}
+	validateGroupedCompleteness(res, prefix, rec)
+}
+
+// validateGroupedCompleteness reports lane cells declared by the record's
+// subcategory group taxonomy but absent from the record. It is the
+// validate-time mirror of the `backfill` subcommand: every key the
+// taxonomy promises should have an explicit cell. AllCapabilities (lane
+// cells only — framework_specific is deliberately excluded) is the
+// presence set. Messages are appended in SORTED order so output is
+// deterministic regardless of map iteration. Subcategories without a
+// group taxonomy are skipped (nothing to be complete against).
+//
+// Severity is governed by completenessGateIsError: while false these are
+// warnings (advisory, never fail CI). validateRegistry sorts Errors and
+// Warnings globally afterward, so local ordering here is for readability.
+func validateGroupedCompleteness(res *ValidationResult, prefix string, rec Record) {
+	if rec.Subcategory == "" || !validSubcategory(rec.Category, rec.Subcategory) {
+		return
+	}
+	groups := groupsForSubcategory(rec.Subcategory)
+	if len(groups) == 0 {
+		return
+	}
+	present := rec.AllCapabilities()
+	var msgs []string
+	seen := map[string]struct{}{}
+	for _, g := range groups {
+		for _, key := range g.Keys {
+			if _, ok := present[key]; ok {
+				continue
+			}
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			owner := groupForCapability(rec.Subcategory, key)
+			if owner == "" {
+				owner = uncategorizedGroup
+			}
+			msgs = append(msgs, fmt.Sprintf("%s: lane key %q (group %q) declared by subcategory %q taxonomy but absent from record", prefix, key, owner, rec.Subcategory))
+		}
+	}
+	sort.Strings(msgs)
+	if completenessGateIsError {
+		res.Errors = append(res.Errors, msgs...)
+	} else {
+		res.Warnings = append(res.Warnings, msgs...)
 	}
 }
 
