@@ -281,14 +281,18 @@ func TestBuildBucketSectionGroupsBySubcategory(t *testing.T) {
 		t.Errorf("legacy record should fall through to flat Records, got %+v", sec.Records)
 	}
 	// ui_frontend has a declared group taxonomy (#2737), so the
-	// subsection now renders group-digest columns rather than per-
-	// capability columns. CapabilityKeys is unset; GroupNames carries
-	// the canonical group render order.
+	// subsection renders group-digest columns rather than per-capability
+	// columns. Under the #2940 per-framework model the columns are the
+	// universal-core lanes the subcategory declares (universal_core.order ∩
+	// {Structure, Data Flow, Navigation, Type System, Lifecycle, Testing,
+	// Substrate} = Type System, Testing, Substrate) followed by the merged
+	// "Other capabilities" digest (which rolls up Structure/Data Flow/
+	// Navigation/Lifecycle). CapabilityKeys is unset.
 	uiSec := sec.Subsections[1]
 	if len(uiSec.CapabilityKeys) != 0 {
 		t.Errorf("ui_frontend should use group columns, got CapabilityKeys=%v", uiSec.CapabilityKeys)
 	}
-	wantGroups := []string{"Structure", "Data Flow", "Navigation", "Type System", "Lifecycle", "Testing", "Substrate"}
+	wantGroups := []string{"Type System", "Testing", "Substrate", OtherCapabilitiesColumn}
 	if !reflect.DeepEqual(uiSec.GroupNames, wantGroups) {
 		t.Errorf("ui_frontend GroupNames = %v, want %v", uiSec.GroupNames, wantGroups)
 	}
@@ -327,16 +331,22 @@ func TestNonStrandedGroupNames(t *testing.T) {
 }
 
 // TestBuildBucketSectionHidesStrandedGroups proves the guard wired into
-// buildBucketSection drops an all-"—" group column from the rendered
-// subsection while keeping populated columns in canonical order.
+// buildBucketSection drops an all-"—" universal-core column from the
+// rendered subsection while keeping a populated universal lane — and that
+// the synthetic "Other capabilities" digest column is always present once
+// any record carries non-universal cells. Under the #2940 model the column
+// set is (universal_core ∩ declared) [don't-strand filtered] + Other.
 func TestBuildBucketSectionHidesStrandedGroups(t *testing.T) {
-	// Two ui_frontend records, neither carrying Navigation / Type System /
-	// Lifecycle / Testing / Substrate cells, so those columns are all-"—".
+	// Two ui_frontend records: Vue carries a Testing cell (a universal lane)
+	// plus non-universal Structure/Data Flow; Svelte carries only Structure.
+	// Type System / Substrate universal lanes are all-"—" → dropped. Testing
+	// survives (Vue has a cell). Structure/Data Flow roll into Other.
 	recs := []recordView{
 		recordToView(Record{ID: "lang.jsts.framework.vue", Category: "http_framework", Subcategory: "ui_frontend", Label: "Vue",
 			Groups: map[string]map[string]Capability{
 				"Structure": {"component_extraction": {Status: StatusFull}},
 				"Data Flow": {"prop_flow": {Status: StatusPartial, Issue: "x"}},
+				"Testing":   {"tests_linkage": {Status: StatusFull}},
 			}}),
 		recordToView(Record{ID: "lang.jsts.framework.svelte", Category: "http_framework", Subcategory: "ui_frontend", Label: "Svelte",
 			Groups: map[string]map[string]Capability{
@@ -348,7 +358,7 @@ func TestBuildBucketSectionHidesStrandedGroups(t *testing.T) {
 		t.Fatalf("want 1 subsection, got %d", len(sec.Subsections))
 	}
 	got := sec.Subsections[0].GroupNames
-	want := []string{"Structure", "Data Flow"}
+	want := []string{"Testing", OtherCapabilitiesColumn}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("stranded groups not hidden: GroupNames = %v, want %v", got, want)
 	}
@@ -663,6 +673,45 @@ func TestValidateFrameworkSpecific(t *testing.T) {
 	}
 	if !hasError("also appears in canonical capabilities") {
 		t.Errorf("expected canonical-clash error; got: %v", res.Errors)
+	}
+}
+
+// TestValidateRejectsReservedOtherCapabilitiesGroup pins the #2940
+// reserved-name guard: neither a canonical grouped record nor a
+// framework_specific block may use the reserved "Other capabilities"
+// group name (it is the synthetic merged pivot column).
+func TestValidateRejectsReservedOtherCapabilitiesGroup(t *testing.T) {
+	reg := &Registry{
+		SchemaVersion: SchemaVersion,
+		Records: []Record{
+			{
+				ID: "lang.jsts.framework.reserved-canon", Category: "http_framework",
+				Subcategory: "http_backend", Language: "jsts", Label: "Reserved",
+				Groups: map[string]map[string]Capability{
+					OtherCapabilitiesColumn: {"endpoint_synthesis": {Status: StatusFull}},
+				},
+			},
+			{
+				ID: "lang.jsts.framework.reserved-fs", Category: "http_framework",
+				Subcategory: "http_backend", Language: "jsts", Label: "ReservedFS",
+				Groups: map[string]map[string]Capability{
+					"Routing": {"endpoint_synthesis": {Status: StatusFull}},
+				},
+				FrameworkSpecific: map[string]map[string]Capability{
+					OtherCapabilitiesColumn: {"reservedfs_thing": {Status: StatusMissing, Issue: "x"}},
+				},
+			},
+		},
+	}
+	res := validateRegistry(reg, ".")
+	count := 0
+	for _, e := range res.Errors {
+		if containsStr(e, "is reserved (the synthetic merged pivot column)") {
+			count++
+		}
+	}
+	if count < 2 {
+		t.Errorf("expected reserved-name errors for both canonical and framework_specific groups; got %d in: %v", count, res.Errors)
 	}
 }
 

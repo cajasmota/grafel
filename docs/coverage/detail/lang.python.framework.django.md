@@ -18,7 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_routes.go`<br>`internal/engine/django_urlconf_nested.go`<br>`internal/engine/rules/python/frameworks/django.yaml` | — |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/django_admin_routes.go`<br>`internal/engine/django_routes.go` | — |
 
-### Security
+### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|

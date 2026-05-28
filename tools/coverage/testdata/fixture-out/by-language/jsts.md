@@ -7,7 +7,16 @@ Back to [summary](../summary.md).
 
 ## Frameworks
 
+
+### Backend HTTP
+
+| Name | Routing | Auth | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ⚠️ 0/1 | ✅ 1/1 | ❌ 0/3 | |
+
+
+### Other
+
 | Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|
 | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | — | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | — | ✅ | — | — | |

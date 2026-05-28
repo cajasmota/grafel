@@ -18,7 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/hapi.yaml`<br>`testdata/fixtures/typescript/hapi_routes.ts` | — |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/hapi.yaml`<br>`testdata/fixtures/typescript/hapi_routes.ts` | — |
 
-### Security
+### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|

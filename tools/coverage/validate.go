@@ -37,6 +37,7 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 	if reg.SchemaVersion != SchemaVersion {
 		res.Errors = append(res.Errors, fmt.Sprintf("schema_version %d unsupported (want %d)", reg.SchemaVersion, SchemaVersion))
 	}
+	validateUniversalCoreConsistency(res)
 
 	seen := map[string]int{}
 	for i, rec := range reg.Records {
@@ -151,6 +152,10 @@ func validateGroupedRecord(res *ValidationResult, prefix string, rec Record, rep
 	sort.Strings(groupNames)
 	for _, gname := range groupNames {
 		gPrefix := fmt.Sprintf("%s.capabilities[%s]", prefix, gname)
+		if gname == OtherCapabilitiesColumn {
+			res.Errors = append(res.Errors, fmt.Sprintf("%s: group name %q is reserved (the synthetic merged pivot column)", gPrefix, OtherCapabilitiesColumn))
+			continue
+		}
 		if !validGroupName(rec.Subcategory, gname) {
 			res.Errors = append(res.Errors, fmt.Sprintf("%s: unknown group %q for subcategory %q (known: %v)", gPrefix, gname, rec.Subcategory, known))
 			continue
@@ -236,6 +241,10 @@ func validateFrameworkSpecific(res *ValidationResult, prefix string, rec Record,
 			res.Errors = append(res.Errors, fmt.Sprintf("%s: group name is empty or whitespace-only", gPrefix))
 			continue
 		}
+		if gname == OtherCapabilitiesColumn {
+			res.Errors = append(res.Errors, fmt.Sprintf("%s: group name %q is reserved (the synthetic merged pivot column)", gPrefix, OtherCapabilitiesColumn))
+			continue
+		}
 		if rec.Label != "" && !strings.Contains(strings.ToLower(gname), strings.ToLower(firstLabelToken(rec.Label))) {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: group name %q does not reference framework label %q", gPrefix, gname, rec.Label))
 		}
@@ -257,6 +266,43 @@ func validateFrameworkSpecific(res *ValidationResult, prefix string, rec Record,
 			}
 			seenKeys[k] = gname
 			validateCapabilityCell(res, capPrefix, caps[k], repoRoot)
+		}
+	}
+}
+
+// validateUniversalCoreConsistency surfaces the #2940 dictionary
+// invariant at validate time: a subcategory group whose name
+// case-insensitively matches a universal_core lane MUST be spelled
+// identically, and no real group may be named OtherCapabilitiesColumn.
+// The dictionary loader (capability_dictionary.go) already rejects a
+// divergent dictionary outright, so this is a defensive second gate that
+// keeps the validate subcommand authoritative on its own.
+func validateUniversalCoreConsistency(res *ValidationResult) {
+	d := dict()
+	core := d.UniversalCoreOrder()
+	if len(core) == 0 {
+		return
+	}
+	canonByLower := map[string]string{}
+	for _, name := range core {
+		if name == OtherCapabilitiesColumn {
+			res.Errors = append(res.Errors, fmt.Sprintf("universal_core lane %q collides with the reserved merged-pivot column name", OtherCapabilitiesColumn))
+		}
+		canonByLower[strings.ToLower(name)] = name
+	}
+	for _, cat := range knownCategories() {
+		for _, sub := range knownSubcategories(cat) {
+			for _, g := range knownGroupNames(sub) {
+				if g == OtherCapabilitiesColumn {
+					res.Errors = append(res.Errors, fmt.Sprintf("subcategory %q declares a group named %q, which is reserved for the merged pivot column", sub, OtherCapabilitiesColumn))
+				}
+				if d.IsUniversalCore(g) {
+					continue
+				}
+				if canon, ok := canonByLower[strings.ToLower(g)]; ok {
+					res.Errors = append(res.Errors, fmt.Sprintf("subcategory %q group %q must be spelled %q to match universal_core", sub, g, canon))
+				}
+			}
 		}
 	}
 }

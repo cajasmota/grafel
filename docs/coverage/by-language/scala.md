@@ -10,23 +10,23 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Middleware | Substrate | Notes |
+| Name | Routing | Auth | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [Cask](../detail/lang.scala.framework.cask.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | ⚠️ 0/2 | — 0/1 | — 0/1 | ⚠️ 8/17 | |
-| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [Lagom](../detail/lang.scala.framework.lagom.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [Scalatra](../detail/lang.scala.framework.scalatra.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [http4s](../detail/lang.scala.framework.http4s.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [Cask](../detail/lang.scala.framework.cask.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | ⚠️ 0/2 | — 0/1 | ⚠️ 8/17 | — 0/1 | |
+| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [Lagom](../detail/lang.scala.framework.lagom.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [Scalatra](../detail/lang.scala.framework.scalatra.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [http4s](../detail/lang.scala.framework.http4s.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
 
 
 ### Meta Framework
 
-| Name | Structure | Data Flow | Server | Routing | Build | Type System | Lifecycle | Testing | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|---|
-| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 3/14 | |
+| Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|
+| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ⚠️ 3/14 | ❌ 0/7 | |
 
 
 ## Tools

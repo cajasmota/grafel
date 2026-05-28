@@ -102,3 +102,98 @@ func TestDictionarySingletonStable(t *testing.T) {
 		t.Errorf("dict() returned distinct pointers across calls: a=%p b=%p", a, b)
 	}
 }
+
+// TestUniversalCoreOrder pins the #2940 universal-core lane ordering and
+// membership query against the shipped dictionary.
+func TestUniversalCoreOrder(t *testing.T) {
+	d, err := LoadCapabilityDictionary(filepath.Join(repoRoot(t), defaultDictionaryPath))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	want := []string{"Routing", "Auth", "Type System", "Testing", "Substrate"}
+	if got := d.UniversalCoreOrder(); !reflect.DeepEqual(got, want) {
+		t.Errorf("UniversalCoreOrder = %v, want %v", got, want)
+	}
+	for _, name := range want {
+		if !d.IsUniversalCore(name) {
+			t.Errorf("IsUniversalCore(%q) = false, want true", name)
+		}
+	}
+	// "Security" was renamed to "Auth" (#2940): the http_backend auth lane
+	// must now be spelled canonically so the universal column picks it up.
+	if d.IsUniversalCore("Security") {
+		t.Errorf("IsUniversalCore(Security) = true; lane should be renamed to Auth")
+	}
+	if g := d.GroupForCapability("http_backend", "auth_coverage"); g != "Auth" {
+		t.Errorf("http_backend auth_coverage group = %q, want Auth", g)
+	}
+}
+
+// TestUniversalCoreConsistencyRejectsDivergentSpelling proves the load-
+// time guard: a subcategory group whose name case-insensitively matches a
+// universal_core lane but is spelled differently (here "auth" vs the
+// canonical "Auth") fails to load. This is what keeps the pivot's exact-
+// string `universal_core ∩ groups` intersection from silently dropping a
+// lane because of a casing divergence.
+func TestUniversalCoreConsistencyRejectsDivergentSpelling(t *testing.T) {
+	src := `$schema_version: 1
+universal_core:
+  order: [Auth]
+buckets:
+  Frameworks: {order: 1, categories: [http_framework]}
+categories:
+  http_framework: {capabilities: [auth_coverage], subcategory_order: [http_backend]}
+subcategories:
+  http_backend:
+    display: Backend
+    parent_category: http_framework
+    capabilities: [auth_coverage]
+    groups:
+      - {name: auth, keys: [auth_coverage]}
+`
+	tmp := filepath.Join(t.TempDir(), "dict.yaml")
+	if err := os.WriteFile(tmp, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadCapabilityDictionary(tmp)
+	if err == nil {
+		t.Fatalf("expected consistency error for divergent universal-core spelling, got nil")
+	}
+	if !containsStr(err.Error(), `must be spelled "Auth"`) {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// TestOtherCapabilitiesDigest verifies the #2940 merged digest: non-
+// universal canonical group cells UNION all framework_specific cells,
+// excluding universal-core lanes.
+func TestOtherCapabilitiesDigest(t *testing.T) {
+	rec := Record{
+		ID: "lang.jsts.framework.nestjs", Category: "http_framework",
+		Subcategory: "http_backend", Language: "jsts", Label: "NestJS",
+		Groups: map[string]map[string]Capability{
+			"Routing":    {"endpoint_synthesis": {Status: StatusFull}}, // universal — excluded
+			"Validation": {"request_validation": {Status: StatusMissing}},
+		},
+		FrameworkSpecific: map[string]map[string]Capability{
+			"NestJS Internals": {
+				"dependency_injection": {Status: StatusMissing},
+				"module_graph":         {Status: StatusPartial},
+			},
+		},
+	}
+	cells := otherCapabilitiesCells(rec)
+	if _, ok := cells["endpoint_synthesis"]; ok {
+		t.Errorf("universal-core cell leaked into Other digest set")
+	}
+	want := []string{"dependency_injection", "module_graph", "request_validation"}
+	got := sortedCapKeys(cells)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Other cells = %v, want %v", got, want)
+	}
+	// 3 cells, 0 full, worst = missing → ❌ 0/3.
+	view := recordToView(rec)
+	if d := view.GroupDigestByName[OtherCapabilitiesColumn]; d != "❌ 0/3" {
+		t.Errorf("Other digest = %q, want ❌ 0/3", d)
+	}
+}

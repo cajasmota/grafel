@@ -18,7 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
 | `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
 
-### Security
+### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|

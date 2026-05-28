@@ -6,10 +6,19 @@
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 
+
+## Backend HTTP
+
+| Language | Name | Routing | Auth | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ⚠️ 0/1 | ✅ 1/1 | ❌ 0/3 | |
+
+
+## Other
+
 | Language | Name | Auth Coverage | Endpoint Synthesis | Handler Attribution | Middleware Coverage | Notes |
 |---|---|---|---|---|---|---|
 | [JS/TS](../by-language/jsts.md) | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | — | |
-| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | — | ✅ | — | — | |
 | [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ⚠️ | ✅ | ✅ | — | |
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | — | ✅ | — | — | |
 | [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | — | ✅ | — | — | |

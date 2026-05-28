@@ -18,7 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/rust/frameworks/tide.yaml` | — |
 | `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/rust/frameworks/tide.yaml` | — |
 
-### Security
+### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|

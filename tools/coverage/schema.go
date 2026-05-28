@@ -71,6 +71,13 @@ const SchemaVersion = 1
 // key here so the taxonomy can be extended deliberately.
 const uncategorizedGroup = "Uncategorized"
 
+// OtherCapabilitiesColumn is the synthetic pivot-column header under
+// which a record's non-universal-core canonical groups and all of its
+// framework_specific cells are rolled up into a single digest (#2940).
+// It is reserved: validate.go rejects any real group name or
+// framework_specific group name that collides with it.
+const OtherCapabilitiesColumn = "Other capabilities"
+
 // Status enum values for a capability cell.
 const (
 	StatusFull          = "full"
@@ -179,6 +186,24 @@ func (r *Record) AllCapabilities() map[string]Capability {
 	}
 	out := map[string]Capability{}
 	for _, g := range r.Groups {
+		for k, v := range g {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// AllCapabilitiesIncludingFrameworkSpecific returns every capability cell
+// on the record — the canonical capabilities (flat or grouped) UNION all
+// framework_specific cells — as a flat map keyed by capability slug. This
+// is the completeness denominator (#2940): a framework's framework_specific
+// idioms COUNT toward stats/gaps so a framework can no longer look "green"
+// while its real idioms go unextracted. Keys are collision-free across the
+// canonical and framework_specific tiers (enforced by validate.go), so the
+// flatten never silently overwrites.
+func (r *Record) AllCapabilitiesIncludingFrameworkSpecific() map[string]Capability {
+	out := r.AllCapabilities()
+	for _, g := range r.FrameworkSpecific {
 		for k, v := range g {
 			out[k] = v
 		}
@@ -388,6 +413,17 @@ func groupAllowedKeys(sub, group string) []string {
 // render order, or nil when sub has no group taxonomy.
 func knownGroupNames(sub string) []string {
 	return dict().GroupNames(sub)
+}
+
+// universalCoreOrder returns the universal-core lane names in canonical
+// render order (#2940).
+func universalCoreOrder() []string {
+	return dict().UniversalCoreOrder()
+}
+
+// isUniversalCore reports whether group is a universal-core lane name.
+func isUniversalCore(group string) bool {
+	return dict().IsUniversalCore(group)
 }
 
 // validGroupName reports whether group is part of sub's taxonomy. The

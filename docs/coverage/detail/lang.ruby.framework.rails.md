@@ -18,7 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_ruby_producer.go`<br>`internal/engine/rules/ruby/frameworks/ruby_on_rails.yaml` | — |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_ruby_producer.go` | — |
 
-### Security
+### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
