@@ -10,47 +10,47 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Middleware | Substrate | Notes |
+| Name | Routing | Auth | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 0/1 | ⚠️ 6/17 | |
-| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [Carter](../detail/lang.csharp.framework.carter.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
-| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ⚠️ 0/1 | |
+| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [Carter](../detail/lang.csharp.framework.carter.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
 
 
 ### UI Frontend
 
-| Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|
-| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| Name | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
+| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
+| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
 
 
 ### Mobile
 
-| Name | Structure | Navigation | Platform | Native Bridge | Data Flow | Type System | Lifecycle | Testing | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|---|
-| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
-| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| Name | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
+| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
 
 
 ### Desktop
 
-| Name | Process | Native | Substrate | Notes |
-|---|---|---|---|---|
-| [Uno Platform](../detail/lang.csharp.framework.uno.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
-| [WPF](../detail/lang.csharp.framework.wpf.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
-| [Windows Forms](../detail/lang.csharp.framework.winforms.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [Uno Platform](../detail/lang.csharp.framework.uno.md) | ⚠️ 3/7 | ❌ 0/3 | |
+| [WPF](../detail/lang.csharp.framework.wpf.md) | ⚠️ 3/7 | ❌ 0/3 | |
+| [Windows Forms](../detail/lang.csharp.framework.winforms.md) | ⚠️ 3/7 | ❌ 0/3 | |
 
 
 ### RPC Framework
 
-| Name | Schema | Codegen | Substrate | Notes |
-|---|---|---|---|---|
-| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/14 | |
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ⚠️ 5/14 | ❌ 0/3 | |
 
 
 ## Tools

@@ -604,7 +604,7 @@ records:
             - file: internal/extractors/python/drf_serializer_fields_test.go
           issues_implemented: ["2677"]
           verified_at: "2026-05-28"
-      Security:
+      Auth:
         auth_coverage:
           status: full
           symbols:
@@ -823,7 +823,7 @@ records:
             - file: internal/engine/rules/python/frameworks/fastapi.yaml
           issues_implemented: ["2681"]
           verified_at: "2026-05-28"
-      Security:
+      Auth:
         auth_coverage:
           status: partial
           symbols:
@@ -924,7 +924,7 @@ records:
             - file: internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml
           issues_implemented: ["2687"]
           verified_at: "2026-05-28"
-      Security:
+      Auth:
         auth_coverage:
           status: partial
           symbols:
@@ -1399,7 +1399,7 @@ records:
                 - containsAnyHTTPAnnotation
           issues_implemented: ["2680"]
           verified_at: "2026-05-28"
-      Security:
+      Auth:
         auth_coverage:
           status: full
           symbols:

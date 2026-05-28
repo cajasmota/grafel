@@ -18,7 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | `endpoint_synthesis` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/php/frameworks/drupal.yaml` | — |
 | `handler_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/php/frameworks/drupal.yaml` | — |
 
-### Security
+### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|

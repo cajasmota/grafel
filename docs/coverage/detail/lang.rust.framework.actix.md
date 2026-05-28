@@ -18,7 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | `endpoint_synthesis` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
 | `handler_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
 
-### Security
+### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|

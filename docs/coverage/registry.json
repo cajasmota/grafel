@@ -1796,7 +1796,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -1913,7 +1913,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2030,7 +2030,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2147,7 +2147,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2264,7 +2264,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2381,7 +2381,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2498,7 +2498,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2615,7 +2615,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2732,7 +2732,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2849,7 +2849,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -2966,7 +2966,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -3083,7 +3083,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -3332,7 +3332,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -3449,7 +3449,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -4154,7 +4154,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -4277,7 +4277,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -4790,7 +4790,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -4907,7 +4907,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -5118,7 +5118,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -5371,7 +5371,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -6058,7 +6058,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -6179,7 +6179,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -6296,7 +6296,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -6413,7 +6413,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -6532,7 +6532,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -6651,7 +6651,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -6772,7 +6772,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7025,7 +7025,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7340,7 +7340,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7403,7 +7403,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7466,7 +7466,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7529,7 +7529,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7592,7 +7592,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7655,7 +7655,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7740,7 +7740,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -7873,7 +7873,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8017,7 +8017,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8080,7 +8080,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8143,7 +8143,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8206,7 +8206,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8269,7 +8269,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8332,7 +8332,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8395,7 +8395,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8633,7 +8633,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8858,7 +8858,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -8994,7 +8994,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -9057,7 +9057,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -9116,7 +9116,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -9179,7 +9179,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "partial",
             "cites": ["internal/engine/java_auth_policy.go"],
@@ -9266,7 +9266,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "partial",
             "cites": ["internal/engine/java_auth_policy.go"],
@@ -9331,7 +9331,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -9458,7 +9458,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "partial",
             "cites": ["internal/engine/java_auth_policy.go"],
@@ -9523,7 +9523,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/engine/java_auth_policy.go"],
@@ -9676,7 +9676,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "partial",
             "cites": ["internal/engine/java_auth_policy.go"],
@@ -9741,7 +9741,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -9881,7 +9881,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -10422,7 +10422,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/adonisjs_auth.ts"],
@@ -10986,7 +10986,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/express_auth.ts"],
@@ -11081,7 +11081,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/fastify_auth.ts"],
@@ -11176,7 +11176,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/feathers_auth.ts"],
@@ -11413,7 +11413,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/hapi_auth.ts"],
@@ -11506,7 +11506,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/hono_auth.ts"],
@@ -11715,7 +11715,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/koa_auth.ts"],
@@ -11840,7 +11840,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/marblejs_auth.ts"],
@@ -12056,7 +12056,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/nestjs_auth.ts"],
@@ -12377,7 +12377,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/polka_auth.ts"],
@@ -13041,7 +13041,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/restify_auth.ts"],
@@ -13136,7 +13136,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","internal/engine/http_endpoint_jsts_sails_auth.go","testdata/fixtures/typescript/sails_policies.ts","testdata/fixtures/typescript/sails_routes.ts"],
@@ -13986,7 +13986,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -14359,7 +14359,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -14480,7 +14480,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -14597,7 +14597,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -14854,7 +14854,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -14975,7 +14975,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -15096,7 +15096,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -15217,7 +15217,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "partial",
             "cites": ["internal/engine/java_auth_policy.go"],
@@ -15714,7 +15714,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -15835,7 +15835,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -15956,7 +15956,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16077,7 +16077,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16198,7 +16198,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16315,7 +16315,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16436,7 +16436,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16553,7 +16553,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16674,7 +16674,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16795,7 +16795,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -16916,7 +16916,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -17037,7 +17037,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -17411,7 +17411,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -17474,7 +17474,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -17535,7 +17535,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -17594,7 +17594,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -17657,7 +17657,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "partial",
             "cites": ["internal/engine/django_drf_actions.go"],
@@ -17724,7 +17724,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "full",
             "cites": ["internal/extractors/python/config_module.go","internal/extractors/python/django_drf_permissions.go","internal/mcp/auth_coverage.go"],
@@ -17872,7 +17872,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -17931,7 +17931,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -17994,7 +17994,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "partial",
             "cites": ["internal/engine/rules/python/frameworks/fastapi.yaml"],
@@ -18059,7 +18059,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18118,7 +18118,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18203,7 +18203,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18266,7 +18266,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18325,7 +18325,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18388,7 +18388,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18451,7 +18451,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18514,7 +18514,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18577,7 +18577,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -18640,7 +18640,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -19042,7 +19042,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -19161,7 +19161,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -19282,7 +19282,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -19403,7 +19403,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -19524,7 +19524,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -19645,7 +19645,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -19766,7 +19766,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -19887,7 +19887,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -20284,7 +20284,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -20405,7 +20405,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -20526,7 +20526,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -20647,7 +20647,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -20768,7 +20768,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -20889,7 +20889,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -21006,7 +21006,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -21186,7 +21186,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -21303,7 +21303,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -21424,7 +21424,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -21644,7 +21644,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -21761,7 +21761,7 @@
             "status": "missing"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -21880,7 +21880,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
           }
@@ -22001,7 +22001,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -22122,7 +22122,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -22243,7 +22243,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -22500,7 +22500,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }
@@ -22621,7 +22621,7 @@
             "verified_at": "2026-05-28"
           }
         },
-        "Security": {
+        "Auth": {
           "auth_coverage": {
             "status": "missing"
           }

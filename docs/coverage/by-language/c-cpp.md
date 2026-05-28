@@ -10,37 +10,37 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Middleware | Substrate | Notes |
+| Name | Routing | Auth | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 3/17 | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/17 | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/17 | ❌ 0/1 | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
 
 
 ### UI Frontend
 
-| Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|
-| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/14 | |
+| Name | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
 
 
 ### Desktop
 
-| Name | Process | Native | Substrate | Notes |
-|---|---|---|---|---|
-| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
-| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | ⚠️ 3/7 | ❌ 0/3 | |
+| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | ⚠️ 3/7 | ❌ 0/3 | |
 
 
 ## Tools

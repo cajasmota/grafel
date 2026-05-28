@@ -13,6 +13,17 @@
 
 $schema_version: 1
 
+# Universal core (#2940). These group names are the cross-framework lanes
+# that count on every framework's by-language overview row. `order` fixes
+# their left-to-right render order in the per-subcategory pivot; only the
+# universal-core groups a subcategory actually declares are shown (omit-if-
+# absent — we never fabricate a column). Any subcategory group whose name
+# also appears here MUST be spelled identically (load-time consistency
+# check in capability_dictionary.go + validate.go); that is why the
+# http_backend auth lane is named "Auth" rather than "Security".
+universal_core:
+  order: [Routing, Auth, Type System, Testing, Substrate]
+
 # Buckets group registry categories into the four rendering lanes used
 # by summary.md and the per-language pages. Order governs display order
 # across the registry.
@@ -110,7 +121,7 @@ subcategories:
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction]
-      - name: Security
+      - name: Auth
         keys: [auth_coverage]
       - name: Validation
         keys: [request_validation, dto_extraction]

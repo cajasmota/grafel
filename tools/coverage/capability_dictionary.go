@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -34,6 +35,7 @@ var embeddedDictionary embed.FS
 // and for callers that want a fresh load from a specific path.
 type CapabilityDictionary struct {
 	SchemaVersion int                         `yaml:"$schema_version"`
+	UniversalCore UniversalCoreEntry          `yaml:"universal_core"`
 	Buckets       map[string]BucketEntry      `yaml:"buckets"`
 	Categories    map[string]CategoryEntry    `yaml:"categories"`
 	Subcategories map[string]SubcategoryEntry `yaml:"subcategories"`
@@ -44,6 +46,14 @@ type CapabilityDictionary struct {
 	subcatsByCat     map[string][]string            // category → ordered subcategory slugs
 	groupsBySubcat   map[string][]capabilityGroup   // subcategory → ordered groups
 	groupIndex       map[string]map[string][]string // subcategory → group name → keys
+	universalCoreSet map[string]struct{}            // membership set over UniversalCore.Order
+}
+
+// UniversalCoreEntry declares the cross-framework "universal core" group
+// lanes (#2940). Order fixes the left-to-right render sequence of the
+// universal columns on every per-subcategory pivot table.
+type UniversalCoreEntry struct {
+	Order []string `yaml:"order"`
 }
 
 // BucketEntry is one bucket definition (render order + category list).
@@ -111,11 +121,50 @@ func parseCapabilityDictionary(data []byte, path string) (*CapabilityDictionary,
 		return nil, fmt.Errorf("capability dictionary %s: unsupported $schema_version %d (want 1)", path, d.SchemaVersion)
 	}
 	d.indexDerived()
+	if err := d.checkUniversalCoreConsistency(); err != nil {
+		return nil, fmt.Errorf("capability dictionary %s: %w", path, err)
+	}
 	return d, nil
+}
+
+// checkUniversalCoreConsistency enforces the #2940 spelling invariant:
+// any subcategory group name that case-insensitively matches a
+// universal_core lane MUST be spelled identically. This guarantees the
+// pivot's `universal_core.order ∩ groups` intersection (an exact-string
+// set membership) actually picks the lane up rather than silently
+// dropping it because of a "Security" vs "Auth" / casing divergence.
+func (d *CapabilityDictionary) checkUniversalCoreConsistency() error {
+	if len(d.universalCoreSet) == 0 {
+		return nil
+	}
+	canonByLower := map[string]string{}
+	for _, name := range d.UniversalCore.Order {
+		canonByLower[strings.ToLower(name)] = name
+	}
+	subs := make([]string, 0, len(d.groupsBySubcat))
+	for s := range d.groupsBySubcat {
+		subs = append(subs, s)
+	}
+	sort.Strings(subs)
+	for _, sub := range subs {
+		for _, g := range d.groupsBySubcat[sub] {
+			if _, exact := d.universalCoreSet[g.Name]; exact {
+				continue
+			}
+			if canon, ok := canonByLower[strings.ToLower(g.Name)]; ok {
+				return fmt.Errorf("subcategory %q group %q must be spelled %q to match universal_core", sub, g.Name, canon)
+			}
+		}
+	}
+	return nil
 }
 
 // indexDerived populates the read-only derived indexes used by helpers.
 func (d *CapabilityDictionary) indexDerived() {
+	d.universalCoreSet = map[string]struct{}{}
+	for _, name := range d.UniversalCore.Order {
+		d.universalCoreSet[name] = struct{}{}
+	}
 	// bucketOrder by ascending Order then name for ties.
 	names := make([]string, 0, len(d.Buckets))
 	for n := range d.Buckets {
@@ -183,6 +232,22 @@ func (d *CapabilityDictionary) indexDerived() {
 		d.groupsBySubcat[slug] = groups
 		d.groupIndex[slug] = inner
 	}
+}
+
+// UniversalCoreOrder returns the universal-core group lane names in
+// canonical render order (#2940). The returned slice is a fresh copy so
+// callers cannot mutate the dictionary's backing array.
+func (d *CapabilityDictionary) UniversalCoreOrder() []string {
+	out := make([]string, len(d.UniversalCore.Order))
+	copy(out, d.UniversalCore.Order)
+	return out
+}
+
+// IsUniversalCore reports whether group is a universal-core lane name
+// (exact match — spelling is enforced canonical at load time).
+func (d *CapabilityDictionary) IsUniversalCore(group string) bool {
+	_, ok := d.universalCoreSet[group]
+	return ok
 }
 
 // BucketOrder returns the render order of bucket names.

@@ -237,13 +237,16 @@ func TestGenSummaryIncludesExtractorSupportedLanguages(t *testing.T) {
 }
 
 // TestGenHidesStrandedGroupColumns is the gen-level snapshot of the
-// don't-strand render guard (#2902). It builds a minimal in-memory
-// registry of grouped ui_frontend records where the Navigation / Type
-// System / Lifecycle / Testing / Substrate groups are all-"—" (no record
-// carries a cell), then asserts the rendered by-language and by-category
-// tables drop those column headers while keeping the populated Structure
-// and Data Flow columns — and that a tracked-but-missing ("❌") cell keeps
-// its column (only truly-N/A all-"—" columns are hidden).
+// don't-strand render guard (#2902) under the #2940 per-framework column
+// model. Columns are the universal-core lanes the subcategory declares
+// (universal_core ∩ declared, don't-strand filtered) plus the merged
+// "Other capabilities" digest. Here Vue carries a Testing cell (a
+// universal lane) plus non-universal Structure/Data Flow cells, and
+// Svelte carries only Structure. The Testing column survives (Vue has a
+// cell); the other universal lanes (Type System / Substrate) are all-"—"
+// and are dropped; non-universal Structure/Data Flow roll into the always-
+// present "Other capabilities" column, so no Structure/Data Flow/
+// Navigation/Lifecycle column headers appear.
 func TestGenHidesStrandedGroupColumns(t *testing.T) {
 	reg := &Registry{
 		SchemaVersion: SchemaVersion,
@@ -252,6 +255,7 @@ func TestGenHidesStrandedGroupColumns(t *testing.T) {
 				Groups: map[string]map[string]Capability{
 					"Structure": {"component_extraction": {Status: StatusFull}},
 					"Data Flow": {"prop_flow": {Status: StatusMissing, Issue: "x"}},
+					"Testing":   {"tests_linkage": {Status: StatusFull}},
 				}},
 			{ID: "lang.jsts.framework.svelte", Category: "http_framework", Subcategory: "ui_frontend", Language: "jsts", Label: "Svelte",
 				Groups: map[string]map[string]Capability{
@@ -272,16 +276,17 @@ func TestGenHidesStrandedGroupColumns(t *testing.T) {
 			t.Fatalf("read %s: %v", rel, err)
 		}
 		body := string(data)
-		// Populated columns survive (Data Flow has a tracked ❌ cell).
-		for _, keep := range []string{"| Structure |", "| Data Flow |"} {
+		// The populated universal lane and the merged digest survive.
+		for _, keep := range []string{"| Testing |", "| Other capabilities |"} {
 			if !strings.Contains(body, keep) {
 				t.Errorf("%s: expected column %q to be kept, got:\n%s", rel, keep, body)
 			}
 		}
-		// All-"—" columns are dropped.
-		for _, drop := range []string{"| Navigation |", "| Type System |", "| Lifecycle |", "| Testing |", "| Substrate |"} {
+		// All-"—" universal columns are dropped; non-universal lanes never
+		// get their own column (they fold into "Other capabilities").
+		for _, drop := range []string{"| Structure |", "| Data Flow |", "| Navigation |", "| Type System |", "| Lifecycle |", "| Substrate |"} {
 			if strings.Contains(body, drop) {
-				t.Errorf("%s: stranded column %q should be hidden, got:\n%s", rel, drop, body)
+				t.Errorf("%s: stranded/folded column %q should be hidden, got:\n%s", rel, drop, body)
 			}
 		}
 	}

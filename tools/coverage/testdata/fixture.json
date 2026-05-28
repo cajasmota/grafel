@@ -17,13 +17,53 @@
     {
       "id": "lang.jsts.framework.nestjs",
       "category": "http_framework",
+      "subcategory": "http_backend",
       "language": "jsts",
       "label": "NestJS",
       "capabilities": {
-        "endpoint_synthesis": {
-          "status": "full",
-          "cites": ["internal/engine/http_endpoint_synthesis.go"],
-          "verified_at": "2026-05-27"
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
+            "verified_at": "2026-05-27"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
+            "verified_at": "2026-05-27"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "partial",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2940",
+            "verified_at": "2026-05-27"
+          }
+        },
+        "Validation": {
+          "request_validation": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2940"
+          }
+        },
+        "Substrate": {
+          "import_resolution_quality": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
+            "verified_at": "2026-05-27"
+          }
+        }
+      },
+      "framework_specific": {
+        "NestJS Internals": {
+          "dependency_injection": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2940"
+          },
+          "module_graph": {
+            "status": "partial",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2940"
+          }
         }
       }
     },

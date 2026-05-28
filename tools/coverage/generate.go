@@ -295,7 +295,49 @@ func recordToView(rec Record) recordView {
 			view.GroupDigestByName[g.Name] = g.Digest
 		}
 	}
+	// "Other capabilities" merged digest (#2940): everything outside the
+	// universal-core lanes — non-universal canonical group cells UNION all
+	// framework_specific cells — rolled into a single digest column so a
+	// framework's unique idioms render (and count) on the overview. The set
+	// is built order-independently (map union) so the digest is
+	// deterministic regardless of group/key iteration order.
+	if other := otherCapabilitiesCells(rec); len(other) > 0 {
+		view.GroupDigestByName[OtherCapabilitiesColumn] = groupDigest(other)
+	} else {
+		view.GroupDigestByName[OtherCapabilitiesColumn] = "—"
+	}
 	return view
+}
+
+// otherCapabilitiesCells returns the union of the record's non-universal-
+// core canonical group cells and all of its framework_specific cells,
+// keyed by capability slug (#2940). Universal-core group cells are
+// excluded — they own their own pivot columns. For non-grouped records
+// (no subcategory taxonomy) every canonical cell is "other" since none of
+// them belongs to a universal-core lane. Keys are collision-free across
+// tiers (validate.go), so the union never silently overwrites.
+func otherCapabilitiesCells(rec Record) map[string]Capability {
+	out := map[string]Capability{}
+	if rec.IsGrouped() {
+		for gname, caps := range rec.Groups {
+			if isUniversalCore(gname) {
+				continue
+			}
+			for k, c := range caps {
+				out[k] = c
+			}
+		}
+	} else {
+		for k, c := range rec.Capabilities {
+			out[k] = c
+		}
+	}
+	for _, caps := range rec.FrameworkSpecific {
+		for k, c := range caps {
+			out[k] = c
+		}
+	}
+	return out
 }
 
 // buildGroupViews materialises one groupView per declared group in the
@@ -819,6 +861,41 @@ func nonStrandedGroupNames(candidates []string, records int, digestFor func(rec 
 	return out
 }
 
+// universalPivotColumns returns the per-subcategory pivot column headers
+// under the #2940 model: the universal-core lanes the subcategory actually
+// declares (universal_core.order ∩ knownGroupNames(sub), omit-if-absent,
+// in universal-core render order) followed by the synthetic
+// OtherCapabilitiesColumn, always last.
+//
+// The universal columns are subject to the don't-strand guard
+// (nonStrandedGroupNames): a lane that is all-"—" across every record in
+// the table is dropped. The OtherCapabilitiesColumn is EXEMPT from that
+// over-suppression — it is kept whenever any record carries a non-"—"
+// digest for it, and dropped only when it is "—" for every record (which
+// the guard already does, applied to the single-element tail). Iteration
+// is over the ordered universal_core list and the explicitly-ordered
+// record slice, so no map ranging leaks here.
+func universalPivotColumns(sub string, records int, digestFor func(rec int, group string) string) []string {
+	declared := knownGroupNames(sub)
+	declaredSet := map[string]bool{}
+	for _, g := range declared {
+		declaredSet[g] = true
+	}
+	universal := make([]string, 0, len(declared))
+	for _, name := range universalCoreOrder() {
+		if declaredSet[name] {
+			universal = append(universal, name)
+		}
+	}
+	cols := nonStrandedGroupNames(universal, records, digestFor)
+	// The merged digest column: keep unless its digest is "—" for every
+	// record (same all-"—" suppression, never the broader over-suppression).
+	if len(nonStrandedGroupNames([]string{OtherCapabilitiesColumn}, records, digestFor)) > 0 {
+		cols = append(cols, OtherCapabilitiesColumn)
+	}
+	return cols
+}
+
 // buildBucketSection produces a bucketSection for a per-language page.
 // When any record in recs declares a subcategory, the section is split
 // into one subSection per subcategory (ordered by subcategoryOrder)
@@ -887,7 +964,7 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 			Records:     recsForSub,
 		}
 		if len(groupNames) > 0 {
-			sec.GroupNames = nonStrandedGroupNames(groupNames, len(recsForSub), func(r int, g string) string {
+			sec.GroupNames = universalPivotColumns(s, len(recsForSub), func(r int, g string) string {
 				return groupCell(recsForSub[r].GroupDigestByName, g)
 			})
 		} else {
@@ -935,7 +1012,7 @@ func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]cate
 			Records:     recsForSub,
 		}
 		if len(groupNames) > 0 {
-			sec.GroupNames = nonStrandedGroupNames(groupNames, len(recsForSub), func(r int, g string) string {
+			sec.GroupNames = universalPivotColumns(s, len(recsForSub), func(r int, g string) string {
 				return groupCell(recsForSub[r].GroupDigestByName, g)
 			})
 		} else {

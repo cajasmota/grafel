@@ -30,7 +30,7 @@ func listRecords(reg *Registry, f ListFilter) []Record {
 		if f.Category != "" && rec.Category != f.Category {
 			continue
 		}
-		caps := rec.AllCapabilities()
+		caps := rec.AllCapabilitiesIncludingFrameworkSpecific()
 		if f.Status != "" {
 			match := false
 			for _, cap := range caps {
@@ -105,7 +105,7 @@ func computeStats(reg *Registry) Stats {
 		s.ByCategory[rec.Category]++
 		ls := s.ByLanguage[rec.Language]
 		ls.Records++
-		for _, cap := range rec.AllCapabilities() {
+		for _, cap := range rec.AllCapabilitiesIncludingFrameworkSpecific() {
 			s.Capabilities++
 			s.ByStatus[cap.Status]++
 			switch cap.Status {
@@ -136,7 +136,7 @@ func gapsRecords(reg *Registry, language, category string) []Record {
 			continue
 		}
 		hit := false
-		for _, cap := range rec.AllCapabilities() {
+		for _, cap := range rec.AllCapabilitiesIncludingFrameworkSpecific() {
 			if cap.Status == StatusMissing || cap.Status == StatusPartial {
 				hit = true
 				break
@@ -156,7 +156,7 @@ func gapsRecords(reg *Registry, language, category string) []Record {
 func printRecordsText(w io.Writer, recs []Record) {
 	for _, rec := range recs {
 		fmt.Fprintf(w, "%-50s  %-18s  %-12s  %s\n", rec.ID, rec.Category, rec.Language, rec.Label)
-		caps := rec.AllCapabilities()
+		caps := rec.AllCapabilitiesIncludingFrameworkSpecific()
 		keys := sortedCapKeys(caps)
 		for _, k := range keys {
 			fmt.Fprintf(w, "    %-30s  %s\n", k, caps[k].Status)
