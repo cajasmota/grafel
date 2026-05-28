@@ -1324,21 +1324,24 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 	return out
 }
 
-// inspectMetadata returns index provenance fields for the inspect response.
-// Surfaces indexed_ref, indexed_sha, indexed_at, and age_seconds so agents
-// know whether the line-number data might be stale. (#2642)
+// inspectMetadata returns index-staleness fields for the inspect response.
+// Surfaces indexed_at and age_seconds so agents know whether the line-number
+// data might be stale. (#2642)
+//
+// #2780: indexed_ref and indexed_sha are deliberately NOT included here. Those
+// session-stable provenance fields are the exclusive domain of archigraph_whoami
+// (per the #2290/#2335 cleanup). Re-embedding them in inspect — a per-call,
+// inspect-heavy handler — both wastes tokens and violates the single-source
+// contract enforced by TestNoSessionMetaInNonWhoamiHandlers. The staleness
+// signal (indexed_at/age_seconds) is what #2642 actually needed and is retained.
 func inspectMetadata(lr *LoadedRepo) map[string]any {
 	meta := map[string]any{
-		"indexed_ref": "",
-		"indexed_sha": "",
 		"indexed_at":  "",
 		"age_seconds": 0,
 	}
 	if lr == nil || lr.Doc == nil {
 		return meta
 	}
-	meta["indexed_ref"] = lr.Doc.IndexedRef
-	meta["indexed_sha"] = lr.Doc.IndexedSHA
 	if !lr.Doc.GeneratedAt.IsZero() {
 		indexedAt := lr.Doc.GeneratedAt.UTC()
 		meta["indexed_at"] = indexedAt.Format(time.RFC3339)

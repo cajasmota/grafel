@@ -5,7 +5,8 @@ package mcp
 // #2640: calls[] filters unresolved edges by default; include_unresolved=true
 //        shows all with annotation.
 // #2641: called_by always present (empty array when no callers).
-// #2642: metadata block exposes indexed_ref/sha/at/age_seconds.
+// #2642: metadata block exposes index-staleness fields (indexed_at/age_seconds).
+//        #2780: indexed_ref/indexed_sha removed — owned by whoami only.
 
 import (
 	"context"
@@ -182,18 +183,15 @@ func TestInspect_IncludesMetadata(t *testing.T) {
 		t.Fatalf("metadata is %T, want map[string]any", rawMeta)
 	}
 
-	// indexed_ref must be non-empty and match the document.
-	ref, _ := meta["indexed_ref"].(string)
-	if ref == "" {
-		t.Errorf("metadata.indexed_ref is empty; expected %q", doc.IndexedRef)
+	// #2780: indexed_ref and indexed_sha are session-stable provenance fields
+	// owned exclusively by archigraph_whoami. inspect's metadata block carries
+	// only the staleness signal (indexed_at/age_seconds), so these keys must NOT
+	// be present here — see TestNoSessionMetaInNonWhoamiHandlers.
+	if _, ok := meta["indexed_ref"]; ok {
+		t.Error("metadata.indexed_ref must not be present on inspect (#2780); it belongs to whoami")
 	}
-	if ref != doc.IndexedRef {
-		t.Errorf("metadata.indexed_ref = %q, want %q", ref, doc.IndexedRef)
-	}
-
-	// indexed_sha must be present.
-	if _, ok := meta["indexed_sha"]; !ok {
-		t.Error("metadata.indexed_sha key missing")
+	if _, ok := meta["indexed_sha"]; ok {
+		t.Error("metadata.indexed_sha must not be present on inspect (#2780); it belongs to whoami")
 	}
 
 	// indexed_at must be a non-empty RFC3339 string.
