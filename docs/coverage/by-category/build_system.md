@@ -85,7 +85,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [python](../by-language/python.md) | [pip (requirements.txt)](../detail/build.pip.md) | ✅ | — | — | ✅ | |
 | [python](../by-language/python.md) | [pytest](../detail/test.pytest.md) | ✅ | — | — | ✅ | |
 | [python](../by-language/python.md) | [setuptools / setup.py](../detail/build.setuptools.md) | ⚠️ | — | — | ⚠️ | |
-| [python](../by-language/python.md) | [unittest (stdlib)](../detail/test.unittest.md) | ⚠️ | — | — | ⚠️ | |
+| [python](../by-language/python.md) | [unittest (stdlib)](../detail/test.unittest.md) | ✅ | — | — | ✅ | |
 | [python](../by-language/python.md) | [uv (Astral)](../detail/build.uv.md) | ⚠️ | — | — | ⚠️ | |
 | [ruby](../by-language/ruby.md) | [Bundler (Gemfile)](../detail/build.bundler.md) | ✅ | — | — | ✅ | |
 | [ruby](../by-language/ruby.md) | [Cucumber](../detail/test.cucumber.md) | ❌ | — | — | ❌ | |

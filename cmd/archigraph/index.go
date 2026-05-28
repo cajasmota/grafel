@@ -1133,6 +1133,20 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			fmt.Fprintf(os.Stderr, "archigraph: tests_multi_hop_http=%d edges\n", len(testsEdges))
 			pass2Rels = append(pass2Rels, testsEdges...)
 		}
+
+		// #2812 — TESTS edges from test functions to production entities
+		// imported into the test module (Django/pytest). Resolves the broad
+		// set of helpers + models a test exercises that the per-file testmap
+		// extractor's globally-unique-name resolution misses (e.g. ambiguous
+		// model names like `Building`/`Device`). Edges originate from the test
+		// function entity itself so coverage counts the test as linked.
+		importTestsEdges := engine.ApplyTestsViaImports(
+			allPaths, reader, concatRecords(pass1Records, pass2Records, pass3Records),
+		)
+		if len(importTestsEdges) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: tests_via_import=%d edges\n", len(importTestsEdges))
+			pass2Rels = append(pass2Rels, importTestsEdges...)
+		}
 	}
 
 	// Issue #633 — release per-file AST trees + source bytes now that the

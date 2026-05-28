@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_graph` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/tests_edges.go` | — |
-| `target_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/pytest.yaml`<br>`internal/engine/tests_edges.go` | — |
+| `dependency_graph` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/tests_edges.go`<br>`internal/engine/tests_imports.go` | — |
+| `target_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/pytest.yaml`<br>`internal/engine/tests_edges.go`<br>`internal/engine/tests_imports.go` | — |
 
 ## Provenance
 

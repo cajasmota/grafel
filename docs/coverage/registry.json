@@ -23237,12 +23237,12 @@
       "capabilities": {
         "dependency_graph": {
           "status": "full",
-          "cites": ["internal/engine/tests_edges.go"],
+          "cites": ["internal/engine/tests_edges.go","internal/engine/tests_imports.go"],
           "verified_at": "2026-05-28"
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/engine/rules/python/frameworks/pytest.yaml","internal/engine/tests_edges.go"],
+          "cites": ["internal/engine/rules/python/frameworks/pytest.yaml","internal/engine/tests_edges.go","internal/engine/tests_imports.go"],
           "verified_at": "2026-05-28"
         }
       }
@@ -23362,13 +23362,13 @@
       "label": "unittest (stdlib)",
       "capabilities": {
         "dependency_graph": {
-          "status": "partial",
-          "cites": ["internal/engine/tests_edges.go"],
+          "status": "full",
+          "cites": ["internal/engine/tests_edges.go","internal/engine/tests_imports.go"],
           "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/python/test_patterns.yaml"],
+          "status": "full",
+          "cites": ["internal/engine/rules/python/test_patterns.yaml","internal/engine/tests_imports.go"],
           "verified_at": "2026-05-28"
         }
       }

@@ -57,7 +57,7 @@ Back to [summary](../summary.md).
 | [pytest](../detail/test.pytest.md) | ✅ | — | — | ✅ | |
 | [requirements.txt](../detail/pkg.requirements.md) | — | — | ✅ | — | |
 | [setuptools / setup.py](../detail/build.setuptools.md) | ⚠️ | — | — | ⚠️ | |
-| [unittest (stdlib)](../detail/test.unittest.md) | ⚠️ | — | — | ⚠️ | |
+| [unittest (stdlib)](../detail/test.unittest.md) | ✅ | — | — | ✅ | |
 | [uv (Astral)](../detail/build.uv.md) | ⚠️ | — | — | ⚠️ | |
 
 ## ORMs
