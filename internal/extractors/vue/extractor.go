@@ -130,6 +130,44 @@ var (
 	// Composable definition: `function useFoo(` / `const useFoo = (` —
 	// a local custom composable (hook) declaration.
 	reComposableDef = regexp.MustCompile(`(?m)\b(?:function\s+(use[A-Z][A-Za-z0-9_$]*)|(?:const|let)\s+(use[A-Z][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?(?:function|\())`)
+
+	// ── Data Flow (issue #2855) ──────────────────────────────────────────────
+
+	// defineProps destructured / Options-API prop names. We parse the props
+	// surface in two shapes:
+	//   defineProps<{ a: string; b?: number }>()   (type-literal generic)
+	//   defineProps({ a: String, b: Number })       (runtime object)
+	//   props: { a: …, b: … }  / props: ['a','b']   (Options API)
+	reDefinePropsGeneric = regexp.MustCompile(`(?s)\bdefineProps\s*<\s*\{(.*?)\}\s*>\s*\(`)
+	reDefinePropsObject  = regexp.MustCompile(`(?s)\bdefineProps\s*\(\s*\{(.*?)\}\s*\)`)
+	reDefinePropsArray   = regexp.MustCompile(`(?s)\bdefineProps\s*\(\s*\[(.*?)\]\s*\)`)
+	reOptionsPropsObject = regexp.MustCompile(`(?s)\bprops\s*:\s*\{(.*?)\}`)
+	reOptionsPropsArray  = regexp.MustCompile(`(?s)\bprops\s*:\s*\[(.*?)\]`)
+	// A property declaration inside a props block, e.g. `title: String`,
+	// `count?: number`. Anchored on a member separator (start, `;`, `,`, or
+	// newline) so multiple props on one line (`{ a: string; b: number }`) are
+	// all captured, not just the first.
+	rePropName = regexp.MustCompile(`(?:^|[;,\n{])\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*[?:]`)
+	// Quoted string entries for the array form: 'title', "count".
+	reQuotedName = regexp.MustCompile(`['"]([A-Za-z_$][A-Za-z0-9_$]*)['"]`)
+
+	// Pinia state stores: `const x = useXxxStore()` / defineStore('id', …) /
+	// storeToRefs(store). Pinia is Vue's canonical state container.
+	rePiniaStore     = regexp.MustCompile(`(?m)\b(use[A-Z][A-Za-z0-9_$]*Store)\s*\(`)
+	rePiniaDefine    = regexp.MustCompile(`(?m)\bdefineStore\s*\(\s*['"]([^'"]+)['"]`)
+	rePiniaStoreRefs = regexp.MustCompile(`(?m)\bstoreToRefs\s*\(`)
+	// Reactive local state: ref(…) / reactive(…). The Composition-API reactivity
+	// primitives are also state_management signals.
+	reReactiveState = regexp.MustCompile(`(?m)\b(?:const|let)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(ref|reactive|shallowRef|shallowReactive)\s*\(`)
+
+	// Data fetching: fetch()/axios.*/useFetch()/useAsyncData()/$fetch(). The
+	// composable forms (useFetch/useAsyncData) are Nuxt's data layer; fetch/
+	// axios are the generic browser/lib clients.
+	reDataFetch = regexp.MustCompile(`(?m)\b(fetch|\$fetch|useFetch|useAsyncData|useLazyFetch|useLazyAsyncData)\s*\(|\baxios\s*(?:\.\s*(get|post|put|patch|delete|request))?\s*\(`)
+
+	// Template branch conditions: v-if / v-else-if / v-else / v-show. These are
+	// Vue's conditional-rendering directives (branch_conditions).
+	reVueBranch = regexp.MustCompile(`\b(v-if|v-else-if|v-else|v-show)\b`)
 )
 
 // jsKeywords are identifiers that appear before "(" but are NOT method
@@ -261,6 +299,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, hookRels...)
 		entities = append(entities, hookEntities...)
 
+		// 3c-iii. Data Flow (#2855): prop_extraction, state_management,
+		// data_fetching. Each emits SCOPE.Operation entities plus CONTAINS
+		// edges from the component.
+		dfEntities, dfRels := extractDataFlow(scriptSrc, scriptOffset, src, file.Path, componentName)
+		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, dfRels...)
+		entities = append(entities, dfEntities...)
+
 		// 3d. Options API methods (inside methods: { … })
 		if !isSetup {
 			methods := extractOptionsMethods(scriptSrc, scriptOffset, src, file.Path, componentName)
@@ -275,11 +320,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		}
 	}
 
-	// --- 4. Extract <template> block → RENDERS edges -------------------------
-	templateSrc, _, ok := extractTemplateBlock(src)
+	// --- 4. Extract <template> block → RENDERS + branch_condition ------------
+	templateSrc, templateOffset, ok := extractTemplateBlock(src)
 	if ok {
 		renders := extractTemplateRenders(templateSrc, componentName)
 		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, renders...)
+
+		// Data Flow (#2855) — branch_conditions from v-if/v-else/v-show.
+		brEntities, brRels := extractBranchConditions(templateSrc, templateOffset, src, file.Path, componentName)
+		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, brRels...)
+		entities = append(entities, brEntities...)
 	}
 
 	// --- 5. Tag relationships with language ----------------------------------
@@ -611,6 +661,193 @@ func extractComposables(scriptSrc string, scriptOffset int, fullSrc, filePath, c
 				"consumer":  componentName,
 				"hook":      hook,
 				"framework": "vue",
+			},
+		})
+	}
+	return ents, rels
+}
+
+// extractDataFlow scans a Vue <script> block for Data-Flow signals (issue
+// #2855): component props (defineProps / Options-API props), state management
+// (Pinia stores + ref/reactive primitives), and data fetching (fetch / axios /
+// useFetch / useAsyncData). It returns SCOPE.Operation entities and CONTAINS
+// edges from the component to each.
+func extractDataFlow(scriptSrc string, scriptOffset int, fullSrc, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+
+	emit := func(name, subtype, sig string, props map[string]string, absOffset int) {
+		if name == "" {
+			return
+		}
+		lineNum := lineOf(fullSrc, absOffset)
+		props["component"] = componentName
+		props["framework"] = "vue"
+		ent := types.EntityRecord{
+			Name:             name,
+			QualifiedName:    fmt.Sprintf("%s.%s", componentName, name),
+			Kind:             "SCOPE.Operation",
+			Subtype:          subtype,
+			SourceFile:       filePath,
+			Language:         "vue",
+			StartLine:        lineNum,
+			EndLine:          lineNum,
+			Signature:        sig,
+			QualityScore:     0.8,
+			EnrichmentStatus: types.StatusPending,
+			Properties:       props,
+		}
+		ents = append(ents, ent)
+		rels = append(rels, types.RelationshipRecord{
+			ToID: name,
+			Kind: "CONTAINS",
+			Properties: map[string]string{
+				"component": componentName,
+				"framework": "vue",
+				"subtype":   subtype,
+			},
+		})
+	}
+
+	// ── prop_extraction ──────────────────────────────────────────────────────
+	propSeen := map[string]bool{}
+	emitProp := func(name string, off int) {
+		name = strings.TrimSpace(name)
+		if name == "" || propSeen[name] {
+			return
+		}
+		propSeen[name] = true
+		emit(name, "component_prop", "prop "+name, map[string]string{"prop": name}, off)
+	}
+	// defineProps<{ … }>() — type-literal generic.
+	if m := reDefinePropsGeneric.FindStringSubmatchIndex(scriptSrc); m != nil {
+		block := scriptSrc[m[2]:m[3]]
+		for _, pm := range rePropName.FindAllStringSubmatch(block, -1) {
+			emitProp(pm[1], scriptOffset+m[2])
+		}
+	}
+	// defineProps({ … }) — runtime object.
+	if m := reDefinePropsObject.FindStringSubmatchIndex(scriptSrc); m != nil {
+		block := scriptSrc[m[2]:m[3]]
+		for _, pm := range rePropName.FindAllStringSubmatch(block, -1) {
+			emitProp(pm[1], scriptOffset+m[2])
+		}
+	}
+	// defineProps(['a','b']) — array of names.
+	if m := reDefinePropsArray.FindStringSubmatchIndex(scriptSrc); m != nil {
+		block := scriptSrc[m[2]:m[3]]
+		for _, pm := range reQuotedName.FindAllStringSubmatch(block, -1) {
+			emitProp(pm[1], scriptOffset+m[2])
+		}
+	}
+	// Options API: props: { … } or props: [ … ].
+	if m := reOptionsPropsObject.FindStringSubmatchIndex(scriptSrc); m != nil {
+		block := scriptSrc[m[2]:m[3]]
+		for _, pm := range rePropName.FindAllStringSubmatch(block, -1) {
+			emitProp(pm[1], scriptOffset+m[2])
+		}
+	}
+	if m := reOptionsPropsArray.FindStringSubmatchIndex(scriptSrc); m != nil {
+		block := scriptSrc[m[2]:m[3]]
+		for _, pm := range reQuotedName.FindAllStringSubmatch(block, -1) {
+			emitProp(pm[1], scriptOffset+m[2])
+		}
+	}
+
+	// ── state_management ─────────────────────────────────────────────────────
+	stateSeen := map[string]bool{}
+	for _, m := range rePiniaStore.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		name := scriptSrc[m[2]:m[3]]
+		if stateSeen["store:"+name] {
+			continue
+		}
+		stateSeen["store:"+name] = true
+		emit(name, "state_store", "pinia store "+name,
+			map[string]string{"state_lib": "pinia", "store": name}, scriptOffset+m[0])
+	}
+	for _, m := range rePiniaDefine.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		id := scriptSrc[m[2]:m[3]]
+		if stateSeen["define:"+id] {
+			continue
+		}
+		stateSeen["define:"+id] = true
+		emit("defineStore:"+id, "state_store", "defineStore('"+id+"')",
+			map[string]string{"state_lib": "pinia", "store_id": id}, scriptOffset+m[0])
+	}
+	for _, m := range reReactiveState.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		name := scriptSrc[m[2]:m[3]]
+		prim := scriptSrc[m[4]:m[5]]
+		if stateSeen["reactive:"+name] {
+			continue
+		}
+		stateSeen["reactive:"+name] = true
+		emit(name, "reactive_state", prim+"() "+name,
+			map[string]string{"state_lib": "vue-reactivity", "primitive": prim}, scriptOffset+m[0])
+	}
+
+	// ── data_fetching ──────────────────────────────────────────────────────────
+	fetchSeen := map[string]bool{}
+	for _, m := range reDataFetch.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		matched := strings.TrimSpace(scriptSrc[m[0]:m[1]])
+		// Normalise to the call kind: strip trailing "(" / whitespace.
+		kind := matched
+		if idx := strings.IndexByte(kind, '('); idx >= 0 {
+			kind = strings.TrimSpace(kind[:idx])
+		}
+		kind = strings.TrimSpace(kind)
+		if kind == "" || fetchSeen[kind] {
+			continue
+		}
+		fetchSeen[kind] = true
+		safe := strings.NewReplacer("$", "d_", ".", "_", " ", "").Replace(kind)
+		emit("fetch:"+safe, "data_fetch", kind+"(…)",
+			map[string]string{"fetch_kind": kind}, scriptOffset+m[0])
+	}
+
+	return ents, rels
+}
+
+// extractBranchConditions scans the <template> block for Vue conditional-
+// rendering directives (v-if/v-else-if/v-else/v-show) and returns
+// SCOPE.Operation subtype="branch_condition" entities plus CONTAINS edges
+// (issue #2855 — Data Flow / branch_conditions).
+func extractBranchConditions(templateSrc string, templateOffset int, fullSrc, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, m := range reVueBranch.FindAllStringSubmatchIndex(templateSrc, -1) {
+		kind := templateSrc[m[2]:m[3]]
+		if kind == "" || seen[kind] {
+			continue
+		}
+		seen[kind] = true
+		lineNum := lineOf(fullSrc, templateOffset+m[0])
+		safe := strings.ReplaceAll(kind, "-", "_")
+		ents = append(ents, types.EntityRecord{
+			Name:             safe,
+			QualifiedName:    fmt.Sprintf("%s.%s", componentName, safe),
+			Kind:             "SCOPE.Operation",
+			Subtype:          "branch_condition",
+			SourceFile:       filePath,
+			Language:         "vue",
+			StartLine:        lineNum,
+			EndLine:          lineNum,
+			Signature:        "template " + kind,
+			QualityScore:     0.8,
+			EnrichmentStatus: types.StatusPending,
+			Properties: map[string]string{
+				"component":   componentName,
+				"branch_kind": kind,
+				"framework":   "vue",
+			},
+		})
+		rels = append(rels, types.RelationshipRecord{
+			ToID: safe,
+			Kind: "CONTAINS",
+			Properties: map[string]string{
+				"component":   componentName,
+				"branch_kind": kind,
+				"framework":   "vue",
 			},
 		})
 	}

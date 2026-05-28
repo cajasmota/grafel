@@ -14366,17 +14366,28 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2855_angular_dataflow_test.go","testdata/fixtures/real-world/typescript/angular_dataflow_component.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2855_angular_dataflow_test.go","testdata/fixtures/real-world/typescript/angular_dataflow_component.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2855_angular_dataflow_test.go","testdata/fixtures/real-world/typescript/angular_dataflow_component.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "state_management": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2855_angular_dataflow_test.go","testdata/fixtures/real-world/typescript/angular_dataflow_component.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           }
         },
         "Navigation": {
@@ -16249,21 +16260,15 @@
             "verified_at": "2026-05-28"
           },
           "prop_extraction": {
-            "status": "partial",
-            "cites": [
-              "internal/extractors/javascript/navigation.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2665",
-            "notes": "Covers only JSX navigation props (Link to/href, Navigate to, state object); generic React component prop extraction is not yet implemented.",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/dataflow_react.go","internal/extractors/javascript/issue2855_react_dataflow_test.go","internal/extractors/javascript/navigation.go","testdata/fixtures/real-world/typescript/react_dataflow_component.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
             "verified_at": "2026-05-28"
           },
           "state_management": {
-            "status": "partial",
-            "cites": [
-              "internal/extractors/javascript/destructure_bindings.go",
-              "internal/extractors/javascript/zustand_store.go"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2855_react_dataflow_test.go","internal/extractors/javascript/zustand_store.go","testdata/fixtures/real-world/typescript/react_dataflow_component.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
             "verified_at": "2026-05-28"
           }
         },
@@ -16939,17 +16944,28 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2855_dataflow_test.go","testdata/fixtures/real-world/svelte/UserList.svelte"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2855_dataflow_test.go","testdata/fixtures/real-world/svelte/UserList.svelte"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2855_dataflow_test.go","testdata/fixtures/real-world/svelte/UserList.svelte"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "state_management": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2855_dataflow_test.go","testdata/fixtures/real-world/svelte/UserList.svelte"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           }
         },
         "Navigation": {
@@ -17293,17 +17309,28 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2855_dataflow_test.go","testdata/fixtures/real-world/vue/UserCard.vue"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2855_dataflow_test.go","testdata/fixtures/real-world/vue/UserCard.vue"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2855_dataflow_test.go","testdata/fixtures/real-world/vue/UserCard.vue"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           },
           "state_management": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2855_dataflow_test.go","testdata/fixtures/real-world/vue/UserCard.vue"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
+            "verified_at": "2026-05-28"
           }
         },
         "Navigation": {

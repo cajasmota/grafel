@@ -25,10 +25,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `branch_conditions` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
-| `data_fetching` | ❌ `missing` | — | — | — | — | — |
-| `prop_extraction` | ❌ `missing` | — | — | — | — | — |
-| `state_management` | ❌ `missing` | — | — | — | — | — |
+| `branch_conditions` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2855) | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2855_dataflow_test.go`<br>`testdata/fixtures/real-world/vue/UserCard.vue` | — |
+| `data_fetching` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2855) | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2855_dataflow_test.go`<br>`testdata/fixtures/real-world/vue/UserCard.vue` | — |
+| `prop_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2855) | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2855_dataflow_test.go`<br>`testdata/fixtures/real-world/vue/UserCard.vue` | — |
+| `state_management` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2855) | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2855_dataflow_test.go`<br>`testdata/fixtures/real-world/vue/UserCard.vue` | — |
 
 ### Navigation
 
