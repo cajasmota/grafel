@@ -5,7 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [assembly](../by-language/assembly.md)
 - **Category:** [language](../by-category/language.md)
-- **Capability cells:** 4
+- **Capability cells:** 3
 
 ## Capabilities
 
@@ -13,7 +13,6 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `call_line_precision` | ✅ `full` | `2026-05-28` | — | [link](2744) | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
 | `core_extraction` | ✅ `full` | `2026-05-28` | — | [link](2744) | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
-| `cross_language_link` | ✅ `full` | `2026-05-28` | — | [link](2837) | `internal/extractors/cross/abibridge/extractor.go`<br>`internal/extractors/cross/abibridge/extractor_test.go` | — |
 | `import_resolution_quality` | ✅ `full` | `2026-05-28` | — | [link](2744) | `internal/extractors/assembly/extractor.go`<br>`internal/extractors/assembly/extractor_test.go` | — |
 
 ## Provenance

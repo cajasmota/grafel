@@ -204,22 +204,6 @@ records:
           - file: internal/extractors/assembly/extractor_test.go
         issues_implemented: ["2744"]
         verified_at: "2026-05-28"
-      cross_language_link:
-        # C ↔ asm ABI bridge (#2837): asm→C — a C `extern <sym>(...)` decl
-        # whose symbol an asm `.globl` exports links to that procedure by
-        # name (IMPLEMENTS, c-cpp→assembly), plus C inline-asm CALLS to asm
-        # labels. C→asm (asm `call <cfunc>` → C function) is already resolved
-        # by the generic by-name machinery and proven by the driver.s fixture.
-        # gnu-as (gas/AT&T x86-64) is the only dialect a fixture proves; the
-        # nasm/masm/armasm cells stay `missing` until a dialect fixture lands.
-        status: full
-        symbols:
-          - file: internal/extractors/cross/abibridge/extractor.go
-            functions: [buildExternDeclEntities, buildInlineAsmEntities, isCFamily]
-        tests:
-          - file: internal/extractors/cross/abibridge/extractor_test.go
-        issues_implemented: ["2837"]
-        verified_at: "2026-05-28"
 
   lang.assembly.toolchain.nasm:
     capabilities:
@@ -2265,3 +2249,40 @@ records:
               functions: [runTaintFlowPass, computeFindings]
           issues_implemented: ["2773"]
           verified_at: "2026-05-28"
+
+  protocol.c-asm:
+    capabilities:
+      service_extraction:
+        # C ↔ asm ABI bridge (#2837): C extern declarations that match asm .globl
+        # exports are detected as cross-language IMPLEMENTS links by the
+        # abibridge extractor (gas/AT&T x86-64 proven by crypt.s fixture).
+        status: full
+        symbols:
+          - file: internal/extractors/cross/abibridge/extractor.go
+            functions: [buildExternDeclEntities, isCFamily]
+        tests:
+          - file: internal/extractors/cross/abibridge/extractor_test.go
+        issues_implemented: ["2837"]
+        verified_at: "2026-05-28"
+      method_attribution:
+        # C inline-asm CALLS to asm labels resolved to the enclosing asm
+        # procedure; driver.s fixture proves C→asm call attribution.
+        status: full
+        symbols:
+          - file: internal/extractors/cross/abibridge/extractor.go
+            functions: [buildInlineAsmEntities]
+        tests:
+          - file: internal/extractors/cross/abibridge/extractor_test.go
+        issues_implemented: ["2837"]
+        verified_at: "2026-05-28"
+      cross_repo_linkage:
+        # asm→C IMPLEMENTS + C→asm CALLS resolved across file boundaries;
+        # proven by the crypt.s + caller.c fixture pair.
+        status: full
+        symbols:
+          - file: internal/extractors/cross/abibridge/extractor.go
+            functions: [buildExternDeclEntities, buildInlineAsmEntities]
+        tests:
+          - file: internal/extractors/cross/abibridge/extractor_test.go
+        issues_implemented: ["2837"]
+        verified_at: "2026-05-28"
