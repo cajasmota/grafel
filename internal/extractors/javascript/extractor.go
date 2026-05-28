@@ -840,6 +840,10 @@ func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string, cb *classBi
 	params := n.ChildByFieldName("parameters")
 	frame := x.functionParamFrame(params, cb)
 	rels := x.extractCallRelationships(body, name, frame)
+	// Issue #2904 — NestJS DTO extraction. A controller method parameter
+	// decorated `@Body()/@Query()/@Param() x: SomeDto` emits a VALIDATES
+	// edge (via=dto_extraction) from the method to a `dto:<TypeName>` stub.
+	rels = append(rels, x.extractDTOParamEdges(params)...)
 	subtype := "method"
 	// Issue #2859 — NativeScript Observable view-models expose state mutation
 	// through their own component model, NOT React's [value, setter] hook
@@ -2210,6 +2214,20 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			if !seen[navKey] {
 				seen[navKey] = true
 				rels = append(rels, navEdge)
+			}
+		}
+
+		// Issue #2904 — request-validation linkage. A handler body that
+		// calls a recognised validator (zod .parse/.safeParse, joi/yup
+		// .validate, express-validator validationResult/check/body,
+		// class-validator validate/validateOrReject) emits a VALIDATES edge
+		// to a `validator:<lib>` stub in addition to the normal CALLS edge,
+		// so the route↔validator linkage is a first-class graph fact.
+		if valEdge, valOK := x.extractValidationEdge(call); valOK {
+			valKey := "validates:" + valEdge.ToID + ":" + valEdge.Properties["line"]
+			if !seen[valKey] {
+				seen[valKey] = true
+				rels = append(rels, valEdge)
 			}
 		}
 

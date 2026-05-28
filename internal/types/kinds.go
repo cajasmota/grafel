@@ -510,6 +510,26 @@ const (
 	//   "operator" : the comparison operator (===, !==, <=, <, >, >=, ==, !=)
 	//   "kind"     : "if", "ternary", or "switch"
 	RelationshipKindBranchesOn RelationshipKind = "BRANCHES_ON"
+
+	// #2904: Request-validation / DTO-extraction linkage edges. Emitted by
+	// the JS/TS extractor when a route handler / controller method is wired
+	// to a schema validator or a typed DTO, turning validators that were
+	// previously seen only as imports into a route↔validator graph edge.
+	//   VALIDATES : enclosing operation (route handler) → synthetic stub
+	//     - "validator:<lib>"  for call-site validation (zod .parse/.safeParse,
+	//       joi/yup .validate, express-validator validationResult/check/body,
+	//       class-validator validate/validateOrReject)
+	//     - "dto:<TypeName>"   for NestJS `@Body()/@Query()/@Param() x: Dto`
+	//       parameter-decorator DTO extraction
+	// Properties:
+	//   "library" : the validator library ("zod", "joi", "yup",
+	//               "express-validator", "class-validator", "nestjs-dto")
+	//   "method"  : the validation method or decorator observed
+	//   "dto"     : the DTO type name (dto_extraction edges only)
+	//   "line"    : 1-indexed source line of the call / parameter
+	//   "via"     : "request_validation" or "dto_extraction" (capability tag)
+	// Append-only — never modifies existing entities or edges.
+	RelationshipKindValidates RelationshipKind = "VALIDATES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -605,6 +625,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindBranchesOn,
 		// #2761 substrate Phase 0:
 		RelationshipKindResolvesTo,
+		// #2904 request-validation / DTO-extraction linkage:
+		RelationshipKindValidates,
 	}
 }
 

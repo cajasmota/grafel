@@ -10479,6 +10479,13 @@
             "verified_at": "2026-05-28"
           }
         },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/adonisjs_validation.ts"],
+            "issue": "2904"
+          }
+        },
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
@@ -10979,6 +10986,13 @@
             "verified_at": "2026-05-28"
           }
         },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_validation.ts"],
+            "issue": "2904"
+          }
+        },
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
@@ -11044,6 +11058,13 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/fastify_auth.ts"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/fastify_validation.ts"],
+            "issue": "2904"
           }
         },
         "Middleware": {
@@ -11112,6 +11133,13 @@
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/feathers_auth.ts"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/feathers_validation.ts"],
+            "issue": "2904"
           }
         },
         "Middleware": {
@@ -11294,6 +11322,13 @@
             "verified_at": "2026-05-28"
           }
         },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/hapi_validation.ts"],
+            "issue": "2904"
+          }
+        },
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
@@ -11358,6 +11393,13 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/hono_auth.ts"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/hono_validation.ts"],
+            "issue": "2904"
           }
         },
         "Middleware": {
@@ -11528,6 +11570,13 @@
             "verified_at": "2026-05-28"
           }
         },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/koa_validation.ts"],
+            "issue": "2904"
+          }
+        },
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
@@ -11623,6 +11672,13 @@
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/marblejs_auth.ts"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/marblejs_validation.ts"],
+            "issue": "2904"
           }
         },
         "Middleware": {
@@ -11795,6 +11851,13 @@
             "status": "full",
             "cites": ["cmd/archigraph/audit2852_jsauth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/nestjs_auth.ts"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/nestjs_validation.ts"],
+            "issue": "2904"
           }
         },
         "Middleware": {
@@ -12038,6 +12101,13 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","testdata/fixtures/typescript/polka_auth.ts"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/polka_validation.ts"],
+            "issue": "2904"
           }
         },
         "Middleware": {
@@ -12602,6 +12672,13 @@
             "verified_at": "2026-05-28"
           }
         },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/restify_validation.ts"],
+            "issue": "2904"
+          }
+        },
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
@@ -12669,6 +12746,13 @@
             "cites": ["internal/engine/http_endpoint_jsts_auth.go","internal/engine/http_endpoint_jsts_auth_test.go","internal/engine/http_endpoint_jsts_sails_auth.go","testdata/fixtures/typescript/sails_policies.ts","testdata/fixtures/typescript/sails_routes.ts"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2897",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Validation": {
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/sails_validation.ts"],
+            "issue": "2904"
           }
         },
         "Middleware": {
