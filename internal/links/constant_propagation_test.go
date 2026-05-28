@@ -3,6 +3,7 @@ package links
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -151,6 +152,84 @@ func TestStripURLPrefix(t *testing.T) {
 		if got := stripURLPrefix(in); got != want {
 			t.Errorf("stripURLPrefix(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestBackendSubstrateImportResolutionFixture loads the hand-written
+// Express/NestJS-flavoured multi-file fixture from
+// internal/extractors/javascript/testdata/substrate_import_resolution/ and
+// verifies that the constant-propagation resolver correctly walks the
+// cross-file IMPORTS edge for all three named constants:
+//   - API_BASE_URL (ProvenanceLiteral in config.ts → resolved in app.ts)
+//   - DB_URL (ProvenanceEnvFallback in config.ts → resolved in app.ts)
+//   - SERVER_PORT (ProvenanceLiteral in config.ts → resolved in nest_app.ts)
+//
+// This is the proving fixture for import_resolution_quality across all 12
+// backend-HTTP framework records (adonisjs, express, fastify, feathers, hapi,
+// hono, koa, marblejs, nestjs, polka, restify, sails) — all share the same
+// JS/TS substrate sniffer and constant-propagation pass (#2848).
+func TestBackendSubstrateImportResolutionFixture(t *testing.T) {
+	// Locate the fixture directory relative to this test file.
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	// thisFile is .../internal/links/constant_propagation_test.go
+	// fixture lives at .../internal/extractors/javascript/testdata/substrate_import_resolution/
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	fixturePath := filepath.Join(repoRoot, "internal", "extractors", "javascript",
+		"testdata", "substrate_import_resolution")
+	if _, err := os.Stat(filepath.Join(fixturePath, "config.ts")); err != nil {
+		t.Fatalf("fixture not found at %s: %v", fixturePath, err)
+	}
+
+	graphs := []repoGraph{{
+		Repo:     "repo-backend",
+		FileRoot: fixturePath,
+		Entities: []entityNode{
+			{ID: "c1", Name: "API_BASE_URL", Kind: "SCOPE.Variable", SourceFile: "config.ts"},
+			{ID: "c2", Name: "DB_URL", Kind: "SCOPE.Variable", SourceFile: "config.ts"},
+			{ID: "c3", Name: "SERVER_PORT", Kind: "SCOPE.Variable", SourceFile: "config.ts"},
+			{ID: "a1", Name: "app", Kind: "SCOPE.Variable", SourceFile: "app.ts"},
+			{ID: "n1", Name: "bootstrap", Kind: "SCOPE.Function", SourceFile: "nest_app.ts"},
+		},
+	}}
+
+	r := buildResolver(graphs)
+	if r == nil {
+		t.Fatal("expected non-nil resolver; substrate found no JS/TS bindings")
+	}
+
+	// app.ts imports API_BASE_URL and DB_URL from ./config — both must resolve.
+	gotAPIBase := r.Resolve("repo-backend", "app.ts", "API_BASE_URL")
+	if gotAPIBase.Value != "https://api.example.com" {
+		t.Errorf("app.ts API_BASE_URL resolved to %q, want https://api.example.com (steps=%v)",
+			gotAPIBase.Value, gotAPIBase.Steps)
+	}
+	if gotAPIBase.Confidence <= 0 || gotAPIBase.Confidence > 0.6 {
+		t.Errorf("app.ts API_BASE_URL confidence = %v, want >0 and ≤0.6 (cross-file cap)", gotAPIBase.Confidence)
+	}
+	if len(gotAPIBase.Steps) < 2 {
+		t.Errorf("app.ts API_BASE_URL steps = %v, want at least 2 (import hop + literal)", gotAPIBase.Steps)
+	}
+
+	gotDBURL := r.Resolve("repo-backend", "app.ts", "DB_URL")
+	if gotDBURL.Value != "postgres://localhost:5432/mydb" {
+		t.Errorf("app.ts DB_URL resolved to %q, want postgres://localhost:5432/mydb (steps=%v)",
+			gotDBURL.Value, gotDBURL.Steps)
+	}
+
+	// nest_app.ts imports SERVER_PORT and API_BASE_URL from ./config.
+	gotPort := r.Resolve("repo-backend", "nest_app.ts", "SERVER_PORT")
+	if gotPort.Value != "3000" {
+		t.Errorf("nest_app.ts SERVER_PORT resolved to %q, want 3000 (steps=%v)",
+			gotPort.Value, gotPort.Steps)
+	}
+
+	gotNestAPIBase := r.Resolve("repo-backend", "nest_app.ts", "API_BASE_URL")
+	if gotNestAPIBase.Value != "https://api.example.com" {
+		t.Errorf("nest_app.ts API_BASE_URL resolved to %q, want https://api.example.com (steps=%v)",
+			gotNestAPIBase.Value, gotNestAPIBase.Steps)
 	}
 }
 
