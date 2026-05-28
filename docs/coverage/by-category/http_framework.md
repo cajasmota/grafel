@@ -43,7 +43,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [go](../by-language/go.md) | [Fiber](../detail/lang.go.framework.fiber.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 7/12 | |
+| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 7/16 | |
 | [go](../by-language/go.md) | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [go](../by-language/go.md) | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [go](../by-language/go.md) | [Huma](../detail/lang.go.framework.huma.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
@@ -64,7 +64,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [java](../by-language/java.md) | [Micronaut](../detail/lang.java.framework.micronaut.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [java](../by-language/java.md) | [Quarkus](../detail/lang.java.framework.quarkus.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ✅ 2/2 | ✅ 1/1 | — | ⚠️ 0/1 | — | — | — | ⚠️ 7/12 | |
+| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ✅ 2/2 | ✅ 1/1 | — | ⚠️ 0/1 | — | — | — | ⚠️ 7/16 | |
 | [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
@@ -105,7 +105,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Celery (task queue)](../detail/lang.python.framework.celery.md) | ✅ 1/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 5/6 | |
 | [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ✅ 2/2 | ⚠️ 0/1 | — | ⚠️ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 7/12 | |
+| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 7/16 | |
 | [python](../by-language/python.md) | [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 5/6 | |
 | [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
@@ -160,7 +160,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/3 | |
-| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ⚠️ 3/5 | ⚠️ 2/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ⚠️ 4/9 | |
+| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ⚠️ 3/5 | ⚠️ 2/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ⚠️ 4/13 | |
 | [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/3 | |
 | [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/3 | |
 

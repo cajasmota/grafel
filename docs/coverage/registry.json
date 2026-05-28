@@ -6807,6 +6807,11 @@
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-28"
           },
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_golang.go"],
+            "verified_at": "2026-05-28"
+          },
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -6827,9 +6832,19 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "verified_at": "2026-05-28"
+          },
           "mutation_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
+          },
+          "pure_function_tagging": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
@@ -6851,6 +6866,11 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_golang.go"],
+            "verified_at": "2026-05-28"
           }
         }
       }
@@ -8569,6 +8589,11 @@
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
             "verified_at": "2026-05-28"
           },
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_java.go"],
+            "verified_at": "2026-05-28"
+          },
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -8589,9 +8614,19 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "verified_at": "2026-05-28"
+          },
           "mutation_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "verified_at": "2026-05-28"
+          },
+          "pure_function_tagging": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
@@ -8613,6 +8648,11 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_java.go"],
+            "verified_at": "2026-05-28"
           }
         }
       },
@@ -10932,6 +10972,11 @@
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_jsts.go"],
             "verified_at": "2026-05-28"
           },
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_jsts.go"],
+            "verified_at": "2026-05-28"
+          },
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -10952,14 +10997,29 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "verified_at": "2026-05-28"
+          },
           "mutation_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
             "verified_at": "2026-05-28"
           },
+          "pure_function_tagging": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "verified_at": "2026-05-28"
+          },
           "reachability_analysis": {
             "status": "full",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_jsts.go"],
+            "verified_at": "2026-05-28"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_jsts.go"],
             "verified_at": "2026-05-28"
           }
         }
@@ -15088,6 +15148,11 @@
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_python.go"],
             "verified_at": "2026-05-28"
           },
+          "def_use_chain_extraction": {
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_python.go"],
+            "verified_at": "2026-05-28"
+          },
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -15108,9 +15173,19 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "module_cycle_detection": {
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "verified_at": "2026-05-28"
+          },
           "mutation_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
+            "verified_at": "2026-05-28"
+          },
+          "pure_function_tagging": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
@@ -15132,6 +15207,11 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "template_pattern_catalog": {
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_python.go"],
+            "verified_at": "2026-05-28"
           }
         }
       },

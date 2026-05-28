@@ -75,6 +75,8 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"db_effect",
 		// #2766 substrate Phase 1B reachability + dead-code keys.
 		"dead_code_detection",
+		// #2774 Phase 3C def-use chains.
+		"def_use_chain_extraction",
 		"enum_extraction",
 		"env_fallback_recognition",
 		"fs_effect",
@@ -84,8 +86,12 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"import_resolution_quality",
 		"interface_extraction",
 		"jsx_template",
+		// #2774 Phase 3B module cycles.
+		"module_cycle_detection",
 		"mutation_effect",
 		"prop_extraction",
+		// #2774 Phase 3A pure-function tagging.
+		"pure_function_tagging",
 		"reachability_analysis",
 		// #2770 Phase 2A substrate payload-shape + drift detection.
 		"request_shape_extraction",
@@ -98,6 +104,8 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"state_setter_emission",
 		"taint_sink_detection",
 		"taint_source_detection",
+		// #2774 Phase 3D template-pattern catalog.
+		"template_pattern_catalog",
 		"tests_linkage",
 		"type_alias_extraction",
 		"vulnerability_finding",
@@ -125,6 +133,8 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"db_effect",
 		// #2766 substrate Phase 1B reachability + dead-code keys.
 		"dead_code_detection",
+		// #2774 Phase 3C def-use chains.
+		"def_use_chain_extraction",
 		"endpoint_synthesis",
 		"enum_extraction",
 		"env_fallback_recognition",
@@ -137,8 +147,12 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"interface_extraction",
 		"jsx_template",
 		"middleware_coverage",
+		// #2774 Phase 3B module cycles.
+		"module_cycle_detection",
 		"mutation_effect",
 		"prop_extraction",
+		// #2774 Phase 3A pure-function tagging.
+		"pure_function_tagging",
 		"reachability_analysis",
 		// #2770 Phase 2A substrate payload-shape + drift detection.
 		"request_shape_extraction",
@@ -151,6 +165,8 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"state_setter_emission",
 		"taint_sink_detection",
 		"taint_source_detection",
+		// #2774 Phase 3D template-pattern catalog.
+		"template_pattern_catalog",
 		"tests_linkage",
 		"type_alias_extraction",
 		"vulnerability_finding",

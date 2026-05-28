@@ -278,6 +278,41 @@ records:
           issues_implemented: ["2772"]
           verified_at: "2026-05-28"
 
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_jsts.go
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_jsts.go
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+
   lang.jsts.framework.react-native:
     capabilities:
       Navigation:
@@ -489,6 +524,41 @@ records:
             - file: internal/links/taint_flow.go
               functions: [runTaintFlowPass, computeFindings]
           issues_implemented: ["2772"]
+          verified_at: "2026-05-28"
+
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_python.go
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_python.go
+          issues_implemented: ["2774"]
           verified_at: "2026-05-28"
 
   lang.python.framework.flask:
@@ -797,6 +867,41 @@ records:
           issues_implemented: ["2772"]
           verified_at: "2026-05-28"
 
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_java.go
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_java.go
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+
   lang.go.framework.gin:
     capabilities:
       Routing:
@@ -902,6 +1007,41 @@ records:
             - file: internal/links/taint_flow.go
               functions: [runTaintFlowPass, computeFindings]
           issues_implemented: ["2772"]
+          verified_at: "2026-05-28"
+
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_golang.go
+          issues_implemented: ["2774"]
+          verified_at: "2026-05-28"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_golang.go
+          issues_implemented: ["2774"]
           verified_at: "2026-05-28"
 
   lang.ruby.framework.rails:
