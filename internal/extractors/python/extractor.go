@@ -1014,6 +1014,37 @@ func extractCallRelationships(
 	seen := make(map[seenKey]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
+		// Issue #2806 — subprocess / exec calls invoke an OS binary, not an
+		// indexed Python symbol. `subprocess.run(['libreoffice', ...])`,
+		// `os.system('convert ...')`, `subprocess.Popen(...)` etc. must never
+		// bind their method leaf (run / call / system / Popen) to a same-named
+		// in-repo entity. Detect the shape here and either emit an
+		// `ext:<binary>` CALLS edge (when the binary name is a string/list
+		// literal we can read) or drop the edge entirely (dynamic argv) so the
+		// leaf-name resolver never produces a phantom in-repo edge.
+		if isSubprocessExecCall(call, src, imports) {
+			if bin := subprocessBinaryName(call, src); bin != "" {
+				extTarget := "ext:" + bin
+				key := seenKey{extTarget, ""}
+				if !seen[key] {
+					seen[key] = true
+					callLine := strconv.Itoa(int(call.StartPoint().Row) + 1)
+					rels = append(rels, types.RelationshipRecord{
+						ToID: extTarget,
+						Kind: "CALLS",
+						Properties: map[string]string{
+							"language":     "python",
+							"pattern_type": "subprocess_exec",
+							"external_bin": bin,
+							"line":         callLine,
+						},
+					})
+				}
+			}
+			// Whether or not we could read a binary name, the method leaf
+			// (run/Popen/system/...) must NOT flow to the bare-name resolver.
+			continue
+		}
 		target, ambiguous := callTarget(call, src, parentClass)
 		if target == "" {
 			continue
@@ -1093,6 +1124,186 @@ func extractCallRelationships(
 	}
 
 	return rels
+}
+
+// subprocessExecLeaves are the subprocess-module function leaves that spawn an
+// external OS binary. Their first positional argument is a command (binary
+// name or argv list), NEVER a Python symbol — so the call must resolve to an
+// External node, not the same-named in-repo function/method (issue #2806).
+var subprocessExecLeaves = map[string]struct{}{
+	"run": {}, "call": {}, "Popen": {},
+	"check_call": {}, "check_output": {}, "getoutput": {}, "getstatusoutput": {},
+}
+
+// osExecLeaves are the os-module functions that execute / spawn an OS binary.
+// Like the subprocess family, their argv is a command line, not a Python
+// symbol. `os.system`/`os.popen` take a command string; the `os.exec*` and
+// `os.spawn*` families take a program path (with `os.spawn*` taking a mode arg
+// first — handled by subprocessBinaryName via first-string-literal scan).
+var osExecLeaves = map[string]struct{}{
+	"system": {}, "popen": {},
+	"execl": {}, "execle": {}, "execlp": {}, "execlpe": {},
+	"execv": {}, "execve": {}, "execvp": {}, "execvpe": {},
+	"spawnl": {}, "spawnle": {}, "spawnlp": {}, "spawnlpe": {},
+	"spawnv": {}, "spawnve": {}, "spawnvp": {}, "spawnvpe": {},
+	"posix_spawn": {}, "posix_spawnp": {},
+}
+
+// isSubprocessExecCall reports whether the `call` node invokes an external OS
+// binary via the subprocess / os modules. Recognised shapes (receiver matched
+// by local module alias so `import subprocess as sp` / `import os as _os` also
+// fire):
+//
+//	subprocess.run(...)        subprocess.Popen(...)   subprocess.check_output(...)
+//	os.system(...)             os.popen(...)           os.execv(...) / os.spawn*(...)
+//
+// Bare `system(...)` / `run(...)` without a module receiver are NOT matched —
+// those could be user functions and the normal resolver should handle them.
+func isSubprocessExecCall(call *sitter.Node, src []byte, imports pythonImportMap) bool {
+	fn := call.ChildByFieldName("function")
+	if fn == nil || fn.Type() != "attribute" {
+		return false
+	}
+	recvNode := fn.ChildByFieldName("object")
+	attrNode := fn.ChildByFieldName("attribute")
+	if recvNode == nil || attrNode == nil || recvNode.Type() != "identifier" {
+		return false
+	}
+	recv := nodeText(recvNode, src)
+	leaf := nodeText(attrNode, src)
+
+	// Resolve the receiver alias to the imported module root, if any, so
+	// `import subprocess as sp; sp.run(...)` is recognised.
+	module := recv
+	if imports != nil {
+		if binding, ok := imports[recv]; ok {
+			// sourceModule is the dotted import path the alias points at.
+			root := binding.sourceModule
+			if root == "" {
+				root = binding.importedName
+			}
+			if i := strings.IndexByte(root, '.'); i >= 0 {
+				root = root[:i]
+			}
+			if root != "" {
+				module = root
+			}
+		}
+	}
+
+	switch module {
+	case "subprocess":
+		_, ok := subprocessExecLeaves[leaf]
+		return ok
+	case "os":
+		_, ok := osExecLeaves[leaf]
+		return ok
+	}
+	return false
+}
+
+// subprocessBinaryName extracts the OS binary name from a subprocess / os exec
+// call's arguments. Returns "" when the binary cannot be statically read (a
+// variable argv, an f-string, a joined path, …) — the caller then drops the
+// edge rather than guessing.
+//
+// Handled first-argument shapes (the binary is the program word):
+//
+//	subprocess.run(['libreoffice', '--headless', f]) → "libreoffice"  (list literal, first string)
+//	subprocess.run('ls -la')                          → "ls"           (string literal, first word)
+//	os.system('convert in.png out.pdf')               → "convert"
+//	os.execv('/usr/bin/git', [...])                   → "git"          (basename of program path)
+//
+// `os.spawn*` takes a mode argument first; we scan for the first string/list
+// literal among the positional arguments rather than assuming arg index 0.
+func subprocessBinaryName(call *sitter.Node, src []byte) string {
+	argsNode := call.ChildByFieldName("arguments")
+	if argsNode == nil {
+		return ""
+	}
+	for i := 0; i < int(argsNode.NamedChildCount()); i++ {
+		arg := argsNode.NamedChild(i)
+		switch arg.Type() {
+		case "string":
+			return binaryFromCommandWord(pyStringLiteralValue(arg, src))
+		case "list":
+			// First named child string literal of the argv list.
+			for j := 0; j < int(arg.NamedChildCount()); j++ {
+				el := arg.NamedChild(j)
+				if el.Type() == "string" {
+					return binaryFromProgramPath(pyStringLiteralValue(el, src))
+				}
+				// Non-literal first element (variable) → not statically readable.
+				return ""
+			}
+			return ""
+		case "keyword_argument", "comment":
+			continue
+		default:
+			// First positional argument is dynamic (identifier, call, etc.)
+			// → cannot read the binary name. Stop scanning.
+			return ""
+		}
+	}
+	return ""
+}
+
+// binaryFromCommandWord takes a shell command string ("convert a b") and
+// returns the program word ("convert"), then reduces it to a basename.
+func binaryFromCommandWord(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return ""
+	}
+	if i := strings.IndexAny(cmd, " \t"); i >= 0 {
+		cmd = cmd[:i]
+	}
+	return binaryFromProgramPath(cmd)
+}
+
+// binaryFromProgramPath reduces a program path ("/usr/bin/git") to its
+// basename ("git"). A bare name passes through unchanged. Empty / clearly
+// non-binary tokens (containing shell metacharacters) yield "".
+func binaryFromProgramPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	// Reject tokens that obviously aren't a binary name (shell metachars,
+	// interpolation markers from an f-string body we stripped, …).
+	if strings.ContainsAny(p, "{}$*?|&;<>()") {
+		return ""
+	}
+	p = filepath.Base(filepath.ToSlash(p))
+	if p == "." || p == "/" || p == "" {
+		return ""
+	}
+	return p
+}
+
+// pyStringLiteralValue returns the textual content of a tree-sitter Python
+// `string` node with its surrounding quotes (and any prefix like r/f/b)
+// stripped. f-strings with interpolations are returned with the raw body so
+// callers can decide whether the result is statically usable.
+func pyStringLiteralValue(n *sitter.Node, src []byte) string {
+	// Prefer the string_content child when present (grammar ≥ 0.20 splits the
+	// literal into string_start / string_content / string_end).
+	for i := 0; i < int(n.NamedChildCount()); i++ {
+		ch := n.NamedChild(i)
+		if ch.Type() == "string_content" {
+			return nodeText(ch, src)
+		}
+		if ch.Type() == "interpolation" {
+			// f-string with an interpolation as (part of) the program word:
+			// not statically readable.
+			return ""
+		}
+	}
+	// Fallback: strip quotes/prefix from the raw token text.
+	raw := nodeText(n, src)
+	raw = strings.TrimLeft(raw, "rRbBfFuU")
+	raw = strings.Trim(raw, "\"'")
+	return raw
 }
 
 // callTarget resolves the callee name from a tree-sitter Python `call` node.
