@@ -7,23 +7,23 @@
 //
 //   - Navigation / router_pattern   — Angular client-side routing. Three
 //     idioms are recognised:
-//       1. RouterModule.forRoot([{path:'x', component:Y}]) / forChild([...])
-//          route table declarations → one NAVIGATES_TO edge per declared path.
-//       2. Imperative navigation: this.router.navigate(['/path', id]) and
-//          this.router.navigateByUrl('/path') → NAVIGATES_TO edge.
-//       3. Template directives: routerLink="/path" and [routerLink]="['/path']"
-//          inside an inline @Component template → NAVIGATES_TO edge.
+//     1. RouterModule.forRoot([{path:'x', component:Y}]) / forChild([...])
+//     route table declarations → one NAVIGATES_TO edge per declared path.
+//     2. Imperative navigation: this.router.navigate(['/path', id]) and
+//     this.router.navigateByUrl('/path') → NAVIGATES_TO edge.
+//     3. Template directives: routerLink="/path" and [routerLink]="['/path']"
+//     inside an inline @Component template → NAVIGATES_TO edge.
 //
 //   - Lifecycle / state_setter_emission — Angular state mutation points. Two
 //     idioms are recognised, each emitting a SCOPE.Operation subtype
 //     "state_setter" plus a WRITES_TO edge from the setter call site to the
 //     state it mutates (the same "edge from setter → state" semantic React
 //     realises through its [value, setter] tuple lift):
-//       1. Angular signals: `const count = signal(0)` declares the state;
-//          `count.set(v)` / `count.update(fn)` are the setters. WRITES_TO
-//          targets the signal binding name.
-//       2. ngrx dispatch: `this.store.dispatch(loadUser())` mutates the ngrx
-//          store; WRITES_TO targets the dispatched action type.
+//     1. Angular signals: `const count = signal(0)` declares the state;
+//     `count.set(v)` / `count.update(fn)` are the setters. WRITES_TO
+//     targets the signal binding name.
+//     2. ngrx dispatch: `this.store.dispatch(loadUser())` mutates the ngrx
+//     store; WRITES_TO targets the dispatched action type.
 //
 // All edges/entities reuse existing Kinds (NAVIGATES_TO, WRITES_TO,
 // SCOPE.Operation) so internal/types/ stays green — no new Kind is introduced.
@@ -43,7 +43,7 @@ import (
 // angularRouterNavMethods are the imperative @angular/router Router methods that
 // constitute a client-side navigation.
 var angularRouterNavMethods = map[string]bool{
-	"navigate":     true,
+	"navigate":      true,
 	"navigateByUrl": true,
 }
 
@@ -300,7 +300,7 @@ func (x *extractor) angularStateSetterEmission(body *sitter.Node, className stri
 	if body == nil {
 		return nil
 	}
-	signals := x.angularSignalBindings(body)
+	signals, subjects := x.angularSignalBindings(body)
 
 	var ents []types.EntityRecord
 	seen := map[string]bool{}
@@ -359,14 +359,29 @@ func (x *extractor) angularStateSetterEmission(body *sitter.Node, className stri
 		method := x.nodeText(propNode)
 		recvText := x.nodeText(recv)
 
-		// Signal setter: <signal>.set(...) / <signal>.update(...).
-		if method == "set" || method == "update" {
+		// Signal setter: <signal>.set(...) / <signal>.update(...) / .mutate(...).
+		if method == "set" || method == "update" || method == "mutate" {
 			sigName := angularSignalLeafName(recvText)
 			if sigName != "" && signals[sigName] {
 				name := sigName + "." + method
 				emit(name, sigName,
 					fmt.Sprintf("%s.%s(...)", recvText, method),
 					map[string]string{"setter_kind": "signal", "method": method}, call)
+			}
+			continue
+		}
+
+		// RxJS subject setter: <subject$>.next(...). A BehaviorSubject/Subject
+		// service member pushed via .next() is Angular's classic state-mutation
+		// idiom; the receiver must be a known subject binding so .next on other
+		// objects (e.g. an iterator) is not miscounted.
+		if method == "next" {
+			subName := angularSignalLeafName(recvText)
+			if subName != "" && subjects[subName] {
+				name := subName + ".next"
+				emit(name, subName,
+					fmt.Sprintf("%s.next(...)", recvText),
+					map[string]string{"setter_kind": "rxjs_subject", "method": method}, call)
 			}
 			continue
 		}
@@ -386,13 +401,16 @@ func (x *extractor) angularStateSetterEmission(body *sitter.Node, className stri
 	return ents
 }
 
-// angularSignalBindings collects the names of local signal/state bindings
-// declared in a class body via `const x = signal(...)` /
-// `x = signal<...>(...)` (class field) or the related writable primitives
-// (signal, model). Returns a set name→true used to gate `.set`/`.update`
-// setter detection.
-func (x *extractor) angularSignalBindings(body *sitter.Node) map[string]bool {
-	out := map[string]bool{}
+// angularSignalBindings collects the names of writable signal bindings and RxJS
+// subject bindings declared in a class body. Signals come from
+// `x = signal(...)` / `const x = signal<...>(...)` (and the `model` writable
+// primitive); subjects from `x = new BehaviorSubject(...)` (and the other RxJS
+// Subject ctors). The two name sets gate `.set`/`.update`/`.mutate` (signals)
+// and `.next` (subjects) setter detection so those methods are only treated as
+// state mutations when their receiver is a known reactive container.
+func (x *extractor) angularSignalBindings(body *sitter.Node) (signals, subjects map[string]bool) {
+	signals = map[string]bool{}
+	subjects = map[string]bool{}
 	for _, decl := range findAllNodes(body, "variable_declarator", "public_field_definition", "field_definition") {
 		nameNode := decl.ChildByFieldName("name")
 		if nameNode == nil {
@@ -402,26 +420,39 @@ func (x *extractor) angularSignalBindings(body *sitter.Node) map[string]bool {
 		if nameNode == nil || valNode == nil {
 			continue
 		}
-		if valNode.Type() != "call_expression" {
+		name := x.nodeText(nameNode)
+		if name == "" || strings.ContainsAny(name, "{}[].,") {
 			continue
 		}
-		fn := valNode.ChildByFieldName("function")
-		if fn == nil {
-			continue
-		}
-		callee := x.nodeText(fn)
-		// Strip a generic type-argument suffix: signal<number>(0).
-		if idx := strings.IndexByte(callee, '<'); idx >= 0 {
-			callee = callee[:idx]
-		}
-		if angularSignalFactories[callee] {
-			name := x.nodeText(nameNode)
-			if name != "" && !strings.ContainsAny(name, "{}[].,") {
-				out[name] = true
+		switch valNode.Type() {
+		case "call_expression":
+			fn := valNode.ChildByFieldName("function")
+			if fn == nil {
+				continue
+			}
+			callee := x.nodeText(fn)
+			// Strip a generic type-argument suffix: signal<number>(0).
+			if idx := strings.IndexByte(callee, '<'); idx >= 0 {
+				callee = callee[:idx]
+			}
+			if angularSignalFactories[callee] {
+				signals[name] = true
+			}
+		case "new_expression":
+			ctorNode := valNode.ChildByFieldName("constructor")
+			if ctorNode == nil {
+				continue
+			}
+			ctor := x.nodeText(ctorNode)
+			if idx := strings.IndexByte(ctor, '<'); idx >= 0 {
+				ctor = ctor[:idx]
+			}
+			if angularRxjsSubjects[strings.TrimSpace(ctor)] {
+				subjects[name] = true
 			}
 		}
 	}
-	return out
+	return signals, subjects
 }
 
 // angularSignalFactories are the Angular reactivity factory functions whose

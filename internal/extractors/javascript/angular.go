@@ -188,9 +188,10 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 	if body := n.ChildByFieldName("body"); body != nil {
 		ioEnts := x.angularInputOutputProps(body, className)
 		fetchEnts, fetchRels := x.angularDataFetching(body, className)
-		stateRels := x.angularStateManagement(body, className)
+		stateEnts, stateRels := x.angularStateManagement(body, className)
 		dfEnts = append(dfEnts, ioEnts...)
 		dfEnts = append(dfEnts, fetchEnts...)
+		dfEnts = append(dfEnts, stateEnts...)
 		rels = append(rels, fetchRels...)
 		rels = append(rels, stateRels...)
 
@@ -585,14 +586,105 @@ var angularStateMethods = map[string]bool{
 	"select": true, "dispatch": true, "pipe": true, "selectSignal": true,
 }
 
-// angularStateManagement scans method bodies for ngrx Store interactions
-// (`this.store.select(...)`, `this.store.dispatch(...)`) and returns CALLS
-// edges from the component to the store method (Data Flow / state_management).
-// ngrx is Angular's canonical Redux-style state container; select reads state
-// and dispatch mutates it.
-func (x *extractor) angularStateManagement(body *sitter.Node, className string) []types.RelationshipRecord {
+// angularStateContainerFactories are the call-expression factories whose return
+// value is a piece of reactive state in modern Angular. signal/computed are the
+// Angular signals primitives (the default state idiom since v16); signalStore/
+// withState are the ngrx **signal** store builders. Each declaration becomes a
+// state_store SCOPE.Operation so the Data Flow/state_management cell fires on
+// the dominant modern idiom, not only the (rarely-used) ngrx Redux Store.
+var angularStateContainerFactories = map[string]string{
+	"signal":      "signal",
+	"computed":    "computed",
+	"signalStore": "ngrx_signal_store",
+	"withState":   "ngrx_signal_store",
+}
+
+// angularStateManagement scans an Angular class body for state containers and
+// store interactions, returning state_store SCOPE.Operation entities plus CALLS
+// edges to ngrx Store methods (Data Flow / state_management). Three families are
+// recognised — mirroring how React/Vue/Svelte model state_management as a
+// declared state container plus its mutation points:
+//
+//	signals : count = signal(0); total = computed(...) ; signalStore/withState
+//	          → state_store entity (the modern Angular default, no ngrx needed)
+//	rxjs    : private user$ = new BehaviorSubject<User|null>(null)
+//	          → state_store entity (BehaviorSubject is Angular's classic
+//	            service-held state stream — coordinated with the #2893 rxjs
+//	            subject recognition, which records the same construction as an
+//	            rxjs_subject operation for the Internals cell)
+//	ngrx    : this.store.select(...) / this.store.dispatch(...)
+//	          → CALLS edge to the Store method (unchanged; kept so the Redux
+//	            store path does not regress)
+func (x *extractor) angularStateManagement(body *sitter.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	if body == nil {
+		return nil, nil
+	}
+	var ents []types.EntityRecord
 	var rels []types.RelationshipRecord
-	seen := map[string]bool{}
+	seenStore := map[string]bool{}
+	seenState := map[string]bool{}
+
+	emitContainer := func(name, lib, primitive, sig string, node *sitter.Node) {
+		if name == "" || seenState[name] {
+			return
+		}
+		seenState[name] = true
+		start, end := lines(node)
+		ents = append(ents, x.newAngularOp(className, "state_store", name, sig, start, end,
+			map[string]string{"state_lib": lib, "primitive": primitive}, nil))
+	}
+
+	// State-container declarations: `<name> = <factory>(...)` (class field) or
+	// `const <name> = <factory>(...)` (local) for signal/computed/signalStore,
+	// and `<name> = new BehaviorSubject(...)` for RxJS service state.
+	for _, decl := range findAllNodes(body, "variable_declarator", "public_field_definition", "field_definition") {
+		nameNode := decl.ChildByFieldName("name")
+		if nameNode == nil {
+			nameNode = decl.ChildByFieldName("property")
+		}
+		valNode := decl.ChildByFieldName("value")
+		if nameNode == nil || valNode == nil {
+			continue
+		}
+		name := x.nodeText(nameNode)
+		if name == "" || strings.ContainsAny(name, "{}[].,") {
+			continue
+		}
+		switch valNode.Type() {
+		case "call_expression":
+			fn := valNode.ChildByFieldName("function")
+			if fn == nil {
+				continue
+			}
+			callee := x.nodeText(fn)
+			if idx := strings.IndexByte(callee, '<'); idx >= 0 {
+				callee = callee[:idx]
+			}
+			// signalStore(...) returns a class — accept it when the callee is
+			// the bare factory or a `withState`/`withMethods` builder chain.
+			if prim, ok := angularStateContainerFactories[callee]; ok {
+				emitContainer(name, "angular-signals", prim,
+					fmt.Sprintf("%s = %s(...)", name, callee), decl)
+			}
+		case "new_expression":
+			ctorNode := valNode.ChildByFieldName("constructor")
+			if ctorNode == nil {
+				continue
+			}
+			ctor := x.nodeText(ctorNode)
+			if idx := strings.IndexByte(ctor, '<'); idx >= 0 {
+				ctor = ctor[:idx]
+			}
+			ctor = strings.TrimSpace(ctor)
+			if angularRxjsSubjects[ctor] {
+				emitContainer(name, "rxjs-subject", ctor,
+					fmt.Sprintf("%s = new %s(...)", name, ctor), decl)
+			}
+		}
+	}
+
+	// ngrx Redux Store interactions (this.store.select/dispatch/...): CALLS
+	// edge per store method (unchanged behaviour, no regression).
 	for _, call := range findAllNodes(body, "call_expression") {
 		fn := call.ChildByFieldName("function")
 		if fn == nil || fn.Type() != "member_expression" {
@@ -614,10 +706,10 @@ func (x *extractor) angularStateManagement(body *sitter.Node, className string) 
 		if !angularLooksLikeStore(recvText) {
 			continue
 		}
-		if seen[method] {
+		if seenStore[method] {
 			continue
 		}
-		seen[method] = true
+		seenStore[method] = true
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "Store." + method,
 			Kind: "CALLS",
@@ -629,7 +721,7 @@ func (x *extractor) angularStateManagement(body *sitter.Node, className string) 
 			},
 		})
 	}
-	return rels
+	return ents, rels
 }
 
 // angularLooksLikeStore reports whether a receiver expression text references a

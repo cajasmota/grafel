@@ -10566,10 +10566,10 @@
             "verified_at": "2026-05-28"
           },
           "state_management": {
-            "status": "partial",
-            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2855_angular_dataflow_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2855",
-            "notes": "AUDIT(#2847) full-\u003epartial: angularStateManagement only detects ngrx Store (select/dispatch/pipe/selectSignal). On angular-realworld (gothinkster) all 11 stateful files use Angular signals + RxJS BehaviorSubject and 0 use ngrx, so the cell fired on the ngrx fixture but missed the dominant modern Angular state idiom. Follow-up filed for signal()/computed()/BehaviorSubject support.",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/angular_nav_lifecycle.go","internal/extractors/javascript/angular_rxjs_guards.go","internal/extractors/javascript/issue2884_angular_state_test.go","testdata/fixtures/real-world/typescript/angular_state_management.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2884",
+            "notes": "RE-GREENED partial-\u003efull (#2884, resolves AUDIT #2847). angularStateManagement now emits state_store containers for Angular signals (signal()/computed()) and RxJS BehaviorSubject/Subject service members, plus signalStore()/withState() (ngrx signal store); .set()/.update()/.mutate() (signals) and .next() (subjects) emit state_setter ops + WRITES_TO edges (consistent with React/Vue/Svelte). ngrx Redux Store select/dispatch kept. Verified on the gothinkster angular-realworld files the audit cited (auth.component.ts signals, user.service.ts BehaviorSubject): it now detects the signals + BehaviorSubject state, not just ngrx.",
             "verified_at": "2026-05-28"
           }
         },
@@ -10653,6 +10653,13 @@
             "notes": "AUDIT(#2847) NEW idiom cell: @Directive -\u003e angular_directive subtype. Verified on angular-realworld + nativescript-ng.",
             "verified_at": "2026-05-28"
           },
+          "guard_interceptor_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular_rxjs_guards.go","internal/extractors/javascript/issue2874_angular_test.go","internal/extractors/javascript/testdata/angular_internals/rxjs_guards.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2874",
+            "notes": "IMPL(#2874): route guards + HTTP interceptors, class AND functional forms. Class form (angularGuardClassRels): an @Injectable class implementing CanActivate/CanActivateChild/CanDeactivate/CanLoad/CanMatch/Resolve or HttpInterceptor gets angular_role=guard|interceptor + an IMPLEMENTS edge to the interface. Functional form (angularFunctionalGuards, program-level pass): export const x: CanActivateFn|…|HttpInterceptorFn = (...) =\u003e … → SCOPE.Component subtype angular_guard|angular_interceptor. Proven by issue2874_angular_test.go.",
+            "verified_at": "2026-05-28"
+          },
           "ngmodule_extraction": {
             "status": "full",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
@@ -10669,32 +10676,17 @@
           },
           "rxjs_pattern_detection": {
             "status": "full",
-            "cites": [
-              "internal/extractors/javascript/angular_rxjs_guards.go",
-              "internal/extractors/javascript/issue2874_angular_test.go",
-              "internal/extractors/javascript/testdata/angular_internals/rxjs_guards.ts"
-            ],
+            "cites": ["internal/extractors/javascript/angular_rxjs_guards.go","internal/extractors/javascript/issue2874_angular_test.go","internal/extractors/javascript/testdata/angular_internals/rxjs_guards.ts"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2874",
-            "verified_at": "2026-05-28",
-            "notes": "IMPL(#2874): angularRxjsPatterns extracts Observable idioms in Angular class bodies — .pipe(map/switchMap/filter/…) → SCOPE.Operation rxjs_pipeline + one TRANSFORMS edge per operator; .subscribe(...) → rxjs_subscription + SUBSCRIBES_TO edge; new Subject/BehaviorSubject/ReplaySubject/AsyncSubject → rxjs_subject; inline-template `| async` → rxjs_async_pipe component flag. Proven by issue2874_angular_test.go (unit fixture) AND real-data run on testdata/fixtures/real-world angular_component.ts (pipelines x3, subscriptions x2, subjects x1)."
+            "notes": "IMPL(#2874): angularRxjsPatterns extracts Observable idioms in Angular class bodies — .pipe(map/switchMap/filter/…) → SCOPE.Operation rxjs_pipeline + one TRANSFORMS edge per operator; .subscribe(...) → rxjs_subscription + SUBSCRIBES_TO edge; new Subject/BehaviorSubject/ReplaySubject/AsyncSubject → rxjs_subject; inline-template `| async` → rxjs_async_pipe component flag. Proven by issue2874_angular_test.go (unit fixture) AND real-data run on testdata/fixtures/real-world angular_component.ts (pipelines x3, subscriptions x2, subjects x1).",
+            "verified_at": "2026-05-28"
           },
           "service_extraction": {
             "status": "full",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "notes": "AUDIT(#2847) NEW idiom cell: @Injectable -> angular_service subtype. Verified on angular-realworld (angular_service x6).",
+            "notes": "AUDIT(#2847) NEW idiom cell: @Injectable -\u003e angular_service subtype. Verified on angular-realworld (angular_service x6).",
             "verified_at": "2026-05-28"
-          },
-          "guard_interceptor_recognition": {
-            "status": "full",
-            "cites": [
-              "internal/extractors/javascript/angular_rxjs_guards.go",
-              "internal/extractors/javascript/issue2874_angular_test.go",
-              "internal/extractors/javascript/testdata/angular_internals/rxjs_guards.ts"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2874",
-            "verified_at": "2026-05-28",
-            "notes": "IMPL(#2874): route guards + HTTP interceptors, class AND functional forms. Class form (angularGuardClassRels): an @Injectable class implementing CanActivate/CanActivateChild/CanDeactivate/CanLoad/CanMatch/Resolve or HttpInterceptor gets angular_role=guard|interceptor + an IMPLEMENTS edge to the interface. Functional form (angularFunctionalGuards, program-level pass): export const x: CanActivateFn|…|HttpInterceptorFn = (...) => … → SCOPE.Component subtype angular_guard|angular_interceptor. Proven by issue2874_angular_test.go."
           }
         }
       }
@@ -12249,36 +12241,36 @@
       },
       "framework_specific": {
         "React Internals": {
-          "lazy_code_splitting": {
-            "status": "partial",
-            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/react_internals.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
+          "context_hoc": {
+            "status": "not_applicable",
             "issue": "https://github.com/cajasmota/archigraph/issues/2875",
-            "verified_at": "2026-05-28",
-            "notes": "React.lazy(() => import('mod')) is decorated react_lazy + lazy_module (the code-split target). Partial: the dynamic-import specifier is recovered only when it is a string literal; computed/template specifiers are not resolved."
-          },
-          "suspense_error_boundary": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/react_internals.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
-            "verified_at": "2026-05-28",
-            "notes": "Components rendering <Suspense> are decorated react_suspense; class components declaring componentDidCatch / getDerivedStateFromError are decorated react_error_boundary."
-          },
-          "portal_recognition": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/react_internals.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
-            "verified_at": "2026-05-28",
-            "notes": "Components calling createPortal / ReactDOM.createPortal are decorated react_portal."
+            "notes": "Covered by generic Structure/context_extraction (createContext, #611) and Structure/hoc_wrapper_recognition (forwardRef/memo/lazy/connect/withX, extractor.go). Not duplicated here to avoid double-counting."
           },
           "hooks": {
             "status": "not_applicable",
             "issue": "https://github.com/cajasmota/archigraph/issues/2875",
             "notes": "Covered by generic Structure/hook_recognition (react.go USES_HOOK + custom-hook subtype). Not duplicated here to avoid double-counting."
           },
-          "context_hoc": {
-            "status": "not_applicable",
+          "lazy_code_splitting": {
+            "status": "partial",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/react_internals.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2875",
-            "notes": "Covered by generic Structure/context_extraction (createContext, #611) and Structure/hoc_wrapper_recognition (forwardRef/memo/lazy/connect/withX, extractor.go). Not duplicated here to avoid double-counting."
+            "notes": "React.lazy(() =\u003e import('mod')) is decorated react_lazy + lazy_module (the code-split target). Partial: the dynamic-import specifier is recovered only when it is a string literal; computed/template specifiers are not resolved.",
+            "verified_at": "2026-05-28"
+          },
+          "portal_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/react_internals.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
+            "notes": "Components calling createPortal / ReactDOM.createPortal are decorated react_portal.",
+            "verified_at": "2026-05-28"
+          },
+          "suspense_error_boundary": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/react_internals.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
+            "notes": "Components rendering \u003cSuspense\u003e are decorated react_suspense; class components declaring componentDidCatch / getDerivedStateFromError are decorated react_error_boundary.",
+            "verified_at": "2026-05-28"
           }
         }
       }
