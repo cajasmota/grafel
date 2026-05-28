@@ -13,6 +13,14 @@ func TestEffectRegistry_T1Languages(t *testing.T) {
 	}
 }
 
+func TestEffectRegistry_T2Languages(t *testing.T) {
+	for _, lang := range []string{"ruby", "php", "rust", "csharp", "kotlin", "elixir", "scala", "c-cpp"} {
+		if EffectSnifferFor(lang) == nil {
+			t.Errorf("expected effect sniffer registered for %q", lang)
+		}
+	}
+}
+
 func TestEffectSet_AddUnion(t *testing.T) {
 	var s EffectSet
 	if !s.IsEmpty() {
@@ -224,6 +232,372 @@ func (r *Repo) SetName(n string) {
 	mustHave(t, byEffect, EffectFSRead, "ReadConfig")
 	mustHave(t, byEffect, EffectFSWrite, "WriteLog")
 	mustHave(t, byEffect, EffectMutation, "SetName")
+}
+
+func TestSniffEffectsRuby_PrimitiveCoverage(t *testing.T) {
+	const src = `
+require "net/http"
+
+class UserService
+  def call_remote
+    Net::HTTP.get(URI("https://api.example.com/u"))
+  end
+
+  def load_users
+    User.where(active: true)
+  end
+
+  def save_user(u)
+    u.save!
+  end
+
+  def write_log(msg)
+    File.write("log.txt", msg)
+  end
+
+  def read_config
+    File.read("config.json")
+  end
+
+  def assign(x)
+    @x = x
+  end
+end
+`
+	got := sniffEffectsRuby(src)
+	if len(got) == 0 {
+		t.Fatal("expected ruby matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "call_remote")
+	mustHave(t, byEffect, EffectDBRead, "load_users")
+	mustHave(t, byEffect, EffectDBWrite, "save_user")
+	mustHave(t, byEffect, EffectFSWrite, "write_log")
+	mustHave(t, byEffect, EffectFSRead, "read_config")
+	mustHave(t, byEffect, EffectMutation, "assign")
+}
+
+func TestSniffEffectsPHP_PrimitiveCoverage(t *testing.T) {
+	const src = `<?php
+class UserService {
+    public function callRemote() {
+        $c = new GuzzleHttp\Client();
+        return $c->get('https://api.example.com/u');
+    }
+
+    public function loadUsers() {
+        return User::where('active', true)->get();
+    }
+
+    public function saveUser($u) {
+        $u->save();
+    }
+
+    public function readConfig() {
+        return file_get_contents('config.json');
+    }
+
+    public function writeLog($msg) {
+        file_put_contents('log.txt', $msg);
+    }
+
+    public function assign($x) {
+        $this->x = $x;
+    }
+}
+`
+	got := sniffEffectsPHP(src)
+	if len(got) == 0 {
+		t.Fatal("expected php matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "callRemote")
+	mustHave(t, byEffect, EffectDBRead, "loadUsers")
+	mustHave(t, byEffect, EffectDBWrite, "saveUser")
+	mustHave(t, byEffect, EffectFSRead, "readConfig")
+	mustHave(t, byEffect, EffectFSWrite, "writeLog")
+	mustHave(t, byEffect, EffectMutation, "assign")
+}
+
+func TestSniffEffectsRust_PrimitiveCoverage(t *testing.T) {
+	const src = `
+use std::fs;
+
+pub struct Svc { name: String }
+
+impl Svc {
+    pub async fn call_remote(&self) {
+        let _ = reqwest::get("https://x").await;
+    }
+
+    pub async fn load_users(&self, pool: &Pool) {
+        let _ = sqlx::query!("SELECT * FROM users").fetch_all(pool).await;
+    }
+
+    pub async fn save_user(&self, pool: &Pool) {
+        let _ = sqlx::query!("INSERT INTO users (name) VALUES ($1)", "x").execute(pool).await;
+    }
+
+    pub fn read_config(&self) -> String {
+        std::fs::read_to_string("config.json").unwrap()
+    }
+
+    pub fn write_log(&self, b: &[u8]) {
+        std::fs::write("log.txt", b).unwrap();
+    }
+
+    pub fn set_name(&mut self, n: String) {
+        self.name = n;
+    }
+}
+`
+	got := sniffEffectsRust(src)
+	if len(got) == 0 {
+		t.Fatal("expected rust matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "call_remote")
+	mustHave(t, byEffect, EffectDBRead, "load_users")
+	mustHave(t, byEffect, EffectDBWrite, "save_user")
+	mustHave(t, byEffect, EffectFSRead, "read_config")
+	mustHave(t, byEffect, EffectFSWrite, "write_log")
+	mustHave(t, byEffect, EffectMutation, "set_name")
+}
+
+func TestSniffEffectsCSharp_PrimitiveCoverage(t *testing.T) {
+	const src = `
+using System.IO;
+using System.Net.Http;
+
+public class UserService {
+    private HttpClient _httpClient = new HttpClient();
+    public string name;
+
+    public async Task<string> CallRemote() {
+        return await _httpClient.GetStringAsync("https://x");
+    }
+
+    public async Task<List<User>> LoadUsers(DbContext ctx) {
+        return await ctx.Users.Where(u => u.Active).ToListAsync();
+    }
+
+    public async Task SaveUser(DbContext ctx, User u) {
+        ctx.Users.Add(u);
+        await ctx.SaveChangesAsync();
+    }
+
+    public string ReadConfig() {
+        return File.ReadAllText("config.json");
+    }
+
+    public void WriteLog(string msg) {
+        File.WriteAllText("log.txt", msg);
+    }
+
+    public void SetName(string n) {
+        this.name = n;
+    }
+}
+`
+	got := sniffEffectsCSharp(src)
+	if len(got) == 0 {
+		t.Fatal("expected csharp matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "CallRemote")
+	mustHave(t, byEffect, EffectDBRead, "LoadUsers")
+	mustHave(t, byEffect, EffectDBWrite, "SaveUser")
+	mustHave(t, byEffect, EffectFSRead, "ReadConfig")
+	mustHave(t, byEffect, EffectFSWrite, "WriteLog")
+	mustHave(t, byEffect, EffectMutation, "SetName")
+}
+
+func TestSniffEffectsKotlin_PrimitiveCoverage(t *testing.T) {
+	const src = `
+import java.io.File
+import java.nio.file.Files
+
+class UserService {
+    var name: String = ""
+
+    suspend fun callRemote(client: HttpClient): String {
+        return client.get("https://x")
+    }
+
+    fun loadUsers(em: EntityManager): List<User> {
+        return em.createQuery("from User").resultList as List<User>
+    }
+
+    fun saveUser(em: EntityManager, u: User) {
+        em.persist(u)
+    }
+
+    fun readConfig(): String {
+        return File("config.json").readText()
+    }
+
+    fun writeLog(msg: String) {
+        File("log.txt").writeText(msg)
+    }
+
+    fun setName(n: String) {
+        this.name = n
+    }
+}
+`
+	got := sniffEffectsKotlin(src)
+	if len(got) == 0 {
+		t.Fatal("expected kotlin matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "callRemote")
+	mustHave(t, byEffect, EffectDBRead, "loadUsers")
+	mustHave(t, byEffect, EffectDBWrite, "saveUser")
+	mustHave(t, byEffect, EffectFSRead, "readConfig")
+	mustHave(t, byEffect, EffectFSWrite, "writeLog")
+	mustHave(t, byEffect, EffectMutation, "setName")
+}
+
+func TestSniffEffectsElixir_PrimitiveCoverage(t *testing.T) {
+	const src = `
+defmodule UserService do
+  def call_remote do
+    HTTPoison.get("https://x")
+  end
+
+  def load_users do
+    Repo.all(User)
+  end
+
+  def save_user(u) do
+    Repo.insert(u)
+  end
+
+  def read_config do
+    File.read!("config.json")
+  end
+
+  def write_log(msg) do
+    File.write!("log.txt", msg)
+  end
+
+  def update_cache(k, v) do
+    Agent.update(:cache, fn s -> Map.put(s, k, v) end)
+  end
+end
+`
+	got := sniffEffectsElixir(src)
+	if len(got) == 0 {
+		t.Fatal("expected elixir matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "call_remote")
+	mustHave(t, byEffect, EffectDBRead, "load_users")
+	mustHave(t, byEffect, EffectDBWrite, "save_user")
+	mustHave(t, byEffect, EffectFSRead, "read_config")
+	mustHave(t, byEffect, EffectFSWrite, "write_log")
+	mustHave(t, byEffect, EffectMutation, "update_cache")
+}
+
+func TestSniffEffectsScala_PrimitiveCoverage(t *testing.T) {
+	const src = `
+import scala.io.Source
+import java.nio.file.Files
+
+class UserService {
+  var name: String = ""
+
+  def callRemote(): Unit = {
+    basicRequest.get(uri"https://x").send(backend)
+  }
+
+  def loadUsers(em: EntityManager): List[User] = {
+    em.createQuery("from User").getResultList.asInstanceOf[List[User]]
+  }
+
+  def saveUser(em: EntityManager, u: User): Unit = {
+    em.persist(u)
+  }
+
+  def readConfig(): String = {
+    Source.fromFile("config.json").mkString
+  }
+
+  def writeLog(msg: String): Unit = {
+    Files.writeString(java.nio.file.Paths.get("log.txt"), msg)
+  }
+
+  def setName(n: String): Unit = {
+    this.name = n
+  }
+}
+`
+	got := sniffEffectsScala(src)
+	if len(got) == 0 {
+		t.Fatal("expected scala matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "callRemote")
+	mustHave(t, byEffect, EffectDBRead, "loadUsers")
+	mustHave(t, byEffect, EffectDBWrite, "saveUser")
+	mustHave(t, byEffect, EffectFSRead, "readConfig")
+	mustHave(t, byEffect, EffectFSWrite, "writeLog")
+	mustHave(t, byEffect, EffectMutation, "setName")
+}
+
+func TestSniffEffectsCCPP_PrimitiveCoverage(t *testing.T) {
+	const src = `
+#include <cstdio>
+#include <curl/curl.h>
+#include <libpq-fe.h>
+
+class UserService {
+public:
+    int count;
+
+    void call_remote() {
+        CURL *c = curl_easy_init();
+        curl_easy_setopt(c, CURLOPT_URL, "https://x");
+        curl_easy_perform(c);
+    }
+
+    void load_users(PGconn *conn) {
+        PGresult *r = PQexec(conn, "SELECT * FROM users");
+        (void)r;
+    }
+
+    void save_user(PGconn *conn) {
+        PGresult *r = PQexec(conn, "INSERT INTO users (name) VALUES ('x')");
+        (void)r;
+    }
+
+    void read_config() {
+        FILE *f = fopen("config.json", "r");
+        (void)f;
+    }
+
+    void write_log(const char *msg) {
+        FILE *f = fopen("log.txt", "w");
+        (void)f;
+        (void)msg;
+    }
+
+    void set_count(int n) {
+        this->count = n;
+    }
+};
+`
+	got := sniffEffectsCCPP(src)
+	if len(got) == 0 {
+		t.Fatal("expected c-cpp matches; got none")
+	}
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectHTTPOut, "call_remote")
+	mustHave(t, byEffect, EffectDBRead, "load_users")
+	mustHave(t, byEffect, EffectDBWrite, "save_user")
+	mustHave(t, byEffect, EffectFSRead, "read_config")
+	mustHave(t, byEffect, EffectFSWrite, "write_log")
+	mustHave(t, byEffect, EffectMutation, "set_count")
 }
 
 func groupByEffect(ms []EffectMatch) map[Effect]map[string]bool {

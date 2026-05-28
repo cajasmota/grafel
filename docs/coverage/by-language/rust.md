@@ -12,23 +12,23 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
+| [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
 
 
 ### Desktop
 
 | Name | Process | Native | Updates | Substrate | Notes |
 |---|---|---|---|---|---|
-| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 0/2 | ❌ 0/1 | — | ✅ 3/3 | |
+| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 0/2 | ❌ 0/1 | — | ⚠️ 3/7 | |
 
 
 ## Tools

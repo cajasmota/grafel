@@ -12,35 +12,35 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
 
 
 ### UI Frontend
 
 | Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/10 | |
 
 
 ### Desktop
 
 | Name | Process | Native | Updates | Substrate | Notes |
 |---|---|---|---|---|---|
-| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | ❌ 0/2 | ❌ 0/1 | — | ✅ 3/3 | |
-| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | ❌ 0/2 | ❌ 0/1 | — | ✅ 3/3 | |
+| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | ❌ 0/2 | ❌ 0/1 | — | ⚠️ 3/7 | |
+| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | ❌ 0/2 | ❌ 0/1 | — | ⚠️ 3/7 | |
 
 
 ## Tools

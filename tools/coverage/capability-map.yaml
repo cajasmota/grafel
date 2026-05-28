@@ -383,7 +383,7 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2766"]
-<<<<<<< HEAD
+          verified_at: "2026-05-28"
         db_effect:
           status: partial
           symbols:
@@ -419,9 +419,7 @@ records:
             - file: internal/links/effect_propagation.go
               functions: [runEffectPropagationPass]
           issues_implemented: ["2764"]
-=======
           verified_at: "2026-05-28"
->>>>>>> bfbd7c5b (feat(substrate): Phase 1B reachability + dead-code for T1 languages (#2766))
 
   lang.python.framework.flask:
     capabilities:
@@ -656,7 +654,7 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2766"]
-<<<<<<< HEAD
+          verified_at: "2026-05-28"
         db_effect:
           status: partial
           symbols:
@@ -692,9 +690,7 @@ records:
             - file: internal/links/effect_propagation.go
               functions: [runEffectPropagationPass]
           issues_implemented: ["2764"]
-=======
           verified_at: "2026-05-28"
->>>>>>> bfbd7c5b (feat(substrate): Phase 1B reachability + dead-code for T1 languages (#2766))
 
   lang.go.framework.gin:
     capabilities:
@@ -815,6 +811,42 @@ records:
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
           verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_ruby.go
+              functions: [sniffEffectsRuby, appendRubyMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_ruby.go
+              functions: [sniffEffectsRuby]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_ruby.go
+              functions: [sniffEffectsRuby]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_ruby.go
+              functions: [sniffEffectsRuby]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
 
   lang.php.framework.laravel:
     capabilities:
@@ -863,6 +895,42 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_php.go
+              functions: [sniffEffectsPHP, appendPHPMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_php.go
+              functions: [sniffEffectsPHP]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_php.go
+              functions: [sniffEffectsPHP]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_php.go
+              functions: [sniffEffectsPHP]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
           verified_at: "2026-05-28"
 
   lang.rust.framework.axum:
@@ -913,6 +981,42 @@ records:
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
           verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
 
   lang.csharp.framework.aspnet-core:
     capabilities:
@@ -961,6 +1065,42 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp, appendCSharpMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
           verified_at: "2026-05-28"
 
   lang.kotlin.framework.spring-boot:
@@ -1011,6 +1151,42 @@ records:
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
           verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_kotlin.go
+              functions: [sniffEffectsKotlin, appendKotlinMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_kotlin.go
+              functions: [sniffEffectsKotlin]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_kotlin.go
+              functions: [sniffEffectsKotlin]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_kotlin.go
+              functions: [sniffEffectsKotlin]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
 
   lang.elixir.framework.phoenix:
     capabilities:
@@ -1059,6 +1235,42 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_elixir.go
+              functions: [sniffEffectsElixir, appendElixirMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_elixir.go
+              functions: [sniffEffectsElixir]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_elixir.go
+              functions: [sniffEffectsElixir]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_elixir.go
+              functions: [sniffEffectsElixir]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
           verified_at: "2026-05-28"
 
   lang.scala.framework.play:
@@ -1109,6 +1321,42 @@ records:
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
           verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_scala.go
+              functions: [sniffEffectsScala, appendScalaMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_scala.go
+              functions: [sniffEffectsScala]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_scala.go
+              functions: [sniffEffectsScala]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_scala.go
+              functions: [sniffEffectsScala]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
 
   lang.c-cpp.framework.crow:
     capabilities:
@@ -1156,4 +1404,40 @@ records:
             - file: internal/mcp/dead_code.go
               functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
           issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_c_cpp.go
+              functions: [sniffEffectsCCPP, appendCCPPMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_c_cpp.go
+              functions: [sniffEffectsCCPP]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_c_cpp.go
+              functions: [sniffEffectsCCPP]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_c_cpp.go
+              functions: [sniffEffectsCCPP]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
           verified_at: "2026-05-28"

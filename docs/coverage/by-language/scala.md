@@ -12,21 +12,21 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Cask](../detail/lang.scala.framework.cask.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Lagom](../detail/lang.scala.framework.lagom.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Scalatra](../detail/lang.scala.framework.scalatra.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [http4s](../detail/lang.scala.framework.http4s.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
+| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Cask](../detail/lang.scala.framework.cask.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Lagom](../detail/lang.scala.framework.lagom.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [Scalatra](../detail/lang.scala.framework.scalatra.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
+| [http4s](../detail/lang.scala.framework.http4s.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/10 | |
 
 
 ### Meta Framework
 
 | Name | Structure | Data Flow | Server | Routing | Build | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/10 | |
 
 
 ## Tools

@@ -264,6 +264,10 @@ subcategories:
       - confidence_overlay
       - reachability_analysis
       - dead_code_detection
+      - db_effect
+      - http_effect
+      - fs_effect
+      - mutation_effect
     groups:
       - name: Process
         keys: [ipc_extraction, main_renderer_split]
@@ -272,7 +276,7 @@ subcategories:
       - name: Updates
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
 
   rpc_framework:
     display: "RPC Framework"
