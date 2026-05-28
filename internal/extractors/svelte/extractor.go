@@ -14,6 +14,8 @@
 //	let <x> = $state(…)      → SCOPE.Operation    subtype="rune_state"
 //	$derived(…) declaration  → SCOPE.Operation    subtype="rune_derived"
 //	$effect(…) call          → SCOPE.Operation    subtype="rune_effect"
+//	$: name = …              → SCOPE.Operation    subtype="reactive_statement"
+//	use:action               → SCOPE.Operation    subtype="action"
 //	<ChildComponent />       → RENDERS edge
 //
 // Svelte 5 runes ($state, $derived, $effect, $props, $bindable) are
@@ -135,6 +137,36 @@ var (
 	// prefix is Svelte's reactive store-value accessor; assigning to it writes
 	// through to the store.
 	storeDollarAssignRE = regexp.MustCompile(`(?m)\$([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:=|\+=|-=|\*=|/=)\s*[^=]`)
+
+	// ── Reactive statements (issue #2877 — Svelte Internals/reactive_statements) ─
+	//
+	// Svelte 4 labelled-reactivity: a statement prefixed with the `$:` label is
+	// re-run whenever any reactive value it reads changes. Two idiomatic shapes:
+	//
+	//	$: doubled = count * 2;     — reactive assignment (declares `doubled`)
+	//	$: { console.log(count); }  — reactive block (side-effecting, no binding)
+	//	$: if (count > 10) reset(); — reactive guarded statement
+	//
+	// The label must sit at the start of a line (after optional indentation) and
+	// be followed by whitespace. We capture the assignment target name when the
+	// body is a simple `<ident> = …` so a reactive derivation surfaces as a
+	// named operation; bare-block/statement forms are named by position.
+	reactiveAssignRE = regexp.MustCompile(`(?m)^\s*\$:\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*[^=]`)
+	reactiveStmtRE   = regexp.MustCompile(`(?m)^\s*\$:\s*\S`)
+
+	// ── Actions (issue #2877 — Svelte Internals/actions) ─────────────────────
+	//
+	// Svelte `use:` directives attach an action (a function returning an
+	// optional { update, destroy } lifecycle) to a DOM element:
+	//
+	//	<div use:tooltip>                 — bare action
+	//	<button use:clickOutside={handler}> — action with a parameter
+	//	<input use:autofocus|local>       — action with a modifier (Svelte 5)
+	//
+	// Captures the action identifier (group 1). The element receiving the
+	// action is not needed for the capability — the action binding itself is
+	// the first-class idiom.
+	useActionRE = regexp.MustCompile(`\buse:([A-Za-z_$][A-Za-z0-9_$]*)`)
 )
 
 // Extract parses the Svelte SFC source and returns entity records.
@@ -206,6 +238,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 			})
 		}
 		entities = append(entities, setterEnts...)
+
+		// Svelte Internals (#2877): reactive `$:` labelled statements.
+		reactiveEnts, reactiveRels := extractReactiveStatements(scriptContent, scriptStartLine, file.Path, componentName)
+		entities[0].Relationships = append(entities[0].Relationships, reactiveRels...)
+		entities = append(entities, reactiveEnts...)
 	}
 
 	// ── 3. Extract RENDERS edges + branch conditions from the template ───────
@@ -225,6 +262,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		// directives emit NAVIGATES_TO edges.
 		linkRels := extractRouteDirectives(templateContent, templateStartLine, file.Path, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, linkRels...)
+
+		// Svelte Internals (#2877): `use:` action directives.
+		actionEnts, actionRels := extractActions(templateContent, templateStartLine, file.Path, componentName)
+		entities[0].Relationships = append(entities[0].Relationships, actionRels...)
+		entities = append(entities, actionEnts...)
 	}
 
 	span.SetAttributes(
@@ -759,6 +801,159 @@ func extractStateSetters(script string, scriptStartLine int, filePath, component
 	}
 
 	return ents
+}
+
+// extractReactiveStatements scans a Svelte <script> block for `$:` labelled
+// reactive statements (issue #2877 — Svelte Internals/reactive_statements).
+// Svelte 4's reactivity model re-runs a `$:`-prefixed statement whenever any
+// value it depends on changes. Two shapes are emitted as SCOPE.Operation
+// (subtype "reactive_statement"):
+//
+//	$: doubled = count * 2;   → named "doubled", reactive_kind "assignment",
+//	                            with a DEPENDS_ON edge to "state:doubled"
+//	$: { … } / $: if (…) …    → named "$:_<n>" by position, reactive_kind
+//	                            "block"
+//
+// Each statement also gets a USES edge from the component file so the
+// component → reactive-statement relationship is queryable.
+func extractReactiveStatements(script string, scriptStartLine int, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+
+	// Reactive assignments (`$: name = …`) are matched first so we can record
+	// the declared target. Track their byte offsets so the block-form pass can
+	// skip them (a `$: x = …` also matches the broader reactiveStmtRE).
+	assignOffsets := map[int]bool{}
+	for _, m := range reactiveAssignRE.FindAllStringSubmatchIndex(script, -1) {
+		assignOffsets[m[0]] = true
+		name := script[m[2]:m[3]]
+		lineNum := scriptStartLine + strings.Count(script[:m[0]], "\n")
+		ents = append(ents, types.EntityRecord{
+			Name:         name,
+			Kind:         "SCOPE.Operation",
+			Subtype:      "reactive_statement",
+			SourceFile:   filePath,
+			Language:     "svelte",
+			StartLine:    lineNum,
+			EndLine:      lineNum,
+			Signature:    "$: " + name + " = …",
+			QualityScore: 0.8,
+			Properties: map[string]string{
+				"component":     componentName,
+				"reactive_kind": "assignment",
+				"target":        name,
+				"framework":     "svelte",
+			},
+			Relationships: []types.RelationshipRecord{{
+				ToID: "state:" + name,
+				Kind: "DEPENDS_ON",
+				Properties: map[string]string{
+					"component": componentName,
+					"target":    name,
+					"framework": "svelte",
+				},
+			}},
+		})
+		rels = append(rels, types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   name,
+			Kind:   "USES",
+			Properties: map[string]string{
+				"component":     componentName,
+				"reactive_kind": "assignment",
+				"framework":     "svelte",
+			},
+		})
+	}
+
+	// Reactive blocks / guarded statements (`$: { … }`, `$: if (…) …`) that are
+	// NOT plain assignments.
+	blockIdx := 0
+	for _, m := range reactiveStmtRE.FindAllStringIndex(script, -1) {
+		if assignOffsets[m[0]] {
+			continue
+		}
+		blockIdx++
+		name := fmt.Sprintf("$:_%d", blockIdx)
+		lineNum := scriptStartLine + strings.Count(script[:m[0]], "\n")
+		ents = append(ents, types.EntityRecord{
+			Name:         name,
+			Kind:         "SCOPE.Operation",
+			Subtype:      "reactive_statement",
+			SourceFile:   filePath,
+			Language:     "svelte",
+			StartLine:    lineNum,
+			EndLine:      lineNum,
+			Signature:    "$: { … }",
+			QualityScore: 0.75,
+			Properties: map[string]string{
+				"component":     componentName,
+				"reactive_kind": "block",
+				"framework":     "svelte",
+			},
+		})
+		rels = append(rels, types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   name,
+			Kind:   "USES",
+			Properties: map[string]string{
+				"component":     componentName,
+				"reactive_kind": "block",
+				"framework":     "svelte",
+			},
+		})
+	}
+
+	return ents, rels
+}
+
+// extractActions scans the Svelte template for `use:` action directives (issue
+// #2877 — Svelte Internals/actions). An action is a function attached to a DOM
+// element via `use:<action>[={param}]`; it returns an optional
+// { update, destroy } lifecycle. Each distinct action binding yields a
+// SCOPE.Operation (subtype "action") and a USES edge from the component file.
+func extractActions(template string, templateStartLine int, filePath, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+
+	for _, m := range useActionRE.FindAllStringSubmatchIndex(template, -1) {
+		action := template[m[2]:m[3]]
+		if action == "" || seen[action] {
+			continue
+		}
+		seen[action] = true
+		lineNum := templateStartLine + strings.Count(template[:m[0]], "\n")
+		name := "use:" + action
+		ents = append(ents, types.EntityRecord{
+			Name:         name,
+			Kind:         "SCOPE.Operation",
+			Subtype:      "action",
+			SourceFile:   filePath,
+			Language:     "svelte",
+			StartLine:    lineNum,
+			EndLine:      lineNum,
+			Signature:    "use:" + action,
+			QualityScore: 0.8,
+			Properties: map[string]string{
+				"component": componentName,
+				"action":    action,
+				"framework": "svelte",
+			},
+		})
+		rels = append(rels, types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   name,
+			Kind:   "USES",
+			Properties: map[string]string{
+				"component": componentName,
+				"action":    action,
+				"framework": "svelte",
+			},
+		})
+	}
+
+	return ents, rels
 }
 
 // svelteBranchKind maps a matched logic-block opener to a canonical label.

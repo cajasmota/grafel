@@ -70,12 +70,17 @@ Auto-generated. Back to [summary](../summary.md).
 
 ## Framework-specific
 
-### Svelte Reactivity
+### Svelte Internals
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `reactive_statement_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
-| `store_pattern_detection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
+| `actions` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2877) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2877_test.go`<br>`internal/extractors/javascript/testdata/svelte_internals/Comp.svelte` | — |
+| `context` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2877) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2877_test.go`<br>`internal/extractors/javascript/testdata/svelte_internals/Comp.svelte` | — |
+| `props_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2877) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2877_test.go`<br>`internal/extractors/javascript/testdata/svelte_internals/Comp.svelte` | — |
+| `reactive_statements` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2877) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2877_test.go`<br>`internal/extractors/javascript/testdata/svelte_internals/Comp.svelte` | — |
+| `runes` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2877) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2877_test.go`<br>`internal/extractors/javascript/testdata/svelte_internals/Comp.svelte` | — |
+| `sfc_block_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2877) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2877_test.go`<br>`internal/extractors/javascript/testdata/svelte_internals/Comp.svelte` | — |
+| `stores` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2877) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2877_test.go`<br>`internal/extractors/javascript/testdata/svelte_internals/Comp.svelte` | — |
 
 ## Provenance
 

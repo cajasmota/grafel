@@ -12704,14 +12704,76 @@
         }
       },
       "framework_specific": {
-        "Svelte Reactivity": {
-          "reactive_statement_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+        "Svelte Internals": {
+          "runes": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/svelte/extractor.go",
+              "internal/extractors/svelte/issue2877_test.go",
+              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
           },
-          "store_pattern_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+          "props_extraction": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/svelte/extractor.go",
+              "internal/extractors/svelte/issue2877_test.go",
+              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "stores": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/svelte/extractor.go",
+              "internal/extractors/svelte/issue2877_test.go",
+              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "sfc_block_extraction": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/svelte/extractor.go",
+              "internal/extractors/svelte/issue2877_test.go",
+              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "context": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/svelte/extractor.go",
+              "internal/extractors/svelte/issue2877_test.go",
+              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "reactive_statements": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/svelte/extractor.go",
+              "internal/extractors/svelte/issue2877_test.go",
+              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "actions": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/svelte/extractor.go",
+              "internal/extractors/svelte/issue2877_test.go",
+              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
           }
         }
       }

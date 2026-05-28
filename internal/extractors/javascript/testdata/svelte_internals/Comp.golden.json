@@ -1,0 +1,27 @@
+{
+  "component": "Comp",
+  "entities": [
+    { "name": "title", "subtype": "prop" },
+    { "name": "label", "subtype": "prop" },
+    { "name": "step", "subtype": "prop" },
+    { "name": "count", "subtype": "rune_state" },
+    { "name": "doubled", "subtype": "rune_derived" },
+    { "name": "$effect", "subtype": "rune_effect" },
+    { "name": "provider:theme", "subtype": "provide_context" },
+    { "name": "consumer:auth", "subtype": "inject_context" },
+    { "name": "total", "subtype": "state_store" },
+    { "name": "quadrupled", "subtype": "reactive_statement" },
+    { "name": "$:_1", "subtype": "reactive_statement" },
+    { "name": "use:tooltip", "subtype": "action" },
+    { "name": "use:clickOutside", "subtype": "action" }
+  ],
+  "component_uses": [
+    "provider:theme",
+    "consumer:auth",
+    "total",
+    "quadrupled",
+    "$:_1",
+    "use:tooltip",
+    "use:clickOutside"
+  ]
+}
