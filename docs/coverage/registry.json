@@ -1571,6 +1571,10 @@
           "cites": ["internal/extractors/assembly/extractor.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
+        },
+        "cross_language_link": {
+          "status": "missing",
+          "issue": "2837"
         }
       }
     },
@@ -1596,6 +1600,15 @@
           "status": "full",
           "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "cross_language_link": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/cross/abibridge/extractor.go",
+            "internal/extractors/cross/abibridge/extractor_test.go"
+          ],
+          "issue": "2837",
           "verified_at": "2026-05-28"
         }
       }
@@ -1623,6 +1636,10 @@
           "cites": ["internal/extractors/assembly/extractor.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
+        },
+        "cross_language_link": {
+          "status": "missing",
+          "issue": "2837"
         }
       }
     },
@@ -1649,6 +1666,10 @@
           "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
+        },
+        "cross_language_link": {
+          "status": "missing",
+          "issue": "2837"
         }
       }
     },

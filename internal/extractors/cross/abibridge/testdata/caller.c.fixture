@@ -1,0 +1,26 @@
+/* C side of the asm → C bridge.
+ *
+ * crypt_block is implemented in hand-written assembly (crypt.s), declared here
+ * with a plain C prototype and called from run(). The cpp extractor emits the
+ * CALLS edge from run() to crypt_block (bare name, resolves to the asm
+ * procedure by name), but emits NO entity for the extern declaration itself —
+ * that gap is what the abi bridge fills.
+ */
+
+#include <stddef.h>
+
+extern int crypt_block(const void *in, void *out);
+extern void fast_memcpy(void *dst, const void *src, unsigned long n);
+
+/* exported_c_routine is a C function CALLED from assembly (driver.s) — the
+ * C → asm-caller direction. It is a real function_definition, so the cpp
+ * extractor already emits it; the asm `call exported_c_routine` edge binds to
+ * it by name. No abi-bridge entity is required for this direction. */
+int exported_c_routine(int x) {
+    return x + 1;
+}
+
+int run(const void *in, void *out, void *scratch) {
+    fast_memcpy(scratch, in, 16);
+    return crypt_block(scratch, out);
+}

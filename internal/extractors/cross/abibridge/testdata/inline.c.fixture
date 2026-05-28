@@ -1,0 +1,19 @@
+/* C inline asm referencing an external label.
+ *
+ * The `call rdtsc_helper` inside the inline-asm template names a symbol that
+ * lives in hand-written assembly. The abi bridge emits a CALLS edge from the
+ * per-file inline-asm marker to rdtsc_helper, which the resolver binds by name
+ * to the asm procedure of the same name. */
+
+extern unsigned long rdtsc_helper(void);
+
+unsigned long sample(void) {
+    unsigned long t;
+    __asm__ volatile (
+        "call rdtsc_helper\n\t"
+        "movq %%rax, %0"
+        : "=r"(t)
+        :
+        : "rax", "rdx");
+    return t;
+}

@@ -1,0 +1,17 @@
+// Assembly side of the C → asm-caller (reverse) bridge (x86-64, AT&T / gas).
+//
+// asm_entry is an exported asm procedure that CALLS exported_c_routine — a
+// function DEFINED in C (caller.c). The assembly extractor already emits this
+// `call` as a bare-name CALLS edge with locality=external (the symbol is
+// .extern'd), and the resolver binds it by name to the C function_definition.
+// This fixture proves the C → asm direction needs no new edge — the generic
+// by-name machinery already crosses the boundary.
+
+	.text
+	.extern exported_c_routine
+
+	.globl asm_entry
+asm_entry:
+	movl $41, %edi
+	call exported_c_routine
+	ret

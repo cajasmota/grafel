@@ -1,0 +1,21 @@
+// Assembly side of the asm → C bridge (x86-64, AT&T / gas).
+//
+// crypt_block and fast_memcpy are exported via .globl with the SAME symbol
+// names the C side declared extern. The assembly extractor emits each as an
+// exported SCOPE.Operation(procedure); the abi bridge's IMPLEMENTS edge
+// (FromID = bare symbol) binds to these procedures by name, proving the
+// asm → C link across the c-cpp ↔ assembly boundary.
+
+	.text
+
+	.globl crypt_block
+crypt_block:
+	movq %rdi, %rax
+	xorq %rsi, %rax
+	ret
+
+	.globl fast_memcpy
+fast_memcpy:
+	movq %rdx, %rcx
+	rep movsb
+	ret

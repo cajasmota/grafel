@@ -11,6 +11,7 @@ package cross
 import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 
+	_ "github.com/cajasmota/archigraph/internal/extractors/cross/abibridge"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cross/dbmap"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cross/deprecation"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cross/endpoint"
@@ -38,6 +39,7 @@ type Entry struct {
 var names = []string{
 	"imports",
 	"hierarchy",
+	"abibridge",
 	"httpclient",
 	"dbmap",
 	"ormlink",
