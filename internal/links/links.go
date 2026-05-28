@@ -153,6 +153,11 @@ type PassResult struct {
 	//   - "prefix_stripped"     prefix-injection retry (#2569)
 	//   - "mount_prefix_added"  consumer-side mount-prefix retry (#2702)
 	//   - "case_normalized"     per-segment case/separator normalization (#2703)
+	//   - "param_normalized"    path-param NAME bridge, e.g. {clientId}↔{pk}
+	//                           with identical {*}-collapsed shape (#2808)
+	//   - "literal_param_fill"  a CONCRETE caller segment fills a producer
+	//                           param slot, e.g. /recents/buildings ↔
+	//                           /api/v1/recents/{pk} (#2808)
 	//   - "url_pattern"         normalizeURLPattern fallback (#2588)
 	//   - "graphql_root"        consumer pointed at /graphql root, producer
 	//                           per-field synthetic registered there (#1496)

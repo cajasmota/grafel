@@ -272,6 +272,181 @@ func caseNormalizePathSegments(path string) string {
 	return strings.Join(segs, "/")
 }
 
+// rawParamRe captures the *name* inside any path-parameter placeholder so the
+// param-normalization detector (#2808) can compare placeholder names across a
+// consumer/producer pair. It mirrors the three styles recognised by
+// urlParamNormRe but yields the bare identifier rather than a sentinel:
+//   - {clientId}, {pk}, {id}        → clientId / pk / id
+//   - <int:pk>, <slug:name>, <id>   → pk / name / id   (type prefix dropped)
+//   - :clientId, :pk                → clientId / pk
+//
+// The captured name is lower-cased by the caller before comparison so
+// `{clientId}` and `{ClientID}` are treated as the same param.
+var rawParamRe = regexp.MustCompile(`\{([^}:]+)(?::[^}]+)?\}|<(?:[^>:]+:)?([^>]+)>|:([a-zA-Z][a-zA-Z0-9_]*)`)
+
+// extractParamNames returns the ordered, lower-cased list of path-parameter
+// placeholder names in a path, ignoring static segments. Used by
+// paramOnlyMismatch (#2808) to decide whether two structurally-identical paths
+// differ purely in their param names (e.g. {clientId} vs {pk}).
+func extractParamNames(path string) []string {
+	var out []string
+	for _, m := range rawParamRe.FindAllStringSubmatch(path, -1) {
+		name := m[1]
+		if name == "" {
+			name = m[2]
+		}
+		if name == "" {
+			name = m[3]
+		}
+		name = strings.TrimSpace(strings.ToLower(name))
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// paramOnlyMismatch reports whether the consumer and producer paths resolve to
+// the SAME structural shape (identical when every param is collapsed to {*})
+// but carry at least one path-parameter whose NAME differs between the two
+// sides — e.g. a frontend call to `/clients/{clientId}` matching a DRF
+// endpoint defined as `/api/v1/clients/{pk}` (#2808).
+//
+// This is the signal that the resolution crossed a param-name boundary the
+// byPath {*}-collapse silently bridged, so the emitted link can be stamped
+// with the traceable `param_normalized` strategy instead of disappearing into
+// the generic `exact` bucket. The producer path is API/version-prefix-stripped
+// before comparison so a `/api/v1` producer and a bare consumer still line up.
+//
+// Over-match guard: the two paths MUST be byte-identical once params are
+// collapsed to {*}. Paths that differ by a STATIC segment (e.g.
+// `/clients/{pk}` vs `/users/{pk}`) return false — only genuine param-name
+// differences are recognised. A pair whose every param name already matches
+// (e.g. `{pk}` ↔ `{pk}`) also returns false because no normalization was
+// needed.
+//
+// lookupKwarg, when non-empty, is the producer ViewSet's overridden
+// lookup_url_kwarg / lookup_field. When the producer explicitly names its
+// detail param (e.g. `building_id` instead of the default `pk`) AND the
+// consumer's single param name does NOT match it, we still treat the match as
+// param_normalized — but only because the structural {*}-shapes are identical;
+// the kwarg is recorded for traceability and to avoid silently merging a
+// genuinely-different second param. See the inline caller for the guard.
+func paramOnlyMismatch(consumerPath, producerPath string) bool {
+	if consumerPath == "" || producerPath == "" {
+		return false
+	}
+	cNorm := normalizePathForIndex(consumerPath)
+	pNorm := normalizePathForIndex(producerPath)
+	// Strip a leading API/version prefix from the producer so a `/api/v1`
+	// producer compares equal to a bare consumer path.
+	if stripped, ok := stripAPIPrefix(pNorm); ok {
+		pNorm = stripped
+	}
+	if stripped, ok := stripAPIPrefix(cNorm); ok {
+		cNorm = stripped
+	}
+	// Over-match guard: structural shapes (params collapsed to {*}) must be
+	// identical. A static-segment difference disqualifies the pair.
+	if cNorm != pNorm {
+		return false
+	}
+	cParams := extractParamNames(consumerPath)
+	pParams := extractParamNames(producerPath)
+	// Same param count is implied by identical {*}-collapsed shapes, but guard
+	// defensively in case the two extractors disagree on a placeholder style.
+	if len(cParams) != len(pParams) || len(cParams) == 0 {
+		return false
+	}
+	// At least one positional param name must differ for this to count as a
+	// param-name normalization (otherwise it is a plain exact match).
+	differs := false
+	for i := range cParams {
+		if cParams[i] != pParams[i] {
+			differs = true
+			break
+		}
+	}
+	return differs
+}
+
+// literalFillsParamSlot reports whether the consumer path can be matched to the
+// producer path by treating a CONCRETE caller segment as the value occupying a
+// producer path-parameter slot (#2808 "literal-fills-param"). This is distinct
+// from paramOnlyMismatch: there the consumer ALSO has a param (just a
+// differently-named one); here the consumer has no param at all in the slot —
+// it sends a literal segment where the backend route declares a placeholder.
+//
+// Live example: a core-mobile call to `GET /recents/buildings` must match the
+// DRF detail route `GET /api/v1/recents/{pk}` (recent_viewset.py). The caller
+// segment `buildings` is a literal that fills the `{pk}` slot once the API
+// prefix is stripped.
+//
+// Matching rules (after API/version-prefix strip on both sides):
+//   - identical segment count;
+//   - every position where the PRODUCER is a non-param literal must equal the
+//     consumer's literal at that position (case-insensitive);
+//   - at least one position where the producer is a param ({*}) must be filled
+//     by a consumer LITERAL (not itself a param) — that is the "fill";
+//   - any producer-param position the consumer also leaves as a param ({*}) is
+//     allowed (it is just an ordinary param match, handled elsewhere) but does
+//     not count toward the required fill.
+//
+// Over-match guards:
+//   - returns false when the {*}-collapsed shapes are already identical AND the
+//     consumer carries a param in every producer-param slot — that is a plain
+//     exact / param_normalized match, not a literal fill, so we must not steal
+//     attribution from those strategies;
+//   - returns false on any static-literal divergence, so `/recents/buildings`
+//     cannot match `/clients/{pk}`.
+//
+// The caller is responsible for the "prefer an exact static endpoint over a
+// param-fill" guard: this retry only runs after the byPath / mount-prefix /
+// case-normalize / url-pattern stages have all missed, so a concrete
+// `/recents/buildings` producer (if one existed) would already have won.
+func literalFillsParamSlot(consumerPath, producerPath string) bool {
+	if consumerPath == "" || producerPath == "" {
+		return false
+	}
+	cNorm := normalizePathForIndex(consumerPath)
+	pNorm := normalizePathForIndex(producerPath)
+	if stripped, ok := stripAPIPrefix(pNorm); ok {
+		pNorm = stripped
+	}
+	if stripped, ok := stripAPIPrefix(cNorm); ok {
+		cNorm = stripped
+	}
+	cSegs := strings.Split(cNorm, "/")
+	pSegs := strings.Split(pNorm, "/")
+	if len(cSegs) != len(pSegs) || len(cSegs) == 0 {
+		return false
+	}
+	filled := false
+	for i := range pSegs {
+		pSeg := pSegs[i]
+		cSeg := cSegs[i]
+		if pSeg == "{*}" {
+			// Producer param slot. A consumer literal fills it; a consumer
+			// param ({*}) is an ordinary param match (does not count as a fill).
+			if cSeg == "{*}" {
+				continue
+			}
+			if cSeg == "" {
+				// Empty consumer segment cannot fill a param slot.
+				return false
+			}
+			filled = true
+			continue
+		}
+		// Producer literal: the consumer literal MUST match exactly. (Both are
+		// already lower-cased by normalizePathForIndex.)
+		if cSeg != pSeg {
+			return false
+		}
+	}
+	return filled
+}
+
 // patternTypeURLMountPoint is the synthesis marker set by
 // internal/engine/django_urlconf_nested.go (#2677) on the synthetic emitted
 // for every `path("prefix", include(...))` declaration. The consumer-side
@@ -351,6 +526,12 @@ type httpEndpointHit struct {
 	sourceFile string
 	// framework comes from the synthetic's `framework` property.
 	framework string
+	// lookupKwarg is the producer ViewSet's overridden detail-route param name,
+	// read from the `lookup_url_kwarg` property (preferred) or `lookup_field`
+	// fallback (#2808). Empty when the ViewSet uses the DRF default (`pk`). Used
+	// to annotate param_normalized links so a genuine lookup override stays
+	// traceable.
+	lookupKwarg string
 }
 
 // runHTTPPass implements the cross-repo HTTP route ↔ fetch matcher.
@@ -464,6 +645,15 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				hit.canonicalPath = e.Properties["path"]
 				hit.framework = e.Properties["framework"]
 				hit.urlPrefix = e.Properties["url_prefix"]
+				// #2808 — capture the producer's overridden detail-route param
+				// name. lookup_url_kwarg takes precedence over lookup_field (DRF
+				// uses lookup_url_kwarg for the URL placeholder, falling back to
+				// lookup_field). Empty ⇒ the DRF default `pk`.
+				if lk := e.Properties["lookup_url_kwarg"]; lk != "" {
+					hit.lookupKwarg = lk
+				} else if lf := e.Properties["lookup_field"]; lf != "" {
+					hit.lookupKwarg = lf
+				}
 				switch e.Properties["pattern_type"] {
 				case patternTypeProducer:
 					hit.side = sideProducer
@@ -660,6 +850,13 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	// orphan-retry sweep below. Only producer hits are indexed here; consumer
 	// hits are looked up against it during the sweep.
 	byNormPattern := map[string][]*httpEndpointHit{}
+	// #2808 — flat producer list for the literal-fills-param orphan sweep. A
+	// literal caller segment occupying a producer param slot does not share a
+	// byPath / byCaseNorm / byNormPattern key with its producer (the literal
+	// stays literal under every normalization), so the sweep probes producers
+	// directly via literalFillsParamSlot. Collected here to avoid re-walking
+	// the nested hits map.
+	var allProducers []*httpEndpointHit
 	for _, byRepo := range hits {
 		for _, perRepo := range byRepo {
 			for _, h := range perRepo {
@@ -677,6 +874,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				}
 				normKey := normalizeURLPattern(producerPath)
 				byNormPattern[normKey] = append(byNormPattern[normKey], h)
+				allProducers = append(allProducers, h)
 			}
 		}
 	}
@@ -1102,6 +1300,47 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						}
 					}
 
+					// Literal-fills-param retry (#2808): the last cross-repo
+					// stage. When every prior strategy missed AND the consumer
+					// sends a CONCRETE segment where the producer route declares
+					// a path-parameter placeholder (e.g. core-mobile's
+					// `GET /recents/buildings` ↔ DRF `GET /api/v1/recents/{pk}`),
+					// resolve it by treating the literal as the value occupying
+					// the param slot. Probing producers directly (rather than an
+					// index) keeps the over-match guard in literalFillsParamSlot
+					// authoritative. Running last guarantees the "prefer an exact
+					// static endpoint over a param-fill" rule: a real
+					// `/recents/buildings` producer would have matched in an
+					// earlier stage and left p non-nil here.
+					var literalParamFilled bool
+					if p == nil {
+						consumerPath := c.canonicalPath
+						if consumerPath == "" {
+							if _, parsed, ok := parseHTTPName(c.name); ok {
+								consumerPath = parsed
+							}
+						}
+						if consumerPath != "" {
+							for _, candidate := range producersByRepo[pRepo] {
+								if !verbsCompatible(c.verb, candidate.verb) {
+									continue
+								}
+								producerPath := candidate.canonicalPath
+								if producerPath == "" {
+									if _, parsed, ok := parseHTTPName(candidate.name); ok {
+										producerPath = parsed
+									}
+								}
+								if literalFillsParamSlot(consumerPath, producerPath) {
+									p = candidate
+									quality = matchQualityAnyFallback
+									literalParamFilled = true
+									break
+								}
+							}
+						}
+					}
+
 					if p == nil {
 						continue
 					}
@@ -1135,18 +1374,50 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// the per-pass counter. One consumer may link to multiple
 					// producer repos; we count it resolved once it has any link.
 					matchedConsumers[entityKey(c.repo, c.stampedID)] = true
+					// #2808 — param-name normalization detection. When the match
+					// was bridged purely across a path-parameter NAME boundary
+					// (consumer `/clients/{clientId}` ↔ producer
+					// `/api/v1/clients/{pk}`), reclassify it so the resolution is
+					// traceable instead of vanishing into the generic `exact` /
+					// `mount_prefix_added` bucket. The url_pattern + case_normalized
+					// retries already collapse param/segment shape, so they are
+					// excluded here to avoid double-attribution.
+					paramNormalized := false
+					if urlPatternNormAnnotation == "" && !caseNormalized {
+						consumerPathPN := c.canonicalPath
+						if consumerPathPN == "" {
+							if _, parsed, ok := parseHTTPName(c.name); ok {
+								consumerPathPN = parsed
+							}
+						}
+						producerPathPN := p.canonicalPath
+						if producerPathPN == "" {
+							if _, parsed, ok := parseHTTPName(p.name); ok {
+								producerPathPN = parsed
+							}
+						}
+						paramNormalized = paramOnlyMismatch(consumerPathPN, producerPathPN)
+					}
 					// #2669: bucket the hit by the strategy that resolved it.
 					// Order matters: url_pattern + prefix_stripped are checked
 					// before the default "exact" bucket because the main loop
 					// reuses the same `p` variable across retry stages.
+					// param_normalized sits above mount_prefix_added/exact because
+					// the param-name bridge is the more-specific characterisation
+					// of the match (#2808); the mount prefix, when also present, is
+					// still recorded as a link property below.
 					if !intraRepo {
 						switch {
 						case urlPatternNormAnnotation != "":
 							hitsByStrategy["url_pattern"]++
-						case appliedMountPrefix != "":
-							hitsByStrategy["mount_prefix_added"]++
 						case caseNormalized:
 							hitsByStrategy["case_normalized"]++
+						case literalParamFilled:
+							hitsByStrategy["literal_param_fill"]++
+						case paramNormalized:
+							hitsByStrategy["param_normalized"]++
+						case appliedMountPrefix != "":
+							hitsByStrategy["mount_prefix_added"]++
 						case prefixNormalized != "":
 							hitsByStrategy["prefix_stripped"]++
 						default:
@@ -1196,6 +1467,24 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 							link.Properties = map[string]string{}
 						}
 						link.Properties["resolve_strategy"] = "case_normalized"
+					}
+					// #2808 — stamp param-name normalization. Only set when the
+					// link is not already attributed to a more-specific strategy
+					// (case_normalized / url_pattern) so the resolve_strategy
+					// property and the telemetry bucket stay consistent. When a
+					// mount prefix also bridged the match, applied_mount_prefix is
+					// retained alongside so both signals survive. The producer's
+					// overridden lookup kwarg, when present, is recorded for
+					// traceability of a genuine lookup_field/lookup_url_kwarg
+					// override.
+					if paramNormalized && urlPatternNormAnnotation == "" && !caseNormalized {
+						if link.Properties == nil {
+							link.Properties = map[string]string{}
+						}
+						link.Properties["resolve_strategy"] = "param_normalized"
+						if p.lookupKwarg != "" {
+							link.Properties["lookup_kwarg"] = p.lookupKwarg
+						}
 					}
 					if urlPatternNormAnnotation != "" {
 						if link.Properties == nil {
@@ -1454,6 +1743,130 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						},
 						MatchQuality: matchQualityAnyFallback,
 						Properties:   map[string]string{"normalization": "url_pattern"},
+					}
+					fresh = append(fresh, link)
+				}
+			}
+		}
+	}
+
+	// #2808 — literal-fills-param orphan-retry sweep. The LAST resolution
+	// stage. A consumer that sends a CONCRETE segment where the backend route
+	// declares a path-parameter placeholder (core-mobile's
+	// `GET/DELETE /recents/buildings` ↔ DRF `GET/DELETE /api/v1/recents/{pk}`)
+	// shares no normalization key with its producer, so the byPath / byCaseNorm
+	// / byNormPattern sweeps all miss it. Probe every producer in another repo
+	// via literalFillsParamSlot, which carries the over-match guard.
+	//
+	// Running dead-last enforces the "prefer an exact static endpoint over a
+	// param-fill" rule: any consumer with a real static or param producer has
+	// already been marked matched by an earlier stage and is skipped here.
+	for _, byRepo := range hits {
+		for _, perRepo := range byRepo {
+			for _, c := range perRepo {
+				if c.side != sideConsumer {
+					continue
+				}
+				cKey := entityKey(c.repo, c.stampedID)
+				if matchedConsumers[cKey] {
+					continue // already resolved by an earlier stage
+				}
+				consumerPath := c.canonicalPath
+				if consumerPath == "" {
+					if _, p, ok := parseHTTPName(c.name); ok {
+						consumerPath = p
+					}
+				}
+				if consumerPath == "" {
+					continue
+				}
+				// Collect literal-fill-eligible producers in other repos.
+				var eligible []*httpEndpointHit
+				seenCandidate := map[string]bool{}
+				for _, p := range allProducers {
+					if p.repo == c.repo {
+						continue
+					}
+					if !verbsCompatible(c.verb, p.verb) {
+						continue
+					}
+					producerPath := p.canonicalPath
+					if producerPath == "" {
+						if _, pp, ok := parseHTTPName(p.name); ok {
+							producerPath = pp
+						}
+					}
+					if producerPath == "" {
+						continue
+					}
+					if !literalFillsParamSlot(consumerPath, producerPath) {
+						continue
+					}
+					pid := entityKey(p.repo, p.stampedID)
+					if seenCandidate[pid] {
+						continue
+					}
+					seenCandidate[pid] = true
+					eligible = append(eligible, p)
+				}
+				if len(eligible) == 0 {
+					continue
+				}
+				sort.SliceStable(eligible, func(i, j int) bool { return less(eligible[i], eligible[j]) })
+				producersByRepoLF := map[string][]*httpEndpointHit{}
+				for _, p := range eligible {
+					producersByRepoLF[p.repo] = append(producersByRepoLF[p.repo], p)
+				}
+				pRepoNamesLF := make([]string, 0, len(producersByRepoLF))
+				for r := range producersByRepoLF {
+					pRepoNamesLF = append(pRepoNamesLF, r)
+				}
+				sort.Strings(pRepoNamesLF)
+				allConsumers[cKey] = true
+				for _, pRepo := range pRepoNamesLF {
+					p, quality := pickProducerForConsumer(c, producersByRepoLF[pRepo])
+					if p == nil {
+						continue
+					}
+					srcID := c.callerID
+					if srcID == "" {
+						srcID = c.stampedID
+					}
+					tgtID := p.handlerID
+					if tgtID == "" {
+						tgtID = p.stampedID
+					}
+					source := entityKey(c.repo, srcID)
+					target := entityKey(p.repo, tgtID)
+					id := MakeID(source, target, MethodHTTP)
+					if emitted[id] {
+						continue
+					}
+					emitted[id] = true
+					matchedConsumers[cKey] = true
+					hitsByStrategy["literal_param_fill"]++
+					ident := canonicalIdentifier(c, p)
+					ch := httpChannel
+					props := map[string]string{"resolve_strategy": "literal_param_fill"}
+					if p.lookupKwarg != "" {
+						props["lookup_kwarg"] = p.lookupKwarg
+					}
+					link := Link{
+						ID:           id,
+						Source:       source,
+						Target:       target,
+						Relation:     RelationCalls,
+						Method:       MethodHTTP,
+						Confidence:   ScoreImport(),
+						Channel:      &ch,
+						Identifier:   &ident,
+						DiscoveredAt: now,
+						SourceLocations: [][]string{
+							{c.sourceFile},
+							{p.sourceFile},
+						},
+						MatchQuality: quality,
+						Properties:   props,
 					}
 					fresh = append(fresh, link)
 				}
