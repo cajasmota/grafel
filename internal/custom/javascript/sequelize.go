@@ -51,7 +51,47 @@ var (
 	reSequelizeHook = regexp.MustCompile(
 		`([A-Z][A-Za-z0-9_]*)\s*\.\s*(addHook|beforeCreate|afterCreate|beforeUpdate|afterUpdate|beforeDestroy|afterDestroy|beforeFind|afterFind|beforeBulkCreate|afterBulkCreate)\s*\(`,
 	)
+	// Migration schema-change ops via the queryInterface inside up()/down().
+	// First captured group = method, second = the table name string literal.
+	reSequelizeMigrationOp = regexp.MustCompile(
+		`queryInterface\s*\.\s*(createTable|dropTable|renameTable|addColumn|removeColumn|changeColumn|renameColumn|addIndex|removeIndex|addConstraint|removeConstraint|bulkInsert|bulkDelete)\s*\(\s*['"]([A-Za-z0-9_.]+)['"]`,
+	)
 )
+
+// sequelizeMigrationOpSubtype normalizes a queryInterface method to a shared
+// schema-change op subtype.
+func sequelizeMigrationOpSubtype(method string) string {
+	switch method {
+	case "createTable":
+		return "create_table"
+	case "dropTable":
+		return "drop_table"
+	case "renameTable":
+		return "rename_table"
+	case "addColumn":
+		return "add_column"
+	case "removeColumn":
+		return "drop_column"
+	case "changeColumn":
+		return "alter_column"
+	case "renameColumn":
+		return "rename_column"
+	case "addIndex":
+		return "create_index"
+	case "removeIndex":
+		return "drop_index"
+	case "addConstraint":
+		return "add_constraint"
+	case "removeConstraint":
+		return "drop_constraint"
+	case "bulkInsert":
+		return "data_insert"
+	case "bulkDelete":
+		return "data_delete"
+	default:
+		return "schema_change"
+	}
+}
 
 func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/javascript")
@@ -153,6 +193,17 @@ func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput)
 		ent := makeEntity(name, "SCOPE.Pattern", "lifecycle_hook", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "sequelize", "model_name", modelName, "hook_type", hookType,
 			"provenance", "INFERRED_FROM_SEQUELIZE_HOOK")
+		addEntity(ent)
+	}
+
+	// Migration schema-change operations (queryInterface.*).
+	for _, m := range reSequelizeMigrationOp.FindAllStringSubmatchIndex(src, -1) {
+		method := src[m[2]:m[3]]
+		table := src[m[4]:m[5]]
+		opSubtype := sequelizeMigrationOpSubtype(method)
+		ent := makeEntity(opSubtype+":"+table, "SCOPE.Evolution", opSubtype, file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "sequelize", "migration_op", method, "table", table,
+			"provenance", "INFERRED_FROM_SEQUELIZE_MIGRATION_OP")
 		addEntity(ent)
 	}
 

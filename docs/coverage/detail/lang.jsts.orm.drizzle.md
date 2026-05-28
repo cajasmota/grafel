@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ❌ `missing` | — | — | — | — | — |
+| `migration_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/custom/javascript/drizzle.go`<br>`internal/custom/javascript/extractors_coverage_test.go` | — |
 | `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/drizzle.yaml` | — |
 | `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go` | — |
 

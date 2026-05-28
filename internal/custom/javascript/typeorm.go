@@ -61,7 +61,77 @@ var (
 	reTypeORMQueryBuilder = regexp.MustCompile(
 		`createQueryBuilder\s*\(\s*['"]([A-Za-z0-9_]+)['"]`,
 	)
+	// Migration schema-change ops inside up()/down(): queryRunner.createTable,
+	// addColumn, dropColumn, dropTable, createIndex, etc.
+	reTypeORMMigrationOp = regexp.MustCompile(
+		`queryRunner\s*\.\s*(createTable|dropTable|renameTable|addColumn|addColumns|dropColumn|dropColumns|changeColumn|renameColumn|createIndex|dropIndex|createForeignKey|dropForeignKey|createPrimaryKey|dropPrimaryKey|createUniqueConstraint|dropUniqueConstraint|createCheckConstraint|dropCheckConstraint)\s*\(`,
+	)
+	// new Table({ name: "users" }) target inside a migration op.
+	reTypeORMMigrationTable = regexp.MustCompile(
+		`new\s+Table\s*\(\s*\{\s*name\s*:\s*['"]([A-Za-z0-9_.]+)['"]`,
+	)
 )
+
+// typeormMigrationOpSubtype maps a queryRunner method name to a normalized
+// schema-change op subtype shared across ORM migration extractors.
+func typeormMigrationOpSubtype(method string) string {
+	switch method {
+	case "createTable":
+		return "create_table"
+	case "dropTable":
+		return "drop_table"
+	case "renameTable":
+		return "rename_table"
+	case "addColumn", "addColumns":
+		return "add_column"
+	case "dropColumn", "dropColumns":
+		return "drop_column"
+	case "changeColumn":
+		return "alter_column"
+	case "renameColumn":
+		return "rename_column"
+	case "createIndex":
+		return "create_index"
+	case "dropIndex":
+		return "drop_index"
+	case "createForeignKey":
+		return "add_foreign_key"
+	case "dropForeignKey":
+		return "drop_foreign_key"
+	case "createPrimaryKey":
+		return "add_primary_key"
+	case "dropPrimaryKey":
+		return "drop_primary_key"
+	case "createUniqueConstraint":
+		return "add_unique_constraint"
+	case "dropUniqueConstraint":
+		return "drop_unique_constraint"
+	case "createCheckConstraint":
+		return "add_check_constraint"
+	case "dropCheckConstraint":
+		return "drop_check_constraint"
+	default:
+		return "schema_change"
+	}
+}
+
+// typeormMigrationOpTable extracts a table name from the first argument of a
+// queryRunner migration op. Handles both a bare string literal
+// (`dropTable("users")`) and a `new Table({ name: "users" })` object.
+func typeormMigrationOpTable(window string) string {
+	if m := reTypeORMMigrationTable.FindStringSubmatch(window); m != nil {
+		return m[1]
+	}
+	// Bare string-literal first arg: `(  "users"` or `( 'users'`.
+	trimmed := strings.TrimLeft(window, " \t\n\r")
+	if len(trimmed) > 0 && (trimmed[0] == '"' || trimmed[0] == '\'') {
+		q := trimmed[0]
+		if end := strings.IndexByte(trimmed[1:], q); end >= 0 {
+			return trimmed[1 : 1+end]
+		}
+	}
+	return ""
+}
 
 func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/javascript")
@@ -179,6 +249,28 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 		ent := makeEntity(name, "SCOPE.Operation", "query", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "typeorm", "alias", alias,
 			"provenance", "INFERRED_FROM_TYPEORM_QUERY_BUILDER")
+		addEntity(ent)
+	}
+
+	// Migration schema-change operations (queryRunner.*). Each op becomes a
+	// SCOPE.Evolution entity carrying the normalized change kind so downstream
+	// tooling can reconstruct the schema delta a migration applies.
+	for _, m := range reTypeORMMigrationOp.FindAllStringSubmatchIndex(src, -1) {
+		method := src[m[2]:m[3]]
+		opSubtype := typeormMigrationOpSubtype(method)
+		// Look ahead a small window to capture an inline table name argument.
+		window := src[m[1]:min(len(src), m[1]+200)]
+		table := typeormMigrationOpTable(window)
+		name := opSubtype
+		if table != "" {
+			name = opSubtype + ":" + table
+		}
+		ent := makeEntity(name, "SCOPE.Evolution", opSubtype, file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "typeorm", "migration_op", method,
+			"provenance", "INFERRED_FROM_TYPEORM_MIGRATION_OP")
+		if table != "" {
+			setProps(&ent, "table", table)
+		}
 		addEntity(ent)
 	}
 

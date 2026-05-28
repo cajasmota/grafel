@@ -3,6 +3,7 @@ package javascript
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -51,7 +52,40 @@ var (
 	rePrismaMiddleware = regexp.MustCompile(
 		`(?:prisma|db)\s*\.\s*\$use\s*\(`,
 	)
+	// Raw SQL DDL ops inside Prisma migration.sql files. Prisma emits
+	// migrations as plain SQL under prisma/migrations/<ts>/migration.sql.
+	reSQLCreateTable = regexp.MustCompile(
+		`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["` + "`" + `']?([A-Za-z0-9_.]+)["` + "`" + `']?`,
+	)
+	reSQLDropTable = regexp.MustCompile(
+		`(?i)DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?["` + "`" + `']?([A-Za-z0-9_.]+)["` + "`" + `']?`,
+	)
+	reSQLAlterTable = regexp.MustCompile(
+		`(?i)ALTER\s+TABLE\s+["` + "`" + `']?([A-Za-z0-9_.]+)["` + "`" + `']?\s+(ADD|DROP|ALTER|RENAME|MODIFY|CHANGE)`,
+	)
+	reSQLCreateIndex = regexp.MustCompile(
+		`(?i)CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["` + "`" + `']?([A-Za-z0-9_.]+)["` + "`" + `']?`,
+	)
+	reSQLDropIndex = regexp.MustCompile(
+		`(?i)DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?["` + "`" + `']?([A-Za-z0-9_.]+)["` + "`" + `']?`,
+	)
 )
+
+// alterTableOpSubtype maps an ALTER TABLE clause keyword to a schema-change subtype.
+func alterTableOpSubtype(clause string) string {
+	switch strings.ToUpper(clause) {
+	case "ADD":
+		return "add_column"
+	case "DROP":
+		return "drop_column"
+	case "ALTER", "MODIFY", "CHANGE":
+		return "alter_column"
+	case "RENAME":
+		return "rename_column"
+	default:
+		return "alter_table"
+	}
+}
 
 func (e *prismaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/javascript")
@@ -70,9 +104,12 @@ func (e *prismaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 	src := string(file.Content)
 	lang := strings.ToLower(file.Language)
 	// Prisma schema files are not JS/TS but we still extract from .prisma files
-	// by checking both JS/TS and .prisma extension.
+	// by checking both JS/TS and .prisma extension. Prisma migrations are raw
+	// SQL files under prisma/migrations/<ts>/migration.sql; parse those too.
 	isPrismaSchema := strings.HasSuffix(file.Path, ".prisma")
-	if lang != "typescript" && lang != "javascript" && !isPrismaSchema {
+	isPrismaMigration := strings.HasSuffix(file.Path, "migration.sql") &&
+		strings.Contains(filepath.ToSlash(file.Path), "migrations/")
+	if lang != "typescript" && lang != "javascript" && !isPrismaSchema && !isPrismaMigration {
 		return nil, nil
 	}
 
@@ -140,6 +177,34 @@ func (e *prismaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		ent := makeEntity("$use", "SCOPE.Pattern", "middleware", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "prisma", "provenance", "INFERRED_FROM_PRISMA_MIDDLEWARE")
 		addEntity(ent)
+	}
+
+	// Migration SQL DDL ops — only for migration.sql files so we don't treat
+	// raw SQL embedded in application TS/JS as Prisma migrations.
+	if isPrismaMigration {
+		emitSQLMigrationOp := func(subtype, target string, off int) {
+			ent := makeEntity(subtype+":"+target, "SCOPE.Evolution", subtype, file.Path, file.Language, lineOf(src, off))
+			setProps(&ent, "framework", "prisma", "table", target,
+				"provenance", "INFERRED_FROM_PRISMA_MIGRATION_SQL")
+			addEntity(ent)
+		}
+		for _, m := range reSQLCreateTable.FindAllStringSubmatchIndex(src, -1) {
+			emitSQLMigrationOp("create_table", src[m[2]:m[3]], m[0])
+		}
+		for _, m := range reSQLDropTable.FindAllStringSubmatchIndex(src, -1) {
+			emitSQLMigrationOp("drop_table", src[m[2]:m[3]], m[0])
+		}
+		for _, m := range reSQLAlterTable.FindAllStringSubmatchIndex(src, -1) {
+			table := src[m[2]:m[3]]
+			clause := src[m[4]:m[5]]
+			emitSQLMigrationOp(alterTableOpSubtype(clause), table, m[0])
+		}
+		for _, m := range reSQLCreateIndex.FindAllStringSubmatchIndex(src, -1) {
+			emitSQLMigrationOp("create_index", src[m[2]:m[3]], m[0])
+		}
+		for _, m := range reSQLDropIndex.FindAllStringSubmatchIndex(src, -1) {
+			emitSQLMigrationOp("drop_index", src[m[2]:m[3]], m[0])
+		}
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
