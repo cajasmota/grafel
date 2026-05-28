@@ -14707,11 +14707,9 @@
             "verified_at": "2026-05-28"
           },
           "state_management": {
-            "status": "partial",
-            "cites": [
-              "internal/engine/rules/javascript_typescript/frameworks/expo.yaml"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_expo/ProfileScreen.tsx","internal/extractors/javascript/zustand_store.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859",
             "verified_at": "2026-05-28"
           }
         },
@@ -15394,12 +15392,14 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2751"
           },
           "hoc_wrapper_recognition": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Navigation": {
@@ -15425,11 +15425,14 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/discriminator.go","internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           },
           "state_management": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx","internal/extractors/javascript/zustand_store.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Type System": {
@@ -15457,8 +15460,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Testing": {
@@ -15725,12 +15729,14 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           },
           "hoc_wrapper_recognition": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Navigation": {
@@ -15756,11 +15762,14 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/discriminator.go","internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           },
           "state_management": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Type System": {
@@ -15788,8 +15797,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2751"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859"
           }
         },
         "Testing": {
@@ -16589,11 +16599,9 @@
             "verified_at": "2026-05-28"
           },
           "state_management": {
-            "status": "partial",
-            "cites": [
-              "internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2632",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_react_native/CartScreen.tsx","internal/extractors/javascript/zustand_store.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2859",
             "verified_at": "2026-05-28"
           }
         },

@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `context_extraction` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
-| `hoc_wrapper_recognition` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
+| `context_extraction` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/javascript/extractor.go` | — |
+| `hoc_wrapper_recognition` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
 
 ### Navigation
 
@@ -42,8 +42,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `branch_conditions` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
-| `state_management` | ❌ `missing` | — | — | — | — | — |
+| `branch_conditions` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/discriminator.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
+| `state_management` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx`<br>`internal/extractors/javascript/zustand_store.go` | — |
 
 ### Type System
 
@@ -57,7 +57,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `state_setter_emission` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
+| `state_setter_emission` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
 
 ### Testing
 

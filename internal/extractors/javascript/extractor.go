@@ -796,9 +796,86 @@ func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string, cb *classBi
 	params := n.ChildByFieldName("parameters")
 	frame := x.functionParamFrame(params, cb)
 	rels := x.extractCallRelationships(body, name, frame)
-	x.emitWithRels(name, "SCOPE.Operation", n, "method", fmt.Sprintf("method %s", name), rels)
+	subtype := "method"
+	// Issue #2859 — NativeScript Observable view-models expose state mutation
+	// through their own component model, NOT React's [value, setter] hook
+	// tuple. The two idioms are:
+	//   1. a TypeScript `set` accessor whose body notifies observers, e.g.
+	//        set count(v) { this._count = v; this.notifyPropertyChange('count', v); }
+	//   2. an imperative method that calls this.set("prop", v) or
+	//      this.notifyPropertyChange("prop", v) (Observable.set / notify).
+	// Both are the NativeScript analogue of a React state setter, so we tag
+	// them subtype="state_setter" — the same subtype the resolver already
+	// understands for React setters (#513) — to make Lifecycle/state_setter
+	// queries framework-uniform across the mobile family.
+	if x.isNativeScriptStateSetter(body) {
+		subtype = "state_setter"
+	}
+	x.emitWithRels(name, "SCOPE.Operation", n, subtype, fmt.Sprintf("method %s", name), rels)
 	// Issue #2654 — stamp discriminator comparisons found in the body.
 	x.stampDiscriminators(body)
+}
+
+// isNativeScriptStateSetter recognises the NativeScript Observable
+// state-mutation idiom on a class method (#2859). It returns true when EITHER:
+//   - the method_definition is a `set` accessor whose body notifies observers
+//     (calls notifyPropertyChange or this.set), OR
+//   - any method body issues a this.set("prop", v) / this.notifyPropertyChange
+//     call (the imperative Observable setter).
+//
+// The match is conservative: a plain `set` accessor that does not notify is
+// NOT tagged (it is an ordinary property writer, not an observable state
+// setter), and the notify-call form must target a string-keyed property to
+// avoid catching unrelated set() calls (e.g. Set#add aliased to set).
+func (x *extractor) isNativeScriptStateSetter(body *sitter.Node) bool {
+	if body == nil {
+		return false
+	}
+	return x.bodyNotifiesObservable(body)
+}
+
+// bodyNotifiesObservable returns true when the statement block contains a
+// call to notifyPropertyChange(...) or this.set("<prop>", ...) — the two
+// NativeScript Observable mutation primitives.
+func (x *extractor) bodyNotifiesObservable(n *sitter.Node) bool {
+	if n == nil {
+		return false
+	}
+	if n.Type() == "call_expression" {
+		fn := n.ChildByFieldName("function")
+		if fn != nil && fn.Type() == "member_expression" {
+			prop := fn.ChildByFieldName("property")
+			obj := fn.ChildByFieldName("object")
+			leaf := x.nodeText(prop)
+			switch leaf {
+			case "notifyPropertyChange":
+				return true
+			case "set":
+				// Require this.set("prop", value): receiver `this`,
+				// first argument a string literal (the property key).
+				if obj != nil && obj.Type() == "this" {
+					if args := n.ChildByFieldName("arguments"); args != nil {
+						for i := 0; i < int(args.ChildCount()); i++ {
+							c := args.Child(i)
+							if c != nil && (c.Type() == "string" || c.Type() == "template_string") {
+								return true
+							}
+							if c != nil && c.IsNamed() {
+								// first named arg decides
+								return c.Type() == "string" || c.Type() == "template_string"
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		if x.bodyNotifiesObservable(n.Child(i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // handlePublicFieldDefinition handles class-body field assignments whose RHS
@@ -889,7 +966,13 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 	}
 	sig := fmt.Sprintf("%s%s = (...) =>", sigParts, name)
 
-	x.emitWithRels(name, "SCOPE.Operation", valueNode, "method", sig, rels)
+	// Issue #2859 — NativeScript class-field arrow methods that notify
+	// observers are state setters, same as their method_definition twins.
+	fieldSubtype := "method"
+	if x.isNativeScriptStateSetter(body) {
+		fieldSubtype = "state_setter"
+	}
+	x.emitWithRels(name, "SCOPE.Operation", valueNode, fieldSubtype, sig, rels)
 	// Issue #2654 — stamp discriminator comparisons found in the body.
 	x.stampDiscriminators(body)
 
@@ -1415,6 +1498,9 @@ func (x *extractor) isFunctionWrapperCall(n *sitter.Node) bool {
 		"styled", "css", "keyframes",
 		// React Router HOCs
 		"withRouter", "withTranslation", "withTheme", "withStyles",
+		// Ionic React lifecycle HOC (#2859) — wraps a page component to
+		// receive Ionic's ionViewWillEnter/ionViewDidLeave lifecycle events.
+		"withIonLifeCycle",
 		// Redux / Recoil / Zustand selectors
 		"connect", "createSelector", "createStructuredSelector",
 		// React Native Animated
@@ -1447,7 +1533,42 @@ func (x *extractor) isFunctionWrapperCall(n *sitter.Node) bool {
 		"useCallback", "useMemo":
 		return true
 	}
+	// Issue #2859 — generic Higher-Order Component naming convention.
+	// `withFoo(Component)` is the dominant React/Ionic HOC shape (withAuth,
+	// withIonLifeCycle, withTheme, …). When the callee is `with<Capital>…`
+	// and it is invoked with a single argument (the wrapped component), the
+	// bound name IS the wrapped component (a function), so SCOPE.Operation is
+	// correct. Single-arg gate keeps this conservative — multi-arg `with*`
+	// helpers (rare) are not component wrappers.
+	if isHOCName(leaf) && callArgCount(n) == 1 {
+		return true
+	}
 	return false
+}
+
+// isHOCName reports whether leaf matches the `with<Capital>` HOC naming
+// convention (e.g. withAuth, withRouter, withIonLifeCycle).
+func isHOCName(leaf string) bool {
+	if len(leaf) <= 4 || leaf[:4] != "with" {
+		return false
+	}
+	c := leaf[4]
+	return c >= 'A' && c <= 'Z'
+}
+
+// callArgCount returns the number of named argument nodes in a call_expression.
+func callArgCount(n *sitter.Node) int {
+	args := n.ChildByFieldName("arguments")
+	if args == nil {
+		return 0
+	}
+	count := 0
+	for i := 0; i < int(args.ChildCount()); i++ {
+		if c := args.Child(i); c != nil && c.IsNamed() {
+			count++
+		}
+	}
+	return count
 }
 
 // isContextFactory returns true when valueNode is a call_expression whose
