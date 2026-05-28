@@ -4,18 +4,18 @@
 // them unusually clean to detect:
 //
 //   - fs_read  : READ <file> / OPEN INPUT / OPEN I-O / START / RETURN
-//                (sequential / indexed / relative file I/O on an FD record)
+//     (sequential / indexed / relative file I/O on an FD record)
 //   - fs_write : WRITE <rec> / REWRITE <rec> / DELETE <file> / OPEN OUTPUT /
-//                OPEN EXTEND / RELEASE
+//     OPEN EXTEND / RELEASE
 //   - db_read  : EXEC SQL SELECT / OPEN <cursor> / FETCH (embedded DB2)
 //   - db_write : EXEC SQL INSERT|UPDATE|DELETE|MERGE (embedded DB2)
 //   - http_out : EXEC CICS LINK / XCTL / WEB / INVOKE — outbound transaction
-//                / service calls treated as the COBOL analog of an outbound
-//                request (the closest effect in the lattice for CICS
-//                inter-program / service control transfers)
+//     / service calls treated as the COBOL analog of an outbound
+//     request (the closest effect in the lattice for CICS
+//     inter-program / service control transfers)
 //   - mutation : MOVE ... TO <ident> / SET <ident> / COMPUTE <ident> — an
-//                observable working-storage state write (low confidence; the
-//                most common COBOL statement so it is intentionally weak)
+//     observable working-storage state write (low confidence; the
+//     most common COBOL statement so it is intentionally weak)
 //
 // Function attribution binds each sink to the nearest preceding PARAGRAPH
 // header (a lone identifier + period in Area A inside PROCEDURE DIVISION).
@@ -66,9 +66,26 @@ var cobolDBWriteRe = regexp.MustCompile(
 	`(?is)EXEC\s+SQL\b[^.]*?\b(?:INSERT|UPDATE|DELETE|MERGE|CREATE|DROP|ALTER)\b`,
 )
 
-// cobolCICSRe matches EXEC CICS outbound transaction / service primitives.
+// cobolCICSRe matches EXEC CICS outbound transaction / service primitives:
+// program transfer (LINK/XCTL), transaction scheduling (START), and terminal
+// / web service traffic (SEND/RECEIVE/WEB/INVOKE) — all modelled as the COBOL
+// analog of an outbound request (#2838 Phase 2 deepens this from a flag into
+// the EXEC-CICS verb set).
 var cobolCICSRe = regexp.MustCompile(
 	`(?is)EXEC\s+CICS\b[^.]*?\b(?:LINK|XCTL|START|INVOKE|WEB|SEND|RECEIVE)\b`,
+)
+
+// cobolCICSFSReadRe matches EXEC CICS READ / READQ (file or transient/temp
+// storage queue read) — a filesystem-class read effect on the CICS region's
+// VSAM files and queues.
+var cobolCICSFSReadRe = regexp.MustCompile(
+	`(?is)EXEC\s+CICS\b[^.]*?\b(?:READQ|READ)\b`,
+)
+
+// cobolCICSFSWriteRe matches EXEC CICS WRITE / WRITEQ / REWRITE / DELETE /
+// DELETEQ — a filesystem-class write effect on CICS files and queues.
+var cobolCICSFSWriteRe = regexp.MustCompile(
+	`(?is)EXEC\s+CICS\b[^.]*?\b(?:WRITEQ|WRITE|REWRITE|DELETEQ|DELETE)\b`,
 )
 
 // cobolMutationRe matches working-storage state writes.
@@ -89,6 +106,8 @@ func sniffEffectsCobol(content string) []EffectMatch {
 	out = appendCobolMatches(out, content, headers, cobolDBReadRe, EffectDBRead, "EXEC-SQL.SELECT/FETCH", 1.0)
 	out = appendCobolMatches(out, content, headers, cobolDBWriteRe, EffectDBWrite, "EXEC-SQL.INSERT/UPDATE/DELETE", 1.0)
 	out = appendCobolMatches(out, content, headers, cobolCICSRe, EffectHTTPOut, "EXEC-CICS.LINK/XCTL/WEB", 0.85)
+	out = appendCobolMatches(out, content, headers, cobolCICSFSReadRe, EffectFSRead, "EXEC-CICS.READ/READQ", 0.9)
+	out = appendCobolMatches(out, content, headers, cobolCICSFSWriteRe, EffectFSWrite, "EXEC-CICS.WRITE/WRITEQ/REWRITE", 0.9)
 	out = appendCobolMatches(out, content, headers, cobolMutationRe, EffectMutation, "MOVE...TO/SET/COMPUTE", 0.6)
 	return out
 }

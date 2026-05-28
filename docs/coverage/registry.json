@@ -4950,11 +4950,20 @@
       "label": "COBOL CICS",
       "capabilities": {
         "http_effect": {
-          "status": "partial",
+          "status": "full",
+          "cites": [
+            "internal/substrate/effect_sinks_cobol.go",
+            "internal/extractors/cobol/depth.go"
+          ],
+          "issue": "2838",
+          "verified_at": "2026-05-28"
+        },
+        "fs_effect": {
+          "status": "full",
           "cites": [
             "internal/substrate/effect_sinks_cobol.go"
           ],
-          "issue": "2743",
+          "issue": "2838",
           "verified_at": "2026-05-28"
         }
       }
@@ -4968,9 +4977,10 @@
         "db_effect": {
           "status": "full",
           "cites": [
-            "internal/substrate/effect_sinks_cobol.go"
+            "internal/substrate/effect_sinks_cobol.go",
+            "internal/extractors/cobol/depth.go"
           ],
-          "issue": "2743",
+          "issue": "2838",
           "verified_at": "2026-05-28"
         }
       }
@@ -4999,11 +5009,12 @@
           "verified_at": "2026-05-28"
         },
         "import_resolution_quality": {
-          "status": "partial",
+          "status": "full",
           "cites": [
-            "internal/extractors/cobol/extractor.go"
+            "internal/extractors/cobol/extractor.go",
+            "internal/extractors/cobol/depth.go"
           ],
-          "issue": "2743",
+          "issue": "2838",
           "verified_at": "2026-05-28"
         }
       }
@@ -5032,27 +5043,38 @@
           "verified_at": "2026-05-28"
         },
         "db_effect": {
-          "status": "partial",
+          "status": "full",
           "cites": [
-            "internal/substrate/effect_sinks_cobol.go"
+            "internal/substrate/effect_sinks_cobol.go",
+            "internal/extractors/cobol/depth.go"
           ],
-          "issue": "2743",
+          "issue": "2838",
           "verified_at": "2026-05-28"
         },
         "fs_effect": {
-          "status": "partial",
+          "status": "full",
           "cites": [
             "internal/substrate/effect_sinks_cobol.go"
           ],
-          "issue": "2743",
+          "issue": "2838",
           "verified_at": "2026-05-28"
         },
         "import_resolution_quality": {
-          "status": "partial",
+          "status": "full",
           "cites": [
-            "internal/extractors/cobol/extractor.go"
+            "internal/extractors/cobol/extractor.go",
+            "internal/extractors/cobol/depth.go"
           ],
-          "issue": "2743",
+          "issue": "2838",
+          "verified_at": "2026-05-28"
+        },
+        "http_effect": {
+          "status": "full",
+          "cites": [
+            "internal/substrate/effect_sinks_cobol.go",
+            "internal/extractors/cobol/depth.go"
+          ],
+          "issue": "2838",
           "verified_at": "2026-05-28"
         }
       }

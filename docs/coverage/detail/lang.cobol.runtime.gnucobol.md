@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `call_line_precision` | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/extractors/cobol/extractor.go` | — |
 | `core_extraction` | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/classifier/classifier.go`<br>`internal/extractors/cobol/extractor.go` | — |
-| `import_resolution_quality` | ⚠️ `partial` | `2026-05-28` | — | [link](2743) | `internal/extractors/cobol/extractor.go` | — |
+| `import_resolution_quality` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/extractor.go`<br>`internal/extractors/cobol/depth.go` | — |
 
 ## Provenance
 
