@@ -67,10 +67,10 @@ Back to [summary](../summary.md).
 
 ### RPC Framework
 
-| Name | Schema | Codegen | Notes |
-|---|---|---|---|
-| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | |
-| [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | |
+| Name | Schema | Codegen | Transport | Notes |
+|---|---|---|---|---|
+| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | ✅ 1/1 | |
+| [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | ✅ 1/1 | |
 
 
 ### AI Integration

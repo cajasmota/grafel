@@ -411,7 +411,15 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Producer side: Apollo / GraphQL resolvers (#1422). GraphQL is
 		// schema-first rather than REST, so resolver fields are emitted as
 		// graphql_field endpoint-ish entities keyed by operation + field.
+		gqlTransportBefore := len(entities)
 		synthesizeGraphQLResolvers(string(content), emit)
+		// #2906 — RPC transport binding. GraphQL resolvers are
+		// transport-agnostic; the server-setup adapter (startStandaloneServer /
+		// expressMiddleware over HTTP, graphql-ws useServer over WS) decides the
+		// wire protocol. Stamp `transport` on the resolver-field synthetics this
+		// file just emitted when an adapter signal is present in the module.
+		applyRPCTransportBinding(string(content), entities, gqlTransportBefore,
+			"graphql", gqlHTTPAdapterSignals, gqlWSAdapterSignals)
 		// Producer side: tRPC procedure resolvers (#2693). Each leaf
 		// procedure inside a `router({ ... })` literal becomes an
 		// addressable endpoint identified by its dotted path
@@ -423,7 +431,15 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// addressable handler symbol, no source_handler is stamped — the
 		// shared resolver short-circuits the rebind and preserves the
 		// precise attribution this synthesizer produces.
+		trpcTransportBefore := len(entities)
 		synthesizeTRPC(string(content), emitDef)
+		// #2906 — RPC transport binding. tRPC routers are transport-agnostic;
+		// the adapter that serves them (createHTTPServer / fetchRequestHandler /
+		// express|fastify|next adapter over HTTP, applyWSSHandler over WS)
+		// decides the wire protocol. Stamp `transport` on the procedure
+		// synthetics this file just emitted when an adapter signal is present.
+		applyRPCTransportBinding(string(content), entities, trpcTransportBefore,
+			"trpc", trpcHTTPAdapterSignals, trpcWSAdapterSignals)
 		// #2852 — resolve auth_coverage over the producer-side endpoints emitted
 		// above. Detects passport/express-jwt/session middleware, Nest
 		// @UseGuards (class + method), Hapi route auth, AdonisJS .middleware('auth')

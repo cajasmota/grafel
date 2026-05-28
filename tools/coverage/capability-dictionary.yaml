@@ -329,6 +329,7 @@ subcategories:
       - procedure_extraction
       - schema_extraction
       - client_codegen
+      - transport_binding
       - constant_propagation
       - env_fallback_recognition
       - import_resolution_quality
@@ -356,7 +357,7 @@ subcategories:
       - name: Codegen
         keys: [client_codegen]
       - name: Transport
-        keys: []
+        keys: [transport_binding]
       - name: Substrate
         keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, template_pattern_catalog]
 

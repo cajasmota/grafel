@@ -215,11 +215,11 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 ## RPC Framework
 
-| Language | Name | Schema | Codegen | Substrate | Notes |
-|---|---|---|---|---|---|
-| [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/14 | |
-| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | — | |
-| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | — | |
+| Language | Name | Schema | Codegen | Transport | Substrate | Notes |
+|---|---|---|---|---|---|---|
+| [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ 0/2 | ❌ 0/1 | — | ⚠️ 5/14 | |
+| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | ✅ 1/1 | — | |
+| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | ✅ 1/1 | — | |
 
 
 ## AI Integration

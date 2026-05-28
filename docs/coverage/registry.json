@@ -11263,6 +11263,14 @@
             "status": "missing",
             "issue": "https://github.com/cajasmota/archigraph/issues/2735"
           }
+        },
+        "Transport": {
+          "transport_binding": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_transport_binding.go","internal/engine/http_endpoint_transport_binding_test.go","testdata/fixtures/typescript/graphql_transport_http.ts","testdata/fixtures/typescript/graphql_transport_http_ws.ts"],
+            "issue": "2906",
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -13031,6 +13039,14 @@
           "client_codegen": {
             "status": "missing",
             "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+          }
+        },
+        "Transport": {
+          "transport_binding": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_transport_binding.go","internal/engine/http_endpoint_transport_binding_test.go","testdata/fixtures/typescript/trpc_transport_http.ts","testdata/fixtures/typescript/trpc_transport_http_ws.ts","testdata/fixtures/typescript/trpc_transport_none.ts","testdata/fixtures/typescript/trpc_transport_ws.ts"],
+            "issue": "2906",
+            "verified_at": "2026-05-28"
           }
         }
       }

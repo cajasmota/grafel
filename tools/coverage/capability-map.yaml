@@ -929,6 +929,44 @@ records:
           issues_implemented: ["2671", "2687"]
           verified_at: "2026-05-28"
 
+  lang.jsts.framework.graphql-resolvers:
+    capabilities:
+      Transport:
+        transport_binding:
+          # #2906: resolver-map synthetics are stamped with a `transport`
+          # property (http / ws / http+ws) derived from the GraphQL
+          # server-setup adapter (startStandaloneServer / expressMiddleware
+          # over HTTP, graphql-ws useServer over WS) present in the module.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_transport_binding.go
+              functions: [applyRPCTransportBinding, detectTransportBinding, containsAny]
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeGraphQLResolvers]
+          tests:
+            - file: internal/engine/http_endpoint_transport_binding_test.go
+          issues_implemented: ["2906"]
+          verified_at: "2026-05-28"
+
+  lang.jsts.framework.trpc:
+    capabilities:
+      Transport:
+        transport_binding:
+          # #2906: tRPC procedure synthetics are stamped with a `transport`
+          # property (http / ws / http+ws) derived from the adapter that
+          # serves the router (createHTTPServer / fetchRequestHandler /
+          # express|fastify|next adapter over HTTP, applyWSSHandler over WS).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_transport_binding.go
+              functions: [applyRPCTransportBinding, detectTransportBinding, containsAny]
+            - file: internal/engine/http_endpoint_trpc.go
+              functions: [synthesizeTRPC]
+          tests:
+            - file: internal/engine/http_endpoint_transport_binding_test.go
+          issues_implemented: ["2906"]
+          verified_at: "2026-05-28"
+
   lang.java.framework.spring-boot:
     capabilities:
       Routing:
