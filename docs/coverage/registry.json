@@ -13191,10 +13191,10 @@
             "verified_at": "2026-05-28"
           },
           "pinia_store": {
-            "status": "partial",
-            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/CounterStore.vue","internal/extractors/vue/pinia_store.go","internal/extractors/vue/issue2890_pinia_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2890",
+            "verified_at": "2026-05-29"
           },
           "props_emits_macros": {
             "status": "full",

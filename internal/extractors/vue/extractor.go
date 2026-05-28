@@ -885,15 +885,13 @@ func extractDataFlow(scriptSrc string, scriptOffset int, fullSrc, filePath, comp
 		emit(name, "state_store", "pinia store "+name,
 			map[string]string{"state_lib": "pinia", "store": name}, scriptOffset+m[0])
 	}
-	for _, m := range rePiniaDefine.FindAllStringSubmatchIndex(scriptSrc, -1) {
-		id := scriptSrc[m[2]:m[3]]
-		if stateSeen["define:"+id] {
-			continue
-		}
-		stateSeen["define:"+id] = true
-		emit("defineStore:"+id, "state_store", "defineStore('"+id+"')",
-			map[string]string{"state_lib": "pinia", "store_id": id}, scriptOffset+m[0])
-	}
+	// pinia_store (#2890): every defineStore('id', …) becomes a dedicated store
+	// entity plus its state/getters/actions members (store → member CONTAINS),
+	// with a component → store CONTAINS edge — replacing the thin single
+	// state_store op that left pinia_store at `partial` in #2876.
+	storeEnts, storeRels := extractPiniaStores(scriptSrc, scriptOffset, fullSrc, filePath, componentName)
+	ents = append(ents, storeEnts...)
+	rels = append(rels, storeRels...)
 	for _, m := range reReactiveState.FindAllStringSubmatchIndex(scriptSrc, -1) {
 		name := scriptSrc[m[2]:m[3]]
 		prim := scriptSrc[m[4]:m[5]]
