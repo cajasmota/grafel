@@ -166,6 +166,80 @@ records:
         issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
 
+  lang.assembly.toolchain.gnu-as:
+    capabilities:
+      core_extraction:
+        # gas/AT&T: procedures, .text/.data/.bss/.rodata sections,
+        # .equ/.set constants, and local-label anchors. Exercised by the
+        # x86-64 gas + ARM64 + m68k fixtures (#2744, #2835/#2836 via #2844).
+        status: full
+        symbols:
+          - file: internal/extractors/assembly/extractor.go
+            functions: [extractAssembly, buildProcedureEntities, buildSectionEntities, buildConstantEntities, collectLocalLabels]
+        tests:
+          - file: internal/extractors/assembly/extractor_test.go
+        issues_implemented: ["2744"]
+        verified_at: "2026-05-28"
+      call_line_precision:
+        # call/callq, bl/blx/blr, jsr/bsr, jal CALLS plus jmp/jXX/b/bXX
+        # branch edges, each attached to the enclosing procedure with its
+        # source line; self-recursion/tail-call classification (#2836).
+        status: full
+        symbols:
+          - file: internal/extractors/assembly/extractor.go
+            functions: [buildProcedureEntities, callTarget, mnemonicAndOperand, normalizeMnemonic]
+        tests:
+          - file: internal/extractors/assembly/extractor_test.go
+        issues_implemented: ["2744"]
+        verified_at: "2026-05-28"
+      import_resolution_quality:
+        # .include "file" IMPORTS, .globl/.global exported + .extern external
+        # symbol classification, and intra-file branch-target / cross-file
+        # label resolution (#2836).
+        status: full
+        symbols:
+          - file: internal/extractors/assembly/extractor.go
+            functions: [buildIncludeEntities, collectExported, collectExternal, localLabelStub]
+        tests:
+          - file: internal/extractors/assembly/extractor_test.go
+        issues_implemented: ["2744"]
+        verified_at: "2026-05-28"
+
+  lang.assembly.toolchain.nasm:
+    capabilities:
+      core_extraction:
+        # NASM/Intel: procedures, `section` directives, %define / EQU
+        # constants, and label anchors. Exercised by the x86-64 NASM fixture.
+        status: full
+        symbols:
+          - file: internal/extractors/assembly/extractor.go
+            functions: [extractAssembly, buildProcedureEntities, buildSectionEntities, buildConstantEntities]
+        tests:
+          - file: internal/extractors/assembly/extractor_test.go
+        issues_implemented: ["2744"]
+        verified_at: "2026-05-28"
+      call_line_precision:
+        # Intel-syntax call/jmp target extraction is syntax-agnostic with
+        # gas (callTarget handles `[rax]`, `near`/`short`, PLT relocs) — #2835.
+        status: full
+        symbols:
+          - file: internal/extractors/assembly/extractor.go
+            functions: [buildProcedureEntities, callTarget, splitOperandTokens, cleanTargetToken]
+        tests:
+          - file: internal/extractors/assembly/extractor_test.go
+        issues_implemented: ["2744"]
+        verified_at: "2026-05-28"
+      import_resolution_quality:
+        # %include "file" IMPORTS + NASM `extern` external-symbol resolution.
+        status: full
+        symbols:
+          - file: internal/extractors/assembly/extractor.go
+            functions: [buildIncludeEntities, collectExternal]
+        tests:
+          - file: internal/extractors/assembly/extractor_test.go
+        issues_implemented: ["2744"]
+        verified_at: "2026-05-28"
+
   lang.jsts.framework.react:
     capabilities:
       Structure:

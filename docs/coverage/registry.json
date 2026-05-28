@@ -1799,6 +1799,142 @@
       }
     },
     {
+      "id": "lang.assembly.toolchain.armasm",
+      "category": "language",
+      "language": "assembly",
+      "label": "ARM armasm",
+      "capabilities": {
+        "call_line_precision": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "core_extraction": {
+          "status": "partial",
+          "cites": [
+            "internal/extractors/assembly/extractor.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "import_resolution_quality": {
+          "status": "partial",
+          "cites": [
+            "internal/extractors/assembly/extractor.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.assembly.toolchain.gnu-as",
+      "category": "language",
+      "language": "assembly",
+      "label": "GNU as (gas)",
+      "capabilities": {
+        "call_line_precision": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "core_extraction": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "import_resolution_quality": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.assembly.toolchain.masm",
+      "category": "language",
+      "language": "assembly",
+      "label": "MASM",
+      "capabilities": {
+        "call_line_precision": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "core_extraction": {
+          "status": "partial",
+          "cites": [
+            "internal/extractors/assembly/extractor.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "import_resolution_quality": {
+          "status": "partial",
+          "cites": [
+            "internal/extractors/assembly/extractor.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.assembly.toolchain.nasm",
+      "category": "language",
+      "language": "assembly",
+      "label": "NASM",
+      "capabilities": {
+        "call_line_precision": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "core_extraction": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        },
+        "import_resolution_quality": {
+          "status": "full",
+          "cites": [
+            "internal/extractors/assembly/extractor.go",
+            "internal/extractors/assembly/extractor_test.go"
+          ],
+          "issue": "2744",
+          "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
       "id": "lang.c-cpp.driver.libpqxx",
       "category": "orm",
       "language": "c-cpp",
