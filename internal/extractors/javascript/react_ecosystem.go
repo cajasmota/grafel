@@ -62,6 +62,7 @@ const (
 	propViaTanstackQuery = "tanstack_query" // stamped on TanStack-Query USES_HOOK edges
 	propViaAtomStore     = "atom_store"     // Recoil/Jotai/Valtio/MobX atoms & stores (#2894 PR2)
 	propViaSWR           = "swr"            // SWR useSWR/useSWRMutation (#2894 PR2)
+	propViaForm          = "form_library"   // React Hook Form / Formik form state (#2894 PR3)
 )
 
 // reactEcosystemImports records which ecosystem packages are imported in the
@@ -96,6 +97,13 @@ type reactEcosystemImports struct {
 	hasJotai    bool // jotai (issue #2894 PR2)
 	hasValtio   bool // valtio (issue #2894 PR2)
 	hasMobx     bool // mobx / mobx-react / mobx-react-lite (issue #2894 PR2)
+	hasRHF      bool // react-hook-form (issue #2894 PR3)
+	hasFormik   bool // formik (issue #2894 PR3)
+	// resolver-factory local-name → canonical resolver schema library
+	// (zod | yup | joi | superstruct | ajv | vest) for React Hook Form's
+	// `resolver: zodResolver(schema)` linkage (issue #2894 PR3). Bound from the
+	// @hookform/resolvers/* packages so an aliased import still resolves.
+	resolverFactories map[string]string
 }
 
 // atomFactoryBinding records the canonical factory name and the atom-store
@@ -187,6 +195,83 @@ func atomStoreLibrary(p string) string {
 	return ""
 }
 
+// resolverSchemaLibrary maps an @hookform/resolvers/<lib> import path to the
+// canonical validation-schema library it bridges (#2894 PR3). React Hook Form's
+// `resolver:` option is produced by these adapters (e.g. zodResolver(schema));
+// recovering the adapter lets us link the form to its schema library.
+func resolverSchemaLibrary(p string) string {
+	const prefix = "@hookform/resolvers"
+	if p == prefix {
+		return "" // bare package re-exports every adapter; per-name handled below
+	}
+	if !strings.HasPrefix(p, prefix+"/") {
+		return ""
+	}
+	switch strings.TrimPrefix(p, prefix+"/") {
+	case "zod":
+		return "zod"
+	case "yup":
+		return "yup"
+	case "joi":
+		return "joi"
+	case "superstruct":
+		return "superstruct"
+	case "ajv":
+		return "ajv"
+	case "vest":
+		return "vest"
+	case "class-validator":
+		return "class-validator"
+	}
+	return ""
+}
+
+// resolverFactoryName maps a React Hook Form resolver-adapter export name (e.g.
+// zodResolver / yupResolver) to the canonical schema library (#2894 PR3). Covers
+// the bare `@hookform/resolvers` package which re-exports each adapter by name.
+func resolverFactoryName(imp string) string {
+	switch imp {
+	case "zodResolver":
+		return "zod"
+	case "yupResolver":
+		return "yup"
+	case "joiResolver":
+		return "joi"
+	case "superstructResolver":
+		return "superstruct"
+	case "ajvResolver":
+		return "ajv"
+	case "vestResolver":
+		return "vest"
+	case "classValidatorResolver":
+		return "class-validator"
+	}
+	return ""
+}
+
+// rhfFormHooks are the React Hook Form hook/helper exports that signal a form is
+// being declared/consumed (#2894 PR3). useForm is the entry point; the rest are
+// field/array/context/watch helpers. All surface as USES_HOOK via the generic
+// hook_recognition pass; here we add the form-specific decoration.
+var rhfFormHooks = map[string]bool{
+	"useForm": true, "useFormContext": true, "useFieldArray": true,
+	"useController": true, "useWatch": true, "useFormState": true,
+}
+
+// formikFormHooks are the Formik hook exports (#2894 PR3). useFormik is the
+// hook-style entry point; useField/useFormikContext are field/context helpers.
+var formikFormHooks = map[string]bool{
+	"useFormik": true, "useField": true, "useFormikContext": true,
+}
+
+// formikJSXComponents are the Formik render-prop / JSX components (#2894 PR3).
+// A component rendering <Formik>/<Field>/<Form>/<FieldArray>/<ErrorMessage>
+// is form-bearing even when it never calls a Formik hook directly.
+var formikJSXComponents = map[string]bool{
+	"Formik": true, "Field": true, "Form": true,
+	"FieldArray": true, "ErrorMessage": true, "FastField": true,
+}
+
 // buildReactEcosystemImports scans importByLocal for the ecosystem packages.
 // Returns nil when none are present (fast-path for non-ecosystem files).
 func (x *extractor) buildReactEcosystemImports() *reactEcosystemImports {
@@ -194,10 +279,11 @@ func (x *extractor) buildReactEcosystemImports() *reactEcosystemImports {
 		return nil
 	}
 	r := &reactEcosystemImports{
-		factories:     map[string]string{},
-		hooks:         map[string]string{},
-		sagaEffects:   map[string]string{},
-		atomFactories: map[string]atomFactoryBinding{},
+		factories:         map[string]string{},
+		hooks:             map[string]string{},
+		sagaEffects:       map[string]string{},
+		atomFactories:     map[string]atomFactoryBinding{},
+		resolverFactories: map[string]string{},
 	}
 	any := false
 	for local, b := range x.importByLocal {
@@ -242,6 +328,21 @@ func (x *extractor) buildReactEcosystemImports() *reactEcosystemImports {
 		case p == "swr" || strings.HasPrefix(p, "swr/"):
 			r.hasSWR = true
 			any = true // useSWR/useSWRMutation surface as USES_HOOK; we decorate keys
+		case p == "react-hook-form" || strings.HasPrefix(p, "react-hook-form/"):
+			r.hasRHF = true
+			any = true // useForm/Controller surface as USES_HOOK; we decorate forms (#2894 PR3)
+		case p == "formik" || strings.HasPrefix(p, "formik/"):
+			r.hasFormik = true
+			any = true // useFormik/<Formik>/<Field> form idioms (#2894 PR3)
+		case p == "@hookform/resolvers" || strings.HasPrefix(p, "@hookform/resolvers/"):
+			any = true
+			// Per-path adapter (zod/yup/...) when imported from the sub-path,
+			// else per-export name from the bare package (#2894 PR3).
+			if lib := resolverSchemaLibrary(p); lib != "" {
+				r.resolverFactories[local] = lib
+			} else if lib := resolverFactoryName(imp); lib != "" {
+				r.resolverFactories[local] = lib
+			}
 		default:
 			if lib := atomStoreLibrary(p); lib != "" {
 				any = true
@@ -495,6 +596,278 @@ func (x *extractor) decorateSWR(root *sitter.Node) {
 			scan(x.nodeText(nameNode), valNode.ChildByFieldName("body"))
 		}
 	}
+}
+
+// decorateForms stamps form_library + form-specific metadata on already-emitted
+// component/custom-hook entities whose body uses React Hook Form or Formik form
+// idioms (#2894 PR3 / issue #2909). The hook calls (useForm/useFormik/...) and
+// JSX (<Formik>/<Field>) already surface generically (USES_HOOK / JSX renders);
+// this pass adds the form-specific decoration so the idiom is queryable:
+//
+//	form_library      react_hook_form | formik (formik wins if both, rare)
+//	form_hooks        sorted CSV of the form hooks the body uses
+//	form_resolver     RHF: schema library bridged by the resolver (zod/yup/...)
+//	validation_schema RHF: resolver schema identifier; Formik: validationSchema
+//	                  expression text when recoverable
+//	form_field_count  RHF: distinct register('name') field names; Formik: <Field
+//	                  name="..."> count (literal names only)
+//	form_components    formik JSX components rendered (Formik/Field/Form/...)
+//
+// Decorate-only (#2839): no new EntityKind/RelationshipKind. No-op when neither
+// react-hook-form nor formik is imported.
+func (x *extractor) decorateForms(root *sitter.Node) {
+	r := x.buildReactEcosystemImports()
+	if r == nil || (!r.hasRHF && !r.hasFormik) {
+		return
+	}
+	idxByName := map[string]int{}
+	for i := range x.entities {
+		e := &x.entities[i]
+		if e.Kind == "SCOPE.Operation" && e.SourceFile == x.filePath {
+			if _, dup := idxByName[e.Name]; !dup {
+				idxByName[e.Name] = i
+			}
+		}
+	}
+	scan := func(name string, body *sitter.Node) {
+		if name == "" || body == nil {
+			return
+		}
+		if !isComponentName(name) && !isReactHookName(name) {
+			return
+		}
+		idx, ok := idxByName[name]
+		if !ok {
+			return
+		}
+		info := x.collectFormInfo(r, body)
+		if info.library == "" {
+			return
+		}
+		e := &x.entities[idx]
+		if e.Properties == nil {
+			e.Properties = map[string]string{}
+		}
+		e.Properties["via"] = propViaForm
+		e.Properties["form_library"] = info.library
+		if len(info.hooks) > 0 {
+			e.Properties["form_hooks"] = strings.Join(sortedKeys(info.hooks), ",")
+		}
+		if len(info.components) > 0 {
+			e.Properties["form_components"] = strings.Join(sortedKeys(info.components), ",")
+		}
+		if info.resolver != "" {
+			e.Properties["form_resolver"] = info.resolver
+		}
+		if info.schema != "" {
+			e.Properties["validation_schema"] = info.schema
+		}
+		if len(info.fields) > 0 {
+			e.Properties["form_field_count"] = strconv.Itoa(len(info.fields))
+			e.Properties["form_fields"] = strings.Join(sortedKeys(info.fields), ",")
+		}
+	}
+	for _, fn := range findAllNodes(root, "function_declaration") {
+		nameNode := fn.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		scan(x.nodeText(nameNode), fn.ChildByFieldName("body"))
+	}
+	for _, d := range findAllNodes(root, "variable_declarator") {
+		nameNode := d.ChildByFieldName("name")
+		valNode := d.ChildByFieldName("value")
+		if nameNode == nil || valNode == nil {
+			continue
+		}
+		if valNode.Type() == "arrow_function" || valNode.Type() == "function_expression" {
+			scan(x.nodeText(nameNode), valNode.ChildByFieldName("body"))
+		}
+	}
+}
+
+// formInfo accumulates the form idioms found in one component/hook body.
+type formInfo struct {
+	library    string          // react_hook_form | formik
+	hooks      map[string]bool // form hook names used
+	components map[string]bool // formik JSX components rendered
+	fields     map[string]bool // literal field names (register / <Field name>)
+	resolver   string          // RHF resolver schema library (zod/yup/...)
+	schema     string          // resolver schema identifier / Formik validationSchema text
+}
+
+// collectFormInfo walks a function body for React Hook Form and Formik idioms.
+// Formik takes precedence on library when both appear (a Formik consumer may
+// also import RHF transitively, but the rendered <Formik> is the authoritative
+// form). Field names and resolver schema are recovered only from literals.
+func (x *extractor) collectFormInfo(r *reactEcosystemImports, body *sitter.Node) formInfo {
+	info := formInfo{
+		hooks:      map[string]bool{},
+		components: map[string]bool{},
+		fields:     map[string]bool{},
+	}
+	rhf, formik := false, false
+	for _, c := range findAllNodes(body, "call_expression") {
+		leaf := factoryLeaf(x, c)
+		switch {
+		case r.hasRHF && rhfFormHooks[leaf]:
+			rhf = true
+			info.hooks[leaf] = true
+			if leaf == "useForm" {
+				x.collectRHFResolver(r, c, &info)
+			}
+		case r.hasFormik && formikFormHooks[leaf]:
+			formik = true
+			info.hooks[leaf] = true
+			if leaf == "useFormik" {
+				x.collectFormikSchema(c, &info)
+			}
+		case r.hasRHF && leaf == "register":
+			// register('fieldName') — recover the literal field name.
+			if n := firstStringArg(x, c); n != "" {
+				info.fields[n] = true
+			}
+		}
+	}
+	// JSX: <Controller name="..."> (RHF) and <Formik>/<Field name="..."> (Formik).
+	for _, jx := range findAllNodes(body, "jsx_opening_element", "jsx_self_closing_element") {
+		nameNode := jx.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		tag := x.nodeText(nameNode)
+		switch {
+		case r.hasRHF && tag == "Controller":
+			rhf = true
+			info.hooks["Controller"] = true
+			if fn := jsxStringAttr(x, jx, "name"); fn != "" {
+				info.fields[fn] = true
+			}
+		case r.hasFormik && formikJSXComponents[tag]:
+			formik = true
+			info.components[tag] = true
+			if tag == "Formik" {
+				x.collectFormikSchemaJSX(jx, &info)
+			}
+			if tag == "Field" || tag == "FastField" || tag == "FieldArray" {
+				if fn := jsxStringAttr(x, jx, "name"); fn != "" {
+					info.fields[fn] = true
+				}
+			}
+		}
+	}
+	switch {
+	case formik:
+		info.library = "formik"
+	case rhf:
+		info.library = "react_hook_form"
+	}
+	return info
+}
+
+// collectRHFResolver inspects a useForm({ resolver: zodResolver(schema) }) call
+// and records the resolver schema library + schema identifier when recoverable.
+func (x *extractor) collectRHFResolver(r *reactEcosystemImports, call *sitter.Node, info *formInfo) {
+	obj := configObjectArg(call)
+	if obj == nil {
+		return
+	}
+	v := objectPairValue(x, obj, "resolver")
+	if v == nil {
+		return
+	}
+	rc := unwrapCall(v)
+	if rc == nil {
+		return
+	}
+	leaf := factoryLeaf(x, rc)
+	// Resolve the adapter to its schema library. Prefer the import binding
+	// (handles `import { zodResolver as zr }`); fall back to the export-name
+	// heuristic (zodResolver → zod) for re-exported / namespace-accessed forms.
+	if lib, ok := r.resolverFactories[leaf]; ok {
+		info.resolver = lib
+	} else if l := resolverFactoryName(leaf); l != "" {
+		info.resolver = l
+	}
+	// Schema identifier is the first argument to the resolver factory.
+	if args := rc.ChildByFieldName("arguments"); args != nil {
+		for i := 0; i < int(args.ChildCount()); i++ {
+			a := args.Child(i)
+			if a != nil && a.Type() == "identifier" {
+				info.schema = x.nodeText(a)
+				break
+			}
+		}
+	}
+}
+
+// collectFormikSchema inspects useFormik({ validationSchema: schema }) and
+// records the schema expression text when present.
+func (x *extractor) collectFormikSchema(call *sitter.Node, info *formInfo) {
+	obj := configObjectArg(call)
+	if obj == nil {
+		return
+	}
+	if v := objectPairValue(x, obj, "validationSchema"); v != nil {
+		info.schema = strings.TrimSpace(x.nodeText(v))
+	}
+}
+
+// collectFormikSchemaJSX inspects a <Formik validationSchema={schema}> opening
+// element and records the schema expression text.
+func (x *extractor) collectFormikSchemaJSX(jx *sitter.Node, info *formInfo) {
+	for i := 0; i < int(jx.ChildCount()); i++ {
+		attr := jx.Child(i)
+		if attr == nil || attr.Type() != "jsx_attribute" {
+			continue
+		}
+		if attr.ChildCount() == 0 {
+			continue
+		}
+		if x.nodeText(attr.Child(0)) != "validationSchema" {
+			continue
+		}
+		for j := 1; j < int(attr.ChildCount()); j++ {
+			v := attr.Child(j)
+			if v != nil && v.Type() == "jsx_expression" {
+				inner := strings.TrimSpace(x.nodeText(v))
+				inner = strings.TrimPrefix(inner, "{")
+				inner = strings.TrimSuffix(inner, "}")
+				info.schema = strings.TrimSpace(inner)
+			}
+		}
+	}
+}
+
+// jsxStringAttr returns the string-literal value of a JSX attribute (e.g.
+// `name="email"`), unquoted. Returns "" for expression-container or missing.
+func jsxStringAttr(x *extractor, jx *sitter.Node, attrName string) string {
+	for i := 0; i < int(jx.ChildCount()); i++ {
+		attr := jx.Child(i)
+		if attr == nil || attr.Type() != "jsx_attribute" || attr.ChildCount() == 0 {
+			continue
+		}
+		if x.nodeText(attr.Child(0)) != attrName {
+			continue
+		}
+		for j := 1; j < int(attr.ChildCount()); j++ {
+			v := attr.Child(j)
+			if v != nil && v.Type() == "string" {
+				return trimStringQuotes(x.nodeText(v))
+			}
+		}
+	}
+	return ""
+}
+
+// sortedKeys returns the keys of a set in lexical order.
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // emitReduxSlice emits a SCOPE.Component subtype="redux_slice" for the slice

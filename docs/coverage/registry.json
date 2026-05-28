@@ -12622,6 +12622,13 @@
             "notes": "Recoil atom/selector (recoil_atom/recoil_selector, atom_key stamped), Jotai atom/atomWithStorage/atomWithReset (jotai_atom), Valtio proxy (valtio_proxy), MobX observable/makeAutoObservable/makeObservable (mobx_store) emitted as decorated SCOPE.Component (atom_library + atom_factory). Import package disambiguates the shared atom export (recoil vs jotai). Read/write hooks useRecoilState/useRecoilValue/useAtom/useAtomValue/useSnapshot surface as USES_HOOK; MobX observer is a generic HOC wrapper. Decorate-only (#2839). Partial only for stores created by mutating this in a class constructor (makeAutoObservable(this)) with no declarator value to key on.",
             "verified_at": "2026-05-29"
           },
+          "form_library_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_pr3_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Forms.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2909",
+            "notes": "A component/custom-hook using React Hook Form (useForm/useFormContext/useFieldArray/useController/register/\u003cController name\u003e) or Formik (useFormik/\u003cFormik\u003e/\u003cField\u003e/\u003cFieldArray\u003e/\u003cForm\u003e) is decorated form_library=react_hook_form|formik + form_hooks + form_components (formik JSX) + form_field_count/form_fields (literal field names from register('x') / \u003cField name=\"x\"\u003e). RHF resolver linkage: useForm({resolver: zodResolver(schema)}) stamps form_resolver=zod|yup|joi|superstruct|ajv|vest|class-validator (@hookform/resolvers/*) + validation_schema (schema identifier); Formik validationSchema={schema} stamps validation_schema. The hook calls / JSX already surface generically (USES_HOOK / JSX renders); this adds the form-specific decoration. Decorate-only (#2839). Real-world recall: react-hook-form/react-hook-form 121 RHF consumers (6 resolver, 62 with field sets); jaredpalmer/formik 35 Formik consumers (12 validationSchema, 25 with fields). Partial only for field names / validation schemas expressed as non-literal (computed register names, template-literal \u003cField name\u003e, inline yup.object()).",
+            "verified_at": "2026-05-29"
+          },
           "redux_async_flow": {
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Store.tsx"],
@@ -12814,6 +12821,13 @@
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_pr2_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Atoms.tsx"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2908",
             "notes": "Same atom-store extractor as React (react_ecosystem.go); RN apps use Recoil/Jotai/Valtio/MobX identically. atom/selector (recoil_atom/recoil_selector), Jotai atom/atomWithStorage (jotai_atom), proxy (valtio_proxy), observable/makeAutoObservable (mobx_store) emitted as decorated SCOPE.Component; read/write hooks via USES_HOOK. Decorate-only (#2839).",
+            "verified_at": "2026-05-29"
+          },
+          "form_library_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_pr3_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Forms.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2909",
+            "notes": "Same form extractor as React (react_ecosystem.go decorateForms); react-hook-form and Formik are RN-compatible (RHF ships a dedicated RN guide; \u003cField\u003e/Controller wrap RN TextInput). useForm/register/\u003cController\u003e (RHF) or useFormik/\u003cFormik\u003e/\u003cField\u003e (Formik) decorate the component/hook form_library=react_hook_form|formik + form_hooks + form_components + form_fields; RHF resolver (zodResolver/yupResolver/...) -\u003e form_resolver + validation_schema; Formik validationSchema -\u003e validation_schema. Decorate-only (#2839). Partial only for non-literal field names / validation schemas.",
             "verified_at": "2026-05-29"
           },
           "redux_async_flow": {

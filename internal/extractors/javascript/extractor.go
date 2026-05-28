@@ -293,6 +293,13 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		// call already surfaces as USES_HOOK via react.go). Runs after walk so
 		// the component/hook entities exist.
 		x.decorateSWR(root)
+
+		// Issue #2894 PR3 — React Hook Form / Formik form decoration. Components
+		// and custom hooks using useForm/register/Controller (RHF) or useFormik/
+		// <Formik>/<Field> (Formik) are stamped form_library + form_hooks +
+		// form_resolver/validation_schema + field set (the hook calls / JSX
+		// already surface generically). Runs after walk so the entities exist.
+		x.decorateForms(root)
 	}()
 
 	// Third pass (#713): platform-variant and test-file relationship emission.
