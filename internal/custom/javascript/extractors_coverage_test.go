@@ -198,57 +198,10 @@ async accumulate(data: number[]) {}
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Angular — additional coverage
-// ---------------------------------------------------------------------------
-
-func TestAngularDirective(t *testing.T) {
-	src := `
-@Directive({ selector: '[appHighlight]' })
-export class HighlightDirective {}
-`
-	ents := extract(t, "custom_js_angular", fi("highlight.directive.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.UIComponent", "HighlightDirective") {
-		t.Error("expected HighlightDirective directive")
-	}
-}
-
-func TestAngularPipe(t *testing.T) {
-	src := `
-@Pipe({ name: 'titleCase' })
-export class TitleCasePipe {}
-`
-	ents := extract(t, "custom_js_angular", fi("title-case.pipe.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.Component", "TitleCasePipe") {
-		t.Error("expected TitleCasePipe pipe entity")
-	}
-}
-
-func TestAngularInputOutput(t *testing.T) {
-	src := `
-@Input() title: string
-@Output() titleChange = new EventEmitter<string>()
-`
-	ents := extract(t, "custom_js_angular", fi("comp.ts", "typescript", src))
-	if !containsSubtype(ents, "input_property") {
-		t.Error("expected input_property entity")
-	}
-	if !containsSubtype(ents, "output_property") {
-		t.Error("expected output_property entity")
-	}
-}
-
-func TestAngularGuard(t *testing.T) {
-	src := `
-export class AuthGuard implements CanActivate {
-  canActivate() { return this.authService.isLoggedIn() }
-}
-`
-	ents := extract(t, "custom_js_angular", fi("auth.guard.ts", "typescript", src))
-	if !containsSubtype(ents, "guard") {
-		t.Error("expected guard entity")
-	}
-}
+// Angular custom-extractor coverage tests removed (#2933) along with the
+// redundant custom_js_angular extractor. The core javascript AST path covers
+// @Directive/@Pipe/@Input/@Output/guards with richer entities; see
+// internal/extractors/javascript/issue2854_angular_test.go et al.
 
 // ---------------------------------------------------------------------------
 // Mongoose — additional coverage
@@ -815,7 +768,6 @@ func TestWrongLanguageGuards(t *testing.T) {
 	}{
 		{"custom_js_express", "go"},
 		{"custom_js_nestjs", "python"},
-		{"custom_js_angular", "rust"},
 		{"custom_js_react", "java"},
 		{"custom_js_vue", "ruby"},
 	}

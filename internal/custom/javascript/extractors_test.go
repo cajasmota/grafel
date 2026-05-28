@@ -167,49 +167,9 @@ func TestNestJSNoMatch(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Angular
-// ---------------------------------------------------------------------------
-
-func TestAngularComponent(t *testing.T) {
-	src := `
-@Component({ selector: 'app-root', templateUrl: './app.component.html' })
-export class AppComponent {}
-`
-	ents := extract(t, "custom_js_angular", fi("app.component.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.UIComponent", "AppComponent") {
-		t.Error("expected AppComponent UIComponent")
-	}
-}
-
-func TestAngularNgModule(t *testing.T) {
-	src := `
-@NgModule({ declarations: [AppComponent], imports: [RouterModule] })
-export class AppModule {}
-`
-	ents := extract(t, "custom_js_angular", fi("app.module.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.Pattern", "AppModule") {
-		t.Error("expected AppModule pattern")
-	}
-}
-
-func TestAngularService(t *testing.T) {
-	src := `
-@Injectable({ providedIn: 'root' })
-export class UserService {}
-`
-	ents := extract(t, "custom_js_angular", fi("user.service.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.Component", "UserService") {
-		t.Error("expected UserService component")
-	}
-}
-
-func TestAngularNoMatch(t *testing.T) {
-	ents := extract(t, "custom_js_angular", fi("plain.ts", "typescript", "const x = 1;"))
-	if len(ents) != 0 {
-		t.Errorf("expected no entities, got %d", len(ents))
-	}
-}
+// Angular custom extractor removed (#2933): the core javascript AST path
+// (internal/extractors/javascript/angular.go) is the sole, richer Angular
+// extractor. Dedup coverage now lives in issue2933_angular_dedup_test.go.
 
 // ---------------------------------------------------------------------------
 // Bull
@@ -792,7 +752,7 @@ func TestVueNoMatch(t *testing.T) {
 
 func TestAllExtractorsEmptyContent(t *testing.T) {
 	extractors := []string{
-		"custom_js_express", "custom_js_nestjs", "custom_js_angular",
+		"custom_js_express", "custom_js_nestjs",
 		"custom_js_bull", "custom_js_fastify", "custom_js_jest",
 		"custom_js_langchain", "custom_js_mongoose", "custom_js_nextjs",
 		"custom_js_nuxt", "custom_js_prisma", "custom_js_react",
@@ -815,7 +775,7 @@ func TestAllExtractorsEmptyContent(t *testing.T) {
 
 func TestAllExtractorsRegistered(t *testing.T) {
 	expected := []string{
-		"custom_js_express", "custom_js_nestjs", "custom_js_angular",
+		"custom_js_express", "custom_js_nestjs",
 		"custom_js_bull", "custom_js_fastify", "custom_js_jest",
 		"custom_js_langchain", "custom_js_mongoose", "custom_js_nextjs",
 		"custom_js_nuxt", "custom_js_prisma", "custom_js_react",

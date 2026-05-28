@@ -81,6 +81,11 @@ var (
 		`(?:export\s+)?const\s+([A-Z][A-Za-z0-9_]*)\s*=\s*createParamDecorator\s*\(`,
 	)
 	reNestPathString = regexp.MustCompile(`['"]([^'"]*?)['"]`)
+
+	// reAngularImport matches an ES import from any @angular/* package. Used to
+	// detect Angular source files so the NestJS regex pass can bow out and let
+	// the core javascript AST Angular path own them (#2933).
+	reAngularImport = regexp.MustCompile(`from\s+['"]@angular/[^'"]+['"]`)
 )
 
 var nestHTTPVerbMap = map[string]string{
@@ -105,6 +110,15 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 	src := string(file.Content)
 	lang := strings.ToLower(file.Language)
 	if lang != "typescript" && lang != "javascript" {
+		return nil, nil
+	}
+
+	// #2933: NestJS and Angular share decorator shapes (@Injectable services,
+	// `implements CanActivate` guards, `implements PipeTransform` pipes). The
+	// core javascript AST path owns Angular extraction; if this file imports
+	// from @angular/*, treat it as Angular and skip the NestJS regex pass so
+	// the two extractors never emit colliding entity IDs for the same class.
+	if reAngularImport.MatchString(src) {
 		return nil, nil
 	}
 
