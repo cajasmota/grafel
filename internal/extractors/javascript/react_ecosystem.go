@@ -4,30 +4,30 @@
 // dominant real-world React/React-Native state + data idioms that no generic
 // capability column expresses on its own:
 //
-//   redux_store_extraction
-//     - Redux:         createStore / combineReducers, connect(mapState,mapDispatch)
-//     - Redux Toolkit: configureStore, createSlice (→ reducers + actions),
-//                      createEntityAdapter
-//     - react-redux:   useSelector / useDispatch / useStore (decorated as
-//                      USES_HOOK by the generic hook pass; here we additionally
-//                      decorate the slice/store entities)
+//	redux_store_extraction
+//	  - Redux:         createStore / combineReducers, connect(mapState,mapDispatch)
+//	  - Redux Toolkit: configureStore, createSlice (→ reducers + actions),
+//	                   createEntityAdapter
+//	  - react-redux:   useSelector / useDispatch / useStore (decorated as
+//	                   USES_HOOK by the generic hook pass; here we additionally
+//	                   decorate the slice/store entities)
 //
-//   redux_async_flow
-//     - Redux Toolkit: createAsyncThunk
-//     - Redux-Saga:    takeEvery / takeLatest watcher effects + put/call/select
-//     - Redux-Observable: epics (combineEpics / *Epic functions using ofType)
-//     - redux-thunk:   thunk action creators (functions returning (dispatch)=>)
+//	redux_async_flow
+//	  - Redux Toolkit: createAsyncThunk
+//	  - Redux-Saga:    takeEvery / takeLatest watcher effects + put/call/select
+//	  - Redux-Observable: epics (combineEpics / *Epic functions using ofType)
+//	  - redux-thunk:   thunk action creators (functions returning (dispatch)=>)
 //
-//   rtk_query_extraction
-//     - RTK Query:     createApi / injectEndpoints → endpoint entities. Endpoints
-//                      are cross-repo-HTTP-linkable like the backend endpoints;
-//                      we stamp the http-ish metadata so the link pass can pick
-//                      them up later (the query/mutation string is the path).
+//	rtk_query_extraction
+//	  - RTK Query:     createApi / injectEndpoints → endpoint entities. Endpoints
+//	                   are cross-repo-HTTP-linkable like the backend endpoints;
+//	                   we stamp the http-ish metadata so the link pass can pick
+//	                   them up later (the query/mutation string is the path).
 //
-//   tanstack_query_extraction
-//     - TanStack/React Query: useQuery / useMutation / useInfiniteQuery +
-//                      QueryClient + queryKey (+ cache invalidation via
-//                      invalidateQueries). HIGH priority — the dominant data layer.
+//	tanstack_query_extraction
+//	  - TanStack/React Query: useQuery / useMutation / useInfiniteQuery +
+//	                   QueryClient + queryKey (+ cache invalidation via
+//	                   invalidateQueries). HIGH priority — the dominant data layer.
 //
 // Discipline (#2839 prefer-decorate): no new EntityKind / RelationshipKind is
 // introduced. Slices/stores/apis are emitted as SCOPE.Component subtype="…"
@@ -44,6 +44,7 @@
 package javascript
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,8 @@ const (
 	propViaReduxAsync    = "redux_async"
 	propViaRTKQuery      = "rtk_query"
 	propViaTanstackQuery = "tanstack_query" // stamped on TanStack-Query USES_HOOK edges
+	propViaAtomStore     = "atom_store"     // Recoil/Jotai/Valtio/MobX atoms & stores (#2894 PR2)
+	propViaSWR           = "swr"            // SWR useSWR/useSWRMutation (#2894 PR2)
 )
 
 // reactEcosystemImports records which ecosystem packages are imported in the
@@ -77,12 +80,59 @@ type reactEcosystemImports struct {
 	// saga effect local-name → canonical effect (takeEvery, takeLatest, put,
 	// call, select, fork, all).
 	sagaEffects map[string]string
+	// atom-store factory local-name → (canonicalName, library) for Recoil /
+	// Jotai / Valtio / MobX atom & store factories (issue #2894 PR2). Kept as a
+	// per-name map because `atom` is exported by BOTH recoil and jotai with
+	// different shapes, so the binding's source package disambiguates them.
+	atomFactories map[string]atomFactoryBinding
 
 	hasRedux    bool // redux or @reduxjs/toolkit
 	hasReactRdx bool // react-redux
 	hasRTKQuery bool // @reduxjs/toolkit/query
 	hasTanstack bool // @tanstack/*-query or react-query
 	hasSaga     bool // redux-saga
+	hasSWR      bool // swr (issue #2894 PR2)
+	hasRecoil   bool // recoil (issue #2894 PR2)
+	hasJotai    bool // jotai (issue #2894 PR2)
+	hasValtio   bool // valtio (issue #2894 PR2)
+	hasMobx     bool // mobx / mobx-react / mobx-react-lite (issue #2894 PR2)
+}
+
+// atomFactoryBinding records the canonical factory name and the atom-store
+// library a binding came from, so the declarator handler emits the right
+// subtype (#2894 PR2).
+type atomFactoryBinding struct {
+	factory string // atom | selector | atomFamily | selectorFamily | atomWithStorage | proxy | observable | makeAutoObservable | makeObservable
+	library string // recoil | jotai | valtio | mobx
+}
+
+// atomStoreFactories maps each atom-store library to the factory names it
+// exports that we treat as an atom/store declaration site (#2894 PR2).
+var atomStoreFactories = map[string]map[string]bool{
+	"recoil": {"atom": true, "selector": true, "atomFamily": true, "selectorFamily": true},
+	"jotai":  {"atom": true, "atomWithStorage": true, "atomWithReset": true, "atomFamily": true},
+	"valtio": {"proxy": true, "proxyWithComputed": true},
+	"mobx":   {"observable": true, "makeAutoObservable": true, "makeObservable": true},
+}
+
+// atomStoreSubtype maps a (library, factory) to the emitted entity subtype.
+// Recoil selectors and Jotai derived atoms are "derived" stores; Valtio proxy
+// and MobX observable are object stores.
+func atomStoreSubtype(library, factory string) string {
+	switch library {
+	case "recoil":
+		if factory == "selector" || factory == "selectorFamily" {
+			return "recoil_selector"
+		}
+		return "recoil_atom"
+	case "jotai":
+		return "jotai_atom"
+	case "valtio":
+		return "valtio_proxy"
+	case "mobx":
+		return "mobx_store"
+	}
+	return "atom_store"
 }
 
 // canonical factory names we track.
@@ -120,6 +170,23 @@ func isTanstackQueryPkg(p string) bool {
 		strings.HasPrefix(p, "@tanstack/query")
 }
 
+// atomStoreLibrary returns the canonical atom-store library name for an import
+// path, or "" if the path is not an atom-store package (#2894 PR2). mobx-react /
+// mobx-react-lite (the observer HOC) map to "mobx".
+func atomStoreLibrary(p string) string {
+	switch {
+	case p == "recoil":
+		return "recoil"
+	case p == "jotai" || strings.HasPrefix(p, "jotai/"):
+		return "jotai"
+	case p == "valtio" || strings.HasPrefix(p, "valtio/"):
+		return "valtio"
+	case p == "mobx" || p == "mobx-react" || p == "mobx-react-lite":
+		return "mobx"
+	}
+	return ""
+}
+
 // buildReactEcosystemImports scans importByLocal for the ecosystem packages.
 // Returns nil when none are present (fast-path for non-ecosystem files).
 func (x *extractor) buildReactEcosystemImports() *reactEcosystemImports {
@@ -127,9 +194,10 @@ func (x *extractor) buildReactEcosystemImports() *reactEcosystemImports {
 		return nil
 	}
 	r := &reactEcosystemImports{
-		factories:   map[string]string{},
-		hooks:       map[string]string{},
-		sagaEffects: map[string]string{},
+		factories:     map[string]string{},
+		hooks:         map[string]string{},
+		sagaEffects:   map[string]string{},
+		atomFactories: map[string]atomFactoryBinding{},
 	}
 	any := false
 	for local, b := range x.importByLocal {
@@ -171,6 +239,26 @@ func (x *extractor) buildReactEcosystemImports() *reactEcosystemImports {
 			}
 		case p == "redux-observable":
 			any = true // epics handled by name fallback
+		case p == "swr" || strings.HasPrefix(p, "swr/"):
+			r.hasSWR = true
+			any = true // useSWR/useSWRMutation surface as USES_HOOK; we decorate keys
+		default:
+			if lib := atomStoreLibrary(p); lib != "" {
+				any = true
+				switch lib {
+				case "recoil":
+					r.hasRecoil = true
+				case "jotai":
+					r.hasJotai = true
+				case "valtio":
+					r.hasValtio = true
+				case "mobx":
+					r.hasMobx = true
+				}
+				if atomStoreFactories[lib][imp] {
+					r.atomFactories[local] = atomFactoryBinding{factory: imp, library: lib}
+				}
+			}
 		}
 	}
 	if !any {
@@ -276,6 +364,136 @@ func (x *extractor) reactEcosystemDeclarator(r *reactEcosystemImports, d *sitter
 	case leaf == "injectEndpoints":
 		// `existingApi.injectEndpoints({ endpoints: builder => ({...}) })`
 		x.emitRTKQueryApi(name, valueNode, true)
+	default:
+		// Atom stores (#2894 PR2): Recoil atom/selector, Jotai atom, Valtio
+		// proxy, MobX observable/makeAutoObservable.
+		if len(r.atomFactories) > 0 {
+			if ab := r.resolveAtomFactory(x, valueNode); ab.factory != "" {
+				x.emitAtomStore(name, valueNode, ab)
+			}
+		}
+	}
+}
+
+// resolveAtomFactory returns the atom-store binding a call's callee resolves to,
+// via the import binding (so an aliased `import { atom as a }` still matches).
+// Returns the zero binding when the leaf is not a tracked atom factory.
+func (r *reactEcosystemImports) resolveAtomFactory(x *extractor, valueNode *sitter.Node) atomFactoryBinding {
+	leaf := factoryLeaf(x, valueNode)
+	if leaf == "" {
+		return atomFactoryBinding{}
+	}
+	if ab, ok := r.atomFactories[leaf]; ok {
+		return ab
+	}
+	return atomFactoryBinding{}
+}
+
+// emitAtomStore emits a decorated SCOPE.Component for a Recoil/Jotai/Valtio/MobX
+// atom or store declaration (#2894 PR2). For Recoil atoms/selectors the `key:`
+// string is stamped (atoms are keyed by a globally-unique string). Decorate-only
+// (#2839): SCOPE.Component subtype, no new EntityKind.
+func (x *extractor) emitAtomStore(name string, valueNode *sitter.Node, ab atomFactoryBinding) {
+	subtype := atomStoreSubtype(ab.library, ab.factory)
+	props := map[string]string{
+		"kind":         "SCOPE.Component",
+		"subtype":      subtype,
+		"via":          propViaAtomStore,
+		"atom_library": ab.library,
+		"atom_factory": ab.factory,
+	}
+	// Recoil atom/selector configs carry a unique `key:` string.
+	if ab.library == "recoil" {
+		if call := unwrapCall(valueNode); call != nil {
+			if obj := configObjectArg(call); obj != nil {
+				if k := objectPairValue(x, obj, "key"); k != nil && k.Type() == "string" {
+					props["atom_key"] = trimStringQuotes(x.nodeText(k))
+				}
+			}
+		}
+	}
+	sig := ab.factory + "(" + name + ")"
+	x.emitWithProps(name, "SCOPE.Component", valueNode, subtype, sig, props, nil)
+}
+
+// decorateSWR stamps swr=true + the SWR key (first arg) on already-emitted
+// component/custom-hook entities whose body calls useSWR / useSWRMutation /
+// useSWRInfinite / useSWRSubscription (#2894 PR2). The hook call itself already
+// surfaces as a USES_HOOK edge via the generic hook pass (react.go); this pass
+// adds the SWR-specific decoration (key + which SWR hook) so the data-fetching
+// idiom is queryable. No-op when swr is not imported. Decorate-only (#2839).
+func (x *extractor) decorateSWR(root *sitter.Node) {
+	r := x.buildReactEcosystemImports()
+	if r == nil || !r.hasSWR {
+		return
+	}
+	idxByName := map[string]int{}
+	for i := range x.entities {
+		e := &x.entities[i]
+		if e.Kind == "SCOPE.Operation" && e.SourceFile == x.filePath {
+			if _, dup := idxByName[e.Name]; !dup {
+				idxByName[e.Name] = i
+			}
+		}
+	}
+	scan := func(name string, body *sitter.Node) {
+		if name == "" || body == nil {
+			return
+		}
+		if !isComponentName(name) && !isReactHookName(name) {
+			return
+		}
+		idx, ok := idxByName[name]
+		if !ok {
+			return
+		}
+		var keys []string
+		hooks := map[string]bool{}
+		for _, c := range findAllNodes(body, "call_expression") {
+			leaf := factoryLeaf(x, c)
+			switch leaf {
+			case "useSWR", "useSWRMutation", "useSWRInfinite", "useSWRSubscription":
+				hooks[leaf] = true
+				if k := firstStringArg(x, c); k != "" {
+					keys = append(keys, k)
+				}
+			}
+		}
+		if len(hooks) == 0 {
+			return
+		}
+		e := &x.entities[idx]
+		if e.Properties == nil {
+			e.Properties = map[string]string{}
+		}
+		e.Properties["via"] = propViaSWR
+		e.Properties["swr"] = "true"
+		var names []string
+		for h := range hooks {
+			names = append(names, h)
+		}
+		sort.Strings(names)
+		e.Properties["swr_hooks"] = strings.Join(names, ",")
+		if len(keys) > 0 {
+			e.Properties["swr_keys"] = strings.Join(keys, ",")
+		}
+	}
+	for _, fn := range findAllNodes(root, "function_declaration") {
+		nameNode := fn.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		scan(x.nodeText(nameNode), fn.ChildByFieldName("body"))
+	}
+	for _, d := range findAllNodes(root, "variable_declarator") {
+		nameNode := d.ChildByFieldName("name")
+		valNode := d.ChildByFieldName("value")
+		if nameNode == nil || valNode == nil {
+			continue
+		}
+		if valNode.Type() == "arrow_function" || valNode.Type() == "function_expression" {
+			scan(x.nodeText(nameNode), valNode.ChildByFieldName("body"))
+		}
 	}
 }
 

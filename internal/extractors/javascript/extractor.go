@@ -287,6 +287,12 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		// put/call/select) are decorated redux_saga; epics using ofType are
 		// decorated redux_epic. Runs after walk so the function entities exist.
 		x.decorateReduxAsyncFlow(root)
+
+		// Issue #2894 PR2 — SWR decoration. Components / custom hooks calling
+		// useSWR / useSWRMutation are stamped swr=true + the SWR key (the hook
+		// call already surfaces as USES_HOOK via react.go). Runs after walk so
+		// the component/hook entities exist.
+		x.decorateSWR(root)
 	}()
 
 	// Third pass (#713): platform-variant and test-file relationship emission.

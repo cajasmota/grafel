@@ -12487,6 +12487,13 @@
       },
       "framework_specific": {
         "React Ecosystem": {
+          "atom_store_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_pr2_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Atoms.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2908",
+            "notes": "Recoil atom/selector (recoil_atom/recoil_selector, atom_key stamped), Jotai atom/atomWithStorage/atomWithReset (jotai_atom), Valtio proxy (valtio_proxy), MobX observable/makeAutoObservable/makeObservable (mobx_store) emitted as decorated SCOPE.Component (atom_library + atom_factory). Import package disambiguates the shared atom export (recoil vs jotai). Read/write hooks useRecoilState/useRecoilValue/useAtom/useAtomValue/useSnapshot surface as USES_HOOK; MobX observer is a generic HOC wrapper. Decorate-only (#2839). Partial only for stores created by mutating this in a class constructor (makeAutoObservable(this)) with no declarator value to key on.",
+            "verified_at": "2026-05-29"
+          },
           "redux_async_flow": {
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Store.tsx"],
@@ -12507,6 +12514,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2894",
             "notes": "RTK Query createApi + injectEndpoints -\u003e rtk_query_api with per-endpoint rtk_query_endpoint operations (query/mutation kind, http_method, http_path) + CONTAINS edges. Endpoints stamped http_linkable=true for cross-repo HTTP linking. Real-world: reduxjs/redux-toolkit examples 35 apis, 57 endpoints. Partial only for path recovery from non-literal template/computed query specifiers.",
             "verified_at": "2026-05-28"
+          },
+          "swr_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_pr2_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Swr.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2908",
+            "notes": "useSWR/useSWRMutation/useSWRInfinite/useSWRSubscription surface as USES_HOOK edges (generic Structure/hook_recognition); the enclosing component/custom-hook is additionally decorated swr=true + swr_hooks + swr_keys (literal-string SWR keys). Decorate-only (#2839). Partial only for keys expressed as template literals / getKey functions (dynamic /api/users/[id], useSWRInfinite page getter) where no literal string is recoverable.",
+            "verified_at": "2026-05-29"
           },
           "tanstack_query_extraction": {
             "status": "full",
@@ -12667,6 +12681,13 @@
       },
       "framework_specific": {
         "React Ecosystem": {
+          "atom_store_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_pr2_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Atoms.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2908",
+            "notes": "Same atom-store extractor as React (react_ecosystem.go); RN apps use Recoil/Jotai/Valtio/MobX identically. atom/selector (recoil_atom/recoil_selector), Jotai atom/atomWithStorage (jotai_atom), proxy (valtio_proxy), observable/makeAutoObservable (mobx_store) emitted as decorated SCOPE.Component; read/write hooks via USES_HOOK. Decorate-only (#2839).",
+            "verified_at": "2026-05-29"
+          },
           "redux_async_flow": {
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Store.tsx"],
@@ -12687,6 +12708,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2894",
             "notes": "Same RTK Query extractor as React (RN uses RTK Query heavily): createApi/injectEndpoints -\u003e rtk_query_api + rtk_query_endpoint (http_linkable) + CONTAINS.",
             "verified_at": "2026-05-28"
+          },
+          "swr_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2894_react_ecosystem_pr2_test.go","internal/extractors/javascript/react_ecosystem.go","internal/extractors/javascript/testdata/react_ecosystem/Swr.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2908",
+            "notes": "Same SWR extractor as React (swr is RN-compatible): useSWR/useSWRMutation/useSWRInfinite surface as USES_HOOK; enclosing component/hook decorated swr=true + swr_hooks + swr_keys (literal keys). Decorate-only (#2839).",
+            "verified_at": "2026-05-29"
           },
           "tanstack_query_extraction": {
             "status": "full",
