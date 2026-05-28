@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # python
 
-**Frameworks**: 20 · **Tools**: 15 · **ORMs**: 17 · **Other**: 3
+**Frameworks**: 21 · **Tools**: 15 · **ORMs**: 17 · **Other**: 3
 
 Back to [summary](../summary.md).
 
@@ -13,11 +13,9 @@ Back to [summary](../summary.md).
 | Name | Routing | Auth | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
 | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ✅ 1/2 | — 0/1 | ⚠️ 5/6 | — 0/1 | |
 | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
 | [Django](../detail/lang.python.framework.django.md) | ✅ 2/2 | ⚠️ 0/1 | ⚠️ 5/6 | ⚠️ 0/1 | |
 | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 2/2 | ✅ 1/1 | ⚠️ 7/20 | ❌ 0/3 | |
-| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ⚠️ 0/2 | — 0/1 | ⚠️ 5/6 | — 0/1 | |
 | [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
 | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 2/2 | ⚠️ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
 | [Flask](../detail/lang.python.framework.flask.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
@@ -38,6 +36,15 @@ Back to [summary](../summary.md).
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 0/3 | |
+
+
+### Task Queue
+
+| Name | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|
+| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ❌ 0/1 | ❌ 5/21 | ❌ 4/6 | |
+| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | ❌ 0/1 | ❌ 0/21 | ❌ 0/6 | |
 
 
 ## Tools

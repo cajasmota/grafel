@@ -50,7 +50,7 @@ categories:
     capabilities: [call_line_precision, discriminates_on, navigates_to, core_extraction, import_resolution_quality, db_effect, fs_effect, http_effect]
   http_framework:
     capabilities: [endpoint_synthesis, handler_attribution, auth_coverage, middleware_coverage]
-    subcategory_order: [http_backend, jvm_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration]
+    subcategory_order: [http_backend, jvm_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration, task_queue]
   orm:
     capabilities: [model_extraction, query_attribution, migration_parsing]
   message_broker:
@@ -477,3 +477,49 @@ subcategories:
         keys: [chain_composition, tool_use_detection]
       - name: Tracking
         keys: []
+
+  task_queue:
+    display: "Task Queue"
+    parent_category: http_framework
+    capabilities:
+      - task_extraction
+      - task_routing
+      - schedule_extraction
+      - broker_binding
+      - result_backend_binding
+      - retry_policy_extraction
+      - tests_linkage
+      - constant_propagation
+      - env_fallback_recognition
+      - import_resolution_quality
+      - confidence_overlay
+      - reachability_analysis
+      - dead_code_detection
+      - db_effect
+      - http_effect
+      - fs_effect
+      - mutation_effect
+      - request_shape_extraction
+      - response_shape_extraction
+      - schema_drift_detection
+      - taint_source_detection
+      - taint_sink_detection
+      - sanitizer_recognition
+      - vulnerability_finding
+      - pure_function_tagging
+      - module_cycle_detection
+      - def_use_chain_extraction
+      - template_pattern_catalog
+    groups:
+      - name: Tasks
+        keys: [task_extraction, task_routing]
+      - name: Schedule
+        keys: [schedule_extraction]
+      - name: Broker
+        keys: [broker_binding, result_backend_binding]
+      - name: Reliability
+        keys: [retry_policy_extraction]
+      - name: Testing
+        keys: [tests_linkage]
+      - name: Substrate
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, template_pattern_catalog]

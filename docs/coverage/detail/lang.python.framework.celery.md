@@ -5,66 +5,69 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Subcategory:** Backend HTTP
-- **Capability cells:** 10
+- **Subcategory:** Task Queue
+- **Capability cells:** 28
 
 ## Capabilities
 
 
-### Routing
+### Tasks
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| Endpoint synthesis | — `not_applicable` | — | — | — | — | — |
-| Handler attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/celery.yaml`<br>`internal/extractors/python/celery.go` | — |
+| Task extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/python/frameworks/celery.yaml`<br>`internal/extractors/python/celery.go` | — |
+| Task routing | ✅ `full` | `2026-05-28` | — | backfill:dictionary-completeness | `internal/custom/python/celery.go`<br>`internal/extractors/python/celery.go` | — |
 
-### Auth
-
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Auth coverage | — `not_applicable` | — | — | — | — | — |
-
-### Validation
+### Schedule
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
+| Schedule extraction | ✅ `full` | `2026-05-28` | — | backfill:dictionary-completeness | `internal/custom/python/celery.go`<br>`internal/engine/scheduled_jobs_edges.go` | — |
 
-### Middleware
-
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| Middleware coverage | — `not_applicable` | — | — | — | — | — |
-
-### Type System
+### Broker
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
+| Broker binding | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Result backend binding | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+
+### Reliability
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| Retry policy extraction | ✅ `full` | `2026-05-28` | — | backfill:dictionary-completeness | `internal/extractors/python/celery.go` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-
-### Observability
-
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-
-### Data
-
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Tests linkage | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
+| Confidence overlay | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| DB effect | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| Fs effect | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 | Import resolution quality | ⚠️ `partial` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| Module cycle detection | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
+| Sanitizer recognition | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
+| Taint sink detection | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Taint source detection | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | ❌ `missing` | — | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

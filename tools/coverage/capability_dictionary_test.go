@@ -50,7 +50,7 @@ func TestLoadCapabilityDictionaryFromDisk(t *testing.T) {
 	}
 	// Subcategory render order — http_framework subcategories must
 	// follow the explicit subcategory_order from the dictionary.
-	wantOrder := []string{"http_backend", "jvm_backend", "ui_frontend", "meta_framework", "mobile", "desktop", "rpc_framework", "static_site", "ai_integration"}
+	wantOrder := []string{"http_backend", "jvm_backend", "ui_frontend", "meta_framework", "mobile", "desktop", "rpc_framework", "static_site", "ai_integration", "task_queue"}
 	if got := d.SubcategoriesByCategory("http_framework"); !reflect.DeepEqual(got, wantOrder) {
 		t.Errorf("SubcategoriesByCategory(http_framework) = %v, want %v", got, wantOrder)
 	}

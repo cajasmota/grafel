@@ -20430,45 +20430,110 @@
     {
       "id": "lang.python.framework.celery",
       "category": "http_framework",
-      "subcategory": "http_backend",
+      "subcategory": "task_queue",
       "language": "python",
       "label": "Celery (task queue)",
       "capabilities": {
-        "Routing": {
-          "endpoint_synthesis": {
-            "status": "not_applicable"
-          },
-          "handler_attribution": {
+        "Tasks": {
+          "task_extraction": {
             "status": "full",
             "cites": ["internal/engine/rules/python/frameworks/celery.yaml","internal/extractors/python/celery.go"],
             "verified_at": "2026-05-28"
+          },
+          "task_routing": {
+            "status": "full",
+            "cites": ["internal/custom/python/celery.go","internal/extractors/python/celery.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-28"
           }
         },
-        "Auth": {
-          "auth_coverage": {
-            "status": "not_applicable"
+        "Schedule": {
+          "schedule_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/python/celery.go","internal/engine/scheduled_jobs_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-28"
           }
         },
-        "Middleware": {
-          "middleware_coverage": {
-            "status": "not_applicable"
+        "Broker": {
+          "broker_binding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "result_backend_binding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Reliability": {
+          "retry_policy_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/python/celery.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-28"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         },
         "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "import_resolution_quality": {
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -20480,10 +20545,30 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "schema_drift_detection": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }
@@ -20767,45 +20852,104 @@
     {
       "id": "lang.python.framework.dramatiq",
       "category": "http_framework",
-      "subcategory": "http_backend",
+      "subcategory": "task_queue",
       "language": "python",
       "label": "Dramatiq (task queue)",
       "capabilities": {
-        "Routing": {
-          "endpoint_synthesis": {
-            "status": "not_applicable"
-          },
-          "handler_attribution": {
+        "Tasks": {
+          "task_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/python/frameworks/dramatiq.yaml"],
+            "cites": ["internal/custom/python/dramatiq.go","internal/engine/rules/python/frameworks/dramatiq.yaml"],
             "verified_at": "2026-05-28"
+          },
+          "task_routing": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         },
-        "Auth": {
-          "auth_coverage": {
-            "status": "not_applicable"
+        "Schedule": {
+          "schedule_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         },
-        "Middleware": {
-          "middleware_coverage": {
-            "status": "not_applicable"
+        "Broker": {
+          "broker_binding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "result_backend_binding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Reliability": {
+          "retry_policy_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         },
         "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "import_resolution_quality": {
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -20817,10 +20961,30 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "schema_drift_detection": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }
@@ -21337,6 +21501,141 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.rq",
+      "category": "http_framework",
+      "subcategory": "task_queue",
+      "language": "python",
+      "label": "RQ (Redis Queue)",
+      "capabilities": {
+        "Tasks": {
+          "task_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/python/rq.go"],
+            "verified_at": "2026-05-28"
+          },
+          "task_routing": {
+            "status": "partial",
+            "cites": ["internal/custom/python/rq.go"],
+            "verified_at": "2026-05-28"
+          }
+        },
+        "Schedule": {
+          "schedule_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Broker": {
+          "broker_binding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "result_backend_binding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Reliability": {
+          "retry_policy_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }
