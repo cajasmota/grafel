@@ -10963,12 +10963,16 @@
       "framework_specific": {
         "Expo Ecosystem": {
           "eas_build_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/testdata/mobile/expo_config/eas.json"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2879",
+            "verified_at": "2026-05-29"
           },
           "expo_config_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/testdata/mobile/expo_config/app.json"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2879",
+            "verified_at": "2026-05-29"
           },
           "expo_router_specifics": {
             "status": "full",
@@ -12688,12 +12692,16 @@
         },
         "React Native CLI": {
           "metro_config_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/testdata/mobile/rn_cli/metro.config.js"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2879",
+            "verified_at": "2026-05-29"
           },
           "native_link_recognition": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/testdata/mobile/rn_cli/react-native.config.js"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2879",
+            "verified_at": "2026-05-29"
           }
         }
       }

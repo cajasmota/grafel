@@ -804,6 +804,177 @@ func TestClassify_KnownBasenames(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Mobile config — React Native CLI + Expo (issue #2879)
+// ---------------------------------------------------------------------------
+
+func TestClassify_MobileConfigs(t *testing.T) {
+	cases := []struct {
+		path    string
+		subtype string
+	}{
+		{"metro.config.js", "metro_config"},
+		{"metro.config.ts", "metro_config"},
+		{"react-native.config.js", "react_native_config"},
+		{"eas.json", "eas_config"},
+		{"app.json", "expo_config"},
+		{"app.config.js", "expo_config"},
+		{"app.config.ts", "expo_config"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			spec, ok := classify(tc.path)
+			if !ok {
+				t.Fatalf("classify(%q) returned false", tc.path)
+			}
+			if spec.subtype != tc.subtype {
+				t.Errorf("subtype=%q want %q", spec.subtype, tc.subtype)
+			}
+		})
+	}
+}
+
+// TestDiscover_MobileFixtures runs Discover over the on-disk proving fixtures
+// (testdata/mobile/**) — the dependency-free fixture corpus for #2879.
+func TestDiscover_MobileFixtures(t *testing.T) {
+	root := "testdata/mobile"
+	files := []string{
+		"rn_cli/metro.config.js",
+		"rn_cli/react-native.config.js",
+		"expo_config/eas.json",
+		"expo_config/app.json",
+	}
+	ents, rels := runDiscover(t, root, files)
+
+	// metro_config_detection
+	metro := findBySource(ents, "rn_cli/metro.config.js")
+	if metro == nil || metro.Subtype != "metro_config" {
+		t.Fatalf("metro.config.js: entity=%v", metro)
+	}
+	if metro.Kind != string(types.EntityKindConfig) {
+		t.Errorf("metro Kind=%q want SCOPE.Config", metro.Kind)
+	}
+	for _, k := range []string{"resolver", "transformer", "projectRoot", "watchFolders"} {
+		if !strings.Contains(metro.Properties["metro_keys"], k) {
+			t.Errorf("metro_keys missing %q: %q", k, metro.Properties["metro_keys"])
+		}
+	}
+
+	// native_link_recognition
+	rn := findBySource(ents, "rn_cli/react-native.config.js")
+	if rn == nil || rn.Subtype != "react_native_config" {
+		t.Fatalf("react-native.config.js: entity=%v", rn)
+	}
+	for _, m := range []string{"react-native-vector-icons", "react-native-ble-plx"} {
+		if !strings.Contains(rn.Properties["native_modules"], m) {
+			t.Errorf("native_modules missing %q: %q", m, rn.Properties["native_modules"])
+		}
+	}
+	// Nested dependency-config keys (platforms / ios) must NOT leak into the
+	// native-module list — only the depth-1 dependency package names.
+	for _, leak := range []string{"platforms", "ios"} {
+		for _, got := range strings.Split(rn.Properties["native_modules"], ",") {
+			if got == leak {
+				t.Errorf("native_modules leaked nested key %q: %q", leak, rn.Properties["native_modules"])
+			}
+		}
+	}
+	if rn.Properties["rn_platforms"] == "" {
+		t.Errorf("rn_platforms empty")
+	}
+
+	// eas_build_detection
+	eas := findBySource(ents, "expo_config/eas.json")
+	if eas == nil || eas.Subtype != "eas_config" {
+		t.Fatalf("eas.json: entity=%v", eas)
+	}
+	for _, p := range []string{"development", "preview", "production"} {
+		if !strings.Contains(eas.Properties["eas_build_profiles"], p) {
+			t.Errorf("eas_build_profiles missing %q: %q", p, eas.Properties["eas_build_profiles"])
+		}
+	}
+	if !strings.Contains(eas.Properties["eas_submit_profiles"], "production") {
+		t.Errorf("eas_submit_profiles missing production: %q", eas.Properties["eas_submit_profiles"])
+	}
+
+	// expo_config_extraction
+	expo := findBySource(ents, "expo_config/app.json")
+	if expo == nil || expo.Subtype != "expo_config" {
+		t.Fatalf("app.json: entity=%v", expo)
+	}
+	if expo.Properties["expo_name"] != "FixtureMobileApp" {
+		t.Errorf("expo_name=%q", expo.Properties["expo_name"])
+	}
+	if expo.Properties["expo_slug"] != "fixture-mobile-app" {
+		t.Errorf("expo_slug=%q", expo.Properties["expo_slug"])
+	}
+	if expo.Properties["expo_scheme"] != "fixtureapp" {
+		t.Errorf("expo_scheme=%q", expo.Properties["expo_scheme"])
+	}
+	if !strings.Contains(expo.Properties["expo_plugins"], "expo-router") ||
+		!strings.Contains(expo.Properties["expo_plugins"], "expo-build-properties") {
+		t.Errorf("expo_plugins wrong: %q", expo.Properties["expo_plugins"])
+	}
+
+	// Every emitted config gets DEPENDS_ON_CONFIG + CONFIGURES edges.
+	if len(rels) < len(files)*2 {
+		t.Errorf("expected >=%d edges, got %d", len(files)*2, len(rels))
+	}
+}
+
+// TestDiscover_ExpoAppConfigJS covers the app.config.{js,ts} (dynamic) variant,
+// which returns the Expo manifest from JS rather than JSON.
+func TestDiscover_ExpoAppConfigJS(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "app.config.ts", `import { ExpoConfig } from 'expo/config';
+
+const config: ExpoConfig = {
+  name: 'DynamicApp',
+  slug: 'dynamic-app',
+  scheme: 'dynamicapp',
+  plugins: ['expo-router', 'expo-secure-store'],
+};
+
+export default config;`)
+	ents, _ := runDiscover(t, dir, []string{"app.config.ts"})
+	e := findBySource(ents, "app.config.ts")
+	if e == nil || e.Subtype != "expo_config" {
+		t.Fatalf("app.config.ts: entity=%v", e)
+	}
+	if e.Properties["expo_name"] != "DynamicApp" {
+		t.Errorf("expo_name=%q", e.Properties["expo_name"])
+	}
+	if e.Properties["expo_slug"] != "dynamic-app" {
+		t.Errorf("expo_slug=%q", e.Properties["expo_slug"])
+	}
+	if !strings.Contains(e.Properties["expo_plugins"], "expo-router") ||
+		!strings.Contains(e.Properties["expo_plugins"], "expo-secure-store") {
+		t.Errorf("expo_plugins wrong: %q", e.Properties["expo_plugins"])
+	}
+}
+
+// TestDiscover_ExpoManifestBare covers an app.json without the "expo" wrapper.
+func TestDiscover_ExpoManifestBare(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "app.json", `{
+  "name": "BareApp",
+  "slug": "bare-app",
+  "scheme": ["bareapp", "bareapp-dev"]
+}`)
+	ents, _ := runDiscover(t, dir, []string{"app.json"})
+	e := findBySource(ents, "app.json")
+	if e == nil || e.Subtype != "expo_config" {
+		t.Fatalf("app.json: entity=%v", e)
+	}
+	if e.Properties["expo_name"] != "BareApp" {
+		t.Errorf("expo_name=%q", e.Properties["expo_name"])
+	}
+	if !strings.Contains(e.Properties["expo_scheme"], "bareapp") ||
+		!strings.Contains(e.Properties["expo_scheme"], "bareapp-dev") {
+		t.Errorf("expo_scheme wrong: %q", e.Properties["expo_scheme"])
+	}
+}
+
 func TestClassify_IgnoredFiles(t *testing.T) {
 	for _, p := range []string{
 		"src/main.go",

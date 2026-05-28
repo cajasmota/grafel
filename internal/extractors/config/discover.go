@@ -80,6 +80,14 @@ const (
 	formatTestRunnerJSON configKind = "test_runner_json"
 	formatTestRunnerJS   configKind = "test_runner_js"
 	formatTestRunnerYAML configKind = "test_runner_yaml"
+
+	// Mobile (React Native CLI + Expo) config families (issue #2879). JSON
+	// configs (eas.json, app.json) are JSONC-tolerant and mined for build
+	// profiles / the Expo manifest; JS configs (metro.config.js,
+	// react-native.config.js, app.config.{js,ts}) are mined with permissive
+	// regexes — no JS evaluation, just stable structural signal.
+	formatMobileJSON configKind = "mobile_json"
+	formatMobileJS   configKind = "mobile_js"
 )
 
 // configSpec describes one recognised config file. Subtype is the value
@@ -136,6 +144,13 @@ var exactBasenames = map[string]configSpec{
 	"jasmine.json":   {"jasmine_config", formatTestRunnerJSON},
 	".taprc":         {"tap_config", formatTestRunnerYAML},
 
+	// Mobile — React Native CLI + Expo (issue #2879). eas.json carries the
+	// EAS Build/Submit profiles; app.json is the Expo manifest (the "expo"
+	// block). metro.config / react-native.config / app.config.{js,ts} are JS
+	// and matched via regex below.
+	"eas.json": {"eas_config", formatMobileJSON},
+	"app.json": {"expo_config", formatMobileJSON},
+
 	"go.mod": {"go_module", formatGoMod},
 	"go.sum": {"go_sum", formatGoMod}, // existence only
 
@@ -179,6 +194,13 @@ var (
 	playwrightConfigRe = regexp.MustCompile(`^playwright\.config\.(js|ts|mjs|cjs)$`)
 	mocharcJSRe        = regexp.MustCompile(`^\.mocharc\.(js|cjs)$`)
 	avaConfigRe        = regexp.MustCompile(`^ava\.config\.(js|cjs|mjs)$`)
+
+	// Mobile JS config variants (issue #2879). Matched as JS source so the
+	// mobile parser can mine the metro resolver/transformer, react-native.config
+	// native-module links, and the Expo app.config manifest.
+	metroConfigRe   = regexp.MustCompile(`^metro\.config\.(js|ts|mjs|cjs)$`)
+	rnConfigRe      = regexp.MustCompile(`^react-native\.config\.(js|ts|mjs|cjs)$`)
+	expoAppConfigRe = regexp.MustCompile(`^app\.config\.(js|ts|mjs|cjs)$`)
 )
 
 // classify returns the configSpec for filePath, or false when the file is
@@ -219,6 +241,12 @@ func classify(relPath string) (configSpec, bool) {
 		return configSpec{"eslint_config", formatJSConfig}, true
 	case prettierConfigRe.MatchString(base):
 		return configSpec{"prettier_config", formatJSConfig}, true
+	case metroConfigRe.MatchString(base):
+		return configSpec{"metro_config", formatMobileJS}, true
+	case rnConfigRe.MatchString(base):
+		return configSpec{"react_native_config", formatMobileJS}, true
+	case expoAppConfigRe.MatchString(base):
+		return configSpec{"expo_config", formatMobileJS}, true
 	}
 	return configSpec{}, false
 }
@@ -376,9 +404,9 @@ func languageForFormat(f configKind) string {
 		return "env"
 	case formatGradle:
 		return "groovy"
-	case formatJSConfig, formatBundlerJS, formatTestRunnerJS:
+	case formatJSConfig, formatBundlerJS, formatTestRunnerJS, formatMobileJS:
 		return "javascript"
-	case formatBundlerJSON, formatTestRunnerJSON:
+	case formatBundlerJSON, formatTestRunnerJSON, formatMobileJSON:
 		return "json"
 	case formatTestRunnerYAML:
 		return "yaml"
@@ -429,6 +457,10 @@ func parseInto(props map[string]string, spec configSpec, content []byte) {
 		parseTestRunnerJS(props, spec, content)
 	case formatTestRunnerYAML:
 		parseTestRunnerYAML(props, spec, content)
+	case formatMobileJSON:
+		parseMobileJSON(props, spec, content)
+	case formatMobileJS:
+		parseMobileJS(props, spec, content)
 	}
 }
 
@@ -1473,6 +1505,331 @@ func parseTestRunnerYAML(props map[string]string, spec configSpec, content []byt
 	if len(deps) > 0 {
 		props["spec_dependencies"] = capJoin(deps)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Mobile config parsers — React Native CLI + Expo (issue #2879)
+//
+// These power the framework_specific mobile idioms:
+//   - metro_config_detection: metro.config.{js,ts} resolver/transformer block
+//       → Properties["metro_keys"] (resolver/transformer/projectRoot/...)
+//   - native_link_recognition: react-native.config.js native-module links
+//       → Properties["native_modules"] (dependencies.* keys = autolinked deps)
+//   - eas_build_detection: eas.json EAS Build/Submit profiles
+//       → Properties["eas_build_profiles"] / Properties["eas_submit_profiles"]
+//   - expo_config_extraction: app.json / app.config.{js,ts} Expo manifest
+//       → Properties["expo_name"|"expo_slug"|"expo_scheme"|"expo_plugins"]
+//
+// JSON configs (eas.json, app.json) are JSONC-tolerant. JS configs
+// (metro.config.js, react-native.config.js, app.config.{js,ts}) are mined with
+// permissive regexes — no JS evaluation, just stable structural signal.
+// ---------------------------------------------------------------------------
+
+var (
+	// metroSectionRE finds the top-level metro config sections we care about
+	// (resolver/transformer/serializer/server/watchFolders/projectRoot).
+	metroSectionRE = regexp.MustCompile(`(?m)\b(resolver|transformer|serializer|server|watchFolders|projectRoot|maxWorkers|cacheStores)\s*:`)
+)
+
+func parseMobileJSON(props map[string]string, spec configSpec, content []byte) {
+	clean := stripJSONC(content)
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(clean, &generic); err != nil {
+		return
+	}
+	props["keys_top_level"] = joinSortedKeys(generic)
+
+	switch spec.subtype {
+	case "eas_config":
+		parseEASConfig(props, clean)
+	case "expo_config":
+		parseExpoManifest(props, clean)
+	}
+}
+
+// parseEASConfig mines eas.json. EAS Build profiles live under "build"
+// (development/preview/production/...), submit profiles under "submit"; the
+// "cli" block carries the appVersionSource / requireCommit policy.
+func parseEASConfig(props map[string]string, content []byte) {
+	var eas struct {
+		CLI    json.RawMessage            `json:"cli"`
+		Build  map[string]json.RawMessage `json:"build"`
+		Submit map[string]json.RawMessage `json:"submit"`
+	}
+	if err := json.Unmarshal(content, &eas); err != nil {
+		return
+	}
+	if len(eas.Build) > 0 {
+		props["eas_build_profiles"] = joinSortedKeys(eas.Build)
+	}
+	if len(eas.Submit) > 0 {
+		props["eas_submit_profiles"] = joinSortedKeys(eas.Submit)
+	}
+	if len(eas.CLI) > 0 {
+		var cli map[string]json.RawMessage
+		if json.Unmarshal(eas.CLI, &cli) == nil && len(cli) > 0 {
+			props["eas_cli_keys"] = joinSortedKeys(cli)
+		}
+	}
+}
+
+// parseExpoManifest mines app.json / the JSON-decodable head of an Expo
+// manifest. The manifest is conventionally wrapped in an "expo" key, but a
+// bare manifest (no wrapper) is also accepted.
+func parseExpoManifest(props map[string]string, content []byte) {
+	var wrapper struct {
+		Expo json.RawMessage `json:"expo"`
+	}
+	manifest := content
+	if json.Unmarshal(content, &wrapper) == nil && len(wrapper.Expo) > 0 {
+		manifest = wrapper.Expo
+	}
+	var expo struct {
+		Name    string          `json:"name"`
+		Slug    string          `json:"slug"`
+		Version string          `json:"version"`
+		Scheme  json.RawMessage `json:"scheme"`
+		Plugins json.RawMessage `json:"plugins"`
+	}
+	if err := json.Unmarshal(manifest, &expo); err != nil {
+		return
+	}
+	if expo.Name != "" {
+		props["expo_name"] = expo.Name
+	}
+	if expo.Slug != "" {
+		props["expo_slug"] = expo.Slug
+	}
+	if expo.Version != "" {
+		props["expo_version"] = expo.Version
+	}
+	if scheme := decodeStringOrArray(expo.Scheme); len(scheme) > 0 {
+		sort.Strings(scheme)
+		props["expo_scheme"] = capJoin(scheme)
+	}
+	if plugins := decodeExpoPlugins(expo.Plugins); len(plugins) > 0 {
+		sort.Strings(plugins)
+		props["expo_plugins"] = capJoin(plugins)
+	}
+}
+
+// decodeStringOrArray accepts either "x" or ["x","y"] and returns the values.
+func decodeStringOrArray(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		if s == "" {
+			return nil
+		}
+		return []string{s}
+	}
+	var arr []string
+	if json.Unmarshal(raw, &arr) == nil {
+		return arr
+	}
+	return nil
+}
+
+// decodeExpoPlugins accepts the Expo "plugins" array, whose members are either
+// a bare plugin name ("expo-router") or a [name, config] tuple. The plugin
+// name (first element / scalar) is the stable signal.
+func decodeExpoPlugins(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return nil
+	}
+	var names []string
+	for _, item := range items {
+		var name string
+		if json.Unmarshal(item, &name) == nil && name != "" {
+			names = append(names, name)
+			continue
+		}
+		var tuple []json.RawMessage
+		if json.Unmarshal(item, &tuple) == nil && len(tuple) > 0 {
+			if json.Unmarshal(tuple[0], &name) == nil && name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
+
+func parseMobileJS(props map[string]string, spec configSpec, content []byte) {
+	parseJSConfig(props, content) // keep top-level export hints
+	src := string(content)
+
+	switch spec.subtype {
+	case "metro_config":
+		var sections []string
+		for _, m := range metroSectionRE.FindAllStringSubmatch(src, -1) {
+			sections = append(sections, m[1])
+		}
+		sort.Strings(sections)
+		sections = dedup(sections)
+		if len(sections) > 0 {
+			props["metro_keys"] = capJoin(sections)
+		}
+	case "react_native_config":
+		// react-native.config.js declares autolinked native modules under
+		// `dependencies: { 'pkg': { ... } }`. We mine the dependency package
+		// names (the native-module link signal) and note project platforms.
+		var mods []string
+		if block := sliceObjectValue(src, "dependencies"); block != "" {
+			for _, k := range topLevelObjectKeys(block) {
+				mods = append(mods, strings.Trim(k, `'"`))
+			}
+		}
+		sort.Strings(mods)
+		mods = dedup(mods)
+		if len(mods) > 0 {
+			props["native_modules"] = capJoin(mods)
+		}
+		var platforms []string
+		for _, p := range []string{"ios", "android"} {
+			if strings.Contains(src, p+":") || strings.Contains(src, `"`+p+`"`) || strings.Contains(src, "'"+p+"'") {
+				platforms = append(platforms, p)
+			}
+		}
+		if len(platforms) > 0 {
+			props["rn_platforms"] = capJoin(platforms)
+		}
+	case "expo_config":
+		// app.config.{js,ts} returns the manifest from JS. Mine the manifest
+		// fields with permissive regexes (no JS evaluation).
+		if name := jsStringField(src, "name"); name != "" {
+			props["expo_name"] = name
+		}
+		if slug := jsStringField(src, "slug"); slug != "" {
+			props["expo_slug"] = slug
+		}
+		if scheme := jsStringField(src, "scheme"); scheme != "" {
+			props["expo_scheme"] = scheme
+		}
+		var plugins []string
+		if block := sliceArrayValue(src, "plugins"); block != "" {
+			for _, sm := range bundlerStringRE.FindAllStringSubmatch(block, -1) {
+				plugins = append(plugins, sm[1])
+			}
+		}
+		sort.Strings(plugins)
+		plugins = dedup(plugins)
+		if len(plugins) > 0 {
+			props["expo_plugins"] = capJoin(plugins)
+		}
+	}
+}
+
+// objectKeyRE matches an object-literal key (quoted or bare) followed by a
+// colon: `'react-native-foo':` or `myModule:`.
+var objectKeyRE = regexp.MustCompile(`(['"][^'"]+['"]|[A-Za-z_$][\w$.\-]*)\s*:`)
+
+// topLevelObjectKeys returns the depth-1 keys of the object literal `block`
+// (which must start with `{`). Nested object/array keys are skipped so that a
+// `dependencies: { 'pkg': { platforms: { ios: null } } }` block yields only
+// "pkg", not the nested "platforms"/"ios" keys. Permissive; strings are
+// skipped so a colon inside a string value is not mistaken for a key.
+func topLevelObjectKeys(block string) []string {
+	var keys []string
+	depth := 0
+	inStr := byte(0)
+	for i := 0; i < len(block); i++ {
+		c := block[i]
+		if inStr != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == inStr {
+				inStr = 0
+			}
+			continue
+		}
+		// At depth 1 (immediately inside the outer object), a key is the token
+		// preceding a colon. Match it before the quote-as-string-start branch
+		// so quoted keys ('react-native-foo':) are captured, not treated as a
+		// bare string value.
+		if depth == 1 && (c == '"' || c == '\'' || isKeyStart(c)) {
+			if m := objectKeyRE.FindStringSubmatchIndex(block[i:]); m != nil && m[0] == 0 {
+				keys = append(keys, block[i+m[2]:i+m[3]])
+				i += m[1] - 1
+				continue
+			}
+		}
+		switch c {
+		case '"', '\'', '`':
+			inStr = c
+		case '{', '[':
+			depth++
+		case '}', ']':
+			depth--
+		}
+	}
+	return keys
+}
+
+func isKeyStart(c byte) bool {
+	return c == '_' || c == '$' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// jsStringField extracts the first `key: 'value'` / `key: "value"` scalar for
+// the given key from a JS source string. Returns "" when absent or non-scalar.
+func jsStringField(src, key string) string {
+	re := regexp.MustCompile(`(?m)\b` + regexp.QuoteMeta(key) + `\s*:\s*['"]([^'"]+)['"]`)
+	if m := re.FindStringSubmatch(src); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// sliceObjectValue returns the brace-balanced object literal that follows
+// `key:` in src, or "" if not found. Permissive — handles nested braces.
+func sliceObjectValue(src, key string) string {
+	return sliceBalanced(src, key, '{', '}')
+}
+
+// sliceArrayValue returns the bracket-balanced array literal that follows
+// `key:` in src, or "" if not found.
+func sliceArrayValue(src, key string) string {
+	return sliceBalanced(src, key, '[', ']')
+}
+
+func sliceBalanced(src, key string, open, close byte) string {
+	keyRE := regexp.MustCompile(`(?m)\b` + regexp.QuoteMeta(key) + `\s*:\s*`)
+	loc := keyRE.FindStringIndex(src)
+	if loc == nil {
+		return ""
+	}
+	i := loc[1]
+	for i < len(src) && src[i] != open {
+		if src[i] != ' ' && src[i] != '\t' && src[i] != '\n' && src[i] != '\r' {
+			return "" // value is not the expected literal type
+		}
+		i++
+	}
+	if i >= len(src) {
+		return ""
+	}
+	depth := 0
+	start := i
+	for ; i < len(src); i++ {
+		switch src[i] {
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return src[start : i+1]
+			}
+		}
+	}
+	return ""
 }
 
 type yamlBlock struct {

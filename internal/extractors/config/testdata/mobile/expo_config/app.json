@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "FixtureMobileApp",
+    "slug": "fixture-mobile-app",
+    "version": "1.0.0",
+    "scheme": "fixtureapp",
+    "platforms": ["ios", "android"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-build-properties",
+        { "ios": { "useFrameworks": "static" } }
+      ]
+    ]
+  }
+}
