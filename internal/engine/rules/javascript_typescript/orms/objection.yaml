@@ -1,0 +1,26 @@
+orms_and_database:
+  name: objection
+  npm_packages:
+  - objection
+  config_files:
+  - knexfile.js
+  - knexfile.ts
+  detection_signals:
+    package_json_deps:
+    - objection
+    import_patterns:
+    - from 'objection'
+    - require('objection')
+  code_patterns:
+  - extends Model
+  - static get tableName
+  - static get jsonSchema
+  - static get relationMappings
+  notes: Active-record style ORM built on top of Knex; models subclass Model and
+    declare tableName/jsonSchema/relationMappings. Migrations reuse the Knex schema
+    builder.
+  custom_extractors:
+  - module: archigraph.internal.custom.javascript.objection
+    callable: Extract
+    frameworks:
+    - objection

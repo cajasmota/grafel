@@ -13120,7 +13120,9 @@
       "label": "Drizzle",
       "capabilities": {
         "migration_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/javascript/drizzle.go","internal/custom/javascript/extractors_coverage_test.go"],
+          "verified_at": "2026-05-28"
         },
         "model_extraction": {
           "status": "full",
@@ -13141,10 +13143,13 @@
       "label": "Knex (query builder)",
       "capabilities": {
         "migration_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/knex.go"],
+          "verified_at": "2026-05-28"
         },
         "model_extraction": {
-          "status": "not_applicable"
+          "status": "not_applicable",
+          "notes": "Knex is a SQL query builder, not an ORM — it has no model/entity layer to extract. Persistent model_extraction belongs to Objection.js, which layers Active-Record models on top of Knex (see lang.jsts.orm.objection)."
         },
         "query_attribution": {
           "status": "partial",
@@ -13160,11 +13165,13 @@
       "label": "MikroORM",
       "capabilities": {
         "migration_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mikroorm.go"],
+          "verified_at": "2026-05-28"
         },
         "model_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/orms/mikro_orm.yaml"],
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mikroorm.go","internal/engine/rules/javascript_typescript/orms/mikro_orm.yaml"],
           "verified_at": "2026-05-28"
         },
         "query_attribution": {
@@ -13202,13 +13209,27 @@
       "label": "Objection.js",
       "capabilities": {
         "migration_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go"],
+          "verified_at": "2026-05-28"
         },
         "model_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go","internal/engine/rules/javascript_typescript/orms/objection.yaml"],
+          "verified_at": "2026-05-28"
         },
         "query_attribution": {
           "status": "missing"
+        }
+      },
+      "framework_specific": {
+        "Objection Relation Graph": {
+          "relation_graph_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/objection.go","internal/custom/javascript/extractors_coverage_test.go"],
+            "verified_at": "2026-05-28",
+            "notes": "Objection's bespoke `static relationMappings` declaration (BelongsToOneRelation / HasManyRelation / ManyToManyRelation / HasOneThroughRelation) drives its eager-load + nested-mutation graph API (withGraphFetched / upsertGraph). No standard ORM cell (model_extraction / query_attribution / migration_parsing) captures this relation-graph topology, so it is recorded as a framework-specific capability. Each relation entry is emitted as a SCOPE.Component relation entity tagged with its relation_type."
+          }
         }
       }
     },
@@ -13219,8 +13240,8 @@
       "label": "Prisma",
       "capabilities": {
         "migration_parsing": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/prisma/_manifest.yaml"],
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/prisma.go"],
           "verified_at": "2026-05-28"
         },
         "model_extraction": {
@@ -13242,7 +13263,9 @@
       "label": "Sequelize",
       "capabilities": {
         "migration_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/sequelize.go"],
+          "verified_at": "2026-05-28"
         },
         "model_extraction": {
           "status": "full",
@@ -13263,7 +13286,9 @@
       "label": "TypeORM",
       "capabilities": {
         "migration_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/typeorm.go"],
+          "verified_at": "2026-05-28"
         },
         "model_extraction": {
           "status": "full",

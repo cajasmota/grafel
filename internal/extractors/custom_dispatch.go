@@ -43,6 +43,13 @@ var customPrefixForLanguage = map[string]string{
 	"go":         "custom_go_",
 	"javascript": "custom_js_",
 	"typescript": "custom_js_", // TS reuses the JS framework extractor set
+	// Prisma schema files (.prisma) and raw SQL migration files (.sql) are
+	// classified as their own languages but carry ORM model/migration content
+	// the JS custom extractors parse (Prisma model DSL, Prisma/Drizzle
+	// migration SQL). Route them to the JS extractor set; each extractor
+	// path/language-gates internally and no-ops on files it does not own.
+	"prisma": "custom_js_",
+	"sql":    "custom_js_",
 	"java":       "custom_java_",
 	"kotlin":     "custom_kotlin_",
 	"scala":      "custom_scala_",

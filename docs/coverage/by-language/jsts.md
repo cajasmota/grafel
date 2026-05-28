@@ -112,15 +112,15 @@ Back to [summary](../summary.md).
 |---|---|---|---|---|
 | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | — | — | ⚠️ | |
 | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | — | — | ⚠️ | |
-| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ❌ | ✅ | ✅ | |
-| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ❌ | — | ⚠️ | |
-| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ❌ | ⚠️ | ⚠️ | |
+| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ✅ | ✅ | ✅ | |
+| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ | — | ⚠️ | |
+| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ✅ | ✅ | ⚠️ | |
 | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | — | — | ⚠️ | |
 | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | — | ✅ | ✅ | |
-| [Objection.js](../detail/lang.jsts.orm.objection.md) | ❌ | ❌ | ❌ | |
-| [Prisma](../detail/lang.jsts.orm.prisma.md) | ⚠️ | ✅ | ✅ | |
-| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ❌ | ✅ | ✅ | |
-| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ❌ | ✅ | ✅ | |
+| [Objection.js](../detail/lang.jsts.orm.objection.md) | ✅ | ✅ | ❌ | |
+| [Prisma](../detail/lang.jsts.orm.prisma.md) | ✅ | ✅ | ✅ | |
+| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ✅ | ✅ | ✅ | |
+| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ✅ | ✅ | ✅ | |
 | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | — | — | ⚠️ | |
 | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | — | — | ⚠️ | |
 | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | — | — | ⚠️ | |

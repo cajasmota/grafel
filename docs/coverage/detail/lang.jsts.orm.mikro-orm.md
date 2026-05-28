@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ❌ `missing` | — | — | — | — | — |
-| `model_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/mikro_orm.yaml` | — |
+| `migration_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/mikroorm.go` | — |
+| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/mikroorm.go`<br>`internal/engine/rules/javascript_typescript/orms/mikro_orm.yaml` | — |
 | `query_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/orms/mikro_orm.yaml` | — |
 
 ## Provenance

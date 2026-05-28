@@ -568,6 +568,243 @@ func TestFastifyInstance(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// ORM migration_parsing — issue #2861
+// ---------------------------------------------------------------------------
+
+func TestTypeORMMigrationOps(t *testing.T) {
+	src := `
+export class CreateUsers1700000000000 implements MigrationInterface {
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.createTable(new Table({ name: "users", columns: [] }))
+    await queryRunner.addColumn("users", new TableColumn({ name: "email" }))
+    await queryRunner.createIndex("users", new TableIndex({ name: "idx_email" }))
+  }
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.dropColumn("users", "email")
+    await queryRunner.dropTable("users")
+  }
+}
+`
+	ents := extract(t, "custom_js_typeorm", fi("1700-create-users.ts", "typescript", src))
+	if !containsSubtype(ents, "migration") {
+		t.Error("expected migration class entity")
+	}
+	for _, st := range []string{"create_table", "add_column", "create_index", "drop_column", "drop_table"} {
+		if !containsSubtype(ents, st) {
+			t.Errorf("expected migration op subtype %q", st)
+		}
+	}
+	if !containsEntity(ents, "SCOPE.Evolution", "create_table:users") {
+		t.Error("expected create_table:users evolution entity with table name")
+	}
+}
+
+func TestSequelizeMigrationOps(t *testing.T) {
+	src := `
+module.exports = {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.createTable('Users', { id: { type: Sequelize.INTEGER } })
+    await queryInterface.addColumn('Users', 'email', { type: Sequelize.STRING })
+    await queryInterface.addIndex('Users', ['email'])
+  },
+  async down(queryInterface) {
+    await queryInterface.removeColumn('Users', 'email')
+    await queryInterface.dropTable('Users')
+  }
+}
+`
+	ents := extract(t, "custom_js_sequelize", fi("20240101-users.js", "javascript", src))
+	for _, st := range []string{"create_table", "add_column", "create_index", "drop_column", "drop_table"} {
+		if !containsSubtype(ents, st) {
+			t.Errorf("expected migration op subtype %q", st)
+		}
+	}
+	if !containsEntity(ents, "SCOPE.Evolution", "create_table:Users") {
+		t.Error("expected create_table:Users evolution entity")
+	}
+}
+
+func TestPrismaMigrationSQL(t *testing.T) {
+	src := `
+CREATE TABLE "User" (
+    "id" SERIAL NOT NULL,
+    "email" TEXT NOT NULL
+);
+ALTER TABLE "User" ADD COLUMN "name" TEXT;
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+`
+	ents := extract(t, "custom_js_prisma", fi("prisma/migrations/20240101_init/migration.sql", "sql", src))
+	if !containsEntity(ents, "SCOPE.Evolution", "create_table:User") {
+		t.Error("expected create_table:User from prisma migration.sql")
+	}
+	if !containsSubtype(ents, "add_column") {
+		t.Error("expected add_column from ALTER TABLE")
+	}
+	if !containsSubtype(ents, "create_index") {
+		t.Error("expected create_index from CREATE UNIQUE INDEX")
+	}
+}
+
+func TestPrismaMigrationSQLNotTriggeredOnAppCode(t *testing.T) {
+	// A regular TS file with an embedded SQL string must NOT yield migration ops.
+	src := "const q = `CREATE TABLE foo (id int)`"
+	ents := extract(t, "custom_js_prisma", fi("src/db.ts", "typescript", src))
+	if containsSubtype(ents, "create_table") {
+		t.Error("CREATE TABLE in app TS should not be a prisma migration op")
+	}
+}
+
+func TestDrizzleModel(t *testing.T) {
+	src := `
+import { pgTable, serial, text } from 'drizzle-orm/pg-core'
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+})
+export const usersRelations = relations(users, ({ many }) => ({ posts: many(posts) }))
+`
+	ents := extract(t, "custom_js_drizzle", fi("schema.ts", "typescript", src))
+	if !containsEntity(ents, "SCOPE.Schema", "users") {
+		t.Error("expected users table model")
+	}
+	if !containsSubtype(ents, "relation") {
+		t.Error("expected drizzle relations entity")
+	}
+}
+
+func TestDrizzleMigrationSQL(t *testing.T) {
+	src := `
+CREATE TABLE "users" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"email" text NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "name" text;
+`
+	ents := extract(t, "custom_js_drizzle", fi("drizzle/migrations/0000_init.sql", "sql", src))
+	if !containsEntity(ents, "SCOPE.Evolution", "create_table:users") {
+		t.Error("expected create_table:users from drizzle migration")
+	}
+	if !containsSubtype(ents, "add_column") {
+		t.Error("expected add_column from drizzle ALTER TABLE")
+	}
+}
+
+func TestKnexMigration(t *testing.T) {
+	src := `
+exports.up = function(knex) {
+  return knex.schema.createTable('users', (t) => {
+    t.increments('id')
+    t.string('email')
+    t.index(['email'])
+  })
+}
+exports.down = function(knex) {
+  return knex.schema.dropTable('users')
+}
+`
+	ents := extract(t, "custom_js_knex", fi("20240101_users.js", "javascript", src))
+	if !containsSubtype(ents, "migration") {
+		t.Error("expected migration up/down entity")
+	}
+	if !containsEntity(ents, "SCOPE.Evolution", "create_table:users") {
+		t.Error("expected create_table:users")
+	}
+	if !containsSubtype(ents, "drop_table") {
+		t.Error("expected drop_table")
+	}
+	if !containsSubtype(ents, "add_column") {
+		t.Error("expected add_column from column builders")
+	}
+}
+
+func TestMikroORMModelAndMigration(t *testing.T) {
+	model := `
+@Entity()
+export class User {
+  @PrimaryKey()
+  id!: number
+
+  @Property()
+  email!: string
+
+  @ManyToOne(() => Org)
+  org!: Org
+}
+`
+	ents := extract(t, "custom_js_mikroorm", fi("user.entity.ts", "typescript", model))
+	if !containsEntity(ents, "SCOPE.Schema", "User") {
+		t.Error("expected User entity")
+	}
+	if !containsSubtype(ents, "field") {
+		t.Error("expected @Property field entity")
+	}
+	if !containsSubtype(ents, "relation") {
+		t.Error("expected @ManyToOne relation entity")
+	}
+
+	mig := `
+import { Migration } from '@mikro-orm/migrations'
+export class Migration20240101 extends Migration {
+  async up(): Promise<void> {
+    this.addSql('CREATE TABLE "user" ("id" serial primary key, "email" varchar);')
+    this.addSql('ALTER TABLE "user" ADD COLUMN "name" varchar;')
+  }
+}
+`
+	ments := extract(t, "custom_js_mikroorm", fi("Migration20240101.ts", "typescript", mig))
+	if !containsSubtype(ments, "migration") {
+		t.Error("expected migration class entity")
+	}
+	if !containsEntity(ments, "SCOPE.Evolution", "create_table:user") {
+		t.Error("expected create_table:user from addSql")
+	}
+	if !containsSubtype(ments, "add_column") {
+		t.Error("expected add_column from addSql ALTER TABLE")
+	}
+}
+
+func TestObjectionModelAndMigration(t *testing.T) {
+	model := `
+const { Model } = require('objection')
+class Person extends Model {
+  static get tableName() { return 'persons' }
+  static get jsonSchema() { return { type: 'object', properties: { name: { type: 'string' } } } }
+  static get relationMappings() {
+    return {
+      pets: { relation: Model.HasManyRelation, modelClass: Pet },
+    }
+  }
+}
+`
+	ents := extract(t, "custom_js_objection", fi("person.model.js", "javascript", model))
+	if !containsEntity(ents, "SCOPE.Schema", "Person") {
+		t.Error("expected Person model")
+	}
+	if !containsSubtype(ents, "json_schema") {
+		t.Error("expected jsonSchema entity")
+	}
+	if !containsSubtype(ents, "relation_mappings") {
+		t.Error("expected relationMappings entity")
+	}
+	if !containsSubtype(ents, "relation") {
+		t.Error("expected individual relation entity")
+	}
+
+	mig := `
+exports.up = (knex) => knex.schema.createTable('persons', (t) => { t.increments('id') })
+exports.down = (knex) => knex.schema.dropTable('persons')
+`
+	ments := extract(t, "custom_js_objection", fi("20240101_persons.js", "javascript", mig))
+	if !containsEntity(ments, "SCOPE.Evolution", "create_table:persons") {
+		t.Error("expected create_table:persons from objection/knex migration")
+	}
+	if !containsSubtype(ments, "drop_table") {
+		t.Error("expected drop_table")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Wrong language guard — one per key extractor
 // ---------------------------------------------------------------------------
 
