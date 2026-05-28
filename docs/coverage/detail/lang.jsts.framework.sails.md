@@ -33,7 +33,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `middleware_coverage` | ❌ `missing` | — | — | — | — | — |
+| `middleware_coverage` | — `not_applicable` | — | — | — | — | Sails does not attach middleware to individual endpoints; its global middleware pipeline is the declarative `order` array under `middleware` in config/http.js. Covered by the framework_specific Middleware Pipeline / middleware_order_recognition cell (ParseSailsMiddlewareOrder). |
 
 ### Testing
 
@@ -62,6 +62,12 @@ Auto-generated. Back to [summary](../summary.md).
 | `schema_drift_detection` | ✅ `full` | `2026-05-27` | — | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
 
 ## Framework-specific
+
+### Middleware Pipeline
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `middleware_order_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/http_endpoint_jsts_middleware.go`<br>`internal/engine/http_endpoint_jsts_middleware_test.go`<br>`testdata/fixtures/typescript/sails_http.ts` | Sails has no per-endpoint middleware chain; its global middleware pipeline is the declarative `order` array under `middleware` in config/http.js. ParseSailsMiddlewareOrder extracts the named pipeline (fixture-proven). This is the framework_specific counterpart to the not_applicable standard middleware_coverage cell. |
 
 ### Sails Policies
 
