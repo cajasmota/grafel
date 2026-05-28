@@ -140,6 +140,12 @@ confident data for:
 - `responses` — document at least `200` and the most likely error codes.
   Shape is a compact inline TypeScript-style type string.
 - `auth` — one-sentence description of the auth requirement.
+- `effects` — the handler's transitive effect closure (#2811): any of
+  `db_read`, `db_write`, `http_out`, `fs_read`, `fs_write`, `mutation`, `env`.
+  Copy verbatim from `archigraph_endpoints(action=definitions)` (the `effects`
+  field) or `archigraph_effects(entity_id=<endpoint id>)` — both read it from
+  the effects sidecar, so you do not need to re-derive it. Lets the Paths panel
+  answer "which endpoints write to the DB / touch the filesystem / mutate state".
 - `tables_touched` — list DB tables or ORM models that this handler reads or writes.
 - `parameters_explained` — prose expanding on non-obvious parameter semantics.
 - `response_shapes_explained` — prose describing nested object structures,

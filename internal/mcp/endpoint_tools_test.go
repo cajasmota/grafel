@@ -3,6 +3,8 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -279,6 +281,53 @@ func TestEndpointDefinitions_ReturnsDefinitionsOnly(t *testing.T) {
 	if !kinds["http_endpoint_definition"] {
 		t.Error("expected http_endpoint_definition kind in definitions")
 	}
+}
+
+// TestEndpointDefinitions_SurfacesEffects verifies #2811: endpoint definitions
+// carry the handler effect closure from the on-disk effects sidecar, and the
+// `effect` filter narrows to endpoints touching a given effect.
+func TestEndpointDefinitions_SurfacesEffects(t *testing.T) {
+	srv := newEndpointServer(t)
+	// Redirect HOME so effectsSidecarPath resolves into the temp dir.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".archigraph", "groups")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// ep_legacy (repo1) → [db_write, mutation]; ep_def stays pure.
+	sidecar := `{"version":1,"method":"effect_propagation","entries":[` +
+		`{"entity_id":"repo1::ep_legacy","effects":["db_write","mutation"],"confidences":{"db_write":0.9,"mutation":0.8},"source":"endpoint"}` +
+		`]}`
+	if err := os.WriteFile(filepath.Join(dir, "test-links-effects.json"), []byte(sidecar), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without filter: ep_legacy carries the effects field.
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test", "verbose": true})
+	defs := getSlice(t, res, "definitions")
+	var found bool
+	for _, d := range defs {
+		obj := d.(map[string]any)
+		if obj["kind"] == "http_endpoint" {
+			effs := obj["effects"].([]any)
+			if len(effs) != 2 || effs[0].(string) != "db_write" {
+				t.Errorf("ep_legacy effects=%v; want [db_write mutation]", effs)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("ep_legacy definition not found")
+	}
+
+	// With effect=db_write filter: only ep_legacy survives.
+	resF := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test", "effect": "db_write"})
+	assertEndpointCount(t, resF, 1)
+
+	// With effect=fs_write filter: none survive.
+	resNone := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test", "effect": "fs_write"})
+	assertEndpointCount(t, resNone, 0)
 }
 
 func TestEndpointDefinitions_ExcludesClientSynthesis(t *testing.T) {

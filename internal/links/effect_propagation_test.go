@@ -254,6 +254,85 @@ def process_job(self, payload):
 	}
 }
 
+// TestEffectPropagation_EndpointInheritsHandlerEffects verifies #2811: an
+// http_endpoint synthetic inherits its handler's transitive effect closure via
+// the IMPLEMENTS edge (handler → endpoint), and is tagged source="endpoint".
+func TestEffectPropagation_EndpointInheritsHandlerEffects(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "views.py", `
+class BuildingViewSet:
+    def create(self, request):
+        b = Building(**request.data)
+        b.save()
+        return b
+`)
+	graphs := []repoGraph{{
+		Repo:     "upvate-core",
+		FileRoot: root,
+		Entities: []entityNode{
+			{ID: "h1", Name: "create", Kind: "SCOPE.Function", SourceFile: "views.py"},
+			{ID: "ep1", Name: "http:POST:/buildings", Kind: "http_endpoint", SourceFile: "views.py",
+				Properties: map[string]string{"verb": "POST", "path": "/buildings", "pattern_type": "http_endpoint_synthesis"}},
+		},
+		Edges: []edgeRef{
+			// handler → endpoint (producer-side IMPLEMENTS).
+			{FromID: "h1", ToID: "ep1", Kind: "IMPLEMENTS"},
+		},
+	}}
+	paths := Paths{Links: filepath.Join(root, "out", "links.json")}
+	if _, err := runEffectPropagationPass(graphs, paths, nil); err != nil {
+		t.Fatal(err)
+	}
+	ep := graphs[0].Entities[1]
+	effs := ep.Properties[EffectPropertyKeyList]
+	if !strings.Contains(effs, "db_write") {
+		t.Fatalf("endpoint effects=%q; want db_write inherited from handler", effs)
+	}
+	if got := ep.Properties[EffectPropertyKeySource]; got != "endpoint" {
+		t.Errorf("endpoint effect_source=%q; want endpoint", got)
+	}
+	// Sidecar entry for the endpoint should also carry source=endpoint.
+	buf, err := os.ReadFile(filepath.Join(root, "out", "links-effects.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(buf), `"upvate-core::ep1"`) {
+		t.Errorf("sidecar missing endpoint entry; got:\n%s", buf)
+	}
+	if !strings.Contains(string(buf), `"endpoint"`) {
+		t.Errorf("sidecar missing endpoint source tag; got:\n%s", buf)
+	}
+}
+
+// TestEffectPropagation_EndpointPureHandlerUnstamped verifies an endpoint
+// whose handler has no detected effects is left unstamped (no noise).
+func TestEffectPropagation_EndpointPureHandlerUnstamped(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "ping.py", `
+class HealthView:
+    def get(self, request):
+        return "ok"
+`)
+	graphs := []repoGraph{{
+		Repo:     "upvate-core",
+		FileRoot: root,
+		Entities: []entityNode{
+			{ID: "h1", Name: "get", Kind: "SCOPE.Function", SourceFile: "ping.py"},
+			{ID: "ep1", Name: "http:GET:/health", Kind: "http_endpoint", SourceFile: "ping.py",
+				Properties: map[string]string{"verb": "GET", "path": "/health"}},
+		},
+		Edges: []edgeRef{
+			{FromID: "h1", ToID: "ep1", Kind: "IMPLEMENTS"},
+		},
+	}}
+	if _, err := runEffectPropagationPass(graphs, Paths{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := graphs[0].Entities[1].Properties[EffectPropertyKeyList]; ok {
+		t.Errorf("endpoint with pure handler carries effects=%q; want unstamped", v)
+	}
+}
+
 func confFromProps(props map[string]string, effect string) float64 {
 	if props == nil {
 		return 0

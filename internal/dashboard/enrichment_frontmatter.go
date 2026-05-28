@@ -65,6 +65,10 @@ type EnrichmentFrontmatter struct {
 	Responses     map[string]any   `json:"responses,omitempty"`
 	Auth          string           `json:"auth,omitempty"`
 	TablesTouched []string         `json:"tables_touched,omitempty"`
+	// Effects is the handler's transitive effect closure (#2811): any of
+	// db_read/db_write/http_out/fs_read/fs_write/mutation/env. Lets the Paths
+	// panel filter "which endpoints write to the DB / touch the filesystem".
+	Effects []string `json:"effects,omitempty"`
 
 	// process_flow fields.
 	Steps           []string `json:"steps,omitempty"`
@@ -256,6 +260,8 @@ func appendListField(fm *EnrichmentFrontmatter, key, item string) {
 		fm.Gaps = append(fm.Gaps, item)
 	case "tables_touched":
 		fm.TablesTouched = append(fm.TablesTouched, item)
+	case "effects":
+		fm.Effects = append(fm.Effects, item)
 	case "steps":
 		fm.Steps = append(fm.Steps, item)
 	case "expected_consumers":

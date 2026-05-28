@@ -126,6 +126,12 @@ type endpointDefItem struct {
 	StartLine  int               `json:"start_line,omitempty"`
 	Method     string            `json:"method,omitempty"`
 	Path       string            `json:"path,omitempty"`
+	// Effects is the transitive effect closure of this endpoint's handler
+	// (#2811): db_read/db_write/http_out/fs_read/fs_write/mutation/env. Sourced
+	// from the on-disk effects sidecar (written by the effect-propagation pass),
+	// surfaced in both terse and verbose modes so reviewers can filter "which
+	// endpoints write to the DB / touch the filesystem / mutate state".
+	Effects    []string          `json:"effects,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
@@ -669,7 +675,7 @@ func (s *Server) handleEndpointDefinitionsWithNavigation(ctx context.Context, re
 //
 // Tool name: archigraph_endpoint_definitions
 func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	_, lg, errRes := s.resolveAndGroup(req)
+	groupName, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -679,6 +685,11 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 	method := pOpts.Method
 	verbose := pOpts.Verbose
 	orphanOnly := argBool(req, "orphan_only", false)
+	// #2811 — optional effect filter: keep only endpoints whose handler effect
+	// closure contains the named effect (e.g. effect="db_write"). The effect
+	// set is read from the on-disk effects sidecar, keyed by prefixed entity id.
+	effectFilter := strings.ToLower(strings.TrimSpace(argString(req, "effect", "")))
+	effectsSidecar, _ := loadEffectsSidecar(groupName)
 
 	// #2292: orphan_only=true filters to endpoint definitions with no inbound
 	// client-call edges. In this graph the edge kind from a call-site to its
@@ -720,6 +731,14 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 			if orphanOnly && !isOrphanDefinition(r, e.ID, res) {
 				continue
 			}
+			// #2811 — endpoint effect closure from the sidecar.
+			var effs []string
+			if entry, ok := effectsSidecar[prefixedID(r.Repo, e.ID)]; ok {
+				effs = entry.Effects
+			}
+			if effectFilter != "" && !containsFold(effs, effectFilter) {
+				continue
+			}
 			it := endpointDefItem{
 				EntityID:   prefixedID(r.Repo, e.ID),
 				Repo:       r.Repo,
@@ -727,6 +746,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 				StartLine:  e.StartLine,
 				Method:     m,
 				Path:       p,
+				Effects:    effs,
 			}
 			if verbose {
 				it.Kind = e.Kind
@@ -766,6 +786,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		"path_contains": env.PathContains,
 		"method":        env.Method,
 		"orphan_only":   orphanOnly,
+		"effect":        effectFilter,
 		"token_budget":  env.TokenBudget,
 		// #2317: "note" field removed — schema lives in the tool description,
 		// not in runtime responses (reduces wire bytes on every call).
@@ -789,7 +810,8 @@ type terseLine struct {
 	SourceFile string
 	StartLine  int
 	Repo       string
-	Name       string // for calls: caller symbol name
+	Name       string   // for calls: caller symbol name
+	Effects    []string // #2811: endpoint handler effect closure
 }
 
 func renderTerseLines(lines []terseLine) []string {
@@ -820,6 +842,11 @@ func renderTerseLines(lines []terseLine) []string {
 			b.WriteString(it.Repo)
 			b.WriteString(")")
 		}
+		if len(it.Effects) > 0 {
+			b.WriteString("  [")
+			b.WriteString(strings.Join(it.Effects, ","))
+			b.WriteString("]")
+		}
 		out = append(out, b.String())
 	}
 	return out
@@ -836,9 +863,21 @@ func renderTerseDefinitions(items []endpointDefItem) []string {
 			StartLine:  it.StartLine,
 			Repo:       it.Repo,
 			Name:       it.Name,
+			Effects:    it.Effects,
 		})
 	}
 	return renderTerseLines(lines)
+}
+
+// containsFold reports whether want (already lower-cased) is present in the
+// slice, comparing case-insensitively. Used for the endpoint effect filter.
+func containsFold(haystack []string, want string) bool {
+	for _, h := range haystack {
+		if strings.EqualFold(h, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // rendered/capByRenderedBytes operate on item via its terse-line size; we use

@@ -460,8 +460,8 @@ records:
             - file: internal/substrate/effect_sinks_python.go
               functions: [sniffEffectsPython, appendPyMatches]
             - file: internal/links/effect_propagation.go
-              functions: [runEffectPropagationPass, stampEffectProperties]
-          issues_implemented: ["2764"]
+              functions: [runEffectPropagationPass, stampEffectProperties, propagateEndpointEffects]
+          issues_implemented: ["2764", "2811"]
           verified_at: "2026-05-28"
         http_effect:
           status: partial
@@ -469,8 +469,8 @@ records:
             - file: internal/substrate/effect_sinks_python.go
               functions: [sniffEffectsPython]
             - file: internal/links/effect_propagation.go
-              functions: [runEffectPropagationPass]
-          issues_implemented: ["2764"]
+              functions: [runEffectPropagationPass, propagateEndpointEffects]
+          issues_implemented: ["2764", "2811"]
           verified_at: "2026-05-28"
         fs_effect:
           status: partial
@@ -478,8 +478,8 @@ records:
             - file: internal/substrate/effect_sinks_python.go
               functions: [sniffEffectsPython]
             - file: internal/links/effect_propagation.go
-              functions: [runEffectPropagationPass]
-          issues_implemented: ["2764"]
+              functions: [runEffectPropagationPass, propagateEndpointEffects]
+          issues_implemented: ["2764", "2811"]
           verified_at: "2026-05-28"
         mutation_effect:
           status: partial
@@ -487,8 +487,8 @@ records:
             - file: internal/substrate/effect_sinks_python.go
               functions: [sniffEffectsPython]
             - file: internal/links/effect_propagation.go
-              functions: [runEffectPropagationPass]
-          issues_implemented: ["2764"]
+              functions: [runEffectPropagationPass, propagateEndpointEffects]
+          issues_implemented: ["2764", "2811"]
         taint_source_detection:
           status: partial
           symbols:
