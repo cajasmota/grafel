@@ -51,6 +51,12 @@ var (
 	reReactUseContext = regexp.MustCompile(
 		`useContext\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)`,
 	)
+	// Hook call sites: useState(...), useEffect(...), useMyHook(...). The
+	// `use` + Uppercase-4th-rune convention is the Rules-of-Hooks naming the
+	// React linter enforces. Anchored so `used(`/`user(` do not match.
+	reReactUseHookCall = regexp.MustCompile(
+		`\b(use[A-Z][A-Za-z0-9_]*)\s*\(`,
+	)
 	// JSX guard: presence of JSX in file
 	// JSX guard: presence of JSX in file (matches component tags <Foo, HTML tags <div, or createElement).
 	reReactJSXPresence = regexp.MustCompile(

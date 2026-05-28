@@ -123,6 +123,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		EndLine:      lineCount,
 		Signature:    componentName + ".astro",
 		QualityScore: 0.85,
+		Properties:   map[string]string{"framework": "astro"},
+	}
+	// Astro file-system routing (issue #2857, router_pattern): a file under
+	// pages/ maps to a route by its path. Record the derived route_path and the
+	// router convention on the page entity so route discovery is provable.
+	if subtype == "astro_page" {
+		routePath := routePathFromAstroPage(file.Path)
+		componentEntity.Properties["route_path"] = routePath
+		componentEntity.Properties["router"] = "file_system"
 	}
 	entities = append(entities, componentEntity)
 
@@ -165,6 +174,43 @@ func componentNameFromPath(path string) string {
 		return "Component"
 	}
 	return name
+}
+
+// astroDynParamRE matches Astro dynamic-route segments: [slug], [...path],
+// [[...optional]]. Used to normalize the route path of a page file.
+var astroDynParamRE = regexp.MustCompile(`\[+\.?\.?\.?([^\]]+)\]+`)
+
+// routePathFromAstroPage derives the URL route for an Astro page from its file
+// path under pages/. Astro's file-system router maps:
+//
+//	src/pages/index.astro        → /
+//	src/pages/about.astro        → /about
+//	src/pages/blog/[slug].astro  → /blog/{slug}
+//	src/pages/[...path].astro    → /{path*}
+func routePathFromAstroPage(path string) string {
+	norm := filepath.ToSlash(path)
+	idx := strings.Index(norm, "/pages/")
+	rel := norm
+	switch {
+	case idx >= 0:
+		rel = norm[idx+len("/pages/"):]
+	case strings.HasPrefix(norm, "pages/"):
+		rel = norm[len("pages/"):]
+	}
+	rel = strings.TrimSuffix(rel, ".astro")
+	rel = strings.TrimSuffix(rel, "/index")
+	if rel == "index" {
+		rel = ""
+	}
+	rel = astroDynParamRE.ReplaceAllStringFunc(rel, func(s string) string {
+		inner := strings.Trim(s, "[]")
+		if strings.HasPrefix(inner, "...") {
+			return "{" + strings.TrimPrefix(inner, "...") + "*}"
+		}
+		return "{" + inner + "}"
+	})
+	route := "/" + strings.TrimPrefix(rel, "/")
+	return route
 }
 
 // pageSubtype returns "astro_page" if the file is under a pages/ directory,

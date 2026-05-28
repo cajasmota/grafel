@@ -202,6 +202,17 @@ func (e *nextjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		addEntity(ent)
 	}
 
+	// React structure: page/layout components + custom hooks + hook calls.
+	// Next.js pages are React components, so reuse the shared React component /
+	// hook recognition (issue #2857, Structure group). Gated to Next router
+	// context (app/ or pages/) AND JSX files, so neither API route .ts handlers
+	// nor non-Next React projects pick up nextjs-tagged duplicate components
+	// (custom_js_react covers generic React).
+	isJSXFile := strings.HasSuffix(fp, ".tsx") || strings.HasSuffix(fp, ".jsx")
+	if isJSXFile && (isAppRouter || isPagesRouter) {
+		extractReactStructure(src, file.Path, file.Language, "nextjs", addEntity)
+	}
+
 	// Server actions ("use server" + exported async functions)
 	if reNextjsServerAction.MatchString(src) {
 		for _, m := range reNextjsServerActionFn.FindAllStringSubmatchIndex(src, -1) {

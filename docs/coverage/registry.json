@@ -14496,7 +14496,13 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/extractors/astro/extractor.go",
+              "internal/extractors/astro/issue2857_routing_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           },
           "hook_recognition": {
             "status": "not_applicable"
@@ -14524,7 +14530,13 @@
             "verified_at": "2026-05-28"
           },
           "router_pattern": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/extractors/astro/extractor.go",
+              "internal/extractors/astro/issue2857_routing_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           }
         },
         "Build": {
@@ -15089,10 +15101,24 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/gatsby.go",
+              "internal/custom/javascript/react_shared.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           },
           "hook_recognition": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/gatsby.go",
+              "internal/custom/javascript/react_shared.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           }
         },
         "Data Flow": {
@@ -15110,15 +15136,22 @@
         },
         "Routing": {
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": [
-              "internal/engine/rules/javascript_typescript/frameworks/gatsby.yaml"
+              "internal/custom/javascript/gatsby.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
             ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
             "verified_at": "2026-05-28"
           },
           "router_pattern": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/gatsby.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           }
         },
         "Build": {
@@ -15930,12 +15963,24 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/nextjs.go",
+              "internal/custom/javascript/react_shared.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           },
           "hook_recognition": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/nextjs.go",
+              "internal/custom/javascript/react_shared.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           }
         },
         "Data Flow": {
@@ -16665,10 +16710,24 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/remix.go",
+              "internal/custom/javascript/react_shared.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           },
           "hook_recognition": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/remix.go",
+              "internal/custom/javascript/react_shared.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           }
         },
         "Data Flow": {
@@ -16693,7 +16752,13 @@
             "verified_at": "2026-05-28"
           },
           "router_pattern": {
-            "status": "missing"
+            "status": "full",
+            "cites": [
+              "internal/custom/javascript/remix.go",
+              "internal/custom/javascript/issue2857_meta_structure_test.go"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2857",
+            "verified_at": "2026-05-28"
           }
         },
         "Build": {
