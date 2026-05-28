@@ -10668,16 +10668,33 @@
             "verified_at": "2026-05-28"
           },
           "rxjs_pattern_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739",
-            "notes": "AUDIT(#2847): genuinely unimplemented — angular.go does not extract Observable/pipe/subscribe operators as entities. Held at missing."
+            "status": "full",
+            "cites": [
+              "internal/extractors/javascript/angular_rxjs_guards.go",
+              "internal/extractors/javascript/issue2874_angular_test.go",
+              "internal/extractors/javascript/testdata/angular_internals/rxjs_guards.ts"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2874",
+            "verified_at": "2026-05-28",
+            "notes": "IMPL(#2874): angularRxjsPatterns extracts Observable idioms in Angular class bodies — .pipe(map/switchMap/filter/…) → SCOPE.Operation rxjs_pipeline + one TRANSFORMS edge per operator; .subscribe(...) → rxjs_subscription + SUBSCRIBES_TO edge; new Subject/BehaviorSubject/ReplaySubject/AsyncSubject → rxjs_subject; inline-template `| async` → rxjs_async_pipe component flag. Proven by issue2874_angular_test.go (unit fixture) AND real-data run on testdata/fixtures/real-world angular_component.ts (pipelines x3, subscriptions x2, subjects x1)."
           },
           "service_extraction": {
             "status": "full",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "notes": "AUDIT(#2847) NEW idiom cell: @Injectable -\u003e angular_service subtype. Verified on angular-realworld (angular_service x6).",
+            "notes": "AUDIT(#2847) NEW idiom cell: @Injectable -> angular_service subtype. Verified on angular-realworld (angular_service x6).",
             "verified_at": "2026-05-28"
+          },
+          "guard_interceptor_recognition": {
+            "status": "full",
+            "cites": [
+              "internal/extractors/javascript/angular_rxjs_guards.go",
+              "internal/extractors/javascript/issue2874_angular_test.go",
+              "internal/extractors/javascript/testdata/angular_internals/rxjs_guards.ts"
+            ],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2874",
+            "verified_at": "2026-05-28",
+            "notes": "IMPL(#2874): route guards + HTTP interceptors, class AND functional forms. Class form (angularGuardClassRels): an @Injectable class implementing CanActivate/CanActivateChild/CanDeactivate/CanLoad/CanMatch/Resolve or HttpInterceptor gets angular_role=guard|interceptor + an IMPLEMENTS edge to the interface. Functional form (angularFunctionalGuards, program-level pass): export const x: CanActivateFn|…|HttpInterceptorFn = (...) => … → SCOPE.Component subtype angular_guard|angular_interceptor. Proven by issue2874_angular_test.go."
           }
         }
       }

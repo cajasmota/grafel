@@ -241,6 +241,11 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 			}
 		}()
 		x.walk(root, "", nil)
+		// Issue #2874 — Angular functional route guards / HTTP interceptors are
+		// exported `const x: CanActivateFn = (...) => ...` declarations (not
+		// class-decorated), so they are recognised in a dedicated program-level
+		// pass (guard_interceptor_recognition).
+		x.angularFunctionalGuards(root)
 		// Issue #742 — snapshot length before collectImports so we can
 		// identify which entities were added by it (the import-placeholder
 		// SCOPE.Component/import entities). After collectImports we call

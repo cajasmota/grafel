@@ -148,6 +148,12 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 					},
 				})
 			}
+			// Angular Internals (issue #2874) — `| async` pipe in the inline
+			// template subscribes to an Observable in the view; record it as a
+			// flag so rxjs_pattern_detection covers the template-side idiom.
+			if reAngularAsyncPipe.MatchString(tmpl) {
+				props["rxjs_async_pipe"] = "true"
+			}
 		}
 	}
 
@@ -199,6 +205,21 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 		// plus a WRITES_TO edge to the state it mutates.
 		setterEnts := x.angularStateSetterEmission(body, className)
 		dfEnts = append(dfEnts, setterEnts...)
+
+		// Angular Internals (issue #2874) — RxJS idioms inside the class body:
+		// .pipe(operators) pipelines, .subscribe(...) subscriptions and
+		// new Subject/BehaviorSubject construction (rxjs_pattern_detection).
+		rxjsEnts := x.angularRxjsPatterns(body, className)
+		dfEnts = append(dfEnts, rxjsEnts...)
+	}
+
+	// Angular Internals (issue #2874) — class-based route guards / HTTP
+	// interceptors (guard_interceptor_recognition). A class that implements a
+	// guard interface (CanActivate/…/Resolve) or HttpInterceptor records its
+	// role on the entity and emits an IMPLEMENTS edge to the interface.
+	if role, _, guardRels := x.angularGuardClassRels(n, className); role != "" {
+		props["angular_role"] = role
+		rels = append(rels, guardRels...)
 	}
 	if call != nil {
 		meta := x.angularDecoratorMeta(call)
