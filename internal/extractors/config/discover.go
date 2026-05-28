@@ -72,6 +72,14 @@ const (
 	formatJSConfig     configKind = "javascript"
 	formatBundlerJSON  configKind = "bundler_json"
 	formatBundlerJS    configKind = "bundler_js"
+
+	// JS/TS test-runner config families (issue #2864). JSON/JSONC configs are
+	// mined for test targets (spec globs / files) and config->spec dependency
+	// edges; JS configs are mined with permissive regexes; YAML (.taprc) and the
+	// package.json "ava" block are handled by dedicated parsers.
+	formatTestRunnerJSON configKind = "test_runner_json"
+	formatTestRunnerJS   configKind = "test_runner_js"
+	formatTestRunnerYAML configKind = "test_runner_yaml"
 )
 
 // configSpec describes one recognised config file. Subtype is the value
@@ -117,6 +125,17 @@ var exactBasenames = map[string]configSpec{
 	".parcelrc":    {"parcel_config", formatBundlerJSON},
 	"bunfig.toml":  {"bun_config", formatTOML},
 
+	// JS/TS test runners (issue #2864). Mined for test targets
+	// (target_extraction) and config->spec dependency edges (dependency_graph).
+	// .mocharc / jasmine.json / .taprc carry spec globs directly; AVA's config
+	// lives in package.json (handled in parseJSON when an "ava" block exists).
+	".mocharc.json":  {"mocha_config", formatTestRunnerJSON},
+	".mocharc.jsonc": {"mocha_config", formatTestRunnerJSON},
+	".mocharc.yml":   {"mocha_config", formatTestRunnerYAML},
+	".mocharc.yaml":  {"mocha_config", formatTestRunnerYAML},
+	"jasmine.json":   {"jasmine_config", formatTestRunnerJSON},
+	".taprc":         {"tap_config", formatTestRunnerYAML},
+
 	"go.mod": {"go_module", formatGoMod},
 	"go.sum": {"go_sum", formatGoMod}, // existence only
 
@@ -152,6 +171,14 @@ var (
 	webpackConfigRe = regexp.MustCompile(`^webpack\.config\.(js|ts|mjs|cjs)$`)
 	rollupConfigRe  = regexp.MustCompile(`^rollup\.config\.(js|ts|mjs|cjs)$`)
 	esbuildConfigRe = regexp.MustCompile(`^esbuild\.config\.(js|ts|mjs|cjs)$`)
+
+	// JS/TS test-runner config variants (issue #2864). Matched as JS source so
+	// the test-runner parser can mine spec globs, test dirs, and project matrices.
+	vitestConfigRe     = regexp.MustCompile(`^vitest\.config\.(js|ts|mjs|cjs|mts|cts)$`)
+	cypressConfigRe    = regexp.MustCompile(`^cypress\.config\.(js|ts|mjs|cjs)$`)
+	playwrightConfigRe = regexp.MustCompile(`^playwright\.config\.(js|ts|mjs|cjs)$`)
+	mocharcJSRe        = regexp.MustCompile(`^\.mocharc\.(js|cjs)$`)
+	avaConfigRe        = regexp.MustCompile(`^ava\.config\.(js|cjs|mjs)$`)
 )
 
 // classify returns the configSpec for filePath, or false when the file is
@@ -176,6 +203,16 @@ func classify(relPath string) (configSpec, bool) {
 		return configSpec{"rollup_config", formatBundlerJS}, true
 	case esbuildConfigRe.MatchString(base):
 		return configSpec{"esbuild_config", formatBundlerJS}, true
+	case vitestConfigRe.MatchString(base):
+		return configSpec{"vitest_config", formatTestRunnerJS}, true
+	case cypressConfigRe.MatchString(base):
+		return configSpec{"cypress_config", formatTestRunnerJS}, true
+	case playwrightConfigRe.MatchString(base):
+		return configSpec{"playwright_config", formatTestRunnerJS}, true
+	case mocharcJSRe.MatchString(base):
+		return configSpec{"mocha_config", formatTestRunnerJS}, true
+	case avaConfigRe.MatchString(base):
+		return configSpec{"ava_config", formatTestRunnerJS}, true
 	case nextConfigRe.MatchString(base):
 		return configSpec{"next_config", formatJSConfig}, true
 	case eslintConfigRe.MatchString(base):
@@ -339,10 +376,12 @@ func languageForFormat(f configKind) string {
 		return "env"
 	case formatGradle:
 		return "groovy"
-	case formatJSConfig, formatBundlerJS:
+	case formatJSConfig, formatBundlerJS, formatTestRunnerJS:
 		return "javascript"
-	case formatBundlerJSON:
+	case formatBundlerJSON, formatTestRunnerJSON:
 		return "json"
+	case formatTestRunnerYAML:
+		return "yaml"
 	}
 	return "text"
 }
@@ -384,6 +423,12 @@ func parseInto(props map[string]string, spec configSpec, content []byte) {
 		parseBundlerJSON(props, spec, content)
 	case formatBundlerJS:
 		parseBundlerJS(props, spec, content)
+	case formatTestRunnerJSON:
+		parseTestRunnerJSON(props, spec, content)
+	case formatTestRunnerJS:
+		parseTestRunnerJS(props, spec, content)
+	case formatTestRunnerYAML:
+		parseTestRunnerYAML(props, spec, content)
 	}
 }
 
@@ -411,6 +456,10 @@ func parseJSON(props map[string]string, spec configSpec, content []byte) {
 			// Yarn / pnpm. It is either a string array or an object with a
 			// "packages" array; json.RawMessage lets us accept both forms.
 			Workspaces json.RawMessage `json:"workspaces"`
+			// AVA's config conventionally lives in package.json under "ava"
+			// (issue #2864). Mining it here yields the test-target globs without
+			// a separate config file.
+			Ava json.RawMessage `json:"ava"`
 		}
 		if err := json.Unmarshal(content, &pkg); err != nil {
 			return
@@ -442,6 +491,36 @@ func parseJSON(props map[string]string, spec configSpec, content []byte) {
 			sort.Strings(ws)
 			props["workspaces"] = capJoin(ws)
 		}
+		if len(pkg.Ava) > 0 {
+			parseAvaBlock(props, pkg.Ava)
+		}
+	}
+}
+
+// parseAvaBlock mines the package.json "ava" object (issue #2864). AVA test
+// targets come from "files" (spec globs); "require" + "extensions" are setup
+// dependencies the spec discovery depends on (config->spec dependency_graph).
+func parseAvaBlock(props map[string]string, raw json.RawMessage) {
+	var ava struct {
+		Files      []string        `json:"files"`
+		Match      []string        `json:"match"`
+		Require    []string        `json:"require"`
+		Extensions json.RawMessage `json:"extensions"`
+	}
+	if err := json.Unmarshal(raw, &ava); err != nil {
+		return
+	}
+	specs := append([]string(nil), ava.Files...)
+	specs = append(specs, ava.Match...)
+	sort.Strings(specs)
+	specs = dedup(specs)
+	if len(specs) > 0 {
+		props["test_targets"] = capJoin(specs)
+	}
+	if len(ava.Require) > 0 {
+		reqs := append([]string(nil), ava.Require...)
+		sort.Strings(reqs)
+		props["spec_dependencies"] = capJoin(reqs)
 	}
 }
 
@@ -1138,6 +1217,293 @@ func parseBundlerJS(props map[string]string, spec configSpec, content []byte) {
 	if len(outs) > 0 {
 		props["scripts"] = capJoin(outs)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// JS/TS test-runner config parsers (issue #2864)
+//
+// These power the test-runner capabilities for AVA / Cypress / Jasmine /
+// Mocha / Playwright / tap / Vitest (Jest is the reference, handled by the
+// engine test rules):
+//   - target_extraction: discover the runner's test targets / spec globs
+//       → Properties["test_targets"]  (spec globs / files / dirs)
+//       → Properties["test_projects"] (Cypress e2e/component, Playwright project
+//                                       matrix — framework_specific idioms)
+//   - dependency_graph: the config -> spec / setup dependency edges
+//       → Properties["spec_dependencies"] (setup/require/helper modules the
+//                                            spec discovery hangs off of)
+//
+// JSON configs (.mocharc.json, jasmine.json) are JSONC-tolerant. JS configs
+// (vitest/cypress/playwright/.mocharc.js/ava.config.js) are mined with
+// permissive regexes — no JS evaluation, just stable structural signal. YAML
+// (.taprc, .mocharc.yml) is mined line-by-line.
+// ---------------------------------------------------------------------------
+
+func parseTestRunnerJSON(props map[string]string, spec configSpec, content []byte) {
+	clean := stripJSONC(content)
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(clean, &generic); err != nil {
+		return
+	}
+	props["keys_top_level"] = joinSortedKeys(generic)
+
+	switch spec.subtype {
+	case "mocha_config":
+		parseMochaConfigJSON(props, clean)
+	case "jasmine_config":
+		parseJasmineConfig(props, clean)
+	}
+}
+
+// parseMochaConfigJSON mines a .mocharc.json/.jsonc. "spec" holds the test
+// target globs; "require" lists setup modules the specs depend on; "extension"
+// constrains discovered file types.
+func parseMochaConfigJSON(props map[string]string, content []byte) {
+	var mocha struct {
+		Spec      json.RawMessage `json:"spec"`
+		Require   json.RawMessage `json:"require"`
+		Extension json.RawMessage `json:"extension"`
+		Recursive bool            `json:"recursive"`
+	}
+	if err := json.Unmarshal(content, &mocha); err != nil {
+		return
+	}
+	if specs := jsonStringOrArray(mocha.Spec); len(specs) > 0 {
+		sort.Strings(specs)
+		props["test_targets"] = capJoin(dedup(specs))
+	}
+	if reqs := jsonStringOrArray(mocha.Require); len(reqs) > 0 {
+		sort.Strings(reqs)
+		props["spec_dependencies"] = capJoin(dedup(reqs))
+	}
+}
+
+// parseJasmineConfig mines a jasmine.json. Test targets come from joining
+// "spec_dir" with each "spec_files" glob; "helpers" are setup deps the specs
+// hang off of (config->spec dependency_graph).
+func parseJasmineConfig(props map[string]string, content []byte) {
+	var jas struct {
+		SpecDir   string   `json:"spec_dir"`
+		SpecFiles []string `json:"spec_files"`
+		Helpers   []string `json:"helpers"`
+	}
+	if err := json.Unmarshal(content, &jas); err != nil {
+		return
+	}
+	var targets []string
+	for _, f := range jas.SpecFiles {
+		if jas.SpecDir != "" {
+			targets = append(targets, jas.SpecDir+"/"+f)
+		} else {
+			targets = append(targets, f)
+		}
+	}
+	sort.Strings(targets)
+	if len(targets) > 0 {
+		props["test_targets"] = capJoin(dedup(targets))
+	}
+	if len(jas.Helpers) > 0 {
+		var helpers []string
+		for _, h := range jas.Helpers {
+			if jas.SpecDir != "" {
+				helpers = append(helpers, jas.SpecDir+"/"+h)
+			} else {
+				helpers = append(helpers, h)
+			}
+		}
+		sort.Strings(helpers)
+		props["spec_dependencies"] = capJoin(dedup(helpers))
+	}
+}
+
+// jsonStringOrArray accepts a JSON value that is either a single string or an
+// array of strings (Mocha config keys accept both shapes).
+func jsonStringOrArray(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var arr []string
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return arr
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil && s != "" {
+		return []string{s}
+	}
+	return nil
+}
+
+// Regexes mining JS/TS test-runner configs. We do not evaluate JS — these
+// capture the canonical literal forms the runners' docs recommend.
+var (
+	// Vitest: `include: ['tests/**/*.test.ts']`, `exclude: [...]`.
+	// Mocha .mocharc.js: `spec: 'test/**/*.spec.js'`.
+	testIncludeRE = regexp.MustCompile(`(?m)\b(?:include|spec|files|match|testMatch|testRegex)\s*:\s*(['"][^'"]+['"]|\[[^\]]*\])`)
+	// Cypress / Playwright: `specPattern: 'cypress/e2e/**/*.cy.ts'`,
+	// `testDir: './tests'`, `testMatch: '**/*.spec.ts'`.
+	testDirPatternRE = regexp.MustCompile(`(?m)\b(?:specPattern|testDir|testMatch)\s*:\s*(['"][^'"]+['"]|\[[^\]]*\])`)
+	// Setup / support dependencies: `supportFile: '...'`, `setupFiles: [...]`,
+	// `globalSetup: '...'`, `require: [...]`, `setupNodeEvents` (presence only).
+	testSetupRE = regexp.MustCompile(`(?m)\b(?:supportFile|setupFiles|setupFilesAfterEach|globalSetup|globalTeardown|require)\s*:\s*(['"][^'"]+['"]|\[[^\]]*\])`)
+	// Cypress e2e/component blocks + Playwright `projects: [{ name: '...' }]`.
+	testProjectNameRE = regexp.MustCompile(`(?m)\bname\s*:\s*['"]([^'"]+)['"]`)
+	cypressBlockRE    = regexp.MustCompile(`(?m)\b(e2e|component)\s*:\s*\{`)
+)
+
+// extractQuotedStrings pulls every quoted string literal out of a regex
+// capture group (single string literal or a [...] array body).
+func extractQuotedStrings(group string) []string {
+	var out []string
+	for _, sm := range bundlerStringRE.FindAllStringSubmatch(group, -1) {
+		val := sm[1]
+		if val != "" && !strings.Contains(val, "${") {
+			out = append(out, val)
+		}
+	}
+	return out
+}
+
+// parseTestRunnerJS mines vitest/cypress/playwright/.mocharc.js/ava.config.js
+// for test targets (target_extraction) and config->spec setup dependencies
+// (dependency_graph). Cypress e2e/component blocks and the Playwright project
+// matrix are recorded under test_projects (framework_specific idioms).
+func parseTestRunnerJS(props map[string]string, spec configSpec, content []byte) {
+	parseJSConfig(props, content) // keep top-level export hints
+	src := string(content)
+
+	var targets []string
+	for _, m := range testIncludeRE.FindAllStringSubmatch(src, -1) {
+		targets = append(targets, extractQuotedStrings(m[1])...)
+	}
+	for _, m := range testDirPatternRE.FindAllStringSubmatch(src, -1) {
+		targets = append(targets, extractQuotedStrings(m[1])...)
+	}
+	sort.Strings(targets)
+	targets = dedup(targets)
+	if len(targets) > 0 {
+		props["test_targets"] = capJoin(targets)
+	}
+
+	var deps []string
+	for _, m := range testSetupRE.FindAllStringSubmatch(src, -1) {
+		deps = append(deps, extractQuotedStrings(m[1])...)
+	}
+	sort.Strings(deps)
+	deps = dedup(deps)
+	if len(deps) > 0 {
+		props["spec_dependencies"] = capJoin(deps)
+	}
+
+	// framework_specific: Cypress runs an e2e/component testing-type matrix,
+	// Playwright runs a named-project (browser/device) matrix. Neither maps to
+	// a plain "test target" — record the project/block names separately.
+	var projects []string
+	switch spec.subtype {
+	case "cypress_config":
+		for _, m := range cypressBlockRE.FindAllStringSubmatch(src, -1) {
+			projects = append(projects, m[1])
+		}
+	case "playwright_config":
+		// Only mine project names when a "projects:" array is present, so a
+		// stray `name:` field elsewhere is not misread as a project.
+		if strings.Contains(src, "projects") {
+			for _, m := range testProjectNameRE.FindAllStringSubmatch(src, -1) {
+				projects = append(projects, m[1])
+			}
+		}
+	}
+	sort.Strings(projects)
+	projects = dedup(projects)
+	if len(projects) > 0 {
+		props["test_projects"] = capJoin(projects)
+	}
+}
+
+// Regexes mining YAML test-runner configs (.taprc, .mocharc.yml).
+var (
+	// Use [^\S\n] (horizontal whitespace only) around the value so the scalar
+	// matcher cannot consume a following newline and misread an indented list
+	// item as the scalar value.
+	yamlListItemRE  = regexp.MustCompile(`(?m)^[^\S\n]*-[^\S\n]*['"]?([^'"\n#]+?)['"]?[^\S\n]*$`)
+	yamlScalarKeyRE = regexp.MustCompile(`(?m)^([A-Za-z_][A-Za-z0-9_.\-]*)[^\S\n]*:[^\S\n]+['"]?([^'"\n#]+?)['"]?[^\S\n]*$`)
+)
+
+// parseTestRunnerYAML mines .taprc / .mocharc.yml. Test targets come from a
+// "files"/"spec" key (scalar or YAML list); setup deps from "require"/"before".
+func parseTestRunnerYAML(props map[string]string, spec configSpec, content []byte) {
+	parseYAML(props, content) // keep top-level keys
+	src := string(content)
+
+	targetKeys := map[string]bool{"files": true, "spec": true, "test": true}
+	depKeys := map[string]bool{"require": true, "before": true, "after": true}
+
+	var targets, deps []string
+	// Block-style list values: `files:` followed by `  - 'glob'` items.
+	for _, block := range splitYAMLBlocks(src) {
+		key := block.key
+		for _, item := range block.items {
+			switch {
+			case targetKeys[key]:
+				targets = append(targets, item)
+			case depKeys[key]:
+				deps = append(deps, item)
+			}
+		}
+	}
+	// Scalar values: `files: 'test/**/*.js'`.
+	for _, m := range yamlScalarKeyRE.FindAllStringSubmatch(src, -1) {
+		key, val := m[1], strings.TrimSpace(m[2])
+		if val == "" {
+			continue
+		}
+		switch {
+		case targetKeys[key]:
+			targets = append(targets, val)
+		case depKeys[key]:
+			deps = append(deps, val)
+		}
+	}
+	sort.Strings(targets)
+	targets = dedup(targets)
+	if len(targets) > 0 {
+		props["test_targets"] = capJoin(targets)
+	}
+	sort.Strings(deps)
+	deps = dedup(deps)
+	if len(deps) > 0 {
+		props["spec_dependencies"] = capJoin(deps)
+	}
+}
+
+type yamlBlock struct {
+	key   string
+	items []string
+}
+
+// splitYAMLBlocks groups top-level `key:` headers with their following
+// indented `- item` list members. Permissive — good enough for config mining.
+func splitYAMLBlocks(src string) []yamlBlock {
+	var blocks []yamlBlock
+	lines := strings.Split(src, "\n")
+	headerRE := regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.\-]*)\s*:\s*$`)
+	for i := 0; i < len(lines); i++ {
+		hm := headerRE.FindStringSubmatch(lines[i])
+		if hm == nil {
+			continue
+		}
+		blk := yamlBlock{key: hm[1]}
+		for j := i + 1; j < len(lines); j++ {
+			im := yamlListItemRE.FindStringSubmatch(lines[j])
+			if im == nil {
+				break
+			}
+			blk.items = append(blk.items, strings.TrimSpace(im[1]))
+		}
+		if len(blk.items) > 0 {
+			blocks = append(blocks, blk)
+		}
+	}
+	return blocks
 }
 
 // ---------------------------------------------------------------------------

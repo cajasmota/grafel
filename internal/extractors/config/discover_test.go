@@ -870,3 +870,305 @@ name = "api"
 		t.Errorf("DEPENDS_ON_CONFIG FromIDs = %v, want [module:services/api]", froms)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// JS/TS test-runner config discovery (issue #2864)
+// ---------------------------------------------------------------------------
+
+func TestDiscover_VitestConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "vitest.config.ts", `import { defineConfig } from 'vitest/config';
+export default defineConfig({
+  test: {
+    include: ['tests/**/*.test.ts', 'src/**/*.spec.ts'],
+    setupFiles: ['./test/setup.ts'],
+    globalSetup: './test/global.ts',
+  },
+});`)
+	ents, _ := runDiscover(t, dir, []string{"vitest.config.ts"})
+	e := findBySource(ents, "vitest.config.ts")
+	if e == nil {
+		t.Fatalf("vitest.config.ts entity missing")
+	}
+	if e.Subtype != "vitest_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	tt := e.Properties["test_targets"]
+	for _, want := range []string{"tests/**/*.test.ts", "src/**/*.spec.ts"} {
+		if !strings.Contains(tt, want) {
+			t.Errorf("test_targets missing %q: %q", want, tt)
+		}
+	}
+	deps := e.Properties["spec_dependencies"]
+	for _, want := range []string{"./test/setup.ts", "./test/global.ts"} {
+		if !strings.Contains(deps, want) {
+			t.Errorf("spec_dependencies missing %q: %q", want, deps)
+		}
+	}
+}
+
+func TestDiscover_CypressConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "cypress.config.js", `const { defineConfig } = require('cypress');
+module.exports = defineConfig({
+  e2e: {
+    specPattern: 'cypress/e2e/**/*.cy.ts',
+    supportFile: 'cypress/support/e2e.ts',
+  },
+  component: {
+    specPattern: 'src/**/*.cy.tsx',
+  },
+});`)
+	ents, _ := runDiscover(t, dir, []string{"cypress.config.js"})
+	e := findBySource(ents, "cypress.config.js")
+	if e == nil {
+		t.Fatalf("cypress.config.js entity missing")
+	}
+	if e.Subtype != "cypress_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	tt := e.Properties["test_targets"]
+	for _, want := range []string{"cypress/e2e/**/*.cy.ts", "src/**/*.cy.tsx"} {
+		if !strings.Contains(tt, want) {
+			t.Errorf("test_targets missing %q: %q", want, tt)
+		}
+	}
+	if !strings.Contains(e.Properties["spec_dependencies"], "cypress/support/e2e.ts") {
+		t.Errorf("spec_dependencies wrong: %q", e.Properties["spec_dependencies"])
+	}
+	proj := e.Properties["test_projects"]
+	if !strings.Contains(proj, "e2e") || !strings.Contains(proj, "component") {
+		t.Errorf("test_projects (e2e/component matrix) wrong: %q", proj)
+	}
+}
+
+func TestDiscover_PlaywrightConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "playwright.config.ts", `import { defineConfig } from '@playwright/test';
+export default defineConfig({
+  testDir: './tests/e2e',
+  testMatch: '**/*.spec.ts',
+  globalSetup: './global-setup.ts',
+  projects: [
+    { name: 'chromium', use: {} },
+    { name: 'firefox', use: {} },
+    { name: 'webkit', use: {} },
+  ],
+});`)
+	ents, _ := runDiscover(t, dir, []string{"playwright.config.ts"})
+	e := findBySource(ents, "playwright.config.ts")
+	if e == nil {
+		t.Fatalf("playwright.config.ts entity missing")
+	}
+	if e.Subtype != "playwright_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	tt := e.Properties["test_targets"]
+	for _, want := range []string{"./tests/e2e", "**/*.spec.ts"} {
+		if !strings.Contains(tt, want) {
+			t.Errorf("test_targets missing %q: %q", want, tt)
+		}
+	}
+	if !strings.Contains(e.Properties["spec_dependencies"], "./global-setup.ts") {
+		t.Errorf("spec_dependencies wrong: %q", e.Properties["spec_dependencies"])
+	}
+	proj := e.Properties["test_projects"]
+	for _, want := range []string{"chromium", "firefox", "webkit"} {
+		if !strings.Contains(proj, want) {
+			t.Errorf("test_projects (browser matrix) missing %q: %q", want, proj)
+		}
+	}
+}
+
+func TestDiscover_MochaConfigJSON(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".mocharc.json", `{
+  "spec": ["test/**/*.spec.js", "integration/**/*.test.js"],
+  "require": ["ts-node/register", "./test/hooks.js"],
+  "recursive": true
+}`)
+	ents, _ := runDiscover(t, dir, []string{".mocharc.json"})
+	e := findBySource(ents, ".mocharc.json")
+	if e == nil {
+		t.Fatalf(".mocharc.json entity missing")
+	}
+	if e.Subtype != "mocha_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	tt := e.Properties["test_targets"]
+	for _, want := range []string{"test/**/*.spec.js", "integration/**/*.test.js"} {
+		if !strings.Contains(tt, want) {
+			t.Errorf("test_targets missing %q: %q", want, tt)
+		}
+	}
+	deps := e.Properties["spec_dependencies"]
+	for _, want := range []string{"ts-node/register", "./test/hooks.js"} {
+		if !strings.Contains(deps, want) {
+			t.Errorf("spec_dependencies missing %q: %q", want, deps)
+		}
+	}
+}
+
+func TestDiscover_MochaConfigJS(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".mocharc.cjs", `module.exports = {
+  spec: 'test/**/*.spec.js',
+  require: ['ts-node/register'],
+};`)
+	ents, _ := runDiscover(t, dir, []string{".mocharc.cjs"})
+	e := findBySource(ents, ".mocharc.cjs")
+	if e == nil {
+		t.Fatalf(".mocharc.cjs entity missing")
+	}
+	if e.Subtype != "mocha_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	if !strings.Contains(e.Properties["test_targets"], "test/**/*.spec.js") {
+		t.Errorf("test_targets wrong: %q", e.Properties["test_targets"])
+	}
+	if !strings.Contains(e.Properties["spec_dependencies"], "ts-node/register") {
+		t.Errorf("spec_dependencies wrong: %q", e.Properties["spec_dependencies"])
+	}
+}
+
+func TestDiscover_JasmineConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "spec/support/jasmine.json", `{
+  "spec_dir": "spec",
+  "spec_files": ["**/*[sS]pec.js", "unit/**/*.spec.js"],
+  "helpers": ["helpers/**/*.js"]
+}`)
+	ents, _ := runDiscover(t, dir, []string{"spec/support/jasmine.json"})
+	e := findBySource(ents, "spec/support/jasmine.json")
+	if e == nil {
+		t.Fatalf("jasmine.json entity missing")
+	}
+	if e.Subtype != "jasmine_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	tt := e.Properties["test_targets"]
+	for _, want := range []string{"spec/**/*[sS]pec.js", "spec/unit/**/*.spec.js"} {
+		if !strings.Contains(tt, want) {
+			t.Errorf("test_targets missing %q: %q", want, tt)
+		}
+	}
+	if !strings.Contains(e.Properties["spec_dependencies"], "spec/helpers/**/*.js") {
+		t.Errorf("spec_dependencies wrong: %q", e.Properties["spec_dependencies"])
+	}
+}
+
+func TestDiscover_TaprcYAML(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".taprc", `files:
+  - test/**/*.test.js
+  - integration/*.tap.js
+before: test/before.js
+coverage: true`)
+	ents, _ := runDiscover(t, dir, []string{".taprc"})
+	e := findBySource(ents, ".taprc")
+	if e == nil {
+		t.Fatalf(".taprc entity missing")
+	}
+	if e.Subtype != "tap_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	tt := e.Properties["test_targets"]
+	for _, want := range []string{"test/**/*.test.js", "integration/*.tap.js"} {
+		if !strings.Contains(tt, want) {
+			t.Errorf("test_targets missing %q: %q", want, tt)
+		}
+	}
+	if !strings.Contains(e.Properties["spec_dependencies"], "test/before.js") {
+		t.Errorf("spec_dependencies wrong: %q", e.Properties["spec_dependencies"])
+	}
+}
+
+func TestDiscover_AvaConfigInPackageJSON(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "package.json", `{
+  "name": "app",
+  "version": "1.0.0",
+  "ava": {
+    "files": ["test/**/*.test.js", "src/**/*.spec.js"],
+    "require": ["./test/_setup.js"]
+  }
+}`)
+	ents, _ := runDiscover(t, dir, []string{"package.json"})
+	e := findBySource(ents, "package.json")
+	if e == nil {
+		t.Fatalf("package.json entity missing")
+	}
+	tt := e.Properties["test_targets"]
+	for _, want := range []string{"test/**/*.test.js", "src/**/*.spec.js"} {
+		if !strings.Contains(tt, want) {
+			t.Errorf("ava test_targets missing %q: %q", want, tt)
+		}
+	}
+	if !strings.Contains(e.Properties["spec_dependencies"], "./test/_setup.js") {
+		t.Errorf("ava spec_dependencies wrong: %q", e.Properties["spec_dependencies"])
+	}
+}
+
+func TestDiscover_AvaConfigJS(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "ava.config.mjs", `export default {
+  files: ['test/**/*.test.js'],
+  require: ['./setup.js'],
+};`)
+	ents, _ := runDiscover(t, dir, []string{"ava.config.mjs"})
+	e := findBySource(ents, "ava.config.mjs")
+	if e == nil {
+		t.Fatalf("ava.config.mjs entity missing")
+	}
+	if e.Subtype != "ava_config" {
+		t.Errorf("subtype=%q", e.Subtype)
+	}
+	if !strings.Contains(e.Properties["test_targets"], "test/**/*.test.js") {
+		t.Errorf("test_targets wrong: %q", e.Properties["test_targets"])
+	}
+	if !strings.Contains(e.Properties["spec_dependencies"], "./setup.js") {
+		t.Errorf("spec_dependencies wrong: %q", e.Properties["spec_dependencies"])
+	}
+}
+
+func TestClassify_TestRunners(t *testing.T) {
+	cases := []struct {
+		path    string
+		subtype string
+	}{
+		{"vitest.config.ts", "vitest_config"},
+		{"vitest.config.mts", "vitest_config"},
+		{"cypress.config.js", "cypress_config"},
+		{"cypress.config.ts", "cypress_config"},
+		{"playwright.config.ts", "playwright_config"},
+		{".mocharc.json", "mocha_config"},
+		{".mocharc.yml", "mocha_config"},
+		{".mocharc.cjs", "mocha_config"},
+		{"jasmine.json", "jasmine_config"},
+		{".taprc", "tap_config"},
+		{"ava.config.cjs", "ava_config"},
+	}
+	for _, c := range cases {
+		spec, ok := classify(c.path)
+		if !ok {
+			t.Errorf("classify(%q) not recognised", c.path)
+			continue
+		}
+		if spec.subtype != c.subtype {
+			t.Errorf("classify(%q).subtype = %q, want %q", c.path, spec.subtype, c.subtype)
+		}
+	}
+}
+
+// TestClassify_ViteVsVitest guards the vite.config / vitest.config split — a
+// vite.config must not be misclassified as a Vitest test-runner config.
+func TestClassify_ViteVsVitest(t *testing.T) {
+	vite, ok := classify("vite.config.ts")
+	if !ok || vite.subtype != "vite_config" {
+		t.Errorf("vite.config.ts => %q (ok=%v), want vite_config", vite.subtype, ok)
+	}
+	vitest, ok := classify("vitest.config.ts")
+	if !ok || vitest.subtype != "vitest_config" {
+		t.Errorf("vitest.config.ts => %q (ok=%v), want vitest_config", vitest.subtype, ok)
+	}
+}
