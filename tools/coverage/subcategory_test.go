@@ -87,7 +87,11 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"mutation_effect",
 		"prop_extraction",
 		"reachability_analysis",
+		// #2770 Phase 2A substrate payload-shape + drift detection.
+		"request_shape_extraction",
+		"response_shape_extraction",
 		"router_pattern",
+		"schema_drift_detection",
 		"state_management",
 		"state_setter_emission",
 		"tests_linkage",
@@ -131,7 +135,11 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"mutation_effect",
 		"prop_extraction",
 		"reachability_analysis",
+		// #2770 Phase 2A substrate payload-shape + drift detection.
+		"request_shape_extraction",
+		"response_shape_extraction",
 		"router_pattern",
+		"schema_drift_detection",
 		"state_management",
 		"state_setter_emission",
 		"tests_linkage",

@@ -93,6 +93,9 @@ subcategories:
       - http_effect
       - fs_effect
       - mutation_effect
+      - request_shape_extraction
+      - response_shape_extraction
+      - schema_drift_detection
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction]
@@ -109,7 +112,7 @@ subcategories:
       - name: Data
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection]
 
   ui_frontend:
     display: "UI Frontend"
@@ -140,6 +143,9 @@ subcategories:
       - http_effect
       - fs_effect
       - mutation_effect
+      - request_shape_extraction
+      - response_shape_extraction
+      - schema_drift_detection
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition, jsx_template, context_extraction, hoc_wrapper_recognition]
@@ -154,7 +160,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection]
 
   meta_framework:
     display: "Meta Framework"
@@ -183,6 +189,9 @@ subcategories:
       - http_effect
       - fs_effect
       - mutation_effect
+      - request_shape_extraction
+      - response_shape_extraction
+      - schema_drift_detection
     groups:
       - name: Structure
         keys: [component_extraction, hook_recognition]
@@ -201,7 +210,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection]
 
   mobile:
     display: "Mobile"
@@ -231,6 +240,9 @@ subcategories:
       - http_effect
       - fs_effect
       - mutation_effect
+      - request_shape_extraction
+      - response_shape_extraction
+      - schema_drift_detection
     groups:
       - name: Structure
         keys: [context_extraction, hoc_wrapper_recognition]
@@ -249,7 +261,7 @@ subcategories:
       - name: Testing
         keys: [tests_linkage]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection]
 
   desktop:
     display: "Desktop"
@@ -295,6 +307,9 @@ subcategories:
       - http_effect
       - fs_effect
       - mutation_effect
+      - request_shape_extraction
+      - response_shape_extraction
+      - schema_drift_detection
     groups:
       - name: Schema
         keys: [schema_extraction, procedure_extraction]
@@ -303,7 +318,7 @@ subcategories:
       - name: Transport
         keys: []
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect]
+        keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection]
 
   static_site:
     display: "Static Site"

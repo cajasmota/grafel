@@ -5902,6 +5902,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -5950,6 +5965,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -5998,6 +6028,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6046,6 +6091,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6094,6 +6154,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6142,6 +6217,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6242,6 +6332,21 @@
             "status": "full",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6290,6 +6395,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6422,6 +6542,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6470,6 +6605,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6518,6 +6668,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6566,6 +6731,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6614,6 +6794,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6662,6 +6857,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6710,6 +6920,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -6933,6 +7158,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7149,6 +7389,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7276,6 +7531,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7324,6 +7594,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7368,6 +7653,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7418,6 +7718,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7490,6 +7805,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7538,6 +7868,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7652,6 +7997,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7734,6 +8094,21 @@
             "status": "full",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       },
@@ -7800,6 +8175,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7848,6 +8238,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -7979,6 +8384,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -8478,6 +8898,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -8873,6 +9308,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -8921,6 +9371,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -8965,6 +9430,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -9112,6 +9592,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -9160,6 +9655,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -9304,6 +9814,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -9377,6 +9902,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -9525,6 +10065,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -9739,6 +10294,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -10130,6 +10700,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -10174,6 +10759,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13308,6 +13908,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13356,6 +13971,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13402,6 +14032,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13446,6 +14091,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13498,6 +14158,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13578,6 +14253,21 @@
             "status": "full",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_python.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       },
@@ -13638,6 +14328,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13682,6 +14387,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13732,6 +14452,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13780,6 +14515,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13824,6 +14574,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13894,6 +14659,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13942,6 +14722,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -13986,6 +14781,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -14034,6 +14844,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -14082,6 +14907,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -14130,6 +14970,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -14178,6 +15033,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }
@@ -14226,6 +15096,21 @@
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
+          },
+          "schema_drift_detection": {
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
+            "verified_at": "2026-05-27"
           }
         }
       }

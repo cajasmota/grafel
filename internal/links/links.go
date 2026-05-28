@@ -396,6 +396,18 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 	}
 	res.Results = append(res.Results, pReach)
 
+	// #2770 — Phase 2A payload-shape drift detection. Runs after the
+	// HTTP pass has emitted MethodHTTP cross-repo links (P4 above);
+	// reads them back from disk and joins them to the per-language
+	// payload-shape facts emitted by the substrate sniffers. Findings
+	// land in a sidecar JSON document read by the
+	// archigraph_payload_drift MCP tool.
+	pDrift, err := runPayloadDriftPass(group, graphs, paths)
+	if err != nil {
+		return nil, fmt.Errorf("payload drift pass: %w", err)
+	}
+	res.Results = append(res.Results, pDrift)
+
 	for _, r := range res.Results {
 		res.TotalLinks += r.LinksAdded
 		res.TotalCandid += r.Candidates
