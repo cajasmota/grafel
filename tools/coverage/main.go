@@ -57,6 +57,8 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return cmdDiscover(rest, stdout)
 	case "map-status":
 		return cmdMapStatus(rest, stdout)
+	case "delta":
+		return cmdDelta(rest, stdout)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -85,7 +87,9 @@ subcommands:
   map-status show the capability-map.yaml entry for one capability:
               map-status <record-id>/<capability>             (flat)
               map-status <record-id>/<group>/<capability>     (grouped)
-            (--repo-root, --json)`)
+            (--repo-root, --json)
+  delta     diff registry.json before→after two git refs, emit markdown coverage-delta report
+            (--base origin/main, --head HEAD, --lang <slug>, --post <PR#>, --file)`)
 }
 
 // registryFlag adds a shared --file flag for overriding the registry
