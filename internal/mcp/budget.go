@@ -20,4 +20,13 @@ package mcp
 //     the new tool's category / min_confidence / limit / source_repo
 //     args push the handshake near the prior ceiling; +500 restores
 //     headroom under the 6500 next-bump line.
-const TokenCeiling = 6000
+//   - 6000 → 6500: PR for #2774 / #2775 Phase 3 misc — adds four
+//     sidecar-reader tools (archigraph_pure_functions, archigraph_
+//     import_cycles, archigraph_def_use, archigraph_template_patterns)
+//     for the pure-function / module-cycle / def-use / template-pattern
+//     analyses. Each is a thin reader of its corresponding link-pass
+//     sidecar with a handful of optional filters; per-tool footprint
+//     is small but four entries push us past the 6000 ceiling. After
+//     this bump further additions must fold into an existing action-
+//     dispatch bundle rather than add a new top-level tool.
+const TokenCeiling = 6500
