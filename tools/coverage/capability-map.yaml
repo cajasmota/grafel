@@ -20,6 +20,102 @@
 
 records:
 
+  lang.cobol.runtime.ibm-enterprise:
+    capabilities:
+      core_extraction:
+        status: full
+        symbols:
+          - file: internal/extractors/cobol/extractor.go
+            functions: [extractCOBOL, splitLines, stripSequenceArea]
+        tests:
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+      call_line_precision:
+        status: full
+        symbols:
+          - file: internal/extractors/cobol/extractor.go
+            functions: [extractCOBOL, attachCall]
+        tests:
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+      import_resolution_quality:
+        status: partial
+        symbols:
+          - file: internal/extractors/cobol/extractor.go
+            functions: [extractCOBOL]
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+      fs_effect:
+        status: partial
+        symbols:
+          - file: internal/substrate/effect_sinks_cobol.go
+            functions: [sniffEffectsCobol, scanCobolParagraphHeaders]
+        tests:
+          - file: internal/substrate/effect_sinks_cobol_test.go
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+      db_effect:
+        status: partial
+        symbols:
+          - file: internal/substrate/effect_sinks_cobol.go
+            functions: [sniffEffectsCobol]
+        tests:
+          - file: internal/substrate/effect_sinks_cobol_test.go
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+
+  lang.cobol.runtime.gnucobol:
+    capabilities:
+      core_extraction:
+        status: full
+        symbols:
+          - file: internal/extractors/cobol/extractor.go
+            functions: [extractCOBOL, splitLines]
+        tests:
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+      call_line_precision:
+        status: full
+        symbols:
+          - file: internal/extractors/cobol/extractor.go
+            functions: [extractCOBOL, attachCall]
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+      import_resolution_quality:
+        status: partial
+        symbols:
+          - file: internal/extractors/cobol/extractor.go
+            functions: [extractCOBOL]
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+
+  lang.cobol.embedded.db2-sql:
+    capabilities:
+      db_effect:
+        status: full
+        symbols:
+          - file: internal/substrate/effect_sinks_cobol.go
+            functions: [sniffEffectsCobol]
+        tests:
+          - file: internal/substrate/effect_sinks_cobol_test.go
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+
+  lang.cobol.embedded.cics:
+    capabilities:
+      http_effect:
+        status: partial
+        symbols:
+          - file: internal/substrate/effect_sinks_cobol.go
+            functions: [sniffEffectsCobol]
+        tests:
+          - file: internal/substrate/effect_sinks_cobol_test.go
+        issues_implemented: ["2743"]
+        verified_at: "2026-05-28"
+
   lang.jsts.framework.react:
     capabilities:
       Structure:

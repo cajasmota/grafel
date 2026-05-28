@@ -71,9 +71,12 @@ func TestRegisterAndGet(t *testing.T) {
 func TestGetUnregisteredLanguage(t *testing.T) {
 	cleanRegistry(t)
 
-	_, ok := Get("cobol")
+	// "fortran" is the canonical not-yet-supported placeholder now that
+	// COBOL has a real extractor (#2743). The token only needs to name a
+	// language with no registered extractor.
+	_, ok := Get("fortran")
 	if ok {
-		t.Fatal("expected false for unregistered language cobol")
+		t.Fatal("expected false for unregistered language fortran")
 	}
 }
 

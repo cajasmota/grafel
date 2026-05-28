@@ -212,7 +212,7 @@ func TestParse_OTelSpan_EmittedOnUnsupportedLanguage(t *testing.T) {
 	exp := tracetest.NewInMemoryExporter()
 	f := newTestFactory(t, exp)
 
-	_, err := f.Parse(context.Background(), []byte("code"), "cobol")
+	_, err := f.Parse(context.Background(), []byte("code"), "fortran")
 	if !errors.Is(err, treesitter.ErrUnsupportedLanguage) {
 		t.Fatalf("expected ErrUnsupportedLanguage, got: %v", err)
 	}

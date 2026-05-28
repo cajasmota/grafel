@@ -36,7 +36,7 @@ buckets:
 # `subcategory_order` slice fixes their render order.
 categories:
   language:
-    capabilities: [call_line_precision, discriminates_on, navigates_to, core_extraction]
+    capabilities: [call_line_precision, discriminates_on, navigates_to, core_extraction, import_resolution_quality, db_effect, fs_effect, http_effect]
   http_framework:
     capabilities: [endpoint_synthesis, handler_attribution, auth_coverage, middleware_coverage]
     subcategory_order: [http_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration]

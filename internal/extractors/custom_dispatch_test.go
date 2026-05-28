@@ -72,7 +72,7 @@ func TestCustomExtractorsForUnknownLanguageReturnsEmpty(t *testing.T) {
 	cleanRegistry(t)
 	Register("custom_go_gin", &mockExtractor{language: "custom_go_gin"})
 
-	got := CustomExtractorsFor("cobol")
+	got := CustomExtractorsFor("fortran")
 	if got == nil {
 		t.Fatal("expected non-nil empty slice")
 	}

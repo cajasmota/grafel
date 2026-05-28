@@ -254,9 +254,9 @@ def orphan_method(x
 }
 
 func TestRubyExtractor_UnregisteredLanguage(t *testing.T) {
-	_, ok := extractor.Get("cobol")
+	_, ok := extractor.Get("fortran")
 	if ok {
-		t.Error("expected false for unregistered language cobol")
+		t.Error("expected false for unregistered language fortran")
 	}
 }
 

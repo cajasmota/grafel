@@ -567,6 +567,13 @@ var extensionLanguageMap = map[string]string{
 	".R":   "r",
 	".rmd": "r",
 	".Rmd": "r",
+	// COBOL — mainframe / banking. .cob/.cbl/.cobol are program source;
+	// .cpy is a copybook (the COBOL include unit) — both route to the cobol
+	// extractor, which handles COPY directives and data-only copybook bodies.
+	".cob":   "cobol",
+	".cbl":   "cobol",
+	".cobol": "cobol",
+	".cpy":   "cobol",
 	// Markdown / Documentation
 	".md":       "markdown",
 	".mdx":      "markdown",

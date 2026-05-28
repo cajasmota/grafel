@@ -283,7 +283,7 @@ end`
 
 func TestUnsupportedLanguage(t *testing.T) {
 	src := `@Deprecated public void foo() {}`
-	got := extract(t, "cobol", src)
+	got := extract(t, "fortran", src)
 	if len(got) != 0 {
 		t.Errorf("expected 0 entities for unsupported language, got %d", len(got))
 	}
