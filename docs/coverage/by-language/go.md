@@ -45,7 +45,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [Ginkgo](../detail/test.ginkgo.md) | ❌ | — | — | ❌ | |
 | [Gomega](../detail/test.gomega.md) | ❌ | — | — | ❌ | |
@@ -58,7 +58,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | — | — | ⚠️ | |
 | [Bun (uptrace)](../detail/lang.go.orm.bun.md) | ❌ | ⚠️ | ⚠️ | |

@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_policy` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/csrf_heuristic_detector.yaml` | — |
+| Auth policy | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/csrf_heuristic_detector.yaml` | — |
 
 ## Provenance
 

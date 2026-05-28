@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_graph` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/tests_edges.go` | — |
-| `target_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/csharp/test_patterns.yaml`<br>`internal/engine/tests_edges.go` | — |
+| Dependency graph | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/tests_edges.go` | — |
+| Target extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/csharp/test_patterns.yaml`<br>`internal/engine/tests_edges.go` | — |
 
 ## Provenance
 

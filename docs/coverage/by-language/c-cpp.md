@@ -45,7 +45,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [Boost.Test](../detail/test.boost-test.md) | ❌ | — | — | ❌ | |
 | [Buck2](../detail/lang.c-cpp.tool.buck2.md) | ❌ | — | — | ❌ | |
@@ -66,7 +66,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | ❌ | ❌ | ❌ | |
 | [ODB](../detail/lang.c-cpp.orm.odb.md) | ❌ | ❌ | ❌ | |

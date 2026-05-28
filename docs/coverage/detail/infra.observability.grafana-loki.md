@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `log_extraction` | ❌ `missing` | — | — | — | — | — |
-| `metric_extraction` | — `not_applicable` | — | — | — | — | — |
-| `trace_extraction` | — `not_applicable` | — | — | — | — | — |
+| Log extraction | ❌ `missing` | — | — | — | — | — |
+| Metric extraction | — `not_applicable` | — | — | — | — | — |
+| Trace extraction | — `not_applicable` | — | — | — | — | — |
 
 ## Provenance
 

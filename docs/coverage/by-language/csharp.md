@@ -55,7 +55,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [.csproj / packages.config](../detail/pkg.csproj.md) | — | ❌ | ❌ | — | |
 | [FluentAssertions](../detail/test.fluentassertions.md) | ❌ | — | — | ❌ | |
@@ -67,7 +67,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | — | — | ⚠️ | |
 | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | — | — | ⚠️ | |

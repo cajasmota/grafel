@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/hcl` | — |
-| `resource_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/hcl` | — |
+| Dependency attribution | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/hcl` | — |
+| Resource extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/hcl` | — |
 
 ## Provenance
 

@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `env_resolution` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` | — |
-| `file_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` | — |
+| Env resolution | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` | — |
+| File parsing | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go` | — |
 
 ## Provenance
 

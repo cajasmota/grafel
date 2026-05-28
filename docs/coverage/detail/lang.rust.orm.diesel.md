@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ❌ `missing` | — | — | — | — | — |
-| `model_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/orms/diesel.yaml` | — |
-| `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/orms/diesel.yaml` | — |
+| Migration parsing | ❌ `missing` | — | — | — | — | — |
+| Model extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/orms/diesel.yaml` | — |
+| Query attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/rust/orms/diesel.yaml` | — |
 
 ## Provenance
 

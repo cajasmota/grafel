@@ -40,7 +40,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | ❌ | ✅ | ✅ | |
 | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | ❌ | ⚠️ | ⚠️ | |

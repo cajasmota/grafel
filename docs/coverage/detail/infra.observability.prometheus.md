@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `log_extraction` | — `not_applicable` | — | — | — | — | — |
-| `metric_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/_engine/comment_marker_extractor.yaml` | — |
-| `trace_extraction` | — `not_applicable` | — | — | — | — | — |
+| Log extraction | — `not_applicable` | — | — | — | — | — |
+| Metric extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/_engine/comment_marker_extractor.yaml` | — |
+| Trace extraction | — `not_applicable` | — | — | — | — | — |
 
 ## Provenance
 

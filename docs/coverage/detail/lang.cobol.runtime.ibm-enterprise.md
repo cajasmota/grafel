@@ -11,12 +11,12 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `call_line_precision` | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/extractors/cobol/extractor.go` | — |
-| `core_extraction` | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/classifier/classifier.go`<br>`internal/extractors/cobol/extractor.go` | — |
-| `db_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/substrate/effect_sinks_cobol.go` | — |
-| `fs_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/substrate/effect_sinks_cobol.go` | — |
-| `http_effect` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/substrate/effect_sinks_cobol.go` | — |
-| `import_resolution_quality` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/extractors/cobol/extractor.go` | — |
+| Call line precision | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/extractors/cobol/extractor.go` | — |
+| Core extraction | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/classifier/classifier.go`<br>`internal/extractors/cobol/extractor.go` | — |
+| DB effect | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/substrate/effect_sinks_cobol.go` | — |
+| Fs effect | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/substrate/effect_sinks_cobol.go` | — |
+| HTTP effect | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/substrate/effect_sinks_cobol.go` | — |
+| Import resolution quality | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/extractors/cobol/extractor.go` | — |
 
 ## Provenance
 

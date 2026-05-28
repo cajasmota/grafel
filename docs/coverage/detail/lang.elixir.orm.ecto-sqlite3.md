@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ❌ `missing` | — | — | — | — | — |
-| `model_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml` | — |
-| `query_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml` | — |
+| Migration parsing | ❌ `missing` | — | — | — | — | — |
+| Model extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml` | — |
+| Query attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml` | — |
 
 ## Provenance
 

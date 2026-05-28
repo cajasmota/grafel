@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `sql_injection` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/sql_injection_detector.yaml` | — |
+| SQL injection | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/sql_injection_detector.yaml` | — |
 
 ## Provenance
 

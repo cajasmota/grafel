@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `log_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/logging_config_extractor.yaml` | — |
+| Log extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/_engine/logging_config_extractor.yaml` | — |
 
 ## Provenance
 

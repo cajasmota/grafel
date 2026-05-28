@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_graph` | ❌ `missing` | — | — | — | — | — |
-| `target_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/test_patterns.yaml` | — |
+| Dependency graph | ❌ `missing` | — | — | — | — | — |
+| Target extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/java/test_patterns.yaml` | — |
 
 ## Provenance
 

@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `file_parsing` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go`<br>`internal/extractors/cross/manifest/extractor.go` | — |
+| File parsing | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/config/discover.go`<br>`internal/extractors/cross/manifest/extractor.go` | — |
 
 ## Provenance
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 5
+- **Capability cells:** 7
 
 ## Capabilities
 
@@ -15,20 +15,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `endpoint_synthesis` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
-| `handler_attribution` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
+| Handler attribution | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `auth_coverage` | ⚠️ `partial` | `2026-05-27` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Auth coverage | ⚠️ `partial` | `2026-05-27` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `request_validation` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Request validation | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ### Middleware
 
@@ -59,7 +59,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `import_resolution_quality` | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
+| Import resolution quality | ✅ `full` | `2026-05-27` | — | — | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ## Framework-specific
 
@@ -67,8 +67,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_injection` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
-| `module_graph` | ⚠️ `partial` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Dependency injection | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Module graph | ⚠️ `partial` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ## Provenance
 

@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `env_resolution` | ❌ `missing` | — | — | — | — | — |
-| `file_parsing` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/cicd/_manifest.yaml` | — |
+| Env resolution | ❌ `missing` | — | — | — | — | — |
+| File parsing | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/cicd/_manifest.yaml` | — |
 
 ## Provenance
 

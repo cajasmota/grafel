@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `consumer_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pubsub_edges.go` | — |
-| `producer_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pubsub_edges.go` | — |
-| `topic_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pubsub_edges.go` | — |
+| Consumer extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pubsub_edges.go` | — |
+| Producer extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pubsub_edges.go` | — |
+| Topic attribution | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/pubsub_edges.go` | — |
 
 ## Provenance
 

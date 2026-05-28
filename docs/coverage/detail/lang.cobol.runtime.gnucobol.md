@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `call_line_precision` | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/extractors/cobol/extractor.go` | — |
-| `core_extraction` | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/classifier/classifier.go`<br>`internal/extractors/cobol/extractor.go` | — |
-| `import_resolution_quality` | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/extractors/cobol/extractor.go` | — |
+| Call line precision | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/extractors/cobol/extractor.go` | — |
+| Core extraction | ✅ `full` | `2026-05-28` | — | [link](2743) | `internal/classifier/classifier.go`<br>`internal/extractors/cobol/extractor.go` | — |
+| Import resolution quality | ✅ `full` | `2026-05-28` | — | [link](2838) | `internal/extractors/cobol/depth.go`<br>`internal/extractors/cobol/extractor.go` | — |
 
 ## Provenance
 

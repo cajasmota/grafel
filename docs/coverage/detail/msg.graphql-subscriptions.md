@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go` | — |
-| `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go` | — |
-| `topic_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go` | — |
+| Consumer extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go` | — |
+| Producer extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go` | — |
+| Topic attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/graphql_subscriptions.go` | — |
 
 ## Provenance
 

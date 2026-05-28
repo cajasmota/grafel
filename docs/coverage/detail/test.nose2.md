@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `dependency_graph` | ❌ `missing` | — | — | — | — | — |
-| `target_extraction` | ❌ `missing` | — | — | — | — | — |
+| Dependency graph | ❌ `missing` | — | — | — | — | — |
+| Target extraction | ❌ `missing` | — | — | — | — | — |
 
 ## Provenance
 

@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `endpoint_synthesis` | ❌ `missing` | — | — | — | — | — |
+| Endpoint synthesis | ❌ `missing` | — | — | — | — | — |
 
 ### Auth
 
@@ -56,10 +56,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `db_effect` | — `not_applicable` | — | — | — | — | — |
-| `fs_effect` | — `not_applicable` | — | — | — | — | — |
-| `http_effect` | — `not_applicable` | — | — | — | — | — |
-| `mutation_effect` | — `not_applicable` | — | — | — | — | — |
+| DB effect | — `not_applicable` | — | — | — | — | — |
+| Fs effect | — `not_applicable` | — | — | — | — | — |
+| HTTP effect | — `not_applicable` | — | — | — | — | — |
+| Mutation effect | — `not_applicable` | — | — | — | — | — |
 
 ## Provenance
 

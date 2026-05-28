@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | Call Line Precision | Core Extraction | Db Effect | Discriminates On | Fs Effect | HTTP Effect | Import Resolution Quality | Navigates To | Status | Notes |
+| Language | Name | Call line precision | Core extraction | DB effect | Discriminates on | Fs effect | HTTP effect | Import resolution quality | Navigates to | Status | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | [assembly](../by-language/assembly.md) | [ARM armasm](../detail/lang.assembly.toolchain.armasm.md) | ✅ | ⚠️ | — | — | — | — | ⚠️ | — | ⚠️ | |
 | [assembly](../by-language/assembly.md) | [GNU as (gas)](../detail/lang.assembly.toolchain.gnu-as.md) | ✅ | ✅ | — | — | — | — | ✅ | — | ✅ | |

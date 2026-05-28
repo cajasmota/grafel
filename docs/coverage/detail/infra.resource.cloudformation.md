@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `resource_extraction` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/workflow_edges.go` | — |
+| Resource extraction | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/workflow_edges.go` | — |
 
 ## Provenance
 

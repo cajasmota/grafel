@@ -82,7 +82,7 @@ Back to [summary](../summary.md).
 
 ## Tools
 
-| Name | Dependency Graph | Lockfile Parsing | Manifest Parsing | Target Extraction | Notes |
+| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [AVA](../detail/test.ava.md) | ✅ | — | — | ✅ | |
 | [Bun (runtime + manager)](../detail/build.bun.md) | ✅ | — | — | ✅ | |
@@ -108,7 +108,7 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration Parsing | Model Extraction | Query Attribution | Notes |
+| Name | Migration parsing | Model extraction | Query attribution | Notes |
 |---|---|---|---|---|
 | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | — | — | ✅ | |
 | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | — | — | ✅ | |

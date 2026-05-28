@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 17
+- **Capability cells:** 19
 
 ## Capabilities
 
@@ -15,63 +15,63 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `component_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
-| `hook_recognition` | — `not_applicable` | — | — | — | — | — |
+| Component extraction | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
+| Hook recognition | — `not_applicable` | — | — | — | — | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `data_loaders` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Data loaders | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
 
 ### Server
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `hydration_boundaries` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
-| `server_components` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Hydration boundaries | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Server components | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
 
 ### Routing
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `route_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/astro.yaml` | — |
-| `router_pattern` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
+| Route extraction | ✅ `full` | `2026-05-28` | — | — | `internal/engine/rules/javascript_typescript/frameworks/astro.yaml` | — |
+| Router pattern | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
 
 ### Build
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `static_generation` | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Static generation | ✅ `full` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
 
 ### Type System
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `enum_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/extractor.go` | — |
-| `interface_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/extractor.go` | — |
-| `type_alias_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/extractor.go` | — |
+| Enum extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/extractor.go` | — |
+| Interface extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/extractor.go` | — |
+| Type alias extraction | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/extractor.go` | — |
 
 ### Lifecycle
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `state_setter_emission` | — `not_applicable` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/extractors/astro/extractor.go` | — |
+| State setter emission | — `not_applicable` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/extractors/astro/extractor.go` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `tests_linkage` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/tests.go` | — |
+| Tests linkage | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/tests.go` | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `sanitizer_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
-| `taint_sink_detection` | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
-| `taint_source_detection` | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
-| `vulnerability_finding` | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
+| Sanitizer recognition | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
+| Taint sink detection | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
+| Taint source detection | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
+| Vulnerability finding | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
 
 ## Framework-specific
 
@@ -79,8 +79,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `astro_frontmatter_fetch` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
-| `astro_island_directive` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
+| Astro frontmatter fetch | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
+| Astro island directive | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
 
 ## Provenance
 

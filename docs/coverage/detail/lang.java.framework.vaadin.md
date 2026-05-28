@@ -15,52 +15,52 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `component_extraction` | ❌ `missing` | — | — | — | — | — |
-| `context_extraction` | ❌ `missing` | — | — | — | — | — |
-| `hook_recognition` | ❌ `missing` | — | — | — | — | — |
+| Component extraction | ❌ `missing` | — | — | — | — | — |
+| Context extraction | ❌ `missing` | — | — | — | — | — |
+| Hook recognition | ❌ `missing` | — | — | — | — | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `branch_conditions` | ❌ `missing` | — | — | — | — | — |
-| `data_fetching` | ❌ `missing` | — | — | — | — | — |
-| `prop_extraction` | ❌ `missing` | — | — | — | — | — |
-| `state_management` | ❌ `missing` | — | — | — | — | — |
+| Branch conditions | ❌ `missing` | — | — | — | — | — |
+| Data fetching | ❌ `missing` | — | — | — | — | — |
+| Prop extraction | ❌ `missing` | — | — | — | — | — |
+| State management | ❌ `missing` | — | — | — | — | — |
 
 ### Navigation
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+| Router pattern | ❌ `missing` | — | — | — | — | — |
 
 ### Type System
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `enum_extraction` | ❌ `missing` | — | — | — | — | — |
-| `interface_extraction` | ❌ `missing` | — | — | — | — | — |
-| `type_alias_extraction` | ❌ `missing` | — | — | — | — | — |
+| Enum extraction | ❌ `missing` | — | — | — | — | — |
+| Interface extraction | ❌ `missing` | — | — | — | — | — |
+| Type alias extraction | ❌ `missing` | — | — | — | — | — |
 
 ### Lifecycle
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `state_setter_emission` | ❌ `missing` | — | — | — | — | — |
+| State setter emission | ❌ `missing` | — | — | — | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `tests_linkage` | ❌ `missing` | — | — | — | — | — |
+| Tests linkage | ❌ `missing` | — | — | — | — | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `constant_propagation` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
-| `env_fallback_recognition` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
-| `import_resolution_quality` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
+| Constant propagation | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
+| Env fallback recognition | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
+| Import resolution quality | ⚠️ `partial` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
 
 ## Provenance
 

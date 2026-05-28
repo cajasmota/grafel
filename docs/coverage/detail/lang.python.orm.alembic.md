@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/alembic.yaml` | — |
-| `model_extraction` | — `not_applicable` | — | — | — | — | — |
-| `query_attribution` | — `not_applicable` | — | — | — | — | — |
+| Migration parsing | ⚠️ `partial` | `2026-05-28` | — | — | `internal/engine/rules/python/orms/alembic.yaml` | — |
+| Model extraction | — `not_applicable` | — | — | — | — | — |
+| Query attribution | — `not_applicable` | — | — | — | — | — |
 
 ## Provenance
 

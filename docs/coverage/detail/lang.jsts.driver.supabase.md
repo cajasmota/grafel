@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `migration_parsing` | — `not_applicable` | — | — | — | — | — |
-| `model_extraction` | — `not_applicable` | — | — | — | — | — |
-| `query_attribution` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go`<br>`internal/engine/orm_queries_test.go` | — |
+| Migration parsing | — `not_applicable` | — | — | — | — | — |
+| Model extraction | — `not_applicable` | — | — | — | — | — |
+| Query attribution | ✅ `full` | `2026-05-28` | — | — | `internal/engine/orm_queries_jsts.go`<br>`internal/engine/orm_queries_test.go` | — |
 
 ## Provenance
 

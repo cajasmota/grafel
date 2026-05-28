@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `cross_repo_linkage` | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/cobol/testdata/payroll.cbl`<br>`internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/extractor_test.go` | — |
-| `method_attribution` | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/testdata/payjob.jcl` | — |
-| `service_extraction` | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go` | — |
+| Cross repo linkage | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/cobol/testdata/payroll.cbl`<br>`internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/extractor_test.go` | — |
+| Method attribution | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go`<br>`internal/extractors/jcl/testdata/payjob.jcl` | — |
+| Service extraction | ✅ `full` | `2026-05-28` | — | [link](2843) | `internal/extractors/jcl/extractor.go` | — |
 
 ## Provenance
 
