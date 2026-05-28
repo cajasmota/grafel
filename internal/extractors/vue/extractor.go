@@ -168,6 +168,30 @@ var (
 	// Template branch conditions: v-if / v-else-if / v-else / v-show. These are
 	// Vue's conditional-rendering directives (branch_conditions).
 	reVueBranch = regexp.MustCompile(`\b(v-if|v-else-if|v-else|v-show)\b`)
+
+	// ── Navigation (issue #2856) ─────────────────────────────────────────────
+
+	// vue-router route table: createRouter({ routes: [ … ] }). We locate the
+	// createRouter call and then scan the routes array for `path:` entries.
+	reCreateRouter = regexp.MustCompile(`\bcreateRouter\s*\(`)
+	// A `path: '/segment'` entry inside a vue-router route record.
+	reVueRoutePath = regexp.MustCompile(`\bpath\s*:\s*['"]([^'"]*)['"]`)
+	// Imperative navigation: router.push('/x') / router.replace('/x') /
+	// router.push({ name: 'x' }). Capture the method and the first argument's
+	// leading string literal when present.
+	reVueRouterNav = regexp.MustCompile(`(?m)\b(?:router|\$router)\s*\.\s*(push|replace)\s*\(\s*(?:['"]([^'"]*)['"]|\{[^}]*\bname\s*:\s*['"]([^'"]*)['"])`)
+	// Template <router-link to="/x"> / <RouterLink :to="…"> / <nuxt-link
+	// to="/x">. Capture the `to` attribute string value.
+	reRouterLink = regexp.MustCompile(`(?si)<(?:router-link|RouterLink|nuxt-link|NuxtLink)\b[^>]*?\b:?to\s*=\s*"([^"]*)"`)
+
+	// ── Lifecycle / state_setter_emission (issue #2856) ──────────────────────
+
+	// Pinia/component state setter via $patch: store.$patch({ … }) /
+	// store.$patch(fn). The receiver is the store binding name.
+	reVuePatch = regexp.MustCompile(`(?m)\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\.\s*\$patch\s*\(`)
+	// ref().value assignment: `count.value = …` / `count.value += …`. The
+	// captured identifier is the ref binding being mutated.
+	reVueRefAssign = regexp.MustCompile(`(?m)\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\.\s*value\s*(?:=|\+=|-=|\*=|/=|\?\?=|\|\|=|&&=)\s*[^=]`)
 )
 
 // jsKeywords are identifiers that appear before "(" but are NOT method
@@ -306,6 +330,26 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, dfRels...)
 		entities = append(entities, dfEntities...)
 
+		// 3c-iv. Navigation (#2856) — vue-router route table (createRouter)
+		// and imperative router.push/replace. Both emit NAVIGATES_TO edges
+		// on the component entity.
+		navRels := extractScriptNavigation(scriptSrc, scriptOffset, src, componentName)
+		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, navRels...)
+
+		// 3c-v. Lifecycle (#2856) — state_setter_emission: ref().value
+		// assignments and Pinia store.$patch mutations each emit a
+		// SCOPE.Operation subtype="state_setter" with a WRITES_TO edge to
+		// the state it mutates.
+		setterEnts := extractStateSetters(scriptSrc, scriptOffset, src, file.Path, componentName)
+		for i := range setterEnts {
+			opRef := extractor.BuildOperationStructuralRef("vue", file.Path, setterEnts[i].Name)
+			entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, types.RelationshipRecord{
+				ToID: opRef,
+				Kind: "CONTAINS",
+			})
+		}
+		entities = append(entities, setterEnts...)
+
 		// 3d. Options API methods (inside methods: { … })
 		if !isSetup {
 			methods := extractOptionsMethods(scriptSrc, scriptOffset, src, file.Path, componentName)
@@ -330,6 +374,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		brEntities, brRels := extractBranchConditions(templateSrc, templateOffset, src, file.Path, componentName)
 		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, brRels...)
 		entities = append(entities, brEntities...)
+
+		// Navigation (#2856) — <router-link to="…"> directives emit
+		// NAVIGATES_TO edges.
+		linkRels := extractRouterLinks(templateSrc, templateOffset, src, componentName)
+		entities[componentIdx].Relationships = append(entities[componentIdx].Relationships, linkRels...)
 	}
 
 	// --- 5. Tag relationships with language ----------------------------------
@@ -852,6 +901,183 @@ func extractBranchConditions(templateSrc string, templateOffset int, fullSrc, fi
 		})
 	}
 	return ents, rels
+}
+
+// extractScriptNavigation scans a Vue <script> block for vue-router navigation
+// patterns (issue #2856 — Navigation/router_pattern) and returns NAVIGATES_TO
+// edges from the component:
+//
+//	createRouter({ routes: [ { path: '/x' }, … ] })  → one edge per declared path
+//	router.push('/x') / router.replace('/x')          → edge to '/x'
+//	router.push({ name: 'home' })                      → edge to named route
+//
+// vue-router is Vue's canonical client-side router; createRouter declares the
+// route table and router.push/replace are the imperative navigation verbs.
+func extractScriptNavigation(scriptSrc string, scriptOffset int, fullSrc, componentName string) []types.RelationshipRecord {
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+
+	emit := func(route, via string, off int) {
+		route = strings.TrimSpace(route)
+		if route == "" || seen[via+"|"+route] {
+			return
+		}
+		seen[via+"|"+route] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: "route:" + route,
+			Kind: "NAVIGATES_TO",
+			Properties: map[string]string{
+				"route":     route,
+				"via":       via,
+				"caller":    componentName,
+				"framework": "vue",
+				"line":      fmt.Sprintf("%d", lineOf(fullSrc, scriptOffset+off)),
+			},
+		})
+	}
+
+	// createRouter({ routes: [ … ] }) — scan the routes array for path entries.
+	if m := reCreateRouter.FindStringIndex(scriptSrc); m != nil {
+		// Bound the scan to the createRouter call's parenthesised argument so we
+		// only pick up its routes (best-effort: scan from the call to the end of
+		// its matching paren is overkill — the route-path regex is specific
+		// enough that scanning the whole script after the call is safe).
+		region := scriptSrc[m[0]:]
+		for _, pm := range reVueRoutePath.FindAllStringSubmatchIndex(region, -1) {
+			route := region[pm[2]:pm[3]]
+			display := route
+			if display == "" {
+				display = "<index>"
+			}
+			emit(display, "route_table", m[0]+pm[0])
+		}
+	}
+
+	// router.push / router.replace.
+	for _, pm := range reVueRouterNav.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		// group 2 = string-literal route, group 3 = named-route name.
+		var route string
+		if pm[4] >= 0 {
+			route = scriptSrc[pm[4]:pm[5]]
+		} else if pm[6] >= 0 {
+			route = scriptSrc[pm[6]:pm[7]]
+		}
+		if route == "" {
+			continue
+		}
+		emit(route, "router_call", pm[0])
+	}
+
+	return rels
+}
+
+// extractRouterLinks scans a Vue <template> block for <router-link>/<RouterLink>
+// (and Nuxt's <nuxt-link>) navigation directives and returns NAVIGATES_TO edges
+// from the component (issue #2856 — Navigation/router_pattern). Both the static
+// `to="/x"` and bound `:to="…"` forms are matched; a non-literal bound value is
+// captured verbatim so the call shape is still introspectable.
+func extractRouterLinks(templateSrc string, templateOffset int, fullSrc, componentName string) []types.RelationshipRecord {
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, m := range reRouterLink.FindAllStringSubmatchIndex(templateSrc, -1) {
+		route := strings.TrimSpace(templateSrc[m[2]:m[3]])
+		if route == "" || seen[route] {
+			continue
+		}
+		seen[route] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: "route:" + route,
+			Kind: "NAVIGATES_TO",
+			Properties: map[string]string{
+				"route":     route,
+				"via":       "router_link",
+				"caller":    componentName,
+				"framework": "vue",
+				"line":      fmt.Sprintf("%d", lineOf(fullSrc, templateOffset+m[0])),
+			},
+		})
+	}
+	return rels
+}
+
+// extractStateSetters scans a Vue <script> block for state-mutation points
+// (issue #2856 — Lifecycle/state_setter_emission) and returns SCOPE.Operation
+// subtype="state_setter" entities, each carrying a WRITES_TO edge to the state
+// it mutates. Two idioms are recognised:
+//
+//	ref().value assignment: `count.value = 1` / `count.value += 1`
+//	    → setter "count.value=" WRITES_TO state "count"
+//	Pinia $patch:           `userStore.$patch({ … })`
+//	    → setter "userStore.$patch" WRITES_TO state "userStore"
+//
+// The ref-binding set is collected first (from `const x = ref(…)`) so a
+// `.value =` assignment is only treated as a state setter when its receiver is
+// a known reactive ref, avoiding false positives on unrelated `.value` writes.
+func extractStateSetters(scriptSrc string, scriptOffset int, fullSrc, filePath, componentName string) []types.EntityRecord {
+	var ents []types.EntityRecord
+	seen := map[string]bool{}
+
+	// Collect ref/reactive bindings so .value assignments gate on a known ref.
+	refs := map[string]bool{}
+	for _, m := range reReactiveState.FindAllStringSubmatch(scriptSrc, -1) {
+		refs[m[1]] = true
+	}
+
+	emit := func(name, stateName, sig string, props map[string]string, off int) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		lineNum := lineOf(fullSrc, scriptOffset+off)
+		props["component"] = componentName
+		props["framework"] = "vue"
+		props["state"] = stateName
+		props["subtype"] = "state_setter"
+		ent := types.EntityRecord{
+			Name:             name,
+			QualifiedName:    fmt.Sprintf("%s.%s", componentName, name),
+			Kind:             "SCOPE.Operation",
+			Subtype:          "state_setter",
+			SourceFile:       filePath,
+			Language:         "vue",
+			StartLine:        lineNum,
+			EndLine:          lineNum,
+			Signature:        sig,
+			QualityScore:     0.8,
+			EnrichmentStatus: types.StatusPending,
+			Properties:       props,
+			Relationships: []types.RelationshipRecord{{
+				ToID: "state:" + stateName,
+				Kind: "WRITES_TO",
+				Properties: map[string]string{
+					"setter":    name,
+					"state":     stateName,
+					"component": componentName,
+					"framework": "vue",
+				},
+			}},
+		}
+		ents = append(ents, ent)
+	}
+
+	// ref().value assignments.
+	for _, m := range reVueRefAssign.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		name := scriptSrc[m[2]:m[3]]
+		if !refs[name] {
+			continue
+		}
+		emit(name+".value=", name, name+".value = …",
+			map[string]string{"setter_kind": "ref_assign"}, m[0])
+	}
+
+	// Pinia store.$patch.
+	for _, m := range reVuePatch.FindAllStringSubmatchIndex(scriptSrc, -1) {
+		store := scriptSrc[m[2]:m[3]]
+		emit(store+".$patch", store, store+".$patch(…)",
+			map[string]string{"setter_kind": "pinia_patch"}, m[0])
+	}
+
+	return ents
 }
 
 // buildVueImportEntities scans import statements in the script block and emits

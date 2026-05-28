@@ -108,6 +108,33 @@ var (
 	// Template branch conditions: {#if …}, {:else if …}, {#each …}, {#await …}.
 	// Svelte's logic blocks are its conditional/iterative rendering constructs.
 	branchBlockRE = regexp.MustCompile(`\{#(if|each|await)\b|\{:else\s+if\b|\{:else\b|\{:then\b|\{:catch\b`)
+
+	// ── Navigation (issue #2856) ─────────────────────────────────────────────
+	//
+	// Svelte itself ships NO built-in router — routing in a plain Svelte SPA is
+	// provided by an ecosystem library (svelte-routing, svelte-spa-router). We
+	// recognise those genuine client-side routing idioms (SvelteKit's
+	// file-system routing + `goto` are covered by the sveltekit framework
+	// record, not here).
+	//
+	// svelte-routing: <Route path="/x"> declares a route; <Link to="/x"> links
+	// to it; navigate('/x') navigates imperatively.
+	routeTagRE   = regexp.MustCompile(`(?si)<Route\b[^>]*?\bpath\s*=\s*"([^"]*)"`)
+	linkToRE     = regexp.MustCompile(`(?si)<Link\b[^>]*?\bto\s*=\s*"([^"]*)"`)
+	navigateCall = regexp.MustCompile(`(?m)\bnavigate\s*\(\s*['"]([^'"]*)['"]`)
+	// svelte-spa-router uses `push('/x')` / `replace('/x')` from the library.
+	spaRouterCall = regexp.MustCompile(`(?m)\b(?:push|replace)\s*\(\s*['"](/[^'"]*)['"]`)
+
+	// ── Lifecycle / state_setter_emission (issue #2856) ──────────────────────
+	//
+	// Svelte store setters: <store>.set(v) / <store>.update(fn). Gated on the
+	// store bindings collected from storeDeclRE so unrelated .set/.update calls
+	// (Set.add, Map.set) are not misread.
+	storeSetterRE = regexp.MustCompile(`(?m)\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\.\s*(set|update)\s*\(`)
+	// Auto-subscribe store assignment: `$count = v` / `$count += v`. The `$`
+	// prefix is Svelte's reactive store-value accessor; assigning to it writes
+	// through to the store.
+	storeDollarAssignRE = regexp.MustCompile(`(?m)\$([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:=|\+=|-=|\*=|/=)\s*[^=]`)
 )
 
 // Extract parses the Svelte SFC source and returns entity records.
@@ -163,6 +190,22 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		dfEntities, dfRels := extractScriptDataFlow(scriptContent, scriptStartLine, file.Path, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, dfRels...)
 		entities = append(entities, dfEntities...)
+
+		// Navigation (#2856): imperative svelte-routing navigate()/push().
+		navRels := extractScriptNavigation(scriptContent, scriptStartLine, file.Path, componentName)
+		entities[0].Relationships = append(entities[0].Relationships, navRels...)
+
+		// Lifecycle (#2856): state_setter_emission — store .set/.update and
+		// $store reactive assignment.
+		setterEnts := extractStateSetters(scriptContent, scriptStartLine, file.Path, componentName)
+		for i := range setterEnts {
+			entities[0].Relationships = append(entities[0].Relationships, types.RelationshipRecord{
+				FromID: file.Path,
+				ToID:   setterEnts[i].Name,
+				Kind:   "CONTAINS",
+			})
+		}
+		entities = append(entities, setterEnts...)
 	}
 
 	// ── 3. Extract RENDERS edges + branch conditions from the template ───────
@@ -177,6 +220,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		brEntities, brRels := extractBranchConditions(templateContent, templateStartLine, file.Path, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, brRels...)
 		entities = append(entities, brEntities...)
+
+		// Navigation (#2856): <Route path="…"> / <Link to="…"> svelte-routing
+		// directives emit NAVIGATES_TO edges.
+		linkRels := extractRouteDirectives(templateContent, templateStartLine, file.Path, componentName)
+		entities[0].Relationships = append(entities[0].Relationships, linkRels...)
 	}
 
 	span.SetAttributes(
@@ -565,6 +613,152 @@ func extractBranchConditions(template string, templateStartLine int, filePath, c
 		})
 	}
 	return ents, rels
+}
+
+// extractScriptNavigation scans a Svelte <script> block for imperative
+// client-side routing calls (issue #2856 — Navigation/router_pattern). Svelte
+// has no built-in router, so this targets the ecosystem libraries:
+// svelte-routing's navigate('/x') and svelte-spa-router's push('/x')/
+// replace('/x'). Returns NAVIGATES_TO edges from the component file.
+func extractScriptNavigation(script string, scriptStartLine int, filePath, componentName string) []types.RelationshipRecord {
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	emit := func(route, via string, off int) {
+		route = strings.TrimSpace(route)
+		if route == "" || seen[via+"|"+route] {
+			return
+		}
+		seen[via+"|"+route] = true
+		lineNum := scriptStartLine + strings.Count(script[:off], "\n")
+		rels = append(rels, types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   "route:" + route,
+			Kind:   "NAVIGATES_TO",
+			Properties: map[string]string{
+				"route":     route,
+				"via":       via,
+				"caller":    componentName,
+				"framework": "svelte",
+				"line":      fmt.Sprintf("%d", lineNum),
+			},
+		})
+	}
+	for _, m := range navigateCall.FindAllStringSubmatchIndex(script, -1) {
+		emit(script[m[2]:m[3]], "navigate_call", m[0])
+	}
+	for _, m := range spaRouterCall.FindAllStringSubmatchIndex(script, -1) {
+		emit(script[m[2]:m[3]], "spa_router_call", m[0])
+	}
+	return rels
+}
+
+// extractRouteDirectives scans the Svelte template for svelte-routing's <Route
+// path="…"> route declarations and <Link to="…"> navigation links (issue #2856
+// — Navigation/router_pattern), returning NAVIGATES_TO edges from the component
+// file.
+func extractRouteDirectives(template string, templateStartLine int, filePath, componentName string) []types.RelationshipRecord {
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	emit := func(re *regexp.Regexp, via string) {
+		for _, m := range re.FindAllStringSubmatchIndex(template, -1) {
+			route := strings.TrimSpace(template[m[2]:m[3]])
+			if route == "" || seen[via+"|"+route] {
+				continue
+			}
+			seen[via+"|"+route] = true
+			lineNum := templateStartLine + strings.Count(template[:m[0]], "\n")
+			rels = append(rels, types.RelationshipRecord{
+				FromID: filePath,
+				ToID:   "route:" + route,
+				Kind:   "NAVIGATES_TO",
+				Properties: map[string]string{
+					"route":     route,
+					"via":       via,
+					"caller":    componentName,
+					"framework": "svelte",
+					"line":      fmt.Sprintf("%d", lineNum),
+				},
+			})
+		}
+	}
+	emit(routeTagRE, "route_table")
+	emit(linkToRE, "link")
+	return rels
+}
+
+// extractStateSetters scans a Svelte <script> block for state-mutation points
+// (issue #2856 — Lifecycle/state_setter_emission) and returns SCOPE.Operation
+// subtype="state_setter" entities, each carrying a WRITES_TO edge to the store
+// it mutates. Two idioms are recognised:
+//
+//	store method:   <store>.set(v) / <store>.update(fn)  → WRITES_TO <store>
+//	$-assignment:   $count = v / $count += v             → WRITES_TO count
+//
+// `.set`/`.update` are gated on the writable/readable store bindings collected
+// from storeDeclRE so unrelated `.set` calls (Set.add, Map.set) are excluded.
+func extractStateSetters(script string, scriptStartLine int, filePath, componentName string) []types.EntityRecord {
+	var ents []types.EntityRecord
+	seen := map[string]bool{}
+
+	// Collect store bindings to gate .set/.update.
+	stores := map[string]bool{}
+	for _, m := range storeDeclRE.FindAllStringSubmatch(script, -1) {
+		stores[m[1]] = true
+	}
+
+	emit := func(name, stateName, sig string, props map[string]string, off int) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		lineNum := scriptStartLine + strings.Count(script[:off], "\n")
+		props["component"] = componentName
+		props["framework"] = "svelte"
+		props["state"] = stateName
+		props["subtype"] = "state_setter"
+		ents = append(ents, types.EntityRecord{
+			Name:         name,
+			Kind:         "SCOPE.Operation",
+			Subtype:      "state_setter",
+			SourceFile:   filePath,
+			Language:     "svelte",
+			StartLine:    lineNum,
+			EndLine:      lineNum,
+			Signature:    sig,
+			QualityScore: 0.8,
+			Properties:   props,
+			Relationships: []types.RelationshipRecord{{
+				ToID: "state:" + stateName,
+				Kind: "WRITES_TO",
+				Properties: map[string]string{
+					"setter":    name,
+					"state":     stateName,
+					"component": componentName,
+					"framework": "svelte",
+				},
+			}},
+		})
+	}
+
+	// Store .set / .update.
+	for _, m := range storeSetterRE.FindAllStringSubmatchIndex(script, -1) {
+		store := script[m[2]:m[3]]
+		method := script[m[4]:m[5]]
+		if !stores[store] {
+			continue
+		}
+		emit(store+"."+method, store, store+"."+method+"(…)",
+			map[string]string{"setter_kind": "store_method", "method": method}, m[0])
+	}
+
+	// $store auto-subscribe assignment.
+	for _, m := range storeDollarAssignRE.FindAllStringSubmatchIndex(script, -1) {
+		store := script[m[2]:m[3]]
+		emit("$"+store+"=", store, "$"+store+" = …",
+			map[string]string{"setter_kind": "store_assign"}, m[0])
+	}
+
+	return ents
 }
 
 // svelteBranchKind maps a matched logic-block opener to a canonical label.

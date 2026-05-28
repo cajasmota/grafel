@@ -187,12 +187,27 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 		dfEnts = append(dfEnts, fetchEnts...)
 		rels = append(rels, fetchRels...)
 		rels = append(rels, stateRels...)
+
+		// Navigation group (issue #2856) — imperative Router navigation
+		// (this.router.navigate([...]) / navigateByUrl) and RouterModule
+		// route-table declarations both emit NAVIGATES_TO edges.
+		rels = append(rels, x.angularNavigationRels(body, className)...)
+		rels = append(rels, x.angularRouteTableRels(body, className)...)
+
+		// Lifecycle group (issue #2856) — state-setter emission: signal
+		// .set/.update and ngrx dispatch each emit a state_setter operation
+		// plus a WRITES_TO edge to the state it mutates.
+		setterEnts := x.angularStateSetterEmission(body, className)
+		dfEnts = append(dfEnts, setterEnts...)
 	}
 	if call != nil {
 		meta := x.angularDecoratorMeta(call)
 		if tmpl := meta["template"]; tmpl != "" {
 			brEnts := x.angularBranchConditions(tmpl, className, n)
 			dfEnts = append(dfEnts, brEnts...)
+			// Navigation group (issue #2856) — routerLink directives in the
+			// inline template emit NAVIGATES_TO edges.
+			rels = append(rels, x.angularRouterLinkRels(tmpl, className, n)...)
 		}
 	}
 

@@ -34,7 +34,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+| `router_pattern` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2856_test.go`<br>`testdata/fixtures/real-world/svelte/UserList.svelte` | — |
 
 ### Type System
 
@@ -48,7 +48,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `state_setter_emission` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
+| `state_setter_emission` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2856_test.go`<br>`testdata/fixtures/real-world/svelte/UserList.svelte` | — |
 
 ### Testing
 

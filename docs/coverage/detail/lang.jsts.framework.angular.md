@@ -34,7 +34,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+| `router_pattern` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/angular_nav_lifecycle.go`<br>`internal/extractors/javascript/issue2856_angular_test.go`<br>`testdata/fixtures/real-world/typescript/angular_nav_lifecycle_component.ts` | — |
 
 ### Type System
 
@@ -48,7 +48,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `state_setter_emission` | ❌ `missing` | — | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | — | — |
+| `state_setter_emission` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/javascript/angular_nav_lifecycle.go`<br>`internal/extractors/javascript/issue2856_angular_test.go`<br>`testdata/fixtures/real-world/typescript/angular_nav_lifecycle_component.ts` | — |
 
 ### Testing
 
