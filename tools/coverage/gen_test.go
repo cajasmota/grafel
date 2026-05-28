@@ -236,6 +236,57 @@ func TestGenSummaryIncludesExtractorSupportedLanguages(t *testing.T) {
 	}
 }
 
+// TestGenHidesStrandedGroupColumns is the gen-level snapshot of the
+// don't-strand render guard (#2902). It builds a minimal in-memory
+// registry of grouped ui_frontend records where the Navigation / Type
+// System / Lifecycle / Testing / Substrate groups are all-"—" (no record
+// carries a cell), then asserts the rendered by-language and by-category
+// tables drop those column headers while keeping the populated Structure
+// and Data Flow columns — and that a tracked-but-missing ("❌") cell keeps
+// its column (only truly-N/A all-"—" columns are hidden).
+func TestGenHidesStrandedGroupColumns(t *testing.T) {
+	reg := &Registry{
+		SchemaVersion: SchemaVersion,
+		Records: []Record{
+			{ID: "lang.jsts.framework.vue", Category: "http_framework", Subcategory: "ui_frontend", Language: "jsts", Label: "Vue",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"component_extraction": {Status: StatusFull}},
+					"Data Flow": {"prop_flow": {Status: StatusMissing, Issue: "x"}},
+				}},
+			{ID: "lang.jsts.framework.svelte", Category: "http_framework", Subcategory: "ui_frontend", Language: "jsts", Label: "Svelte",
+				Groups: map[string]map[string]Capability{
+					"Structure": {"component_extraction": {Status: StatusPartial, Issue: "x"}},
+				}},
+		},
+	}
+	root := t.TempDir()
+	if err := generate(reg, root); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for _, rel := range []string{
+		"docs/coverage/by-language/jsts.md",
+		"docs/coverage/by-category/http_framework.md",
+	} {
+		data, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		body := string(data)
+		// Populated columns survive (Data Flow has a tracked ❌ cell).
+		for _, keep := range []string{"| Structure |", "| Data Flow |"} {
+			if !strings.Contains(body, keep) {
+				t.Errorf("%s: expected column %q to be kept, got:\n%s", rel, keep, body)
+			}
+		}
+		// All-"—" columns are dropped.
+		for _, drop := range []string{"| Navigation |", "| Type System |", "| Lifecycle |", "| Testing |", "| Substrate |"} {
+			if strings.Contains(body, drop) {
+				t.Errorf("%s: stranded column %q should be hidden, got:\n%s", rel, drop, body)
+			}
+		}
+	}
+}
+
 func TestGenSubcommandWiring(t *testing.T) {
 	reg, err := loadRegistry(fixturePath(t))
 	if err != nil {

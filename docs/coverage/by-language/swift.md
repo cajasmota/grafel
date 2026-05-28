@@ -10,9 +10,9 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/1 | — | — | — | — | — | — | ⚠️ 0/8 | |
+| Name | Routing | Substrate | Notes |
+|---|---|---|---|
+| [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/1 | ⚠️ 0/8 | |
 
 
 ## Tools

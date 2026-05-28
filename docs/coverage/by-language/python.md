@@ -10,34 +10,34 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ✅ 1/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 5/6 | |
-| [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Django](../detail/lang.python.framework.django.md) | ✅ 2/2 | ⚠️ 0/1 | — | ⚠️ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 2/2 | ✅ 1/1 | — | ❌ 0/1 | — | — | — | ⚠️ 7/20 | |
-| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Flask](../detail/lang.python.framework.flask.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
-| [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 5/6 | |
+| Name | Routing | Security | Middleware | Substrate | Notes |
+|---|---|---|---|---|---|
+| [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ✅ 1/2 | — 0/1 | — 0/1 | ⚠️ 5/6 | |
+| [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Django](../detail/lang.python.framework.django.md) | ✅ 2/2 | ⚠️ 0/1 | ⚠️ 0/1 | ⚠️ 5/6 | |
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 2/2 | ✅ 1/1 | ❌ 0/1 | ⚠️ 7/20 | |
+| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ⚠️ 0/2 | — 0/1 | — 0/1 | ⚠️ 5/6 | |
+| [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 2/2 | ⚠️ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Flask](../detail/lang.python.framework.flask.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
+| [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 5/6 | |
 
 
 ### AI Integration
 
-| Name | Prompts | Composition | Tracking | Notes |
-|---|---|---|---|---|
-| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 0/1 | ❌ 0/2 | — | |
+| Name | Prompts | Composition | Notes |
+|---|---|---|---|
+| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 0/1 | ❌ 0/2 | |
 
 
 ## Tools

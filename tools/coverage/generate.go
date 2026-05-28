@@ -787,6 +787,38 @@ func buildCrossCuttingRows(byCat map[string][]recordView) ([]crossCuttingRow, []
 	return active, empty, total
 }
 
+// nonStrandedGroupNames is the don't-strand render guard (#2902/#2899).
+// It filters a subcategory's canonical group-column headers down to those
+// that at least one record in the table actually carries a cell for. A
+// group whose digest is "—" (the empty-group glyph from groupDigest) for
+// *every* record renders an all-"—" column that is pure visual noise — it
+// is "truly N/A" for the records present, not "tracked-but-missing" (❌).
+// Hiding it keeps the pivot honest while staging a partially-populated
+// group never leaves an ugly all-"—" column.
+//
+// candidates is the canonical, already-ordered group-name list from
+// knownGroupNames; digestFor returns a record's digest for a group name
+// (caller passes a closure over recordView/categoryRow so this stays
+// type-agnostic). The returned slice preserves candidates' order and is a
+// fresh allocation (never aliases candidates). Determinism: iteration is
+// over the ordered candidates and the explicitly-ordered record slice, so
+// no map ranging leaks here.
+func nonStrandedGroupNames(candidates []string, records int, digestFor func(rec int, group string) string) []string {
+	if len(candidates) == 0 || records == 0 {
+		return candidates
+	}
+	out := make([]string, 0, len(candidates))
+	for _, name := range candidates {
+		for r := 0; r < records; r++ {
+			if digestFor(r, name) != "—" {
+				out = append(out, name)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // buildBucketSection produces a bucketSection for a per-language page.
 // When any record in recs declares a subcategory, the section is split
 // into one subSection per subcategory (ordered by subcategoryOrder)
@@ -855,7 +887,9 @@ func buildBucketSection(bucket string, recs []recordView) bucketSection {
 			Records:     recsForSub,
 		}
 		if len(groupNames) > 0 {
-			sec.GroupNames = groupNames
+			sec.GroupNames = nonStrandedGroupNames(groupNames, len(recsForSub), func(r int, g string) string {
+				return groupCell(recsForSub[r].GroupDigestByName, g)
+			})
 		} else {
 			sec.CapabilityKeys = subcategoryRenderKeys(cat, s)
 		}
@@ -894,13 +928,16 @@ func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]cate
 	subs := make([]categorySubSection, 0, len(ordered))
 	for _, s := range ordered {
 		groupNames := knownGroupNames(s)
+		recsForSub := bySub[s]
 		sec := categorySubSection{
 			Subcategory: s,
 			Heading:     subcategoryHeading(s),
-			Records:     bySub[s],
+			Records:     recsForSub,
 		}
 		if len(groupNames) > 0 {
-			sec.GroupNames = groupNames
+			sec.GroupNames = nonStrandedGroupNames(groupNames, len(recsForSub), func(r int, g string) string {
+				return groupCell(recsForSub[r].GroupDigestByName, g)
+			})
 		} else {
 			sec.CapabilityKeys = subcategoryRenderKeys(category, s)
 		}

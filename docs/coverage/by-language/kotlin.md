@@ -10,16 +10,16 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Ktor](../detail/lang.kotlin.framework.ktor.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 2/2 | ⚠️ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 6/17 | |
-| [http4k](../detail/lang.kotlin.framework.http4k.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 8/17 | |
+| Name | Routing | Security | Middleware | Substrate | Notes |
+|---|---|---|---|---|---|
+| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | ⚠️ 0/2 | — 0/1 | — 0/1 | ⚠️ 8/17 | |
+| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Ktor](../detail/lang.kotlin.framework.ktor.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 2/2 | ⚠️ 0/1 | ❌ 0/1 | ⚠️ 6/17 | |
+| [http4k](../detail/lang.kotlin.framework.http4k.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | ⚠️ 0/2 | — 0/1 | — 0/1 | ⚠️ 8/17 | |
 
 
 ### Mobile
@@ -32,10 +32,10 @@ Back to [summary](../summary.md).
 
 ### Desktop
 
-| Name | Process | Native | Updates | Substrate | Notes |
-|---|---|---|---|---|---|
-| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ❌ 0/2 | ❌ 0/1 | — | ⚠️ 3/7 | |
-| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ❌ 0/2 | ❌ 0/1 | — | ⚠️ 3/7 | |
+| Name | Process | Native | Substrate | Notes |
+|---|---|---|---|---|
+| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
+| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
 
 
 ## ORMs

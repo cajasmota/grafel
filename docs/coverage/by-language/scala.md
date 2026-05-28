@@ -10,16 +10,16 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Cask](../detail/lang.scala.framework.cask.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Lagom](../detail/lang.scala.framework.lagom.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Scalatra](../detail/lang.scala.framework.scalatra.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [http4s](../detail/lang.scala.framework.http4s.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
+| Name | Routing | Security | Middleware | Substrate | Notes |
+|---|---|---|---|---|---|
+| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Cask](../detail/lang.scala.framework.cask.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | ⚠️ 0/2 | — 0/1 | — 0/1 | ⚠️ 8/17 | |
+| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Lagom](../detail/lang.scala.framework.lagom.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Scalatra](../detail/lang.scala.framework.scalatra.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [http4s](../detail/lang.scala.framework.http4s.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
 
 
 ### Meta Framework

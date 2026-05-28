@@ -10,16 +10,16 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Ash Framework](../detail/lang.elixir.framework.ash.md) | ⚠️ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Bandit](../detail/lang.elixir.framework.bandit.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | ⚠️ 0/2 | — 0/1 | — | — 0/1 | — | — | — | ⚠️ 8/17 | |
-| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ✅ 2/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 6/17 | |
-| [Plug](../detail/lang.elixir.framework.plug.md) | ❌ 0/2 | ❌ 0/1 | — | ❌ 0/1 | — | — | — | ⚠️ 8/17 | |
+| Name | Routing | Security | Middleware | Substrate | Notes |
+|---|---|---|---|---|---|
+| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Ash Framework](../detail/lang.elixir.framework.ash.md) | ⚠️ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Bandit](../detail/lang.elixir.framework.bandit.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
+| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | ⚠️ 0/2 | — 0/1 | — 0/1 | ⚠️ 8/17 | |
+| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | ⚠️ 0/2 | — 0/1 | — 0/1 | ⚠️ 8/17 | |
+| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 6/17 | |
+| [Plug](../detail/lang.elixir.framework.plug.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/1 | ⚠️ 8/17 | |
 
 
 ### Meta Framework

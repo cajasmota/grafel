@@ -248,13 +248,25 @@ func TestValidateRegistrySubcategory(t *testing.T) {
 }
 
 func TestBuildBucketSectionGroupsBySubcategory(t *testing.T) {
+	// The ui_frontend record populates every canonical group so the
+	// don't-strand guard (#2902) keeps all columns; this isolates the
+	// subcategory-splitting behaviour from the column-hiding behaviour
+	// (covered by TestBuildBucketSectionHidesStrandedGroups).
 	recs := []recordView{
-		{ID: "lang.jsts.framework.express", Category: "http_framework", Subcategory: "http_backend", Label: "Express",
-			CapByKey: map[string]Capability{"endpoint_synthesis": {Status: StatusFull}}},
-		{ID: "lang.jsts.framework.react", Category: "http_framework", Subcategory: "ui_frontend", Label: "React",
-			CapByKey: map[string]Capability{"router_pattern": {Status: StatusFull}}},
-		{ID: "lang.jsts.framework.legacy", Category: "http_framework", Label: "Legacy",
-			CapByKey: map[string]Capability{}},
+		recordToView(Record{ID: "lang.jsts.framework.express", Category: "http_framework", Subcategory: "http_backend", Label: "Express",
+			Capabilities: map[string]Capability{"endpoint_synthesis": {Status: StatusFull}}}),
+		recordToView(Record{ID: "lang.jsts.framework.react", Category: "http_framework", Subcategory: "ui_frontend", Label: "React",
+			Groups: map[string]map[string]Capability{
+				"Structure":   {"component_extraction": {Status: StatusFull}},
+				"Data Flow":   {"prop_flow": {Status: StatusFull}},
+				"Navigation":  {"router_pattern": {Status: StatusFull}},
+				"Type System": {"prop_types": {Status: StatusFull}},
+				"Lifecycle":   {"lifecycle_hooks": {Status: StatusFull}},
+				"Testing":     {"test_recognition": {Status: StatusFull}},
+				"Substrate":   {"def_use": {Status: StatusFull}},
+			}}),
+		recordToView(Record{ID: "lang.jsts.framework.legacy", Category: "http_framework", Label: "Legacy",
+			Capabilities: map[string]Capability{}}),
 	}
 	sec := buildBucketSection(BucketFrameworks, recs)
 	if len(sec.Subsections) != 2 {
@@ -280,6 +292,66 @@ func TestBuildBucketSectionGroupsBySubcategory(t *testing.T) {
 	wantGroups := []string{"Structure", "Data Flow", "Navigation", "Type System", "Lifecycle", "Testing", "Substrate"}
 	if !reflect.DeepEqual(uiSec.GroupNames, wantGroups) {
 		t.Errorf("ui_frontend GroupNames = %v, want %v", uiSec.GroupNames, wantGroups)
+	}
+}
+
+// TestNonStrandedGroupNames covers the don't-strand render guard (#2902)
+// in isolation: a column whose digest is "—" for every record is dropped,
+// a column with at least one non-"—" cell (including a tracked-but-missing
+// "❌ 0/n" digest) is kept, and canonical order is preserved.
+func TestNonStrandedGroupNames(t *testing.T) {
+	candidates := []string{"A", "B", "C", "D"}
+	digests := []map[string]string{
+		// rec0: carries A (full) and C (tracked-but-missing).
+		{"A": "✅ 1/1", "B": "—", "C": "❌ 0/1", "D": "—"},
+		// rec1: carries nothing extra; B and D still all-"—".
+		{"A": "—", "B": "—", "C": "—", "D": "—"},
+	}
+	got := nonStrandedGroupNames(candidates, len(digests), func(r int, g string) string {
+		return groupCell(digests[r], g)
+	})
+	want := []string{"A", "C"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("nonStrandedGroupNames = %v, want %v", got, want)
+	}
+	// All-stranded → empty slice (caller falls back to a Name/Notes table).
+	allDash := []map[string]string{{"A": "—", "B": "—"}}
+	if g := nonStrandedGroupNames([]string{"A", "B"}, 1, func(r int, name string) string {
+		return groupCell(allDash[r], name)
+	}); len(g) != 0 {
+		t.Errorf("all-stranded should yield empty, got %v", g)
+	}
+	// Zero records / nil candidates → passthrough (no panic, no filtering).
+	if g := nonStrandedGroupNames(candidates, 0, nil); !reflect.DeepEqual(g, candidates) {
+		t.Errorf("zero records should pass candidates through, got %v", g)
+	}
+}
+
+// TestBuildBucketSectionHidesStrandedGroups proves the guard wired into
+// buildBucketSection drops an all-"—" group column from the rendered
+// subsection while keeping populated columns in canonical order.
+func TestBuildBucketSectionHidesStrandedGroups(t *testing.T) {
+	// Two ui_frontend records, neither carrying Navigation / Type System /
+	// Lifecycle / Testing / Substrate cells, so those columns are all-"—".
+	recs := []recordView{
+		recordToView(Record{ID: "lang.jsts.framework.vue", Category: "http_framework", Subcategory: "ui_frontend", Label: "Vue",
+			Groups: map[string]map[string]Capability{
+				"Structure": {"component_extraction": {Status: StatusFull}},
+				"Data Flow": {"prop_flow": {Status: StatusPartial, Issue: "x"}},
+			}}),
+		recordToView(Record{ID: "lang.jsts.framework.svelte", Category: "http_framework", Subcategory: "ui_frontend", Label: "Svelte",
+			Groups: map[string]map[string]Capability{
+				"Structure": {"component_extraction": {Status: StatusMissing, Issue: "x"}},
+			}}),
+	}
+	sec := buildBucketSection(BucketFrameworks, recs)
+	if len(sec.Subsections) != 1 {
+		t.Fatalf("want 1 subsection, got %d", len(sec.Subsections))
+	}
+	got := sec.Subsections[0].GroupNames
+	want := []string{"Structure", "Data Flow"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("stranded groups not hidden: GroupNames = %v, want %v", got, want)
 	}
 }
 

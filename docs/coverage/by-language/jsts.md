@@ -10,20 +10,20 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Security | Validation | Middleware | Testing | Observability | Data | Substrate | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | ✅ 2/2 | ✅ 1/1 | — | ✅ 1/1 | — | — | — | ✅ 6/6 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ✅ 1/1 | — | — 0/1 | — | — | — | ✅ 6/6 | |
+| Name | Routing | Security | Middleware | Substrate | Notes |
+|---|---|---|---|---|---|
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Express](../detail/lang.jsts.framework.express.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | ✅ 6/6 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ✅ 1/1 | — 0/1 | ✅ 6/6 | |
 
 
 ### UI Frontend
@@ -60,24 +60,24 @@ Back to [summary](../summary.md).
 
 ### Desktop
 
-| Name | Process | Native | Updates | Substrate | Notes |
-|---|---|---|---|---|---|
-| [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/2 | ❌ 0/1 | — | — | |
+| Name | Process | Native | Notes |
+|---|---|---|---|
+| [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/2 | ❌ 0/1 | |
 
 
 ### RPC Framework
 
-| Name | Schema | Codegen | Transport | Substrate | Notes |
-|---|---|---|---|---|---|
-| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | — | — | |
-| [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | — | — | |
+| Name | Schema | Codegen | Notes |
+|---|---|---|---|
+| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | |
+| [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | |
 
 
 ### AI Integration
 
-| Name | Prompts | Composition | Tracking | Notes |
-|---|---|---|---|---|
-| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ 0/1 | ❌ 0/2 | — | |
+| Name | Prompts | Composition | Notes |
+|---|---|---|---|
+| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ 0/1 | ❌ 0/2 | |
 
 
 ## Tools
