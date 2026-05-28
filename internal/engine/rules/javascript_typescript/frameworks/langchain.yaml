@@ -31,17 +31,49 @@ frameworks:
 file_conventions: []
 
 source_patterns:
-  # .pipe() chain
-  - pattern: "\\w+\\.pipe\\s*\\("
+  # --- chain_composition (#2865) -----------------------------------------
+  # LCEL .pipe() chain stage. Captures the upstream runnable variable so the
+  # chain stage is a queryable Operation (e.g. "prompt" in prompt.pipe(model)).
+  - pattern: "(\\w+)\\.pipe\\s*\\("
+    entity_type: Operation
+    name_group: 1
+    scope: file
+  # RunnableSequence.from([...]) — the explicit composition constructor.
+  - pattern: "RunnableSequence\\.from\\s*\\("
     entity_type: Operation
     name_group: 0
     scope: file
-  # DynamicTool
-  - pattern: "new\\s+DynamicTool\\s*\\("
+  # --- prompt_template_extraction (#2865) ---------------------------------
+  # ChatPromptTemplate.fromMessages(...) / .fromTemplate(...) and the bare
+  # PromptTemplate.fromTemplate(...) factory. Captures the template-class +
+  # factory call so the prompt is a queryable Schema entity.
+  - pattern: "(ChatPromptTemplate|PromptTemplate|FewShotPromptTemplate|SystemMessagePromptTemplate|HumanMessagePromptTemplate)\\.(?:fromTemplate|fromMessages)\\s*\\("
+    entity_type: Schema
+    name_group: 1
+    scope: file
+  # new ChatPromptTemplate(...) / new PromptTemplate(...) constructor form.
+  - pattern: "new\\s+(ChatPromptTemplate|PromptTemplate|FewShotPromptTemplate)\\s*\\("
+    entity_type: Schema
+    name_group: 1
+    scope: file
+  # --- tool_use_detection (#2865) -----------------------------------------
+  # DynamicTool / DynamicStructuredTool constructors and the tool() factory
+  # (the three idiomatic ways to declare a LangChain tool an agent can call).
+  - pattern: "new\\s+(DynamicTool|DynamicStructuredTool)\\s*\\("
+    entity_type: Operation
+    name_group: 1
+    scope: file
+  - pattern: "\\btool\\s*\\(\\s*(?:async\\s*)?\\("
     entity_type: Operation
     name_group: 0
     scope: file
-  # Agent factory
+  # .bindTools([...]) — attaches a tool set to a model (function-calling).
+  - pattern: "\\.bindTools\\s*\\("
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  # --- agents -------------------------------------------------------------
+  # Agent factory (createReactAgent, createToolCallingAgent, …).
   - pattern: "create\\w+Agent\\s*\\("
     entity_type: Service
     name_group: 0

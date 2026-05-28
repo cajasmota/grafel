@@ -48,7 +48,32 @@ file_conventions:
     entity_type: Module
     name_from: filename
 
-source_patterns: []
+# client_codegen (#2865): the tRPC client is fully INFERRED from the server's
+# AppRouter type — there is no hand-written client, the typed proxy IS the
+# generated client. These factories + the inferRouterInputs/Outputs type
+# helpers are the definitive codegen signals; capture them as Operation
+# entities so "where is the tRPC client generated?" is answerable.
+source_patterns:
+  - pattern: "createTRPCClient\\s*<"
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  - pattern: "createTRPCProxyClient\\s*<"
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  - pattern: "createTRPCReact\\s*<"
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  - pattern: "createTRPCNext\\s*<"
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  - pattern: "(inferRouterInputs|inferRouterOutputs)\\s*<"
+    entity_type: Operation
+    name_group: 1
+    scope: file
 
 relationship_rules: []
 

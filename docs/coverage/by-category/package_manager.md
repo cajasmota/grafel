@@ -18,7 +18,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | ⚠️ | ✅ | — | |
 | [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | ❌ | ❌ | — | |
 | [java](../by-language/java.md) | [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | — | |
-| [JS/TS](../by-language/jsts.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ❌ | ✅ | — | |
+| [JS/TS](../by-language/jsts.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ✅ | ✅ | — | |
 | [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ❌ | ❌ | — | |
 | [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | ❌ | ❌ | — | |
 | [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | ❌ | ✅ | — | |

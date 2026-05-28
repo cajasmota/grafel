@@ -79,15 +79,26 @@ func projectRef(filePath string) string {
 // ---------------------------------------------------------------------------
 
 // exactManifestNames lists supported manifest basenames (case-sensitive).
+//
+// #2865 — npm/yarn/pnpm lockfiles are recognised here too: lockfiles record
+// the FULLY RESOLVED dependency tree (exact versions, including transitive
+// deps the manifest never names), which manifest_parsing alone cannot
+// recover. Lockfile-sourced deps are flagged dependency_kind=locked and
+// carry resolved=true so downstream queries can distinguish the resolved
+// tree from the declared (range-versioned) manifest deps.
 var exactManifestNames = map[string]bool{
-	"package.json":     true,
-	"go.mod":           true,
-	"Cargo.toml":       true,
-	"pyproject.toml":   true,
-	"pom.xml":          true,
-	"requirements.txt": true,
-	"pubspec.yaml":     true,
-	"Gemfile":          true,
+	"package.json":        true,
+	"package-lock.json":   true,
+	"npm-shrinkwrap.json": true,
+	"yarn.lock":           true,
+	"pnpm-lock.yaml":      true,
+	"go.mod":              true,
+	"Cargo.toml":          true,
+	"pyproject.toml":      true,
+	"pom.xml":             true,
+	"requirements.txt":    true,
+	"pubspec.yaml":        true,
+	"Gemfile":             true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -99,14 +110,18 @@ func IsManifest(filePath string) bool {
 // detectPackageManager returns the package manager for a manifest path.
 func detectPackageManager(filePath string) string {
 	pm := map[string]string{
-		"package.json":     "npm",
-		"go.mod":           "go_modules",
-		"Cargo.toml":       "cargo",
-		"pyproject.toml":   "pip",
-		"pom.xml":          "maven",
-		"requirements.txt": "pip",
-		"pubspec.yaml":     "pub",
-		"Gemfile":          "bundler",
+		"package.json":        "npm",
+		"package-lock.json":   "npm",
+		"npm-shrinkwrap.json": "npm",
+		"yarn.lock":           "yarn",
+		"pnpm-lock.yaml":      "pnpm",
+		"go.mod":              "go_modules",
+		"Cargo.toml":          "cargo",
+		"pyproject.toml":      "pip",
+		"pom.xml":             "maven",
+		"requirements.txt":    "pip",
+		"pubspec.yaml":        "pub",
+		"Gemfile":             "bundler",
 	}
 	if v, ok := pm[filepath.Base(filePath)]; ok {
 		return v
@@ -136,6 +151,195 @@ func parsePackageJSON(source string) []dep {
 	}
 	for pkg, ver := range data.PeerDependencies {
 		out = append(out, dep{name: pkg, version: ver, isDev: false, kind: "peer"})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: package-lock.json / npm-shrinkwrap.json (npm lockfile)
+// ---------------------------------------------------------------------------
+
+// parsePackageLockJSON parses an npm lockfile (lockfileVersion 1, 2, or 3).
+//
+//	v2/v3: every resolved package lives under "packages" keyed by its
+//	       install path ("" = root project, "node_modules/<name>" =
+//	       dependency, possibly nested). We strip the leading
+//	       node_modules/ segments to recover the package name.
+//	v1:    resolved packages live under "dependencies" keyed by name, with
+//	       a recursive nested "dependencies" map.
+//
+// Lockfile deps record the EXACT resolved version and include the transitive
+// closure the manifest never names — that is the whole point of
+// lockfile_parsing. Each emitted dep is flagged kind="locked" with isDev
+// carried through when the lockfile marks it.
+func parsePackageLockJSON(source string) []dep {
+	var data struct {
+		Packages map[string]struct {
+			Version string `json:"version"`
+			Dev     bool   `json:"dev"`
+		} `json:"packages"`
+		Dependencies map[string]struct {
+			Version string `json:"version"`
+			Dev     bool   `json:"dev"`
+		} `json:"dependencies"`
+	}
+	if err := json.Unmarshal([]byte(source), &data); err != nil {
+		return nil
+	}
+
+	var out []dep
+	seen := map[string]bool{}
+	add := func(name, version string, isDev bool) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, dep{name: name, version: version, isDev: isDev, kind: "locked"})
+	}
+
+	// v2/v3 "packages" map. Keys are install paths; the package name is the
+	// segment after the LAST "node_modules/" (handles nested deps like
+	// "node_modules/a/node_modules/b" -> "b"). The "" key is the root project.
+	for path, p := range data.Packages {
+		if path == "" {
+			continue
+		}
+		name := path
+		if idx := strings.LastIndex(name, "node_modules/"); idx >= 0 {
+			name = name[idx+len("node_modules/"):]
+		}
+		add(name, p.Version, p.Dev)
+	}
+
+	// v1 "dependencies" map. Keys are names directly.
+	for name, d := range data.Dependencies {
+		add(name, d.Version, d.Dev)
+	}
+
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: yarn.lock (Yarn classic v1 + Yarn berry v2+)
+// ---------------------------------------------------------------------------
+
+// yarnEntryHeaderRE matches a yarn.lock entry header line, e.g.
+//
+//	"lodash@^4.17.21":
+//	lodash@^4.17.21, lodash@^4.17.0:
+//	"@babel/core@npm:^7.0.0":
+//
+// Group 1 is the first descriptor (the part before the first range/comma).
+// We derive the package name from it; the resolved version comes from the
+// `version` line in the entry body.
+var yarnEntryHeaderRE = regexp.MustCompile(`(?m)^ {0,2}"?([^"\s,][^",]*?)"?(?:,.*)?:\s*$`)
+
+// yarnVersionRE matches the `version "1.2.3"` (v1) or `version: 1.2.3` (berry)
+// line inside an entry body.
+var yarnVersionRE = regexp.MustCompile(`^\s+version:?\s+"?([^"\n\r]+?)"?\s*$`)
+
+// yarnDescriptorName extracts the bare package name from a yarn descriptor
+// such as `lodash@^4.17.21`, `@babel/core@npm:^7.0.0`, or `@scope/pkg@1.0.0`.
+// The version range is everything after the LAST `@` that is not the leading
+// scope `@`.
+func yarnDescriptorName(desc string) string {
+	desc = strings.TrimSpace(desc)
+	if desc == "" {
+		return ""
+	}
+	at := strings.LastIndex(desc, "@")
+	// A leading "@" denotes a scope, not a version separator.
+	if at <= 0 {
+		return desc
+	}
+	return desc[:at]
+}
+
+func parseYarnLock(source string) []dep {
+	lines := strings.Split(source, "\n")
+	var out []dep
+	seen := map[string]bool{}
+
+	for i := 0; i < len(lines); i++ {
+		hm := yarnEntryHeaderRE.FindStringSubmatch(lines[i])
+		if hm == nil {
+			continue
+		}
+		// The header may list several descriptors separated by ", "; the name
+		// is the same for all of them, so the first descriptor suffices.
+		firstDesc := hm[1]
+		if c := strings.IndexByte(firstDesc, ','); c >= 0 {
+			firstDesc = firstDesc[:c]
+		}
+		name := yarnDescriptorName(firstDesc)
+		if name == "" || seen[name] {
+			continue
+		}
+		// Scan the entry body (subsequent indented lines) for the version.
+		version := ""
+		for j := i + 1; j < len(lines); j++ {
+			if strings.TrimSpace(lines[j]) == "" {
+				continue
+			}
+			// A non-indented line starts the next entry.
+			if lines[j][0] != ' ' && lines[j][0] != '\t' {
+				break
+			}
+			if vm := yarnVersionRE.FindStringSubmatch(lines[j]); vm != nil {
+				version = strings.TrimSpace(vm[1])
+				break
+			}
+		}
+		seen[name] = true
+		out = append(out, dep{name: name, version: version, kind: "locked"})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: pnpm-lock.yaml
+// ---------------------------------------------------------------------------
+
+// pnpmPackageKeyRE matches a package key under the top-level `packages:` map.
+// pnpm uses two key shapes across lockfile versions:
+//
+//	v5/v6:  /lodash@4.17.21:  or  /@babel/core@7.0.0:
+//	v9:     lodash@4.17.21:        @babel/core@7.0.0:
+//
+// Group 1 is the package path (with optional leading slash stripped by the
+// caller). Peer-dependency suffixes (e.g. `@7.0.0(react@18.0.0)`) are trimmed.
+var pnpmPackageKeyRE = regexp.MustCompile(`(?m)^ {2}(/?(?:@[^/@\s]+/)?[^@/\s][^@\s]*@[^:\s]+):`)
+
+func parsePnpmLock(source string) []dep {
+	var out []dep
+	seen := map[string]bool{}
+
+	// Restrict scanning to the top-level `packages:` block so we don't match
+	// the `dependencies:`/`importers:` descriptor sections (those use ranges,
+	// not resolved versions).
+	body := source
+	if idx := strings.Index(source, "\npackages:"); idx >= 0 {
+		body = source[idx:]
+	}
+
+	for _, m := range pnpmPackageKeyRE.FindAllStringSubmatch(body, -1) {
+		key := strings.TrimPrefix(m[1], "/")
+		// Strip a peer-dependency suffix: "@scope/pkg@1.0.0(react@18.0.0)".
+		if p := strings.IndexByte(key, '('); p >= 0 {
+			key = key[:p]
+		}
+		// Split on the LAST "@" that is not the leading scope marker.
+		at := strings.LastIndex(key, "@")
+		if at <= 0 {
+			continue
+		}
+		name := key[:at]
+		version := key[at+1:]
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, dep{name: name, version: version, kind: "locked"})
 	}
 	return out
 }
@@ -549,14 +753,18 @@ func parseGemfile(source string) []dep {
 type parserFn func(source string) []dep
 
 var parsers = map[string]parserFn{
-	"package.json":     parsePackageJSON,
-	"go.mod":           parseGoMod,
-	"Cargo.toml":       parseCargoToml,
-	"pyproject.toml":   parsePyprojectToml,
-	"pom.xml":          parsePomXML,
-	"requirements.txt": parseRequirementsTxt,
-	"pubspec.yaml":     parsePubspecYaml,
-	"Gemfile":          parseGemfile,
+	"package.json":        parsePackageJSON,
+	"package-lock.json":   parsePackageLockJSON,
+	"npm-shrinkwrap.json": parsePackageLockJSON,
+	"yarn.lock":           parseYarnLock,
+	"pnpm-lock.yaml":      parsePnpmLock,
+	"go.mod":              parseGoMod,
+	"Cargo.toml":          parseCargoToml,
+	"pyproject.toml":      parsePyprojectToml,
+	"pom.xml":             parsePomXML,
+	"requirements.txt":    parseRequirementsTxt,
+	"pubspec.yaml":        parsePubspecYaml,
+	"Gemfile":             parseGemfile,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {

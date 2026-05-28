@@ -963,8 +963,9 @@
       "label": "tsconfig.json",
       "capabilities": {
         "file_parsing": {
-          "status": "partial",
-          "cites": ["internal/extractors/config/discover.go"],
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "issue": "2865",
           "verified_at": "2026-05-28"
         }
       }
@@ -10830,19 +10831,22 @@
       "capabilities": {
         "Process": {
           "ipc_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/engine/electron_detect_test.go","internal/engine/rules/javascript_typescript/frameworks/electron.yaml","testdata/fixtures/typescript/electron_ipc.ts","testdata/fixtures/typescript/electron_preload.ts"],
+            "issue": "2865"
           },
           "main_renderer_split": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/javascript_typescript/frameworks/electron.yaml"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "status": "full",
+            "cites": ["internal/engine/electron_detect_test.go","internal/engine/rules/javascript_typescript/frameworks/electron.yaml","testdata/fixtures/typescript/electron_ipc.ts","testdata/fixtures/typescript/electron_preload.ts"],
+            "issue": "2865",
             "verified_at": "2026-05-28"
           }
         },
         "Native": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/electron_detect_test.go","internal/engine/rules/javascript_typescript/frameworks/electron.yaml","testdata/fixtures/typescript/electron_ipc.ts","testdata/fixtures/typescript/electron_preload.ts"],
+            "issue": "2865"
           }
         }
       }
@@ -11340,8 +11344,9 @@
         },
         "Codegen": {
           "client_codegen": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "not_applicable",
+            "issue": "2865",
+            "notes": "Server-side resolver record: client codegen (graphql-codegen/Apollo) generates a typed CLIENT elsewhere, not in resolver source."
           }
         },
         "Transport": {
@@ -11717,22 +11722,23 @@
       "capabilities": {
         "Prompts": {
           "prompt_template_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "status": "full",
+            "cites": ["internal/engine/langchain_detect_test.go","internal/engine/rules/javascript_typescript/frameworks/langchain.yaml","testdata/fixtures/typescript/langchain_chain.ts"],
+            "issue": "2865",
             "verified_at": "2026-05-28"
           }
         },
         "Composition": {
           "chain_composition": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/javascript_typescript/frameworks/langchain.yaml"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "status": "full",
+            "cites": ["internal/engine/langchain_detect_test.go","internal/engine/rules/javascript_typescript/frameworks/langchain.yaml","testdata/fixtures/typescript/langchain_chain.ts"],
+            "issue": "2865",
             "verified_at": "2026-05-28"
           },
           "tool_use_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/engine/langchain_detect_test.go","internal/engine/rules/javascript_typescript/frameworks/langchain.yaml","testdata/fixtures/typescript/langchain_chain.ts"],
+            "issue": "2865"
           }
         }
       }
@@ -13287,16 +13293,17 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/http_endpoint_trpc.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735",
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_trpc.go","internal/engine/http_endpoint_trpc_schema.go","internal/engine/http_endpoint_trpc_schema_test.go","testdata/fixtures/typescript/trpc_input_schema.ts"],
+            "issue": "2865",
             "verified_at": "2026-05-28"
           }
         },
         "Codegen": {
           "client_codegen": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/engine/rules/javascript_typescript/frameworks/trpc.yaml","internal/engine/trpc_client_codegen_test.go","testdata/fixtures/typescript/trpc_client_codegen.ts"],
+            "issue": "2865"
           }
         },
         "Transport": {
@@ -22987,8 +22994,9 @@
           "verified_at": "2026-05-28"
         },
         "topic_attribution": {
-          "status": "partial",
-          "cites": ["internal/links/topic_pass.go"],
+          "status": "full",
+          "cites": ["internal/engine/bullmq_edges.go","internal/engine/bullmq_edges_test.go","internal/links/topic_pass.go","internal/links/topic_pass_test.go","testdata/fixtures/typescript/bullmq_topic_attribution.ts"],
+          "issue": "2865",
           "verified_at": "2026-05-28"
         }
       }
@@ -23279,7 +23287,9 @@
       "label": "package.json (npm/yarn/pnpm)",
       "capabilities": {
         "lockfile_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/cross/manifest/extractor.go","internal/extractors/cross/manifest/extractor_test.go"],
+          "issue": "2865"
         },
         "manifest_parsing": {
           "status": "full",

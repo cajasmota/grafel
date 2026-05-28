@@ -157,6 +157,27 @@ func (d *Detector) compile() {
 		}
 		d.compiled[lang] = sets
 	}
+
+	// Language-key aliasing (#2865). The JS/TS framework YAML rules live under
+	// the directory key `javascript_typescript`, but the indexer tags real
+	// source files with the concrete extension language — `typescript`
+	// (.ts/.tsx) or `javascript` (.js/.jsx) — and Detect resolves compiled
+	// rule sets by `file.Language`. Without this alias, none of the 48 JS/TS
+	// framework rule sets (langchain, electron, trpc client, react, vue, …)
+	// would ever fire on real files: the lookup `d.compiled["typescript"]`
+	// missed the `javascript_typescript` bucket entirely. Mirror the bucket
+	// onto both concrete keys so the YAML source_patterns / relationship_rules
+	// run on production-tagged files exactly as the per-language Go synthesis
+	// passes already do (synthesisSupportsLanguage covers typescript/javascript
+	// directly). Only fill a concrete key when it has no rules of its own, so
+	// a future dedicated `typescript`-keyed rule set is never shadowed.
+	if jsts, ok := d.compiled["javascript_typescript"]; ok {
+		for _, alias := range []string{"javascript", "typescript"} {
+			if len(d.compiled[alias]) == 0 {
+				d.compiled[alias] = jsts
+			}
+		}
+	}
 }
 
 // DetectResult holds the entities and relationships extracted by the engine.
@@ -598,6 +619,14 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// by the fast-path pre-filter gate. Append-only — cannot regress
 	// surrounding passes.
 	applyPass(applyRedisPubSubEdges)
+	// BullMQ / Bull task-queue topic attribution (#2865). Emits SCOPE.Queue
+	// entities keyed by bullmq:<name> plus PUBLISHES_TO / SUBSCRIBES_TO edges
+	// for `new Queue` / `queue.add` (producer) and `new Worker` /
+	// `queue.process` (consumer). The queue name is the cross-repo rendezvous
+	// point, so identical names join across services via the import-channel
+	// linker with no new linker code. JS/TS only. Append-only — cannot regress
+	// surrounding passes.
+	applyPass(applyBullMQEdges)
 	// Managed event-bus edges (#927): AWS EventBridge, Azure EventGrid, and
 	// CNCF CloudEvents. Emits SCOPE.EventBusEvent synthetic entities plus
 	// PUBLISHES_TO / SUBSCRIBES_TO edges for producers/consumers, and

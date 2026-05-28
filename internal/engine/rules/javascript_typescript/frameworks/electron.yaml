@@ -23,3 +23,60 @@ frameworks:
   - renderer process
   - preload.ts
   notes: electron dep + BrowserWindow usage is definitive
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema) — #2865
+# Electron splits into a Node main process, a Chromium renderer process, and a
+# preload bridge. The source_patterns below make the IPC channels, the
+# process-split markers, and native-module imports first-class graph entities.
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+
+source_patterns:
+  # --- ipc_extraction -----------------------------------------------------
+  # Main-process IPC handlers: ipcMain.handle('channel', …) (request/response)
+  # and ipcMain.on('channel', …) (fire-and-forget). Capture the channel name.
+  - pattern: "ipcMain\\s*\\.\\s*(?:handle|handleOnce|on|once)\\s*\\(\\s*['\"`]([^'\"`\\n\\r]+)['\"`]"
+    entity_type: Endpoint
+    name_group: 1
+    scope: file
+  # Renderer-process IPC calls: ipcRenderer.invoke/send/sendSync/on('channel').
+  - pattern: "ipcRenderer\\s*\\.\\s*(?:invoke|send|sendSync|on|once|postMessage)\\s*\\(\\s*['\"`]([^'\"`\\n\\r]+)['\"`]"
+    entity_type: Endpoint
+    name_group: 1
+    scope: file
+  # contextBridge.exposeInMainWorld('apiName', …) — the preload-exposed API
+  # surface the renderer talks to (the secure IPC boundary).
+  - pattern: "contextBridge\\s*\\.\\s*exposeInMainWorld\\s*\\(\\s*['\"`]([^'\"`\\n\\r]+)['\"`]"
+    entity_type: Endpoint
+    name_group: 1
+    scope: file
+  # --- main_renderer_split ------------------------------------------------
+  # Main-process markers: BrowserWindow construction + app lifecycle.
+  - pattern: "new\\s+BrowserWindow\\s*\\("
+    entity_type: Service
+    name_group: 0
+    scope: file
+  - pattern: "app\\s*\\.\\s*(?:whenReady|on)\\s*\\("
+    entity_type: Service
+    name_group: 0
+    scope: file
+  # --- native_module_imports ----------------------------------------------
+  # Native addon loaders used from the Electron main process: `bindings(...)`,
+  # node-gyp-build, and direct `.node` addon requires. These are the genuine
+  # native-module boundary (compiled C++ addons), distinct from JS deps.
+  - pattern: "require\\s*\\(\\s*['\"`]bindings['\"`]\\s*\\)"
+    entity_type: ExternalAPI
+    name_group: 0
+    scope: file
+  - pattern: "require\\s*\\(\\s*['\"`]node-gyp-build['\"`]\\s*\\)"
+    entity_type: ExternalAPI
+    name_group: 0
+    scope: file
+  - pattern: "require\\s*\\(\\s*['\"`]([^'\"`\\n\\r]+\\.node)['\"`]\\s*\\)"
+    entity_type: ExternalAPI
+    name_group: 1
+    scope: file
+
+relationship_rules: []

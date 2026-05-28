@@ -207,7 +207,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
 | [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
 | [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | ❌ 0/2 | ❌ 0/1 | — | |
-| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/2 | ❌ 0/1 | — | |
+| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | ✅ 2/2 | ✅ 1/1 | — | |
 | [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
 | [rust](../by-language/rust.md) | [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/7 | |
@@ -218,8 +218,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Schema | Codegen | Transport | Substrate | Notes |
 |---|---|---|---|---|---|---|
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ 0/2 | ❌ 0/1 | — | ⚠️ 5/14 | |
-| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | ✅ 1/1 | — | |
-| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | ✅ 1/1 | — | |
+| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | — 0/1 | ✅ 1/1 | — | |
+| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | — | |
 
 
 ## AI Integration
@@ -227,5 +227,5 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Prompts | Composition | Notes |
 |---|---|---|---|---|
 | [java](../by-language/java.md) | [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ❌ 0/1 | ❌ 0/2 | |
-| [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ 0/1 | ❌ 0/2 | |
+| [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ✅ 1/1 | ✅ 2/2 | |
 | [python](../by-language/python.md) | [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 0/1 | ❌ 0/2 | |

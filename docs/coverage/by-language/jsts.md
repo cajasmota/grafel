@@ -62,22 +62,22 @@ Back to [summary](../summary.md).
 
 | Name | Process | Native | Notes |
 |---|---|---|---|
-| [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/2 | ❌ 0/1 | |
+| [Electron](../detail/lang.jsts.framework.electron.md) | ✅ 2/2 | ✅ 1/1 | |
 
 
 ### RPC Framework
 
 | Name | Schema | Codegen | Transport | Notes |
 |---|---|---|---|---|
-| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | ❌ 0/1 | ✅ 1/1 | |
-| [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 1/2 | ❌ 0/1 | ✅ 1/1 | |
+| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 2/2 | — 0/1 | ✅ 1/1 | |
+| [tRPC](../detail/lang.jsts.framework.trpc.md) | ✅ 2/2 | ✅ 1/1 | ✅ 1/1 | |
 
 
 ### AI Integration
 
 | Name | Prompts | Composition | Notes |
 |---|---|---|---|
-| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ 0/1 | ❌ 0/2 | |
+| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ✅ 1/1 | ✅ 2/2 | |
 
 
 ## Tools
@@ -102,7 +102,7 @@ Back to [summary](../summary.md).
 | [Yarn](../detail/build.yarn.md) | ✅ | — | — | ✅ | |
 | [esbuild](../detail/build.esbuild.md) | ✅ | — | — | ✅ | |
 | [npm](../detail/build.npm.md) | ✅ | — | — | ✅ | |
-| [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ❌ | ✅ | — | |
+| [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ✅ | ✅ | — | |
 | [pnpm](../detail/build.pnpm.md) | ✅ | — | — | ✅ | |
 | [tap / node:test](../detail/test.tap.md) | ✅ | — | — | ✅ | |
 
@@ -133,5 +133,5 @@ Back to [summary](../summary.md).
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | [message_broker](../by-category/message_broker.md) | ⚠️ | |
-| [tsconfig.json](../detail/config.tsconfig.md) | [platform](../by-category/platform.md) | ⚠️ | |
+| [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
+| [tsconfig.json](../detail/config.tsconfig.md) | [platform](../by-category/platform.md) | ✅ | |

@@ -123,6 +123,73 @@ func TestDiscover_PackageJSON_ScriptsAndDeps(t *testing.T) {
 	}
 }
 
+// TestDiscover_TSConfig_DeepParse proves config.tsconfig file_parsing (#2865):
+// a JSONC tsconfig with comments and trailing commas decodes (after comment
+// stripping) and its compilerOptions / paths / extends / references /
+// include are surfaced as entity properties. Before #2865 a commented
+// tsconfig failed the strict JSON decode and yielded no mined keys.
+func TestDiscover_TSConfig_DeepParse(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "tsconfig.json", `{
+  // root project config with comments + trailing commas (JSONC)
+  "extends": "@tsconfig/node18/tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "baseUrl": ".",
+    "outDir": "dist",
+    "paths": {
+      "@app/*": ["src/app/*"],
+      "@lib/*": ["src/lib/*"],
+    },
+  },
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/ui" },
+  ],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"],
+}`)
+	ents, _ := runDiscover(t, dir, []string{"tsconfig.json"})
+	e := findBySource(ents, "tsconfig.json")
+	if e == nil {
+		t.Fatalf("tsconfig entity not emitted")
+	}
+	if e.Subtype != "typescript_project" {
+		t.Errorf("Subtype=%q want typescript_project", e.Subtype)
+	}
+	checks := map[string]string{
+		"ts_target":            "ES2022",
+		"ts_module":            "ESNext",
+		"ts_module_resolution": "Bundler",
+		"ts_jsx":               "react-jsx",
+		"ts_strict":            "true",
+		"ts_base_url":          ".",
+		"ts_out_dir":           "dist",
+		"ts_extends":           "@tsconfig/node18/tsconfig.json",
+	}
+	for k, want := range checks {
+		if e.Properties[k] != want {
+			t.Errorf("%s=%q want %q", k, e.Properties[k], want)
+		}
+	}
+	if a := e.Properties["ts_path_aliases"]; !strings.Contains(a, "@app/*") || !strings.Contains(a, "@lib/*") {
+		t.Errorf("ts_path_aliases=%q missing aliases", a)
+	}
+	if r := e.Properties["ts_references"]; !strings.Contains(r, "./packages/core") || !strings.Contains(r, "./packages/ui") {
+		t.Errorf("ts_references=%q missing refs", r)
+	}
+	if i := e.Properties["ts_include"]; !strings.Contains(i, "src/**/*.ts") {
+		t.Errorf("ts_include=%q", i)
+	}
+	if x := e.Properties["ts_exclude"]; !strings.Contains(x, "node_modules") {
+		t.Errorf("ts_exclude=%q", x)
+	}
+}
+
 func TestDiscover_PomXML(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "pom.xml", `<?xml version="1.0"?>

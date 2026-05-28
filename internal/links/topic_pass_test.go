@@ -523,3 +523,60 @@ func TestTopicPass_RedisPubSubQueueJoin(t *testing.T) {
 		t.Error("expected notifications→realtime-dashboard redis link")
 	}
 }
+
+// TestTopicPass_BullMQQueueJoin proves BullMQ topic_attribution (#2865): the
+// engine bullmq pass emits SCOPE.Queue entities Named `bullmq:<name>` on both
+// the producer (`new Queue('emails')` + `queue.add`) and consumer
+// (`new Worker('emails')`) sides. Because the canonical name is identical, P7
+// joins a producer service to its worker service across repos with no
+// BullMQ-specific matching code — exactly like the redis-queue join above.
+func TestTopicPass_BullMQQueueJoin(t *testing.T) {
+	root := fixtureRoot(t)
+
+	q := func(repo, entID, opName, file, edge string) {
+		writeFixture(t, root, fixtureGraph{
+			Repo: repo,
+			Entities: []map[string]any{
+				{"id": opName, "name": opName, "kind": "SCOPE.Operation", "source_file": file},
+				{
+					"id": entID, "name": "bullmq:emails",
+					"kind": "SCOPE.Queue", "source_file": "",
+					"properties": map[string]any{"broker": "bullmq", "queue_name": "emails"},
+				},
+			},
+			Edges: []map[string]string{
+				{"from_id": opName, "to_id": entID, "kind": edge},
+			},
+		})
+	}
+	q("api-gateway", "q_pub", "enqueueWelcome", "producer.ts", "PUBLISHES_TO")
+	q("email-worker", "q_sub", "worker", "worker.ts", "SUBSCRIBES_TO")
+
+	home := filepath.Join(root, "ag-home-bullmq")
+	if _, err := RunAllPasses("tgbullmq", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "tgbullmq-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var linked bool
+	for _, l := range doc.Links {
+		if l.Method != MethodTopic {
+			continue
+		}
+		if l.Source != "api-gateway::enqueueWelcome" {
+			t.Errorf("source: want api-gateway::enqueueWelcome, got %s", l.Source)
+		}
+		if l.Channel == nil || *l.Channel != "bullmq" {
+			t.Errorf("channel: want bullmq, got %v", l.Channel)
+		}
+		if l.Target == "email-worker::worker" {
+			linked = true
+		}
+	}
+	if !linked {
+		t.Error("expected api-gateway→email-worker bullmq topic link")
+	}
+}

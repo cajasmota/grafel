@@ -8,7 +8,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | Language | Name | Dependency Attribution | Env Resolution | File Parsing | Resource Extraction | Status | Notes |
 |---|---|---|---|---|---|---|---|
 | [java](../by-language/java.md) | [.properties (application.properties)](../detail/config.properties.md) | — | — | ✅ | — | ✅ | |
-| [JS/TS](../by-language/jsts.md) | [tsconfig.json](../detail/config.tsconfig.md) | — | — | ⚠️ | — | ⚠️ | |
+| [JS/TS](../by-language/jsts.md) | [tsconfig.json](../detail/config.tsconfig.md) | — | — | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [.env (names-only — values stripped at extraction boundary)](../detail/config.dotenv.md) | — | ✅ | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [.ini / setup.cfg / flake8 / mypy / pytest.ini](../detail/config.ini.md) | — | — | ⚠️ | — | ⚠️ | |
 | [multi](../by-language/multi.md) | [.toml](../detail/config.toml.md) | — | — | ✅ | — | ✅ | |

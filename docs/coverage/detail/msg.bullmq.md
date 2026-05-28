@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `consumer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/scheduled_jobs_edges.go` | — |
 | `producer_extraction` | ✅ `full` | `2026-05-28` | — | — | `internal/engine/scheduled_jobs_edges.go` | — |
-| `topic_attribution` | ⚠️ `partial` | `2026-05-28` | — | — | `internal/links/topic_pass.go` | — |
+| `topic_attribution` | ✅ `full` | `2026-05-28` | — | [link](2865) | `internal/engine/bullmq_edges.go`<br>`internal/engine/bullmq_edges_test.go`<br>`internal/links/topic_pass.go`<br>`internal/links/topic_pass_test.go`<br>`testdata/fixtures/typescript/bullmq_topic_attribution.ts` | — |
 
 ## Provenance
 

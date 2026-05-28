@@ -469,11 +469,31 @@ func parseInto(props map[string]string, spec configSpec, content []byte) {
 // ---------------------------------------------------------------------------
 
 func parseJSON(props map[string]string, spec configSpec, content []byte) {
+	// tsconfig.json is JSONC: the TypeScript compiler accepts // and /* */
+	// comments and trailing commas, which idiomatic configs use heavily.
+	// Strict encoding/json rejects them, so a commented tsconfig previously
+	// failed the decode below and yielded NO mined keys (the reason
+	// file_parsing was only partial — #2865). Strip comments first for the
+	// typescript_project subtype so the full compilerOptions / references /
+	// extends surface is recoverable.
+	if spec.subtype == "typescript_project" {
+		content = stripTrailingCommas(stripJSONC(content))
+	}
 	var generic map[string]json.RawMessage
 	if err := json.Unmarshal(content, &generic); err != nil {
 		return
 	}
 	props["keys_top_level"] = joinSortedKeys(generic)
+
+	// tsconfig.json deep parse (#2865): mine compilerOptions, project
+	// references, extends chain, and include/exclude globs. These are the
+	// fields that make a tsconfig meaningful — the module resolution mode,
+	// path aliases (which downstream import resolution depends on), the
+	// referenced sub-projects (which form the TS build graph), and the base
+	// config it extends. file_parsing is "full" once these are surfaced.
+	if spec.subtype == "typescript_project" {
+		parseTSConfig(props, content)
+	}
 
 	// package.json is the only JSON file we deeply mine.
 	if spec.subtype == "node_project" {
@@ -527,6 +547,130 @@ func parseJSON(props map[string]string, spec configSpec, content []byte) {
 			parseAvaBlock(props, pkg.Ava)
 		}
 	}
+}
+
+// parseTSConfig mines a tsconfig.json (#2865). It records the headline
+// compilerOptions (target / module / moduleResolution / strict / baseUrl /
+// outDir / rootDir / jsx), the path-alias keys (compilerOptions.paths), the
+// extends base config, the project references, and include/exclude globs.
+// All values are stable structural signal — no TypeScript evaluation. The
+// content passed in has already had JSONC comments stripped.
+func parseTSConfig(props map[string]string, content []byte) {
+	var ts struct {
+		Extends    json.RawMessage `json:"extends"`
+		Include    []string        `json:"include"`
+		Exclude    []string        `json:"exclude"`
+		Files      []string        `json:"files"`
+		References []struct {
+			Path string `json:"path"`
+		} `json:"references"`
+		CompilerOptions struct {
+			Target           string              `json:"target"`
+			Module           string              `json:"module"`
+			ModuleResolution string              `json:"moduleResolution"`
+			JSX              string              `json:"jsx"`
+			BaseURL          string              `json:"baseUrl"`
+			OutDir           string              `json:"outDir"`
+			RootDir          string              `json:"rootDir"`
+			Strict           *bool               `json:"strict"`
+			Paths            map[string][]string `json:"paths"`
+		} `json:"compilerOptions"`
+	}
+	if err := json.Unmarshal(content, &ts); err != nil {
+		return
+	}
+
+	co := ts.CompilerOptions
+	setIf := func(key, val string) {
+		if val != "" {
+			props[key] = val
+		}
+	}
+	setIf("ts_target", co.Target)
+	setIf("ts_module", co.Module)
+	setIf("ts_module_resolution", co.ModuleResolution)
+	setIf("ts_jsx", co.JSX)
+	setIf("ts_base_url", co.BaseURL)
+	setIf("ts_out_dir", co.OutDir)
+	setIf("ts_root_dir", co.RootDir)
+	if co.Strict != nil {
+		if *co.Strict {
+			props["ts_strict"] = "true"
+		} else {
+			props["ts_strict"] = "false"
+		}
+	}
+
+	// Path aliases drive module resolution; surface the alias keys (the RHS
+	// target arrays are noisy and resolution-specific, so we record the alias
+	// names — the resolvable surface).
+	if len(co.Paths) > 0 {
+		aliases := make([]string, 0, len(co.Paths))
+		for k := range co.Paths {
+			aliases = append(aliases, k)
+		}
+		sort.Strings(aliases)
+		props["ts_path_aliases"] = capJoin(aliases)
+	}
+
+	// extends is either a string or (TS 5.0+) an array of strings.
+	if base := parseTSExtends(ts.Extends); len(base) > 0 {
+		sort.Strings(base)
+		props["ts_extends"] = capJoin(base)
+	}
+
+	// Project references form the TypeScript build graph.
+	if len(ts.References) > 0 {
+		refs := make([]string, 0, len(ts.References))
+		for _, r := range ts.References {
+			if r.Path != "" {
+				refs = append(refs, r.Path)
+			}
+		}
+		sort.Strings(refs)
+		refs = dedup(refs)
+		if len(refs) > 0 {
+			props["ts_references"] = capJoin(refs)
+		}
+	}
+
+	if len(ts.Include) > 0 {
+		inc := append([]string(nil), ts.Include...)
+		sort.Strings(inc)
+		props["ts_include"] = capJoin(inc)
+	}
+	if len(ts.Exclude) > 0 {
+		exc := append([]string(nil), ts.Exclude...)
+		sort.Strings(exc)
+		props["ts_exclude"] = capJoin(exc)
+	}
+	if len(ts.Files) > 0 {
+		f := append([]string(nil), ts.Files...)
+		sort.Strings(f)
+		props["ts_files"] = capJoin(f)
+	}
+}
+
+// parseTSExtends accepts the two tsconfig "extends" shapes:
+//
+//	"extends": "./tsconfig.base.json"
+//	"extends": ["@tsconfig/node18/tsconfig.json", "./base.json"]   // TS 5.0+
+func parseTSExtends(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		if s == "" {
+			return nil
+		}
+		return []string{s}
+	}
+	var arr []string
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return arr
+	}
+	return nil
 }
 
 // parseAvaBlock mines the package.json "ava" object (issue #2864). AVA test
@@ -989,6 +1133,48 @@ func parseJSConfig(props map[string]string, content []byte) {
 // JSONC-tolerant. JS configs (webpack/vite/rollup/esbuild) are mined with
 // permissive regexes — no JS evaluation, just stable structural signal.
 // ---------------------------------------------------------------------------
+
+// stripTrailingCommas removes a comma that is immediately followed (ignoring
+// whitespace) by a closing `}` or `]`. tsconfig.json (and other JSONC files)
+// permit trailing commas, which strict encoding/json rejects. Run AFTER
+// stripJSONC so comments don't confuse the lookahead. String contents are
+// preserved so a comma inside a string value is never touched (#2865).
+func stripTrailingCommas(content []byte) []byte {
+	out := make([]byte, 0, len(content))
+	inStr := false
+	for i := 0; i < len(content); i++ {
+		c := content[i]
+		if inStr {
+			out = append(out, c)
+			if c == '\\' && i+1 < len(content) {
+				out = append(out, content[i+1])
+				i++
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		if c == '"' {
+			inStr = true
+			out = append(out, c)
+			continue
+		}
+		if c == ',' {
+			// Look ahead past whitespace for a closing bracket/brace.
+			j := i + 1
+			for j < len(content) && (content[j] == ' ' || content[j] == '\t' || content[j] == '\n' || content[j] == '\r') {
+				j++
+			}
+			if j < len(content) && (content[j] == '}' || content[j] == ']') {
+				continue // drop the trailing comma
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
 
 // stripJSONC removes // line comments and /* */ block comments so JSONC files
 // (turbo.json, tsconfig-style) decode with encoding/json. String contents are

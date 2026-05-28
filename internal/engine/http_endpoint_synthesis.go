@@ -440,6 +440,11 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// synthetics this file just emitted when an adapter signal is present.
 		applyRPCTransportBinding(string(content), entities, trpcTransportBefore,
 			"trpc", trpcHTTPAdapterSignals, trpcWSAdapterSignals)
+		// #2865 — tRPC input-schema extraction. Recover each procedure's
+		// `.input(z.object({…}))` validator and stamp input_schema /
+		// input_schema_lib / has_input_schema on the procedure synthetics this
+		// file just emitted. Keyed on the shared dotted `path` property.
+		applyTRPCSchemaBinding(string(content), entities, trpcTransportBefore)
 		// #2852 — resolve auth_coverage over the producer-side endpoints emitted
 		// above. Detects passport/express-jwt/session middleware, Nest
 		// @UseGuards (class + method), Hapi route auth, AdonisJS .middleware('auth')
