@@ -714,6 +714,12 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	propEnts, propRels := x.extractComponentProps(params, name)
 	rels = append(rels, propRels...)
 	x.emitWithRels(name, "SCOPE.Operation", n, subtype, sig, rels)
+	// Issue #2875 — React Internals: decorate the component with
+	// react_suspense / react_portal markers (the emit above appended the
+	// component entity at the current tail, before any prop entities).
+	if isComponentName(name) {
+		x.decorateReactComponentInternals(body, len(x.entities)-1)
+	}
 	x.entities = append(x.entities, propEnts...)
 	// Issue #2654 — stamp discriminator comparisons found in the body.
 	x.stampDiscriminators(body)
@@ -757,6 +763,17 @@ func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 	x.emit(className, "SCOPE.Component", n, "class", fmt.Sprintf("class %s", className))
 
 	body := n.ChildByFieldName("body")
+	// Issue #2875 — React Internals/suspense_error_boundary: a class component
+	// that declares componentDidCatch / getDerivedStateFromError is a React
+	// error boundary. Decorate the class entity so error boundaries are
+	// queryable (decorate-only, no new Kind — #2839 discipline).
+	if x.classIsErrorBoundary(body) && classIdx < len(x.entities) {
+		e := &x.entities[classIdx]
+		if e.Properties == nil {
+			e.Properties = map[string]string{}
+		}
+		e.Properties["react_error_boundary"] = "true"
+	}
 	// Issue #421 — collect the class's typed property declarations and
 	// constructor parameter properties so receiver-typed CALLS inside
 	// any method body can resolve `this.<field>` to the declared type.
@@ -1320,6 +1337,10 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		propEnts, propRels := x.extractComponentProps(params, name)
 		rels = append(rels, propRels...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name), rels)
+		// Issue #2875 — React Internals: suspense/portal decoration.
+		if isComponentName(name) {
+			x.decorateReactComponentInternals(body, len(x.entities)-1)
+		}
 		x.entities = append(x.entities, propEnts...)
 		// Issue #2654 — stamp discriminator comparisons found in the body.
 		x.stampDiscriminators(body)
@@ -1352,6 +1373,10 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		propEnts, propRels := x.extractComponentProps(params, name)
 		rels = append(rels, propRels...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name), rels)
+		// Issue #2875 — React Internals: suspense/portal decoration.
+		if isComponentName(name) {
+			x.decorateReactComponentInternals(body, len(x.entities)-1)
+		}
 		x.entities = append(x.entities, propEnts...)
 		// Issue #2654 — stamp discriminator comparisons found in the body.
 		x.stampDiscriminators(body)
@@ -1420,6 +1445,14 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 			_ = inner
 			before := len(x.entities)
 			x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = <wrapper>", name), rels)
+			// Issue #2875 — React Internals/lazy_code_splitting: when the
+			// wrapper is React.lazy(() => import('mod')), decorate the entity
+			// with react_lazy + the code-split target module so the split point
+			// is queryable. lazyImportModule returns "" for non-lazy wrappers.
+			if mod := x.lazyImportModule(valueNode); mod != "" {
+				x.stampLastEntityProp("react_lazy", "true")
+				x.stampLastEntityProp("lazy_module", mod)
+			}
 			// Issue #1748 — wrapper calls (forwardRef, memo, etc.) inside a
 			// function body are non-addressable; tag as local_scope.
 			if x.funcDepth > 0 {

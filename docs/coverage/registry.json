@@ -12229,6 +12229,41 @@
             "verified_at": "2026-05-28"
           }
         }
+      },
+      "framework_specific": {
+        "React Internals": {
+          "lazy_code_splitting": {
+            "status": "partial",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/react_internals.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
+            "verified_at": "2026-05-28",
+            "notes": "React.lazy(() => import('mod')) is decorated react_lazy + lazy_module (the code-split target). Partial: the dynamic-import specifier is recovered only when it is a string literal; computed/template specifiers are not resolved."
+          },
+          "suspense_error_boundary": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/react_internals.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
+            "verified_at": "2026-05-28",
+            "notes": "Components rendering <Suspense> are decorated react_suspense; class components declaring componentDidCatch / getDerivedStateFromError are decorated react_error_boundary."
+          },
+          "portal_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/react_internals.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
+            "verified_at": "2026-05-28",
+            "notes": "Components calling createPortal / ReactDOM.createPortal are decorated react_portal."
+          },
+          "hooks": {
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
+            "notes": "Covered by generic Structure/hook_recognition (react.go USES_HOOK + custom-hook subtype). Not duplicated here to avoid double-counting."
+          },
+          "context_hoc": {
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
+            "notes": "Covered by generic Structure/context_extraction (createContext, #611) and Structure/hoc_wrapper_recognition (forwardRef/memo/lazy/connect/withX, extractor.go). Not duplicated here to avoid double-counting."
+          }
+        }
       }
     },
     {
