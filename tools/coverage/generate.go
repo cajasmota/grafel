@@ -613,6 +613,14 @@ func generate(reg *Registry, outRoot string) error {
 	}
 
 	for _, n := range langNames {
+		// "multi" / unset-language records are cross-cutting build/CI/infra
+		// tooling, not a language — they render in the cross-cutting pivot on
+		// the summary and in their by-category pages. Emitting a by-language
+		// page for them would resurrect the "Uncategorized" pseudo-language
+		// that #2821 removed, so skip it.
+		if n == "multi" || n == "" {
+			continue
+		}
 		buckets := byLangBucket[n]
 		sections := make([]bucketSection, 0, len(bucketOrder))
 		for _, b := range bucketOrder {
@@ -622,15 +630,11 @@ func generate(reg *Registry, outRoot string) error {
 			}
 			sections = append(sections, buildBucketSection(b, recs))
 		}
-		displayLang := languageDisplay(n)
-		if n == "multi" || n == "" {
-			displayLang = "Uncategorized"
-		}
 		if err := renderToFile(tmpls, "by-language.md.tmpl",
 			filepath.Join(root, "by-language", n+".md"),
 			languagePageData{
 				Marker:     doNotEditMarker,
-				Language:   displayLang,
+				Language:   languageDisplay(n),
 				Frameworks: len(buckets[BucketFrameworks]),
 				Tools:      len(buckets[BucketTools]),
 				ORMs:       len(buckets[BucketORMs]),

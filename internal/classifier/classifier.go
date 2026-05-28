@@ -476,14 +476,26 @@ var extensionLanguageMap = map[string]string{
 	".scss": "css",
 	".sass": "css",
 	".less": "css",
-	// Vue SFCs — dedicated vue extractor handles <template>+<script>+<style>
-	".vue": "vue",
-	// HTML / Templates — all route to "html" to match extractor.Register("html", …)
-	".html":   "html",
-	".htm":    "html",
+	// Vue / Svelte / Astro single-file components.
+	//
+	// These tokens are the *runtime extractor-dispatch keys* (extractor.Get
+	// is keyed on this Language), NOT coverage languages. Vue/Svelte/Astro are
+	// JS/TS frameworks with custom SFC file formats — the same class as React
+	// (.tsx → jsts). Their coverage language is jsts: their registry records
+	// live at lang.jsts.framework.{vue,svelte,astro} and they do NOT appear as
+	// standalone languages on the coverage by-language axis (see #2821 and
+	// tools/coverage/languages.go extractorDirAliases). The dedicated SFC
+	// extractors crack <template>/<script>/<style> and hand the <script> body
+	// to the JS/TS pipeline, so the dispatch token MUST stay the SFC format
+	// here — collapsing it to "jsts" would bypass the SFC extractor and drop
+	// the component/prop/rune entities. Keep format → dispatch token; the
+	// jsts collapse happens on the coverage axis only.
+	".vue":    "vue",
 	".svelte": "svelte",
-	// Astro SFCs — dedicated astro extractor (feat/astro-extractor)
-	".astro":      "astro",
+	".astro":  "astro",
+	// HTML / Templates — all route to "html" to match extractor.Register("html", …)
+	".html": "html",
+	".htm":  "html",
 	".erb":        "html",
 	".ejs":        "html",
 	".hbs":        "html",
