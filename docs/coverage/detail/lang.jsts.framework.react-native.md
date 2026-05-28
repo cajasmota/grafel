@@ -43,7 +43,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
 | `branch_conditions` | ✅ `full` | `2026-05-28` | — | — | `internal/extractors/javascript/discriminator.go` | — |
-| `state_management` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/CartScreen.tsx`<br>`internal/extractors/javascript/zustand_store.go` | — |
+| `state_management` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2894) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/react_ecosystem.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/CartScreen.tsx`<br>`internal/extractors/javascript/zustand_store.go` | useState/useReducer + Zustand; now also recognises Redux/RTK via react_ecosystem.go (RN uses @reduxjs/toolkit + RTK Query heavily). Detailed slice/store extraction in framework_specific[React Ecosystem] (#2894). |
 
 ### Type System
 
@@ -74,6 +74,15 @@ Auto-generated. Back to [summary](../summary.md).
 | `import_resolution_quality` | ✅ `full` | `2026-05-28` | — | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_mobile/App.tsx` | — |
 
 ## Framework-specific
+
+### React Ecosystem
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `redux_async_flow` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2894) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue2894_react_ecosystem_test.go`<br>`internal/extractors/javascript/react_ecosystem.go`<br>`internal/extractors/javascript/testdata/react_ecosystem/Store.tsx` | Same async-flow extractor as React: createAsyncThunk -> redux_async_thunk; redux-saga watcher/worker decoration; redux-observable epics. |
+| `redux_store_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2894) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue2894_react_ecosystem_test.go`<br>`internal/extractors/javascript/react_ecosystem.go`<br>`internal/extractors/javascript/testdata/react_ecosystem/Store.tsx` | Same Redux/RTK extractor as React (react_ecosystem.go); RN uses @reduxjs/toolkit + react-redux identically. createStore/combineReducers + configureStore/createSlice (-> redux_slice + redux_reducer + CONTAINS) + createEntityAdapter; useSelector/useDispatch via USES_HOOK; connect via HOC recognition. |
+| `rtk_query_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2894) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue2894_react_ecosystem_test.go`<br>`internal/extractors/javascript/react_ecosystem.go`<br>`internal/extractors/javascript/testdata/react_ecosystem/Queries.tsx` | Same RTK Query extractor as React (RN uses RTK Query heavily): createApi/injectEndpoints -> rtk_query_api + rtk_query_endpoint (http_linkable) + CONTAINS. |
+| `tanstack_query_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2894) | `internal/extractors/javascript/issue2894_react_ecosystem_test.go`<br>`internal/extractors/javascript/react.go`<br>`internal/extractors/javascript/react_ecosystem.go`<br>`internal/extractors/javascript/testdata/react_ecosystem/Queries.tsx` | TanStack/React Query hooks (useQuery/useMutation/useInfiniteQuery/useSuspenseQuery/useQueryClient) surface as USES_HOOK edges via shared hook_recognition; identical on RN. |
 
 ### React Native CLI
 

@@ -233,6 +233,14 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// Without this, traces terminated at useAuthStore ("no_outgoing_calls").
 	x.zustand.emitStoreActionEntities(x)
 
+	// Issue #2894 PR1 — React Ecosystem framework_specific group: emit
+	// decorated Redux slice/store, RTK Query api/endpoint and createAsyncThunk
+	// entities (+ CONTAINS edges) before walk() so they're present alongside the
+	// generic component/hook entities. TanStack-Query usage surfaces via the
+	// generic USES_HOOK pass. Like emitStoreActionEntities (#2626), this is a
+	// program-level pass that no-ops when no ecosystem package is imported.
+	x.extractReactEcosystem(root)
+
 	var extractErr error
 	func() {
 		defer func() {
@@ -273,6 +281,12 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		// used as the params argument in navigation calls and extracts their
 		// object literal keys. Runs after walk() so paramsVarRefs is complete.
 		x.resolveParamsVarRefs(root)
+
+		// Issue #2894 PR1 — redux-saga / redux-observable async-flow decoration.
+		// Generator functions using saga effects (takeEvery/takeLatest +
+		// put/call/select) are decorated redux_saga; epics using ofType are
+		// decorated redux_epic. Runs after walk so the function entities exist.
+		x.decorateReduxAsyncFlow(root)
 	}()
 
 	// Third pass (#713): platform-variant and test-file relationship emission.
