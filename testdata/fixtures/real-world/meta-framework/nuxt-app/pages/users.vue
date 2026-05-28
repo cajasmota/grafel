@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // Nuxt page — useAsyncData/useFetch loaders + reactive state + ClientOnly.
+// useRoute / useState are auto-imported (no import statement) by Nuxt.
+const route = useRoute()
+const count = useState('count', () => 0)
 const { data: users } = await useAsyncData('users', () => $fetch('/api/users'))
 const { data: profile } = useFetch('/api/profile')
-const count = ref(0)
 
 function increment() {
   count.value++

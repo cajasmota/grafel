@@ -145,6 +145,21 @@ func (e *remixExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		addEntity(ent)
 	}
 
+	// Loader/action pairing (issue #2878, remix_loader_action_pair). Remix's
+	// signature idiom is colocating a server `loader` (GET data) and `action`
+	// (non-GET mutation) in the SAME route module alongside the default-export
+	// component. Emit a dedicated pair marker only when both are present, so the
+	// full server round-trip of a route is a single queryable node (distinct from
+	// the independent loader/action data-flow nodes above).
+	if hasLoader && hasAction {
+		name := fmt.Sprintf("loader_action_pair:%s", routePath)
+		ent := makeEntity(name, "SCOPE.Pattern", "loader_action_pair", file.Path, file.Language, 1)
+		setProps(&ent, "framework", "remix", "route_path", routePath, "stem", stem,
+			"has_loader", "true", "has_action", "true", "rendering", "server",
+			"provenance", "INFERRED_FROM_REMIX_LOADER_ACTION_PAIR")
+		addEntity(ent)
+	}
+
 	// Default export (page component)
 	for _, m := range reRemixDefaultExport.FindAllStringSubmatchIndex(src, -1) {
 		compName := src[m[2]:m[3]]

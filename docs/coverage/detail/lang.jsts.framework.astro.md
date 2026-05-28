@@ -73,6 +73,15 @@ Auto-generated. Back to [summary](../summary.md).
 | `taint_source_detection` | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
 | `vulnerability_finding` | ✅ `full` | `2026-05-28` | — | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
 
+## Framework-specific
+
+### Astro Internals
+
+| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
+|------------|--------|-------------|--------------|-------|-------|-------|
+| `astro_frontmatter_fetch` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
+| `astro_island_directive` | ✅ `full` | `2026-05-29` | — | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
+
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON

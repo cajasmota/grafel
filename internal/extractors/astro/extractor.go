@@ -101,6 +101,14 @@ var (
 	// statically-generated page; false opts a page into on-demand (server)
 	// rendering when the project output is "server"/"hybrid".
 	prerenderRE = regexp.MustCompile(`export\s+const\s+prerender\s*=\s*(true|false)`)
+
+	// frontmatterFetchRE matches a top-level `fetch(...)` / `await fetch(...)`
+	// call in the Astro frontmatter (issue #2878, astro_frontmatter_fetch). The
+	// frontmatter runs server-side (build time for static output, per request for
+	// SSR), so a `fetch` there is a server-side data load that bakes its result
+	// into the rendered HTML — Astro's idiomatic data-fetching pattern, distinct
+	// from the content-collection / getStaticPaths loaders.
+	frontmatterFetchRE = regexp.MustCompile(`\b(?:await\s+)?fetch\s*\(`)
 )
 
 // Extract parses the Astro SFC source and returns entity records.
@@ -445,6 +453,16 @@ func extractServerBuildEntities(fm string, fmStartLine int, filePath, subtype st
 		out = append(out, mk(fn, "SCOPE.Operation", "data_loader", lineOf(m[0]),
 			map[string]string{"loader_kind": fn, "rendering": "ssg",
 				"provenance": "INFERRED_FROM_ASTRO_CONTENT_COLLECTION"}))
+	}
+
+	// Frontmatter fetch (issue #2878, astro_frontmatter_fetch). A `fetch(...)`
+	// in the frontmatter is a server-side data load whose result is rendered into
+	// the page; emit one data_loader marker for it so the server data dependency
+	// is queryable.
+	if m := frontmatterFetchRE.FindStringIndex(fm); m != nil {
+		out = append(out, mk("frontmatter_fetch", "SCOPE.Operation", "data_loader", lineOf(m[0]),
+			map[string]string{"loader_kind": "frontmatter_fetch", "rendering": "server",
+				"provenance": "INFERRED_FROM_ASTRO_FRONTMATTER_FETCH"}))
 	}
 
 	// export const prerender = true → static generation marker.

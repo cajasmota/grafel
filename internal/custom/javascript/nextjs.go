@@ -54,6 +54,26 @@ var (
 	reNextjsRouteSegmentRevalidate = regexp.MustCompile(
 		`export\s+const\s+revalidate\s*=\s*(\d+|false)`,
 	)
+
+	// Next.js middleware (issue #2878, middleware_runtime_detection). A
+	// project-root `middleware.{ts,js}` exporting `middleware()` (or a default)
+	// runs in the Edge runtime by default; `export const config = { matcher, runtime }`
+	// declares the path matcher and (optionally) opts the function into the
+	// 'nodejs' runtime. We detect the middleware export and the runtime/matcher
+	// from its `config` object.
+	reNextjsMiddlewareExport = regexp.MustCompile(
+		`export\s+(?:async\s+)?function\s+middleware\s*\(|export\s+default\s+(?:async\s+)?function\s+middleware\b|export\s+const\s+middleware\s*=`,
+	)
+	reNextjsConfigRuntime = regexp.MustCompile(`\bruntime\s*:\s*['"](edge|nodejs|experimental-edge)['"]`)
+	reNextjsConfigMatcher = regexp.MustCompile(`\bmatcher\s*:`)
+
+	// next.config detection (issue #2878, next_config_detection). The
+	// `next.config.{js,ts,mjs,cjs}` file is the framework's build/runtime config;
+	// it is recognised by file name and its `defineConfig`/`NextConfig`/default
+	// export shape.
+	reNextjsConfigExport = regexp.MustCompile(
+		`export\s+default\b|module\.exports\s*=|\bdefineConfig\s*\(|:\s*NextConfig\b`,
+	)
 )
 
 var (
@@ -295,6 +315,44 @@ func (e *nextjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 				"provenance", "INFERRED_FROM_NEXTJS_SERVER_ACTION")
 			addEntity(ent)
 		}
+	}
+
+	// Middleware runtime detection (issue #2878, middleware_runtime_detection).
+	//
+	// Next.js runs a root `middleware.{ts,js}` on every matched request. It
+	// executes in the Edge runtime by default; `export const config` declares the
+	// `matcher` paths and may opt into `runtime: 'nodejs'`. Detecting the
+	// middleware export + its runtime/matcher is the idiom — a request-pipeline
+	// interceptor distinct from route handlers.
+	isMiddlewareFile := stem == "middleware" &&
+		(fp == "middleware.ts" || fp == "middleware.js" ||
+			strings.HasSuffix(fp, "/middleware.ts") || strings.HasSuffix(fp, "/middleware.js") ||
+			strings.HasSuffix(fp, "/src/middleware.ts") || strings.HasSuffix(fp, "/src/middleware.js"))
+	if isMiddlewareFile && reNextjsMiddlewareExport.MatchString(src) {
+		runtime := "edge" // Next.js middleware defaults to the Edge runtime.
+		if m := reNextjsConfigRuntime.FindStringSubmatch(src); m != nil {
+			runtime = m[1]
+		}
+		ent := makeEntity("middleware", "SCOPE.Pattern", "middleware", file.Path, file.Language, 1)
+		setProps(&ent, "framework", "nextjs", "runtime", runtime,
+			"has_matcher", fmt.Sprintf("%v", reNextjsConfigMatcher.MatchString(src)),
+			"provenance", "INFERRED_FROM_NEXTJS_MIDDLEWARE")
+		addEntity(ent)
+	}
+
+	// next.config detection (issue #2878, next_config_detection). The
+	// `next.config.{js,ts,mjs,cjs}` file configures the Next.js build/runtime
+	// (rewrites, redirects, images, experimental flags). Recognise it by name +
+	// its config-export shape so the project's framework configuration is a
+	// first-class, queryable node.
+	isNextConfig := stem == "next.config" &&
+		(strings.HasSuffix(fp, "next.config.js") || strings.HasSuffix(fp, "next.config.ts") ||
+			strings.HasSuffix(fp, "next.config.mjs") || strings.HasSuffix(fp, "next.config.cjs"))
+	if isNextConfig && reNextjsConfigExport.MatchString(src) {
+		ent := makeEntity("next.config", "SCOPE.Pattern", "framework_config", file.Path, file.Language, 1)
+		setProps(&ent, "framework", "nextjs", "config_kind", "next_config",
+			"provenance", "INFERRED_FROM_NEXTJS_CONFIG")
+		addEntity(ent)
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
