@@ -188,6 +188,17 @@ func (e *remixExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		addEntity(ent)
 	}
 
+	// React structure: custom hooks + hook call sites in the route module.
+	// Remix routes are React components (the default export is captured above
+	// as route_component); this adds hook_recognition (issue #2857) by reusing
+	// the shared React detection. Gated to Remix routes/ context so non-Remix
+	// React projects don't get remix-tagged duplicate component entities.
+	isRoutesFile := strings.Contains(fp, "/routes/") || strings.HasPrefix(fp, "routes/") ||
+		strings.Contains(fp, "/app/root.") || strings.HasPrefix(fp, "app/root.")
+	if isRoutesFile {
+		extractReactStructure(src, file.Path, file.Language, "remix", addEntity)
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
 }

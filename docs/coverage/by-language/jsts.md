@@ -40,11 +40,11 @@ Back to [summary](../summary.md).
 
 | Name | Structure | Data Flow | Server | Routing | Build | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [Astro](../detail/lang.jsts.framework.astro.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ✅ 4/4 | |
-| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 0/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | — | |
-| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ✅ 2/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | — | |
+| [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 1/2 | ❌ 0/1 | ❌ 0/2 | ✅ 2/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ✅ 4/4 | |
+| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/2 | ✅ 2/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | — | |
+| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/2 | ✅ 2/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | — | |
 | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | — | |
-| [Remix](../detail/lang.jsts.framework.remix.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | — | |
+| [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ❌ 0/1 | ❌ 0/2 | ✅ 2/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | — | |
 | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ❌ 0/2 | ❌ 0/1 | ❌ 0/2 | ❌ 1/2 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ✅ 4/4 | |
 
 

@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `component_extraction` | ❌ `missing` | — | — | — | — | — |
-| `hook_recognition` | ❌ `missing` | — | — | — | — | — |
+| `component_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/custom/javascript/gatsby.go`<br>`internal/custom/javascript/react_shared.go`<br>`internal/custom/javascript/issue2857_meta_structure_test.go` | — |
+| `hook_recognition` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/custom/javascript/gatsby.go`<br>`internal/custom/javascript/react_shared.go`<br>`internal/custom/javascript/issue2857_meta_structure_test.go` | — |
 
 ### Data Flow
 
@@ -35,8 +35,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `route_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2735) | `internal/engine/rules/javascript_typescript/frameworks/gatsby.yaml` | — |
-| `router_pattern` | ❌ `missing` | — | — | — | — | — |
+| `route_extraction` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/custom/javascript/gatsby.go`<br>`internal/custom/javascript/issue2857_meta_structure_test.go` | — |
+| `router_pattern` | ✅ `full` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/custom/javascript/gatsby.go`<br>`internal/custom/javascript/issue2857_meta_structure_test.go` | — |
 
 ### Build
 
