@@ -135,6 +135,27 @@ func TestClassify_PythonFile(t *testing.T) {
 	}
 }
 
+func TestClassify_AssemblyFiles(t *testing.T) {
+	c := newTestClassifier(t)
+	// Every assembly dialect/extension collapses to the single "assembly"
+	// token. .S is preprocessed gas — case-insensitive matching routes it to
+	// the same language as .s (#2744).
+	for _, path := range []string{
+		"arch/x86/boot.s",
+		"arch/arm/head.S",
+		"crypto/aes.asm",
+		"kernel/entry.nasm",
+	} {
+		r := c.Classify(context.Background(), path)
+		if r.Skip {
+			t.Errorf("%s should not be skipped: %q", path, r.SkipReason)
+		}
+		if r.Language != "assembly" {
+			t.Errorf("%s: expected assembly, got %q", path, r.Language)
+		}
+	}
+}
+
 func TestClassify_TypeScriptFile(t *testing.T) {
 	c := newTestClassifier(t)
 	r := c.Classify(context.Background(), "src/components/Button.tsx")

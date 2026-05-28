@@ -1,0 +1,25 @@
+; x86-64 NASM (Intel syntax) fixture — labels, call, jmp, syscall.
+; Demonstrates: section directives, global export, %define constant,
+; extern external call, syscall effect.
+
+%define SYS_write 1
+
+global  _start
+extern  puts
+
+section .data
+msg:    db  "hi", 0
+
+section .text
+_start:
+        call    work                ; intra-file call
+        call    puts                ; external call
+        jmp     .exit               ; branch to local label
+.exit:
+        mov     rax, SYS_write
+        syscall                     ; OS boundary effect
+        ret
+
+work:
+        xor     rax, rax
+        ret

@@ -1,0 +1,24 @@
+// AArch64 / ARM64 GNU as fixture — labels, bl, b, svc syscall.
+// Demonstrates: AAPCS-style procedures, bl call, b branch, svc OS boundary.
+
+	.equ	SYS_exit, 93
+
+	.extern	memcpy
+
+	.text
+	.global	_start
+_start:
+	bl	setup               // intra-file call
+	bl	memcpy              // external call
+	b	.Lloop              // branch to local label
+.Lloop:
+	subs	x0, x0, #1
+	bne	.Lloop              // conditional branch
+	mov	x8, #SYS_exit
+	svc	#0                  // OS boundary effect
+	ret
+
+	.global	setup
+setup:
+	mov	x0, xzr
+	ret

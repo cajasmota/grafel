@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 34 (16 active · 18 placeholder) · **Frameworks**: 182 · **ORMs**: 150 · **Tools**: 110 · **Other**: 99
+**Languages**: 35 (16 active · 19 placeholder) · **Frameworks**: 182 · **ORMs**: 150 · **Tools**: 110 · **Other**: 99
 
 ## Coverage by language
 
@@ -44,6 +44,7 @@
 
 | Language |
 |---|
+| [Assembly](by-language/assembly.md) |
 | [Clojure](by-language/clojure.md) |
 | [Crystal](by-language/crystal.md) |
 | [Elm](by-language/elm.md) |

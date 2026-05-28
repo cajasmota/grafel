@@ -1,0 +1,40 @@
+# x86-64 GNU as (AT&T syntax) fixture — labels, call, jmp, syscall.
+# Demonstrates: .text/.data sections, .globl export, .equ constant,
+# .extern external call, procedure bodies, intra-proc branch, syscall effect.
+
+	.equ	SYS_write, 1
+	.equ	STDOUT, 1
+
+	.extern	printf
+
+	.section .rodata
+msg:
+	.asciz	"hello\n"
+
+	.data
+counter:
+	.quad	0
+
+	.text
+	.globl	main
+main:
+	push	%rbp
+	mov	%rsp, %rbp
+	call	greet               # intra-file call
+	call	printf@PLT          # external call
+	mov	$0, %rdi
+	jmp	.Ldone              # branch to local label
+.Ldone:
+	pop	%rbp
+	ret
+
+	.globl	greet
+greet:
+	mov	$SYS_write, %rax
+	mov	$STDOUT, %rdi
+	syscall                     # OS boundary effect
+	cmp	$0, %rax
+	je	.Lok
+	jmp	greet               # self-recursion branch
+.Lok:
+	ret

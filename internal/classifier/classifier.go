@@ -538,6 +538,16 @@ var extensionLanguageMap = map[string]string{
 	// VHDL — hardware description language (EDA / silicon)
 	".vhd":  "vhdl",
 	".vhdl": "vhdl",
+	// Assembly — embedded / OS / crypto / firmware hot paths (#2744).
+	// A single "assembly" language token covers every dialect (x86/x86-64,
+	// ARM, ARM64/AArch64, m68k) and both syntaxes (AT&T / Intel/NASM); the
+	// dialect is recorded as an entity attribute, NOT a separate language
+	// (mirrors the vue/svelte/astro = jsts taxonomy lesson). Extension
+	// matching is case-insensitive (.s and .S both route here — both are
+	// GNU-as sources, .S merely runs the C preprocessor first).
+	".s":    "assembly",
+	".asm":  "assembly",
+	".nasm": "assembly",
 	// OCaml — .ml is claimed for OCaml (SML is much less common)
 	".ml":  "ocaml",
 	".mli": "ocaml",

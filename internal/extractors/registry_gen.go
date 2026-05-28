@@ -9,6 +9,7 @@
 package extractors
 
 import (
+	_ "github.com/cajasmota/archigraph/internal/extractors/assembly"
 	_ "github.com/cajasmota/archigraph/internal/extractors/astro"
 	_ "github.com/cajasmota/archigraph/internal/extractors/clojure"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cpp"
