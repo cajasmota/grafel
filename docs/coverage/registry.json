@@ -10569,8 +10569,8 @@
             "status": "partial",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2855_angular_dataflow_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2855",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) full->partial: angularStateManagement only detects ngrx Store (select/dispatch/pipe/selectSignal). On angular-realworld (gothinkster) all 11 stateful files use Angular signals + RxJS BehaviorSubject and 0 use ngrx, so the cell fired on the ngrx fixture but missed the dominant modern Angular state idiom. Follow-up filed for signal()/computed()/BehaviorSubject support."
+            "notes": "AUDIT(#2847) full-\u003epartial: angularStateManagement only detects ngrx Store (select/dispatch/pipe/selectSignal). On angular-realworld (gothinkster) all 11 stateful files use Angular signals + RxJS BehaviorSubject and 0 use ngrx, so the cell fired on the ngrx fixture but missed the dominant modern Angular state idiom. Follow-up filed for signal()/computed()/BehaviorSubject support.",
+            "verified_at": "2026-05-28"
           }
         },
         "Navigation": {
@@ -10636,48 +10636,48 @@
             "status": "full",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) taxonomy: angular.go angularClassDecorators emits component/service/directive/pipe/module subtypes. Verified on angular-realworld: angular_component x18, angular_service x6, angular_pipe x2, angular_directive x1."
+            "notes": "AUDIT(#2847) taxonomy: angular.go angularClassDecorators emits component/service/directive/pipe/module subtypes. Verified on angular-realworld: angular_component x18, angular_service x6, angular_pipe x2, angular_directive x1.",
+            "verified_at": "2026-05-28"
           },
           "dependency_injection": {
             "status": "full",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) taxonomy: constructor-DI -> INJECTED_INTO edges. Verified on angular-realworld (5 INJECTED_INTO->ArticleComponent etc.), incl. modern inject() function-DI."
-          },
-          "ngmodule_extraction": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) taxonomy: @NgModule -> angular_module subtype. Verified on real NativeScript-Angular app (angular_module x47)."
-          },
-          "service_extraction": {
-            "status": "full",
-            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) NEW idiom cell: @Injectable -> angular_service subtype. Verified on angular-realworld (angular_service x6)."
+            "notes": "AUDIT(#2847) taxonomy: constructor-DI -\u003e INJECTED_INTO edges. Verified on angular-realworld (5 INJECTED_INTO-\u003eArticleComponent etc.), incl. modern inject() function-DI.",
+            "verified_at": "2026-05-28"
           },
           "directive_recognition": {
             "status": "full",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) NEW idiom cell: @Directive -> angular_directive subtype. Verified on angular-realworld + nativescript-ng."
+            "notes": "AUDIT(#2847) NEW idiom cell: @Directive -\u003e angular_directive subtype. Verified on angular-realworld + nativescript-ng.",
+            "verified_at": "2026-05-28"
+          },
+          "ngmodule_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2847",
+            "notes": "AUDIT(#2847) taxonomy: @NgModule -\u003e angular_module subtype. Verified on real NativeScript-Angular app (angular_module x47).",
+            "verified_at": "2026-05-28"
           },
           "pipe_extraction": {
             "status": "full",
             "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2847",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) NEW idiom cell: @Pipe -> angular_pipe subtype. Verified on angular-realworld (angular_pipe x2)."
+            "notes": "AUDIT(#2847) NEW idiom cell: @Pipe -\u003e angular_pipe subtype. Verified on angular-realworld (angular_pipe x2).",
+            "verified_at": "2026-05-28"
           },
           "rxjs_pattern_detection": {
             "status": "missing",
             "issue": "https://github.com/cajasmota/archigraph/issues/2739",
             "notes": "AUDIT(#2847): genuinely unimplemented — angular.go does not extract Observable/pipe/subscribe operators as entities. Held at missing."
+          },
+          "service_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/angular.go","internal/extractors/javascript/issue2854_angular_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2847",
+            "notes": "AUDIT(#2847) NEW idiom cell: @Injectable -\u003e angular_service subtype. Verified on angular-realworld (angular_service x6).",
+            "verified_at": "2026-05-28"
           }
         }
       }
@@ -11677,15 +11677,15 @@
             "status": "partial",
             "cites": ["internal/extractors/javascript/discriminator.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2859",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) full->partial: NS branch_conditions relies on the discriminator pass, which stamped 0 discriminators across 19 real NativeScript view-models (official @nativescript app-templates) whose if-branches are member comparisons (if (this._x !== value)). Fires only on the toy fixture's bare-identifier compare. Follow-up filed."
+            "notes": "AUDIT(#2847) full-\u003epartial: NS branch_conditions relies on the discriminator pass, which stamped 0 discriminators across 19 real NativeScript view-models (official @nativescript app-templates) whose if-branches are member comparisons (if (this._x !== value)). Fires only on the toy fixture's bare-identifier compare. Follow-up filed.",
+            "verified_at": "2026-05-28"
           },
           "state_management": {
             "status": "full",
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2859",
-            "verified_at": "2026-05-28",
-            "notes": "AUDIT(#2847) HOLDS: state_setter fires on 6 real NativeScript-Core view-models (notifyPropertyChange/this.set/set-accessor) from @nativescript app-templates."
+            "notes": "AUDIT(#2847) HOLDS: state_setter fires on 6 real NativeScript-Core view-models (notifyPropertyChange/this.set/set-accessor) from @nativescript app-templates.",
+            "verified_at": "2026-05-28"
           }
         },
         "Type System": {
@@ -12705,73 +12705,45 @@
       },
       "framework_specific": {
         "Svelte Internals": {
-          "runes": {
+          "actions": {
             "status": "full",
-            "cites": [
-              "internal/extractors/svelte/extractor.go",
-              "internal/extractors/svelte/issue2877_test.go",
-              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
-            "verified_at": "2026-05-28"
-          },
-          "props_extraction": {
-            "status": "full",
-            "cites": [
-              "internal/extractors/svelte/extractor.go",
-              "internal/extractors/svelte/issue2877_test.go",
-              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
-            "verified_at": "2026-05-28"
-          },
-          "stores": {
-            "status": "full",
-            "cites": [
-              "internal/extractors/svelte/extractor.go",
-              "internal/extractors/svelte/issue2877_test.go",
-              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
-            ],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
-            "verified_at": "2026-05-28"
-          },
-          "sfc_block_extraction": {
-            "status": "full",
-            "cites": [
-              "internal/extractors/svelte/extractor.go",
-              "internal/extractors/svelte/issue2877_test.go",
-              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
-            ],
+            "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2877",
             "verified_at": "2026-05-28"
           },
           "context": {
             "status": "full",
-            "cites": [
-              "internal/extractors/svelte/extractor.go",
-              "internal/extractors/svelte/issue2877_test.go",
-              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
-            ],
+            "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "props_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2877",
             "verified_at": "2026-05-28"
           },
           "reactive_statements": {
             "status": "full",
-            "cites": [
-              "internal/extractors/svelte/extractor.go",
-              "internal/extractors/svelte/issue2877_test.go",
-              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
-            ],
+            "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2877",
             "verified_at": "2026-05-28"
           },
-          "actions": {
+          "runes": {
             "status": "full",
-            "cites": [
-              "internal/extractors/svelte/extractor.go",
-              "internal/extractors/svelte/issue2877_test.go",
-              "internal/extractors/javascript/testdata/svelte_internals/Comp.svelte"
-            ],
+            "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "sfc_block_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2877",
+            "verified_at": "2026-05-28"
+          },
+          "stores": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/svelte_internals/Comp.svelte","internal/extractors/svelte/extractor.go","internal/extractors/svelte/issue2877_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2877",
             "verified_at": "2026-05-28"
           }
@@ -13043,54 +13015,54 @@
         "Vue Internals": {
           "composition_api": {
             "status": "full",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/Comp.vue"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
-            "verified_at": "2026-05-28"
-          },
-          "options_api": {
-            "status": "full",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/OptionsComp.vue"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
-            "verified_at": "2026-05-28"
-          },
-          "sfc_block_extraction": {
-            "status": "full",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/Comp.vue"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
-            "verified_at": "2026-05-28"
-          },
-          "provide_inject": {
-            "status": "full",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/Comp.vue"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
-            "verified_at": "2026-05-28"
-          },
-          "props_emits_macros": {
-            "status": "full",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/Comp.vue"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
-            "verified_at": "2026-05-28"
-          },
-          "pinia_store": {
-            "status": "partial",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/Comp.vue"],
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2876",
             "verified_at": "2026-05-28"
           },
           "directive_recognition": {
             "status": "full",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/Comp.vue"],
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2876",
             "verified_at": "2026-05-28"
           },
-          "slot_extraction": {
+          "options_api": {
             "status": "full",
-            "cites": ["internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go","internal/extractors/javascript/testdata/vue_internals/Comp.vue"],
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/OptionsComp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
+            "verified_at": "2026-05-28"
+          },
+          "pinia_store": {
+            "status": "partial",
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
+            "verified_at": "2026-05-28"
+          },
+          "props_emits_macros": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
+            "verified_at": "2026-05-28"
+          },
+          "provide_inject": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2876",
             "verified_at": "2026-05-28"
           },
           "scoped_style_extraction": {
             "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
+            "verified_at": "2026-05-28"
+          },
+          "sfc_block_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2876",
+            "verified_at": "2026-05-28"
+          },
+          "slot_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/vue_internals/Comp.vue","internal/extractors/vue/extractor.go","internal/extractors/vue/issue2876_internals_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2876",
             "verified_at": "2026-05-28"
           }
@@ -23325,10 +23297,14 @@
       "label": "AVA",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         }
       }
     },
@@ -23469,10 +23445,23 @@
       "label": "Cypress",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
+        }
+      },
+      "framework_specific": {
+        "E2E Testing-Type Matrix": {
+          "testing_type_matrix": {
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -23617,10 +23606,14 @@
       "label": "Jasmine",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         }
       }
     },
@@ -23703,13 +23696,13 @@
       "label": "Mocha",
       "capabilities": {
         "dependency_graph": {
-          "status": "partial",
-          "cites": ["internal/engine/tests_edges.go"],
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/test_patterns.yaml"],
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         }
       }
@@ -23831,10 +23824,23 @@
       "label": "Playwright",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
+        }
+      },
+      "framework_specific": {
+        "E2E Project Matrix": {
+          "project_matrix": {
+            "status": "full",
+            "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+            "verified_at": "2026-05-28"
+          }
         }
       }
     },
@@ -23937,10 +23943,14 @@
       "label": "tap / node:test",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
+          "verified_at": "2026-05-28"
         }
       }
     },
@@ -24003,13 +24013,13 @@
       "label": "Vitest",
       "capabilities": {
         "dependency_graph": {
-          "status": "partial",
-          "cites": ["internal/engine/tests_edges.go"],
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/javascript_typescript/test_patterns.yaml"],
+          "status": "full",
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
           "verified_at": "2026-05-28"
         }
       }
