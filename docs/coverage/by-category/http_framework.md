@@ -160,7 +160,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ❌ 0/3 | ❌ 0/1 | ❌ 0/1 | ⚠️ 2/3 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/3 | |
-| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ⚠️ 3/5 | ⚠️ 2/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ⚠️ 4/17 | |
+| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ⚠️ 3/5 | ⚠️ 2/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 17/17 | |
 | [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/7 | |
 | [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/7 | |
 

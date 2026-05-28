@@ -1556,26 +1556,19 @@
       "capabilities": {
         "call_line_precision": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "core_extraction": {
           "status": "partial",
-          "cites": [
-            "internal/extractors/assembly/extractor.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "import_resolution_quality": {
           "status": "partial",
-          "cites": [
-            "internal/extractors/assembly/extractor.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         }
@@ -1589,28 +1582,19 @@
       "capabilities": {
         "call_line_precision": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "core_extraction": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "import_resolution_quality": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         }
@@ -1624,26 +1608,19 @@
       "capabilities": {
         "call_line_precision": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "core_extraction": {
           "status": "partial",
-          "cites": [
-            "internal/extractors/assembly/extractor.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "import_resolution_quality": {
           "status": "partial",
-          "cites": [
-            "internal/extractors/assembly/extractor.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         }
@@ -1657,28 +1634,19 @@
       "capabilities": {
         "call_line_precision": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "core_extraction": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         },
         "import_resolution_quality": {
           "status": "full",
-          "cites": [
-            "internal/extractors/assembly/extractor.go",
-            "internal/extractors/assembly/extractor_test.go"
-          ],
+          "cites": ["internal/extractors/assembly/extractor.go","internal/extractors/assembly/extractor_test.go"],
           "issue": "2744",
           "verified_at": "2026-05-28"
         }
@@ -12005,8 +11973,8 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "partial",
-            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
@@ -12015,8 +11983,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "partial",
-            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_jsts.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "env_fallback_recognition": {
@@ -12025,33 +11993,33 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "partial",
-            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "partial",
-            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/react_substrate_test.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "partial",
-            "cites": ["internal/links/module_cycle_pass.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/extractors/javascript/testdata/substrate_react/cyclic_dep.tsx","internal/links/module_cycle_pass.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "mutation_effect": {
-            "status": "partial",
-            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "partial",
-            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
@@ -12060,28 +12028,28 @@
             "verified_at": "2026-05-28"
           },
           "sanitizer_recognition": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/taint_flow.go","internal/substrate/react_substrate_test.go","internal/substrate/taint_sites_jsts.go"],
             "verified_at": "2026-05-28"
           },
           "taint_sink_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/taint_flow.go","internal/substrate/react_substrate_test.go","internal/substrate/taint_sites_jsts.go"],
             "verified_at": "2026-05-28"
           },
           "taint_source_detection": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/taint_flow.go","internal/substrate/react_substrate_test.go","internal/substrate/taint_sites_jsts.go"],
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "partial",
-            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/template_pattern_pass.go","internal/substrate/react_substrate_test.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_jsts.go"],
             "verified_at": "2026-05-28"
           },
           "vulnerability_finding": {
-            "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go"],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/taint_flow.go","internal/substrate/react_substrate_test.go","internal/substrate/taint_sites_jsts.go"],
             "verified_at": "2026-05-28"
           }
         }

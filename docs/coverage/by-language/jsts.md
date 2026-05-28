@@ -31,7 +31,7 @@ Back to [summary](../summary.md).
 | Name | Structure | Data Flow | Navigation | Type System | Lifecycle | Testing | Substrate | Notes |
 |---|---|---|---|---|---|---|---|---|
 | [Angular](../detail/lang.jsts.framework.angular.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/3 | |
-| [React](../detail/lang.jsts.framework.react.md) | ⚠️ 3/5 | ⚠️ 2/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ⚠️ 4/17 | |
+| [React](../detail/lang.jsts.framework.react.md) | ⚠️ 3/5 | ⚠️ 2/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | ✅ 17/17 | |
 | [Svelte](../detail/lang.jsts.framework.svelte.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/7 | |
 | [Vue](../detail/lang.jsts.framework.vue.md) | ❌ 0/5 | ❌ 0/4 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ✅ 1/1 | ⚠️ 2/7 | |
 
