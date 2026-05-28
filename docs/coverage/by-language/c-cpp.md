@@ -32,7 +32,7 @@ Back to [summary](../summary.md).
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
+| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/8 | |
 
 
 ### Desktop

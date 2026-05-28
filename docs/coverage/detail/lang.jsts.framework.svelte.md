@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 29
+- **Capability cells:** 28
 
 ## Capabilities
 
@@ -17,7 +17,6 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Component extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2854_test.go` | — |
 | Context extraction | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/svelte/extractor.go`<br>`internal/extractors/svelte/issue2854_test.go` | — |
-| Hook recognition | — `not_applicable` | — | — | — | — |
 
 ### Data Flow
 

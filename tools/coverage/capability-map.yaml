@@ -250,13 +250,6 @@ records:
               functions: [extractJSXRendersRelationships]
           issues_implemented: ["2735"]
           verified_at: "2026-05-28"
-        hook_recognition:
-          status: partial
-          symbols:
-            - file: internal/extractors/javascript/destructure_bindings.go
-              functions: [isZustandHookName, isReactQueryHook]
-          issues_implemented: ["2735"]
-          verified_at: "2026-05-28"
         context_extraction:
           status: full
           symbols:

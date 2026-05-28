@@ -223,7 +223,6 @@ subcategories:
     capabilities:
       - component_extraction
       - prop_extraction
-      - hook_recognition
       - state_management
       - data_fetching
       - router_pattern
@@ -257,7 +256,7 @@ subcategories:
       - template_pattern_catalog
     groups:
       - name: Structure
-        keys: [component_extraction, hook_recognition, context_extraction]
+        keys: [component_extraction, context_extraction]
       - name: Data Flow
         keys: [prop_extraction, state_management, data_fetching, branch_conditions]
       - name: Navigation

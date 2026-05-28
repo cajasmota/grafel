@@ -30,9 +30,9 @@ Back to [summary](../summary.md).
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 17/18 | |
+| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 17/17 | |
 | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ✅ 18/18 | ⚠️ 20/23 | |
-| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ✅ 7/7 | ⚠️ 16/18 | |
+| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ✅ 7/7 | ⚠️ 16/17 | |
 | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ✅ 7/7 | ⚠️ 18/20 | |
 
 

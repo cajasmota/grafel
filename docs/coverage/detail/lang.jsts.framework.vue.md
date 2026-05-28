@@ -17,7 +17,6 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Component extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2854_test.go` | — |
 | Context extraction | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2854_test.go` | — |
-| Hook recognition | ✅ `full` | `2026-05-28` | — | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2854_test.go` | — |
 
 ### Data Flow
 
@@ -74,6 +73,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Composition API | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2876) | `internal/extractors/javascript/testdata/vue_internals/Comp.vue`<br>`internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2876_internals_test.go` | — |
 | Directive recognition | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2876) | `internal/extractors/javascript/testdata/vue_internals/Comp.vue`<br>`internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2876_internals_test.go` | — |
+| Hook recognition | ✅ `full` | `2026-05-28` | — | `internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2854_test.go` | — |
 | Options API | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2876) | `internal/extractors/javascript/testdata/vue_internals/OptionsComp.vue`<br>`internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2876_internals_test.go` | — |
 | Pinia store | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2890) | `internal/extractors/javascript/testdata/vue_internals/CounterStore.vue`<br>`internal/extractors/vue/issue2890_pinia_test.go`<br>`internal/extractors/vue/pinia_store.go` | — |
 | Props emits macros | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2876) | `internal/extractors/javascript/testdata/vue_internals/Comp.vue`<br>`internal/extractors/vue/extractor.go`<br>`internal/extractors/vue/issue2876_internals_test.go` | — |

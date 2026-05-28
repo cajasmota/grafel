@@ -111,7 +111,8 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"fs_effect",
 		// #2938 jsx_template + hoc_wrapper_recognition removed from the shared
 		// ui_frontend Structure group; re-homed to React framework_specific.
-		"hook_recognition",
+		// #2948 hook_recognition also removed from ui_frontend; re-homed to
+		// React/Vue framework_specific (composables are Vue-specific; hooks are React).
 		"http_effect",
 		"import_resolution_quality",
 		"interface_extraction",
@@ -170,7 +171,7 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"fs_effect",
 		"handler_attribution",
 		// #2938 jsx_template + hoc_wrapper_recognition removed from ui_frontend.
-		"hook_recognition",
+		// #2948 hook_recognition also removed; re-homed to React/Vue framework_specific.
 		"http_effect",
 		"import_resolution_quality",
 		"interface_extraction",
