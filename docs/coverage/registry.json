@@ -10845,8 +10845,9 @@
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_expo/linking.ts","testdata/fixtures/real-world/typescript/react_native_navigator.tsx"],
+            "issue": "2860"
           },
           "navigation_extraction": {
             "status": "full",
@@ -10861,16 +10862,17 @@
         },
         "Platform": {
           "platform_branching": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/javascript_typescript/frameworks/expo.yaml"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2666",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/platform_variants.go","internal/extractors/javascript/testdata/mobile_expo/StatusBar.ios.tsx"],
+            "issue": "2860",
             "verified_at": "2026-05-28"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_expo/linking.ts","internal/extractors/javascript/testdata/mobile_react_native/AppNavigator.tsx","testdata/fixtures/real-world/typescript/react_native_navigator.tsx"],
+            "issue": "2860"
           }
         },
         "Data Flow": {
@@ -11421,23 +11423,33 @@
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts"],
+            "issue": "2860"
           },
           "navigation_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx"],
+            "issue": "2860"
           },
           "screen_detection": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx"],
+            "issue": "2860"
           }
         },
         "Platform": {
           "platform_branching": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx"],
+            "issue": "2860"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx","internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts"],
+            "issue": "2860"
           }
         },
         "Data Flow": {
@@ -11686,23 +11698,33 @@
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_nativescript/nav-service.ts"],
+            "issue": "2860"
           },
           "navigation_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_nativescript/nav-service.ts"],
+            "issue": "2860"
           },
           "screen_detection": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_nativescript/nav-service.ts"],
+            "issue": "2860"
           }
         },
         "Platform": {
           "platform_branching": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_nativescript/nav-service.ts"],
+            "issue": "2860"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_nativescript/nav-service.ts"],
+            "issue": "2860"
           }
         },
         "Data Flow": {
@@ -12356,8 +12378,9 @@
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","testdata/fixtures/real-world/typescript/react_native_navigator.tsx"],
+            "issue": "2860"
           },
           "navigation_extraction": {
             "status": "full",
@@ -12372,16 +12395,17 @@
         },
         "Platform": {
           "platform_branching": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/javascript_typescript/frameworks/react_native.yaml"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2666",
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/platform_variants.go","internal/extractors/javascript/testdata/mobile_react_native/AppNavigator.tsx"],
+            "issue": "2860",
             "verified_at": "2026-05-28"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2735"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/mobile_navigation.go","internal/extractors/javascript/testdata/mobile_react_native/AppNavigator.tsx","testdata/fixtures/real-world/typescript/react_native_navigator.tsx"],
+            "issue": "2860"
           }
         },
         "Data Flow": {

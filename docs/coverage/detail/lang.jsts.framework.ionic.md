@@ -22,21 +22,21 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `deep_link_extraction` | ❌ `missing` | — | — | — | — | — |
-| `navigation_extraction` | ❌ `missing` | — | — | — | — | — |
-| `screen_detection` | ❌ `missing` | — | — | — | — | — |
+| `deep_link_extraction` | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts` | — |
+| `navigation_extraction` | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
+| `screen_detection` | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
 
 ### Platform
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `platform_branching` | ❌ `missing` | — | — | — | — | — |
+| `platform_branching` | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx` | — |
 
 ### Native Bridge
 
 | Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
 |------------|--------|-------------|--------------|-------|-------|-------|
-| `native_module_imports` | ❌ `missing` | — | — | — | — | — |
+| `native_module_imports` | ✅ `full` | — | — | [link](2860) | `internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/AppRouter.tsx`<br>`internal/extractors/javascript/testdata/mobile_ionic/deepLinks.ts` | — |
 
 ### Data Flow
 

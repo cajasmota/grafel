@@ -297,6 +297,18 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// entity already exists.
 	x.emitPlatformVariantRelationships()
 
+	// Issue #2860 — mobile navigation / native-bridge / platform signals.
+	// Detects navigator + screen declarations (React Navigation factories /
+	// <Stack.Screen> / Ionic <Route> / NativeScript <Frame>/<Page>), deep-link
+	// config (Linking.createURL + React Navigation `linking` object), native
+	// module imports/access (NativeModules / react-native-* / expo-* /
+	// @nativescript/* / @capacitor/*), and platform branching (Platform.OS /
+	// Platform.select / isPlatform / .ios|.android file variants). Decorates
+	// the file entity with summary properties and emits NAVIGATES_TO edges for
+	// declared screens/deep links — reusing existing Kinds only. Runs after the
+	// platform-variant pass so the file entity already exists.
+	x.emitMobileNavigationSignals(root)
+
 	// Fourth pass (#1726): per-operation TESTS edges. For files identified
 	// as JS/TS test files (*.test.{ts,tsx,js,jsx,mjs,cjs},
 	// *.spec.{...}, __tests__/, tests/), reclassify each CALLS edge from
