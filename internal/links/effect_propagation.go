@@ -140,7 +140,14 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 	binder := newEffectBinder(graphs)
 	directByEntity := map[string]*substrate.EffectSet{}
 	for k, set := range direct {
-		if eid := binder.lookup(k.repo, k.file, k.fn); eid != "" {
+		// A single source function may be represented by more than one
+		// graph entity sharing (file, name): a decorator-wrapper node
+		// (Celery Task / ScheduledJob) and the Operation body, for
+		// instance. The sniffer attributes the sink to the bare function
+		// name, so we stamp the direct effects onto EVERY matching entity
+		// — otherwise the wrapper reports `pure` even though its body does
+		// IO (#2804: process_ecb_pdf_job's Task node).
+		for _, eid := range binder.lookupAll(k.repo, k.file, k.fn) {
 			fullID := entityKey(k.repo, eid)
 			if existing := directByEntity[fullID]; existing != nil {
 				existing.Union(*set)
@@ -279,22 +286,27 @@ func effectSetsEqual(a, b substrate.EffectSet) bool {
 	return true
 }
 
-// effectBinder maps (repo, file, function-name) to a graph entity ID
+// effectBinder maps (repo, file, function-name) to graph entity IDs
 // using the per-repo entity list. Function entities are indexed by
 // their Name; constructors and methods may collide with bare names
 // from sibling files in the same repo — we resolve by file first, so
 // each (file, name) pair binds locally.
+//
+// A (file, name) pair may legitimately map to MORE THAN ONE entity:
+// decorator-wrapper kinds (Celery Task / ScheduledJob) coexist with the
+// Operation body for the same source function. We keep every match so
+// the sniffer's effects stamp onto all of them (#2804).
 type effectBinder struct {
-	// byFile[repo][file][name] = entityID
-	byFile map[string]map[string]map[string]string
+	// byFile[repo][file][name] = []entityID
+	byFile map[string]map[string]map[string][]string
 }
 
 func newEffectBinder(graphs []repoGraph) *effectBinder {
-	b := &effectBinder{byFile: map[string]map[string]map[string]string{}}
+	b := &effectBinder{byFile: map[string]map[string]map[string][]string{}}
 	for _, g := range graphs {
 		repoIdx := b.byFile[g.Repo]
 		if repoIdx == nil {
-			repoIdx = map[string]map[string]string{}
+			repoIdx = map[string]map[string][]string{}
 			b.byFile[g.Repo] = repoIdx
 		}
 		for _, e := range g.Entities {
@@ -306,58 +318,77 @@ func newEffectBinder(graphs []repoGraph) *effectBinder {
 			}
 			fileIdx := repoIdx[e.SourceFile]
 			if fileIdx == nil {
-				fileIdx = map[string]string{}
+				fileIdx = map[string][]string{}
 				repoIdx[e.SourceFile] = fileIdx
 			}
-			// Last-wins on duplicate (file, name) — same identifier
-			// declared twice in one file is rare and the propagation
-			// pass cannot tell them apart without line info; we accept
-			// the precision loss in Phase 1A.
-			fileIdx[e.Name] = e.ID
+			// Accumulate (never overwrite) so a decorator-wrapper node and
+			// its Operation body — same (file, name) — both bind.
+			fileIdx[e.Name] = append(fileIdx[e.Name], e.ID)
 		}
 	}
 	return b
 }
 
-// lookup returns the entity ID for (repo, file, name), or "" when none
-// is bound. Falls back to a bare-name match within the same file in
-// case the sniffer captured a name that has a method-bearing receiver
-// qualifier in the graph (e.g. extractor stores "Repo.Save" but the
-// sniffer captured "Save"); we try a suffix-match on `.Name`.
-func (b *effectBinder) lookup(repo, file, name string) string {
+// lookupAll returns every entity ID bound to (repo, file, name), or nil
+// when none is bound. Falls back to a bare-name suffix match within the
+// same file in case the sniffer captured a name that has a method-bearing
+// receiver qualifier in the graph (e.g. extractor stores "Repo.Save" but
+// the sniffer captured "Save"); the suffix path returns only when exactly
+// one distinct qualified name matches, to avoid mis-attributing a sink to
+// an unrelated same-suffix method.
+func (b *effectBinder) lookupAll(repo, file, name string) []string {
 	fileIdx := b.byFile[repo][file]
 	if fileIdx == nil {
-		return ""
+		return nil
 	}
-	if id := fileIdx[name]; id != "" {
-		return id
+	if ids := fileIdx[name]; len(ids) > 0 {
+		return ids
 	}
-	// Suffix match: extractor may have stored a qualified name. Avoid
-	// O(n²) by only scanning when the bare-name lookup missed and only
-	// returning when exactly one candidate ends in "."+name.
+	// Suffix match: extractor may have stored a qualified name. Only
+	// return when exactly one qualified key ends in "."+name.
 	suffix := "." + name
-	var match string
-	hits := 0
-	for k, id := range fileIdx {
+	var match []string
+	keys := 0
+	for k, ids := range fileIdx {
 		if strings.HasSuffix(k, suffix) {
-			match = id
-			hits++
-			if hits > 1 {
-				return ""
+			match = ids
+			keys++
+			if keys > 1 {
+				return nil
 			}
 		}
 	}
 	return match
 }
 
+// lookup returns a single bound entity ID for (repo, file, name), or ""
+// when none is bound. When (file, name) maps to several entities (e.g. a
+// decorator-wrapper Task plus its Operation body) it returns the first —
+// preserving the pre-#2804 single-binding contract for taint /
+// payload-drift / def-use callers that key one fact per function.
+// Effect attribution uses lookupAll instead so every matching entity
+// receives the stamp.
+func (b *effectBinder) lookup(repo, file, name string) string {
+	if ids := b.lookupAll(repo, file, name); len(ids) > 0 {
+		return ids[0]
+	}
+	return ""
+}
+
 // isFunctionLikeKind reports whether kind names a function-shaped entity
 // the propagation pass should annotate. Mirrors the kinds the CALLS
-// extractor emits across T1 languages.
+// extractor emits across T1 languages, plus decorator-wrapper kinds
+// (Celery Task, scheduled job, async process) that own a function body
+// and must inherit that body's effects (#2804).
 func isFunctionLikeKind(kind string) bool {
 	switch kind {
 	case "SCOPE.Function", "SCOPE.Operation", "SCOPE.Class", "SCOPE.UIComponent", "SCOPE.JSX":
 		return true
+	case "SCOPE.Task", "SCOPE.ScheduledJob", "SCOPE.Process":
+		return true
 	case "function", "method", "operation":
+		return true
+	case "Task", "ScheduledJob", "Process":
 		return true
 	}
 	return false

@@ -3,7 +3,7 @@
 // Effect classification tags every function with the set of side-effect
 // primitives it executes directly:
 //
-//   {db_read, db_write, http_out, fs_read, fs_write, mutation}
+//   {db_read, db_write, http_out, fs_read, fs_write, mutation, env_read}
 //
 // A function with none of these is pure (low confidence — absence of
 // detection does not prove absence of effect).
@@ -50,15 +50,29 @@ const (
 	// receiver field in OO, struct-field write through a pointer in
 	// Go, ...). Not local-variable assignment.
 	EffectMutation Effect = "mutation"
+	// EffectEnvRead — read of process environment / external config
+	// (os.environ, os.getenv, process.env, System.getenv, ...). A weak
+	// effect (it does not mutate the world) but a meaningful taint
+	// source and a signal that a function is environment-coupled, so
+	// callers that need "is this function pure?" must see it.
+	EffectEnvRead Effect = "env_read"
 )
 
-// AllEffects returns the canonical sorted list of effect names.
+// AllEffects returns the canonical sorted list of effect names. The
+// order is load-bearing: EffectSet packs effects into bit positions by
+// this index, so appending (never reordering) preserves on-disk and
+// in-memory layout.
 func AllEffects() []Effect {
 	return []Effect{
 		EffectDBRead, EffectDBWrite, EffectHTTPOut,
 		EffectFSRead, EffectFSWrite, EffectMutation,
+		EffectEnvRead,
 	}
 }
+
+// effectSlots is the number of lattice elements; sizes the bit-packed
+// EffectSet arrays. Must equal len(AllEffects()).
+const effectSlots = 7
 
 // EffectMatch is one detected sink primitive inside a function body.
 //
@@ -127,17 +141,18 @@ func EffectLanguages() []string {
 // union effects across CALLS edges without allocating a fresh map per
 // merge. The zero value is the empty (pure) set.
 type EffectSet struct {
-	// bits packs the six lattice elements into one byte. Order matches
-	// AllEffects() so position 0 = db_read ... position 5 = mutation.
+	// bits packs the lattice elements into one byte (effectSlots ≤ 8).
+	// Order matches AllEffects() so position 0 = db_read ... position
+	// 6 = env_read.
 	bits uint8
 	// confidence stores the per-effect confidence (0..255 scaled by
 	// 100 → 1.00 max). Index aligns with bits.
-	confidence [6]uint8
+	confidence [effectSlots]uint8
 	// sinks lists short sink-tag strings ("fetch", "requests.get", ...)
 	// per effect; surfaced by archigraph_effects so the agent can see
 	// which primitive triggered each effect. Bounded to a few entries
 	// per effect — see addSink for the cap.
-	sinks [6][]string
+	sinks [effectSlots][]string
 }
 
 // effectIndex returns the bit position of e in EffectSet, or -1 when e
@@ -224,7 +239,7 @@ func (s *EffectSet) Sinks(e Effect) []string {
 // the strongest evidence across the union). Sink tags are deduplicated
 // up to maxSinksPerEffect.
 func (s *EffectSet) Union(other EffectSet) {
-	for i := 0; i < 6; i++ {
+	for i := 0; i < effectSlots; i++ {
 		if other.bits&(1<<uint(i)) == 0 {
 			continue
 		}
@@ -243,7 +258,7 @@ func (s *EffectSet) Union(other EffectSet) {
 // per CALLS hop (each hop multiplies by 0.95 per the issue spec, bounded
 // at a floor of 0.5 so deeply transitive evidence never disappears).
 func (s *EffectSet) UnionScaled(other EffectSet, scale float64) {
-	for i := 0; i < 6; i++ {
+	for i := 0; i < effectSlots; i++ {
 		if other.bits&(1<<uint(i)) == 0 {
 			continue
 		}
@@ -267,7 +282,7 @@ func (s *EffectSet) AsList() []Effect {
 	if s.bits == 0 {
 		return nil
 	}
-	out := make([]Effect, 0, 6)
+	out := make([]Effect, 0, effectSlots)
 	for i, e := range AllEffects() {
 		if s.bits&(1<<uint(i)) != 0 {
 			out = append(out, e)

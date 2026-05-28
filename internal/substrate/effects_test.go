@@ -145,6 +145,54 @@ def read_config():
 	mustHave(t, byEffect, EffectMutation, "assign")
 }
 
+// TestSniffEffectsPython_IOHeavySinks is the #2804 regression: a Celery
+// task / DRF action that performs S3 (boto3), env reads, and raw DB
+// access must NOT be classified pure. Mirrors the shapes from
+// core/tasks/ecb_pdf_pipeline.py and core/views/contract_viewset.py that
+// previously reported {} / 0.3 / pure.
+func TestSniffEffectsPython_IOHeavySinks(t *testing.T) {
+	const src = `
+import os
+import boto3
+import mysql.connector
+
+class Pipeline:
+    def run_job(self, payload):
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            region_name=os.environ.get("AWS_REGION"),
+        )
+        s3.download_file(payload["bucket"], payload["key"], "/tmp/x.pdf")
+        s3.upload_fileobj(open("/tmp/x.pdf", "rb"), "out", "y.pdf")
+
+    def write_controller(self, row):
+        conn = mysql.connector.connect(host=os.environ["DB_HOST"])
+        cur = conn.cursor()
+        cur.execute(insert_sql, row)
+        conn.commit()
+
+    def read_with_psycopg(self):
+        c = psycopg2.connect("dsn")
+        cur = c.cursor()
+        cur.execute("SELECT 1")
+`
+	got := sniffEffectsPython(src)
+	if len(got) == 0 {
+		t.Fatal("expected python matches; got none")
+	}
+	by := groupByEffect(got)
+	// boto3 client + S3 ops cross the network → http_out.
+	mustHave(t, by, EffectHTTPOut, "run_job")
+	// os.getenv / os.environ.get / os.environ[...] → env_read.
+	mustHave(t, by, EffectEnvRead, "run_job")
+	mustHave(t, by, EffectEnvRead, "write_controller")
+	// raw DB-API driver connect/cursor → db_read; commit → db_write.
+	mustHave(t, by, EffectDBRead, "write_controller")
+	mustHave(t, by, EffectDBWrite, "write_controller")
+	mustHave(t, by, EffectDBRead, "read_with_psycopg")
+}
+
 func TestSniffEffectsJava_PrimitiveCoverage(t *testing.T) {
 	const src = `
 package x;
