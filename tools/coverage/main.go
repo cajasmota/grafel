@@ -75,7 +75,9 @@ subcommands:
   list      list records (filters: --status, --by-language, --by-category, --stale-days, --json)
   get       show one record by id (--json)
   add       insert a new record (--id, --category, [--subcategory], --language, --label)
-  update    update one capability cell (id positional, --capability, --status, --cites, --verified-now, --issue)
+  update    update one capability cell (flags must precede <record-id>)
+            --capability, --status (required); --cites, --verified-now, --issue, --notes, --clear-issue
+            when status=full or not_applicable the issue field is auto-cleared unless --issue is given
   backfill  seed missing lane cells declared by the group taxonomy (--file, --issue, --language, --subcategory, --dry-run, --check)
   remove    delete a record by id
   gaps      list missing/partial records (--language, --category, --json)
@@ -199,12 +201,14 @@ func cmdUpdate(args []string, out io.Writer) error {
 	status := fs.String("status", "", "status: full|partial|missing|not_applicable (required)")
 	cites := fs.String("cites", "", "comma-separated repo-relative paths")
 	verifiedNow := fs.Bool("verified-now", false, "set verified_at to today")
-	issue := fs.String("issue", "", "tracking issue URL")
+	issue := fs.String("issue", "", "tracking issue URL (overrides auto-clear when status=full/not_applicable)")
+	notes := fs.String("notes", "", "free-form scope clarification written to Capability.Notes")
+	clearIssue := fs.Bool("clear-issue", false, "explicitly remove the issue field regardless of status")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("update: expected exactly one ID argument")
+		return fmt.Errorf("update: expected exactly one ID argument (flags must precede <record-id>)")
 	}
 	id := fs.Arg(0)
 	if *cap == "" || *status == "" {
@@ -213,6 +217,14 @@ func cmdUpdate(args []string, out io.Writer) error {
 	if _, ok := validStatuses[*status]; !ok {
 		return fmt.Errorf("update: invalid status %q", *status)
 	}
+	// Track whether --issue was explicitly supplied by the caller so
+	// applyUpdateFlags can distinguish "not passed" from "passed as empty".
+	issueExplicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "issue" {
+			issueExplicit = true
+		}
+	})
 	reg, err := loadRegistry(*path)
 	if err != nil {
 		return err
@@ -241,14 +253,14 @@ func cmdUpdate(args []string, out io.Writer) error {
 			rec.Groups[group] = map[string]Capability{}
 		}
 		cell := rec.Groups[group][*cap]
-		applyUpdateFlags(&cell, *status, *cites, *issue, *verifiedNow)
+		applyUpdateFlags(&cell, *status, *cites, *issue, *notes, *verifiedNow, issueExplicit, *clearIssue)
 		rec.Groups[group][*cap] = cell
 	} else {
 		if rec.Capabilities == nil {
 			rec.Capabilities = map[string]Capability{}
 		}
 		cell := rec.Capabilities[*cap]
-		applyUpdateFlags(&cell, *status, *cites, *issue, *verifiedNow)
+		applyUpdateFlags(&cell, *status, *cites, *issue, *notes, *verifiedNow, issueExplicit, *clearIssue)
 		rec.Capabilities[*cap] = cell
 	}
 	if err := saveRegistry(*path, reg); err != nil {
@@ -395,7 +407,13 @@ func cmdValidate(args []string, out, errw io.Writer) error {
 // applyUpdateFlags mutates cell with the non-empty CLI flags from
 // cmdUpdate. Shared between the flat and grouped write paths so cell
 // semantics stay identical regardless of capability shape.
-func applyUpdateFlags(cell *Capability, status, cites, issue string, verifiedNow bool) {
+//
+// Auto-clear semantics: when status is "full" or "not_applicable" the
+// issue field is cleared UNLESS --issue was explicitly provided by the
+// caller (issueExplicit=true). This prevents stale backfill issue tags
+// from lingering after a cell is marked done. --clear-issue forces
+// removal regardless of status.
+func applyUpdateFlags(cell *Capability, status, cites, issue, notes string, verifiedNow, issueExplicit, clearIssue bool) {
 	cell.Status = status
 	if cites != "" {
 		parts := strings.Split(cites, ",")
@@ -408,8 +426,22 @@ func applyUpdateFlags(cell *Capability, status, cites, issue string, verifiedNow
 		}
 		cell.Cites = clean
 	}
-	if issue != "" {
+	switch {
+	case issueExplicit:
+		// Caller explicitly passed --issue: honour the value (even if empty).
 		cell.Issue = issue
+	case clearIssue:
+		// Caller explicitly requested removal.
+		cell.Issue = ""
+	case status == StatusFull || status == StatusNotApplicable:
+		// Auto-clear: a resolved cell needs no tracking issue.
+		cell.Issue = ""
+	case issue != "":
+		// Non-resolved status with a new issue value.
+		cell.Issue = issue
+	}
+	if notes != "" {
+		cell.Notes = notes
 	}
 	if verifiedNow {
 		cell.VerifiedAt = time.Now().UTC().Format("2006-01-02")

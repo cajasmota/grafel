@@ -265,6 +265,148 @@ func TestUnknownSubcommand(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Tests for auto-clear issue, --notes, and --clear-issue (#2952)
+// ---------------------------------------------------------------------------
+
+// TestUpdateFullAutoClearsIssue verifies that flipping a partial cell
+// (which carries an issue tag) to "full" removes the issue automatically.
+func TestUpdateFullAutoClearsIssue(t *testing.T) {
+	tmp := copyFixture(t)
+	// django-drf auth_coverage is partial with an issue; flip to full.
+	if _, _, err := runCmd(t, "update", "--file", tmp,
+		"--capability", "auth_coverage",
+		"--status", "full",
+		"lang.python.framework.django-drf"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	out, _, err := runCmd(t, "get", "--file", tmp, "--json", "lang.python.framework.django-drf")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	// The issue should have been cleared automatically.
+	if strings.Contains(out, "https://github.com/cajasmota/archigraph/issues/1942") {
+		t.Errorf("expected issue to be auto-cleared on flip to full, but it persists:\n%s", out)
+	}
+}
+
+// TestUpdateNotApplicableAutoClearsIssue verifies auto-clear for not_applicable.
+func TestUpdateNotApplicableAutoClearsIssue(t *testing.T) {
+	tmp := copyFixture(t)
+	if _, _, err := runCmd(t, "update", "--file", tmp,
+		"--capability", "auth_coverage",
+		"--status", "not_applicable",
+		"lang.python.framework.django-drf"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	out, _, err := runCmd(t, "get", "--file", tmp, "--json", "lang.python.framework.django-drf")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if strings.Contains(out, "https://github.com/cajasmota/archigraph/issues/1942") {
+		t.Errorf("expected issue to be auto-cleared on flip to not_applicable, but it persists:\n%s", out)
+	}
+}
+
+// TestUpdateFullWithExplicitIssuePreservesIssue verifies that --issue overrides
+// the auto-clear so a caller can intentionally keep or set an issue on a full cell.
+func TestUpdateFullWithExplicitIssuePreservesIssue(t *testing.T) {
+	tmp := copyFixture(t)
+	const keepIssue = "https://example.com/i/override"
+	if _, _, err := runCmd(t, "update", "--file", tmp,
+		"--capability", "auth_coverage",
+		"--status", "full",
+		"--issue", keepIssue,
+		"lang.python.framework.django-drf"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	out, _, err := runCmd(t, "get", "--file", tmp, "--json", "lang.python.framework.django-drf")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !strings.Contains(out, keepIssue) {
+		t.Errorf("expected explicit --issue to be preserved on full cell, got:\n%s", out)
+	}
+}
+
+// TestUpdatePartialKeepsIssue verifies that a partial/missing flip does NOT
+// auto-clear the issue — only full/not_applicable cells are cleared.
+func TestUpdatePartialKeepsIssue(t *testing.T) {
+	tmp := copyFixture(t)
+	// Start: django-drf auth_coverage is partial with an issue.
+	// Update to missing (still a gap) without passing --issue.
+	if _, _, err := runCmd(t, "update", "--file", tmp,
+		"--capability", "auth_coverage",
+		"--status", "missing",
+		"lang.python.framework.django-drf"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	out, _, err := runCmd(t, "get", "--file", tmp, "--json", "lang.python.framework.django-drf")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	// Issue should remain — the cell is still a gap.
+	if !strings.Contains(out, "https://github.com/cajasmota/archigraph/issues/1942") {
+		t.Errorf("expected issue to be preserved on partial→missing flip, got:\n%s", out)
+	}
+}
+
+// TestUpdateNotesFlag verifies that --notes writes Capability.Notes.
+func TestUpdateNotesFlag(t *testing.T) {
+	tmp := copyFixture(t)
+	const notesText = "JSX navigation only; class components not supported"
+	if _, _, err := runCmd(t, "update", "--file", tmp,
+		"--capability", "endpoint_synthesis",
+		"--status", "full",
+		"--notes", notesText,
+		"lang.python.framework.flask"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	out, _, err := runCmd(t, "get", "--file", tmp, "--json", "lang.python.framework.flask")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !strings.Contains(out, notesText) {
+		t.Errorf("expected notes to be written, got:\n%s", out)
+	}
+}
+
+// TestUpdateClearIssueFlag verifies that --clear-issue removes the issue field
+// regardless of the new status.
+func TestUpdateClearIssueFlag(t *testing.T) {
+	tmp := copyFixture(t)
+	// django-drf auth_coverage is partial with an issue; keep partial but drop issue.
+	if _, _, err := runCmd(t, "update", "--file", tmp,
+		"--capability", "auth_coverage",
+		"--status", "partial",
+		"--clear-issue",
+		"lang.python.framework.django-drf"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	out, _, err := runCmd(t, "get", "--file", tmp, "--json", "lang.python.framework.django-drf")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if strings.Contains(out, "https://github.com/cajasmota/archigraph/issues/1942") {
+		t.Errorf("expected --clear-issue to remove issue on partial cell, but it persists:\n%s", out)
+	}
+}
+
+// TestUpdatePositionalAfterFlagsError verifies the "flags must precede record-id"
+// error message is emitted when the positional arg count is wrong.
+func TestUpdateMissingPositional(t *testing.T) {
+	tmp := copyFixture(t)
+	_, _, err := runCmd(t, "update", "--file", tmp,
+		"--capability", "endpoint_synthesis",
+		"--status", "full")
+	if err == nil {
+		t.Fatal("expected error when record-id positional is missing")
+	}
+	if !strings.Contains(err.Error(), "expected exactly one ID argument") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 // TestGenDispatch exercises the gen subcommand through the top-level
 // run() dispatcher so the wiring in main.go is covered alongside the
 // generator itself. Deeper rendering behaviour lives in gen_test.go.
