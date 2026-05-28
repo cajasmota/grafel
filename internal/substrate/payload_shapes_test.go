@@ -10,8 +10,13 @@ import (
 	"testing"
 )
 
-func TestPayloadShapeSnifferRegistry_T1(t *testing.T) {
-	want := []string{"go", "java", "jsts", "python"}
+func TestPayloadShapeSnifferRegistry_T1AndT2(t *testing.T) {
+	// T1 (#2770): go, java, jsts, python.
+	// T2 (#2771): c-cpp, csharp, elixir, kotlin, php, ruby, rust, scala.
+	want := []string{
+		"c-cpp", "csharp", "elixir", "go", "java", "jsts", "kotlin",
+		"php", "python", "ruby", "rust", "scala",
+	}
 	got := PayloadShapeLanguages()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("registered languages mismatch: want %v got %v", want, got)
