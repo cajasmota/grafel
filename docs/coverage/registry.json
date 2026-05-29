@@ -14098,8 +14098,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         },
         "Substrate": {
@@ -14116,12 +14117,14 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -14129,12 +14132,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -14142,20 +14147,24 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -14168,8 +14177,9 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -14177,20 +14187,24 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         }
       }
@@ -14271,16 +14285,19 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -14288,12 +14305,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -14301,52 +14320,61 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "schema_drift_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         }
       }
@@ -14427,16 +14455,19 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -14444,12 +14475,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -14457,52 +14490,61 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "schema_drift_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         }
       }
@@ -14868,16 +14910,19 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -14885,12 +14930,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -14898,52 +14945,61 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "schema_drift_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         }
       }
@@ -15287,7 +15343,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         },
         "Testing": {
@@ -16784,48 +16842,57 @@
             "issue": "backfill:dictionary-completeness"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "import_resolution_quality": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "request_shape_extraction": {
             "status": "missing",
@@ -16836,28 +16903,33 @@
             "issue": "backfill:dictionary-completeness"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "schema_drift_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         }
       }
@@ -16910,7 +16982,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         },
         "Testing": {
@@ -17503,7 +17577,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         },
         "Testing": {
@@ -17912,8 +17988,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         },
         "Substrate": {
@@ -17930,12 +18007,14 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -17943,12 +18022,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -17956,20 +18037,24 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -17982,8 +18067,9 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -17991,20 +18077,24 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         }
       }
@@ -18094,16 +18184,19 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -18111,12 +18204,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -18124,52 +18219,61 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3154"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "schema_drift_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
+            "issue": "3154"
           }
         }
       }
