@@ -4799,3 +4799,51 @@ records:
             - file: internal/extractors/python/types_test.go
           issues_implemented: ["2989"]
           verified_at: "2026-05-29"
+
+  lang.jsts.orm.knex:
+    capabilities:
+      Models:
+        schema_extraction:
+          # #3187: knex.schema.createTable() -> SCOPE.Schema tables;
+          # t.string()/t.integer()/... column builders -> SCOPE.Component columns.
+          status: full
+          symbols:
+            - file: internal/custom/javascript/knex_migrations.go
+              functions: [Extract, looksLikeKnexMigration]
+          tests:
+            - file: internal/custom/javascript/knex_migrations_test.go
+          issues_implemented: ["3187"]
+          verified_at: "2026-05-30"
+      Relationships:
+        association_extraction:
+          # #3187: each migration FK yields a SCOPE.Pattern/relation association edge.
+          status: full
+          symbols:
+            - file: internal/custom/javascript/knex_migrations.go
+              functions: [Extract, columnAnchors, nearestAnchorBefore, nextInTableAfter]
+          tests:
+            - file: internal/custom/javascript/knex_migrations_test.go
+          issues_implemented: ["3187"]
+          verified_at: "2026-05-30"
+        foreign_key_extraction:
+          # #3187: .references().inTable() and .foreign().references().inTable()
+          # chains, plus qualified .references('table.col') -> SCOPE.Component/foreign_key.
+          status: full
+          symbols:
+            - file: internal/custom/javascript/knex_migrations.go
+              functions: [Extract, columnAnchors, nearestAnchorBefore, nextInTableAfter]
+          tests:
+            - file: internal/custom/javascript/knex_migrations_test.go
+          issues_implemented: ["3187"]
+          verified_at: "2026-05-30"
+        relationship_extraction:
+          # #3187: migration FKs are the only place Knex declares relationships;
+          # each emits a SCOPE.Pattern/relation (relation_kind=belongs_to).
+          status: full
+          symbols:
+            - file: internal/custom/javascript/knex_migrations.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/javascript/knex_migrations_test.go
+          issues_implemented: ["3187"]
+          verified_at: "2026-05-30"
