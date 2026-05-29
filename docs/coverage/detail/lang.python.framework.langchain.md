@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Prompt template extraction | 🔴 `missing` | — | — | — | — |
+| Prompt template extraction | 🟢 `partial` | — | — | `internal/custom/python/langchain.go` | lcChatPromptRe+lcPromptTmplRe+lcFewShotRe detect ChatPromptTemplate/PromptTemplate/FewShotPromptTemplate (#3181) |
 
 ### Composition
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Chain composition | 🔴 `missing` | — | — | — | — |
-| Tool use detection | 🔴 `missing` | — | — | — | — |
+| Chain composition | 🟢 `partial` | — | — | `internal/custom/python/langchain.go` | lcLCELChainRe+lcLegacyChainRe detect LCEL pipe chains and legacy LLMChain/SequentialChain/etc (#3181) |
+| Tool use detection | 🟢 `partial` | — | — | `internal/custom/python/langchain.go` | lcToolDecoratorRe+lcToolClassRe+lcStructToolRe+lcToolConsRe detect @tool decorated fns, BaseTool subclasses, StructuredTool, Tool constructor (#3181) |
 
 ### Tracking
 

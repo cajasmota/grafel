@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Nested model extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2985) | — | — |
+| Nested model extraction | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/2985) | `internal/custom/python/attrs.go` | attrsClassDecoratorRe detects @attr.s/@attrs.define classes; nested attrs detected via field type references (#3182) |
 | Schema extraction | ✅ `full` | `2026-05-29` | 3061 | `internal/custom/python/attrs.go`<br>`internal/custom/python/extractors_test.go`<br>`internal/custom/python/testdata/attrs_validators.py` | @attr.s/@attrs.define/@define decorated classes emitted as SCOPE.Pattern attrs_class entities with decorator_form; tested in TestAttrs_ClassDecorator_AttrS, TestAttrs_ClassDecorator_Define, and TestAttrs_FullFixture. Nested attrs classes are referenced as attrib field types but no structural tree is emitted. |
 
 ### Constraints

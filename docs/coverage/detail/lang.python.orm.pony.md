@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
 | Foreign key extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
-| Lazy loading recognition | 🔴 `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Pony ORM lazy loading is implicit via @db_session but not tracked structurally; no extractor emits lazy-load relationship entities. |
+| Lazy loading recognition | — `not_applicable` | `2026-05-29` | — | — | Pony ORM uses explicit query interface; no transparent lazy loading (#3184) |
 | Relationship extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
 
 ### Queries
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | — `not_applicable` | — | — | — | Pony ORM has no built-in migration support; schema changes require manual intervention (#3184) |
 
 ## Provenance
 

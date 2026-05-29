@@ -75,15 +75,15 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [java](../by-language/java.md) | [jOOQ](../detail/lang.java.orm.jooq.md) | 🟢 6/6 | |
 | [JS/TS](../by-language/jsts.md) | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ✅ 1/1 | |
-| [JS/TS](../by-language/jsts.md) | [Drizzle](../detail/lang.jsts.orm.drizzle.md) | 🟡 7/8 | |
+| [JS/TS](../by-language/jsts.md) | [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ✅ 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | 🟡 2/6 | |
 | [JS/TS](../by-language/jsts.md) | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟢 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟢 5/5 | |
 | [JS/TS](../by-language/jsts.md) | [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟢 8/8 | |
-| [JS/TS](../by-language/jsts.md) | [Prisma](../detail/lang.jsts.orm.prisma.md) | 🟡 7/8 | |
+| [JS/TS](../by-language/jsts.md) | [Prisma](../detail/lang.jsts.orm.prisma.md) | ✅ 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 8/8 | |
-| [JS/TS](../by-language/jsts.md) | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟡 7/8 | |
+| [JS/TS](../by-language/jsts.md) | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟢 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ✅ 1/1 | |
@@ -112,16 +112,16 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [php](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🟡 1/6 | |
 | [php](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟡 1/6 | |
 | [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/6 | |
-| [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 1/6 | |
+| [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 1/2 | |
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟢 6/6 | |
 | [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
 | [python](../by-language/python.md) | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟢 6/6 | |
 | [python](../by-language/python.md) | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 1/2 | |
-| [python](../by-language/python.md) | [Peewee](../detail/lang.python.orm.peewee.md) | 🟡 6/8 | |
-| [python](../by-language/python.md) | [Pony ORM](../detail/lang.python.orm.pony.md) | 🟡 6/8 | |
+| [python](../by-language/python.md) | [Peewee](../detail/lang.python.orm.peewee.md) | 🟢 6/6 | |
+| [python](../by-language/python.md) | [Pony ORM](../detail/lang.python.orm.pony.md) | 🟢 6/6 | |
 | [python](../by-language/python.md) | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
 | [python](../by-language/python.md) | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟢 8/8 | |
-| [python](../by-language/python.md) | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟡 7/8 | |
+| [python](../by-language/python.md) | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟢 7/7 | |
 | [python](../by-language/python.md) | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟢 1/1 | |
 | [python](../by-language/python.md) | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟢 1/1 | |
 | [python](../by-language/python.md) | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟢 1/1 | |

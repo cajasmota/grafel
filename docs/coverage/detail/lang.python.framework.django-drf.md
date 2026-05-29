@@ -98,7 +98,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Admin detection | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
+| Admin detection | 🟢 `partial` | `2026-05-29` | — | `internal/custom/python/django.go` | djangoAdminRegRe+djangoAdminDecorRe emit admin_class entities; django-drf extends django admin (#3182) |
 | Signal handler attribution | 🟢 `partial` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2739) | `internal/engine/django_signal_pubsub_edges.go` | — |
 
 ## Provenance
