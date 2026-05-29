@@ -10421,36 +10421,38 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/custom/golang/mongo_driver.go","internal/custom/golang/mongo_redis_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/mongo_driver.go","internal/custom/golang/mongo_redis_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/mongo_driver.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/mongo_driver.go","internal/custom/golang/mongo_redis_test.go","internal/engine/rules/go/orms/mongo_driver.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
@@ -10568,33 +10570,32 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/mongo_redis_test.go","internal/custom/golang/redis_driver.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/go_redis.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/mongo_redis_test.go","internal/custom/golang/redis_driver.go","internal/engine/rules/go/orms/go_redis.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {

@@ -83,12 +83,12 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟡 2/8 | |
 | [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🔴 0/8 | |
 | [go-elasticsearch](../detail/lang.go.driver.elastic.md) | 🟡 1/6 | |
-| [go-redis](../detail/lang.go.driver.redis.md) | 🟡 1/6 | |
+| [go-redis](../detail/lang.go.driver.redis.md) | 🟢 2/2 | |
 | [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟡 1/6 | |
 | [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟡 1/6 | |
 | [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟡 1/6 | |
 | [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟢 4/4 | |
-| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟡 1/6 | |
+| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟢 3/3 | |
 | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 1/6 | |
 | [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟢 4/4 | |
 | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 3/8 | |

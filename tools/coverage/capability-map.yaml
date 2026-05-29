@@ -3580,6 +3580,75 @@ records:
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
 
+  lang.go.driver.mongodb:
+    capabilities:
+      Models:
+        model_extraction:
+          # Structs with `bson:"field"` tags scanned as document shapes.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/mongo_driver.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/mongo_redis_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          # client.Database(..).Collection("x") => collection schema +
+          # bson struct fields enumerated as columns.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/mongo_driver.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/mongo_redis_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # Find/FindOne/InsertOne/UpdateMany/DeleteOne/Aggregate/... call
+          # sites; mongoVerbKind stamps a coarse CRUD verb. Relationships +
+          # Migrations are honesty-NA (schema-less, no relation/migration layer).
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/mongo_driver.yaml
+            - file: internal/custom/golang/mongo_driver.go
+              functions: [Extract, mongoVerbKind]
+          tests:
+            - file: internal/custom/golang/mongo_redis_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
+  lang.go.driver.redis:
+    capabilities:
+      Models:
+        schema_extraction:
+          # Namespaced key-pattern literals ("user:%d", "session:{id}") =>
+          # coarse keyspaces keyed by leading prefix segment. model_extraction
+          # stays honesty-NA (key/value store has no model concept).
+          status: partial
+          symbols:
+            - file: internal/custom/golang/redis_driver.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/mongo_redis_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # Get/Set/HSet/HGetAll/Incr/Expire/Del/... command call sites;
+          # redisVerbKind stamps a coarse read/write/delete verb. Relationships
+          # + Migrations are honesty-NA (schema-less, no relation/migration layer).
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/go_redis.yaml
+            - file: internal/custom/golang/redis_driver.go
+              functions: [Extract, redisVerbKind]
+          tests:
+            - file: internal/custom/golang/mongo_redis_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.net-http:
     capabilities:
       Routing:

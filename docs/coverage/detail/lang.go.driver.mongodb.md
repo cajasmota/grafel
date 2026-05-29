@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Model extraction | 🟢 `partial` | `2026-05-30` | 3214 | `internal/custom/golang/mongo_driver.go`<br>`internal/custom/golang/mongo_redis_test.go` | — |
+| Schema extraction | 🟢 `partial` | `2026-05-30` | 3214 | `internal/custom/golang/mongo_driver.go`<br>`internal/custom/golang/mongo_redis_test.go` | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | — | — |
+| Foreign key extraction | — `not_applicable` | — | — | — | — |
+| Lazy loading recognition | — `not_applicable` | — | — | — | — |
+| Relationship extraction | — `not_applicable` | — | — | — | — |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/orms/mongo_driver.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-30` | 3214 | `internal/custom/golang/mongo_driver.go`<br>`internal/custom/golang/mongo_redis_test.go`<br>`internal/engine/rules/go/orms/mongo_driver.yaml` | — |
 
 ### Migrations
 
