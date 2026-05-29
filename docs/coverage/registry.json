@@ -15280,8 +15280,10 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -15295,12 +15297,16 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -15308,12 +15314,16 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -15321,20 +15331,28 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -15347,8 +15365,10 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -15356,20 +15376,28 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -15758,8 +15786,10 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -15773,12 +15803,16 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -15786,12 +15820,16 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -15799,20 +15837,28 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -15825,8 +15871,10 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -15834,20 +15882,28 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -16027,8 +16083,10 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -16042,12 +16100,16 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -16055,12 +16117,16 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -16068,20 +16134,28 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -16094,8 +16168,10 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -16103,20 +16179,28 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -16265,8 +16349,10 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -16280,12 +16366,16 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -16293,12 +16383,16 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -16306,20 +16400,28 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -16332,8 +16434,10 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -16341,20 +16445,28 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -16653,8 +16765,10 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -16668,12 +16782,16 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -16681,12 +16799,16 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -16694,20 +16816,28 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -16720,8 +16850,10 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -16729,20 +16861,28 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -17162,8 +17302,10 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -17177,12 +17319,16 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -17190,12 +17336,16 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -17203,20 +17353,28 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -17229,8 +17387,10 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -17238,20 +17398,28 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         }
       }
