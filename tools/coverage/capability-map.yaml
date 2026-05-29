@@ -3198,6 +3198,55 @@ records:
             - file: internal/custom/golang/extractors_test.go
             - file: internal/engine/go_routes_test.go
           issues_implemented: ["3212"]
+      Observability:
+        log_extraction:
+          # observability.go infers a gorilla/mux-context file (mux.NewRouter/
+          # Router/Vars) and emits logging SCOPE.Pattern entities for logrus/
+          # zap/slog/zerolog. Heuristic identifier match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations emitted with metric_name.
+          # Heuristic → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire + span start (canonical span lifecycle) → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      Validation:
+        request_validation:
+          # validation.go infers a gorilla/mux-context file and scans validate:
+          # struct-tag rules + validator.New() — gorilla/mux has no built-in
+          # binding, so the conventional decode-then-validator.Struct pattern is
+          # the recognised surface. Heuristic match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
   lang.go.orm.gorm:
     capabilities:
       Models:
@@ -3754,6 +3803,55 @@ records:
             - file: internal/engine/go_routes_test.go
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
+      Observability:
+        log_extraction:
+          # observability.go infers a net/http-context file (http.NewServeMux /
+          # http.HandleFunc / http.ServeMux) and emits logging SCOPE.Pattern
+          # entities for logrus/zap/slog/zerolog. Heuristic identifier match,
+          # and net-http is the generic last-resort marker (specific frameworks
+          # win first) → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations emitted with metric_name → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire + span start (canonical span lifecycle) → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      Validation:
+        request_validation:
+          # validation.go infers a net/http-context file and scans validate:
+          # struct-tag rules + validator.New() — the stdlib router has no
+          # built-in binding, so the conventional decode-then-validator.Struct
+          # pattern is the recognised surface. Heuristic match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.beego:
     capabilities:
@@ -3788,6 +3886,58 @@ records:
             - file: internal/custom/golang/beego_iris_test.go
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
+      Observability:
+        log_extraction:
+          # observability.go (custom_go_observability) infers a beego-context
+          # file (web.Controller / web.Router markers) and emits logging
+          # SCOPE.Pattern entities for logrus/zap/slog/zerolog setup. Heuristic
+          # identifier match, no logger→handler data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations (NewCounter/Histogram/Gauge/
+          # Summary[Vec], promauto forms) emitted with metric_name. Heuristic
+          # declaration match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire (otel.Tracer / x.Tracer("…")) + span start
+          # (tracer.Start(ctx, "name")). The canonical OTel span lifecycle is
+          # the complete public tracing API a handler uses → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      Validation:
+        request_validation:
+          # validation.go (custom_go_validation) infers a beego-context file
+          # and scans go-playground validate: struct-tag rules, validator.New()/
+          # RegisterValidation custom validators, and c.Bind* binding call sites
+          # in controller actions. Heuristic tag/call match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.iris:
     capabilities:
@@ -3821,6 +3971,53 @@ records:
             - file: internal/custom/golang/beego_iris_test.go
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
+      Observability:
+        log_extraction:
+          # observability.go infers an iris-context file (iris.New/Default/
+          # Application) and emits logging SCOPE.Pattern entities for logrus/
+          # zap/slog/zerolog. Heuristic identifier match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations emitted with metric_name.
+          # Heuristic → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire + span start (canonical span lifecycle) → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      Validation:
+        request_validation:
+          # validation.go infers an iris-context file and scans validate:
+          # struct-tag rules + iris's built-in go-playground validator
+          # (app.Validator = validator.New()). Heuristic match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.hertz:
     capabilities:
@@ -3852,6 +4049,53 @@ records:
           tests:
             - file: internal/custom/golang/hertz_huma_test.go
           issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+      Observability:
+        log_extraction:
+          # observability.go infers a hertz-context file (server.Default/New,
+          # app.RequestContext) and emits logging SCOPE.Pattern entities for
+          # logrus/zap/slog/zerolog. Heuristic identifier match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations emitted with metric_name.
+          # Heuristic → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire + span start (canonical span lifecycle) → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      Validation:
+        request_validation:
+          # validation.go infers a hertz-context file and scans binding:
+          # struct-tag rules + hertz's built-in binder (c.Bind /
+          # c.BindAndValidate). Heuristic tag/call match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
   lang.go.framework.huma:
@@ -6354,3 +6598,130 @@ records:
         status: partial
         issues_implemented: ["3211"]
         verified_at: "2026-05-30"
+
+  lang.go.framework.buffalo:
+    capabilities:
+      Observability:
+        log_extraction:
+          # observability.go infers a buffalo-context file (buffalo.New/App/
+          # Context) and emits logging SCOPE.Pattern entities for logrus/zap/
+          # slog/zerolog. Heuristic identifier match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations emitted with metric_name → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire + span start (canonical span lifecycle) → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      Validation:
+        request_validation:
+          # validation.go infers a buffalo-context file and scans validate:
+          # struct-tag rules + c.Bind binding call sites in buffalo handlers.
+          # Heuristic tag/call match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
+  lang.go.framework.fasthttp:
+    capabilities:
+      Observability:
+        log_extraction:
+          # observability.go infers a fasthttp-context file (fasthttp.RequestCtx
+          # / router.New()) and emits logging SCOPE.Pattern entities for logrus/
+          # zap/slog/zerolog. Heuristic identifier match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations emitted with metric_name → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire + span start (canonical span lifecycle) → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      # Validation: request_validation is honesty-NA (raw RequestCtx, no
+      # built-in binding/validation surface) — no mapping entry needed for an
+      # N/A cell.
+
+  lang.go.framework.revel:
+    capabilities:
+      Observability:
+        log_extraction:
+          # observability.go infers a revel-context file (revel.Controller/
+          # Result/Intercept*) and emits logging SCOPE.Pattern entities for
+          # logrus/zap/slog/zerolog. Heuristic identifier match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, detectObsFramework]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # prometheus collector declarations emitted with metric_name → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, nearbyPromName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # OTel tracer acquire + span start (canonical span lifecycle) → full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/observability.go
+              functions: [Extract, obsEntityName]
+          tests:
+            - file: internal/custom/golang/observability_test.go
+          issues_implemented: ["3215"]
+          verified_at: "2026-05-30"
+      # Validation: request_validation is honesty-NA (revel uses an imperative
+      # c.Validation API, not struct-tag / go-playground validator) — no
+      # mapping entry needed for an N/A cell.

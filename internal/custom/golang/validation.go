@@ -67,6 +67,22 @@ var valFrameworkMarkers = []struct {
 	{"echo", regexp.MustCompile(`\becho\.(?:New|Echo|Context|HandlerFunc|MiddlewareFunc)\b`)},
 	{"fiber", regexp.MustCompile(`\bfiber\.(?:New|App|Ctx|Handler)\b`)},
 	{"chi", regexp.MustCompile(`\bchi\.(?:NewRouter|Router|Mux)\b`)},
+
+	// --- extended HTTP frameworks (issue #3213) -------------------------
+	// Only frameworks with a recognisable request-binding / struct-tag
+	// validation surface are attributed here. fasthttp (raw RequestCtx, no
+	// built-in binding/validation) and revel (imperative c.Validation API,
+	// not struct tags / go-playground validator) are deliberately omitted —
+	// their request_validation cells are honesty-NA, so this scanner must
+	// not attribute generic `validate:` tags to them. Order mirrors
+	// observability.go: specific frameworks before the generic net/http
+	// fallback (first match wins).
+	{"beego", regexp.MustCompile(`\b(?:beego|web)\.(?:Router|NewNamespace|AutoRouter|Run|Controller|NSRouter)\b|\bbeego\.Controller\b`)},
+	{"buffalo", regexp.MustCompile(`\bbuffalo\.(?:New|App|Context|Options)\b`)},
+	{"iris", regexp.MustCompile(`\biris\.(?:New|Default|Application)\b`)},
+	{"hertz", regexp.MustCompile(`\bserver\.(?:Default|New)\b|\bapp\.RequestContext\b`)},
+	{"gorilla-mux", regexp.MustCompile(`\bmux\.(?:NewRouter|Router|Vars)\b`)},
+	{"net-http", regexp.MustCompile(`\bhttp\.(?:NewServeMux|HandleFunc|ServeMux)\b`)},
 }
 
 // detectValFramework returns the framework a file belongs to, or "" when no

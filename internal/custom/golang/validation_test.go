@@ -186,6 +186,11 @@ func TestValidationFixtures(t *testing.T) {
 		{"echo_validation.go", "echo", "LoginReq", "Password", "validate_call"},
 		{"fiber_validation.go", "fiber", "SignupReq", "Email", "parse_call"},
 		{"chi_validation.go", "chi", "OrderReq", "SKU", "bind_call"},
+
+		// extended frameworks with a recognised binding call site (issue #3213)
+		{"beego_validation.go", "beego", "BeegoCreateUserReq", "Email", "bind_call"},
+		{"buffalo_validation.go", "buffalo", "BuffaloSignupReq", "Email", "bind_call"},
+		{"hertz_validation.go", "hertz", "HertzCreateUserReq", "Email", "bind_call"},
 	}
 	for _, c := range cases {
 		t.Run(c.framework, func(t *testing.T) {
@@ -207,6 +212,57 @@ func TestValidationFixtures(t *testing.T) {
 				if e.Props["framework"] != c.framework {
 					t.Errorf("%s: entity %q framework=%q", c.framework, e.Name, e.Props["framework"])
 				}
+			}
+		})
+	}
+}
+
+// TestValidationFixturesRuleOnly covers extended frameworks whose validation
+// surface is struct-tag rules + a go-playground validator (no framework-native
+// `c.Bind`-style call site this scanner recognises): iris (built-in
+// app.Validator = validator.New()), gorilla-mux and net-http (the conventional
+// decode-then-validator.Struct pattern). These prove the `partial`
+// request_validation flip via rule + validator detection.
+func TestValidationFixturesRuleOnly(t *testing.T) {
+	cases := []struct {
+		fixture, framework, ruleStruct, ruleField string
+	}{
+		{"iris_validation.go", "iris", "IrisLoginReq", "Username"},
+		{"gorilla_mux_validation.go", "gorilla-mux", "GorillaOrderReq", "SKU"},
+		{"nethttp_validation.go", "net-http", "NetHTTPCreateUserReq", "Email"},
+	}
+	for _, c := range cases {
+		t.Run(c.framework, func(t *testing.T) {
+			ents := extractFull(t, "custom_go_validation", fixtureFile(t, c.fixture))
+
+			if findValRule(ents, c.ruleStruct, c.ruleField) == nil {
+				t.Errorf("%s: missing rule %s.%s; got %+v",
+					c.framework, c.ruleStruct, c.ruleField, valEntities(ents))
+			}
+			if findVal(ents, "validator", "validator_new") == nil {
+				t.Errorf("%s: missing validator_new; got %+v", c.framework, valEntities(ents))
+			}
+			for _, e := range valEntities(ents) {
+				if e.Props["framework"] != c.framework {
+					t.Errorf("%s: entity %q framework=%q", c.framework, e.Name, e.Props["framework"])
+				}
+			}
+		})
+	}
+}
+
+// TestValidationNAFrameworks proves the honesty-NA cells: fasthttp (raw
+// RequestCtx, no built-in binding/validation) and revel (imperative
+// c.Validation API, not struct tags) are intentionally not attributed by the
+// validation scanner, so their observability fixtures yield zero validation
+// entities even though they reference the frameworks.
+func TestValidationNAFrameworks(t *testing.T) {
+	for _, fixture := range []string{"fasthttp_observability.go", "revel_observability.go"} {
+		t.Run(fixture, func(t *testing.T) {
+			ents := extractFull(t, "custom_go_validation", fixtureFile(t, fixture))
+			if got := valEntities(ents); len(got) != 0 {
+				t.Fatalf("%s: expected no validation entities (NA framework), got %d: %+v",
+					fixture, len(got), got)
 			}
 		})
 	}

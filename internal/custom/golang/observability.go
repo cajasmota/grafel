@@ -45,12 +45,16 @@ import (
 //
 // Framework attribution: the scanner runs on every Go file (registry key
 // custom_go_observability matches the custom_go_ dispatch prefix). It infers
-// which of gin/echo/fiber/chi the file belongs to from framework-specific
-// engine/context markers and stamps that framework on each emitted entity.
-// A file with no recognised framework marker emits framework="" entities
-// (still useful, but not attributed) — those are skipped for the per-framework
-// cells. Files matching multiple frameworks (rare) attribute to the first
-// match in gin→echo→fiber→chi order.
+// which framework the file belongs to from framework-specific engine/context
+// markers and stamps that framework on each emitted entity. A file with no
+// recognised framework marker emits nothing. Files matching multiple
+// frameworks (rare) attribute to the first marker in declaration order.
+//
+// Recognised frameworks: gin, echo, fiber, chi, beego, buffalo, fasthttp,
+// revel, iris, hertz, gorilla-mux, net-http. The observability lanes are
+// framework-agnostic libraries (logrus/zap/slog/zerolog, prometheus, OTel),
+// so any of these frameworks can carry all three signals; attribution simply
+// stamps which framework's request stack the instrumentation sits in.
 
 func init() {
 	extractor.Register("custom_go_observability", &observabilityExtractor{})
@@ -76,6 +80,23 @@ var obsFrameworkMarkers = []struct {
 	{"echo", regexp.MustCompile(`\becho\.(?:New|Echo|Context|HandlerFunc|MiddlewareFunc)\b`)},
 	{"fiber", regexp.MustCompile(`\bfiber\.(?:New|App|Ctx|Handler)\b`)},
 	{"chi", regexp.MustCompile(`\bchi\.(?:NewRouter|Router|Mux)\b`)},
+
+	// --- extended HTTP frameworks (issues #3215 / #3213) ----------------
+	// Markers are each framework's canonical engine constructor and/or
+	// request-context type, taken from that framework's own routing
+	// extractor so attribution is unambiguous. More-specific frameworks are
+	// listed before the generic net/http marker because a beego/gorilla/
+	// fasthttp file frequently also imports net/http; first match wins, so
+	// net-http is the last fallback (matches only files with no richer
+	// framework marker).
+	{"beego", regexp.MustCompile(`\b(?:beego|web)\.(?:Router|NewNamespace|AutoRouter|Run|Controller|NSRouter)\b|\bbeego\.Controller\b`)},
+	{"buffalo", regexp.MustCompile(`\bbuffalo\.(?:New|App|Context|Options)\b`)},
+	{"fasthttp", regexp.MustCompile(`\bfasthttp\.(?:RequestCtx|ListenAndServe|RequestHandler)\b|\brouter\.New\s*\(\s*\)`)},
+	{"revel", regexp.MustCompile(`\brevel\.(?:Controller|Result|InterceptFunc|InterceptMethod|OnAppStart)\b`)},
+	{"iris", regexp.MustCompile(`\biris\.(?:New|Default|Application)\b`)},
+	{"hertz", regexp.MustCompile(`\bserver\.(?:Default|New)\b|\bapp\.RequestContext\b`)},
+	{"gorilla-mux", regexp.MustCompile(`\bmux\.(?:NewRouter|Router|Vars)\b`)},
+	{"net-http", regexp.MustCompile(`\bhttp\.(?:NewServeMux|HandleFunc|ServeMux)\b`)},
 }
 
 // detectObsFramework returns the framework the file belongs to, or "" when no

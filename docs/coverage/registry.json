@@ -10692,8 +10692,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -10727,16 +10729,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -10869,8 +10876,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -10904,16 +10913,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -11418,8 +11432,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "notes": "No built-in request binding/validation surface; fasthttp uses raw RequestCtx and revel uses an imperative c.Validation API (not struct-tag / go-playground validator), so the framework-agnostic validation scanner does not attribute it."
           }
         },
         "Middleware": {
@@ -11453,16 +11468,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -12373,8 +12393,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -12408,16 +12430,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -12552,8 +12579,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -12587,16 +12616,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -12908,8 +12942,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -12943,16 +12979,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -13262,8 +13303,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -13297,16 +13340,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -13439,8 +13487,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "notes": "No built-in request binding/validation surface; fasthttp uses raw RequestCtx and revel uses an imperative c.Validation API (not struct-tag / go-playground validator), so the framework-agnostic validation scanner does not attribute it."
           }
         },
         "Middleware": {
@@ -13474,16 +13523,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
