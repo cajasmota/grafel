@@ -944,6 +944,72 @@ records:
           issues_implemented: ["2980"]
           verified_at: "2026-05-29"
 
+  lang.python.framework.aiohttp:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeAiohttp]
+            - file: internal/engine/rules/python/frameworks/aiohttp.yaml
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_aiohttp_bottle_test.go
+          issues_implemented: ["2979"]
+          verified_at: "2026-05-29"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeAiohttp]
+            - file: internal/engine/rules/python/frameworks/aiohttp.yaml
+          issues_implemented: ["2979"]
+          verified_at: "2026-05-29"
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeAiohttp]
+            - file: internal/engine/httproutes/canonicalize.go
+              functions: [Canonicalize]
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_aiohttp_bottle_test.go
+          issues_implemented: ["2979"]
+          verified_at: "2026-05-29"
+
+  lang.python.framework.bottle:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeBottle]
+            - file: internal/engine/rules/python/frameworks/bottle.yaml
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_aiohttp_bottle_test.go
+          issues_implemented: ["2979"]
+          verified_at: "2026-05-29"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeBottle]
+            - file: internal/engine/rules/python/frameworks/bottle.yaml
+          issues_implemented: ["2979"]
+          verified_at: "2026-05-29"
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeBottle]
+            - file: internal/engine/httproutes/canonicalize.go
+              functions: [Canonicalize, stripBottleFilters]
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_aiohttp_bottle_test.go
+          issues_implemented: ["2979"]
+          verified_at: "2026-05-29"
+
   lang.python.framework.fastapi:
     capabilities:
       Routing:

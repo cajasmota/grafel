@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | ❌ `missing` | `2026-05-28` | 2979 | `internal/engine/rules/python/frameworks/bottle.yaml` | — |
-| Handler attribution | ❌ `missing` | `2026-05-28` | 2979 | `internal/engine/rules/python/frameworks/bottle.yaml` | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/python/frameworks/bottle.yaml` | — |
+| Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/python/frameworks/bottle.yaml` | — |
+| Route extraction | ✅ `full` | `2026-05-29` | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/httproutes/canonicalize.go` | — |
 
 ### Auth
 

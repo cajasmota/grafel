@@ -346,6 +346,17 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeSanic(string(content), emitDef)
 		synthesizeLitestar(string(content), emitDef)
 		synthesizeRobyn(string(content), emitDef)
+		// #2979 — aiohttp / Bottle run BEFORE Flask / FastAPI for the same
+		// label-correctness reason. aiohttp's `@routes.get(...)` decorator and
+		// Bottle's `@route(...)` / `@get(...)` decorators overlap Flask's
+		// shorthand/generic shapes, so the file-signal-gated synthesizers must
+		// claim each (verb, path) ID first to stamp `aiohttp` / `bottle`. The
+		// side-scoped dedup in makeEmit then suppresses duplicate Flask
+		// emission. aiohttp additionally gates on a server-routing signal
+		// (`app.router.add_` / RouteTableDef) so pure-`ClientSession` files
+		// no-op (dual-use skip).
+		synthesizeAiohttp(string(content), emitDef)
+		synthesizeBottle(string(content), emitDef)
 		// Producer side: Flask + FastAPI run FIRST so their synthetics —
 		// which carry a real handler function name as source_handler —
 		// claim each ID before the Django composed-route pass walks the
@@ -1865,6 +1876,216 @@ func synthesizeRobyn(content string, emit emitDefFn) {
 		canonical := httproutes.Canonicalize(httproutes.FrameworkRobyn, raw)
 		defLine := lineOfOffset(content, idx[8])
 		emit(verb, canonical, "robyn", "Controller", handler, defLine)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// aiohttp (Python) — #2979
+// ---------------------------------------------------------------------------
+//
+// aiohttp is a dual-use library: it ships BOTH an async HTTP server and an
+// async HTTP client (`ClientSession`). Server-side routing has two idioms:
+//
+//	app = web.Application()
+//	app.router.add_get("/users/{user_id}", handler)
+//	app.router.add_route("GET", "/items", handler)
+//
+//	routes = web.RouteTableDef()
+//	@routes.get("/users/{user_id}")
+//	async def get_user(request): ...
+//	app.add_routes(routes)
+//
+// Path parameters use the FastAPI-style `{name}` / `{name:regex}` curly-brace
+// convention (FrameworkAiohttp is grouped with FastAPI in Canonicalize, which
+// strips the `:regex` suffix).
+//
+// Dual-use gate: a file that only uses `ClientSession` (HTTP client) must NOT
+// synthesize endpoints. We require an explicit server-routing signal
+// (`app.router.add_` or `RouteTableDef` / `@routes.`) before emitting, so
+// client-only modules no-op.
+
+// aiohttpAddVerbRe captures `<recv>.router.add_get("/path", handler)` and the
+// other verb-specific add_* methods. The handler is the second positional arg
+// (a bare function reference); we capture it for handler attribution.
+//
+// Capture groups: 1 = verb, 2 = path, 3 = handler reference.
+var aiohttpAddVerbRe = regexp.MustCompile(
+	`\.router\.add_(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["']\s*,\s*([A-Za-z_][\w.]*)`,
+)
+
+// aiohttpAddRouteRe captures the generic `<recv>.router.add_route("GET",
+// "/path", handler)` form where the verb is the first string argument.
+//
+// Capture groups: 1 = verb, 2 = path, 3 = handler reference.
+var aiohttpAddRouteRe = regexp.MustCompile(
+	`\.router\.add_route\s*\(\s*["'](\w+)["']\s*,\s*["']([^"'\n\r]+)["']\s*,\s*([A-Za-z_][\w.]*)`,
+)
+
+// aiohttpRoutesDecoratorRe captures `@routes.get("/path")` RouteTableDef
+// decorators and the following handler def. The receiver name is captured so
+// it can be matched against a RouteTableDef() assignment for the gate; in
+// practice `@routes.` is the dominant idiom and the RouteTableDef presence is
+// asserted by the file-level gate.
+//
+// Capture groups: 1 = receiver, 2 = verb, 3 = path, 4 = handler name.
+var aiohttpRoutesDecoratorRe = regexp.MustCompile(
+	`@(\w+)\.(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["'][^)]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+func synthesizeAiohttp(content string, emit emitDefFn) {
+	// Server-routing gate. A file that imports aiohttp purely as a client
+	// (`ClientSession`) carries none of these markers, so it no-ops — this is
+	// the dual-use skip the aiohttp.yaml rule pack calls out.
+	hasAddRouter := strings.Contains(content, ".router.add_")
+	hasRouteTable := strings.Contains(content, "RouteTableDef") || strings.Contains(content, "@routes.")
+	if !hasAddRouter && !hasRouteTable {
+		return
+	}
+
+	// `app.router.add_get("/path", handler)` shorthand verbs.
+	for _, idx := range aiohttpAddVerbRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[2]:idx[3]])
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkAiohttp, raw)
+		defLine := lineOfOffset(content, idx[6])
+		emit(verb, canonical, "aiohttp", "Controller", handler, defLine)
+	}
+
+	// `app.router.add_route("GET", "/path", handler)` generic form.
+	for _, idx := range aiohttpAddRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[2]:idx[3]])
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkAiohttp, raw)
+		defLine := lineOfOffset(content, idx[6])
+		emit(verb, canonical, "aiohttp", "Controller", handler, defLine)
+	}
+
+	// `@routes.get("/path")` RouteTableDef decorators.
+	for _, idx := range aiohttpRoutesDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 10 {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[4]:idx[5]])
+		raw := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkAiohttp, raw)
+		defLine := lineOfOffset(content, idx[8])
+		emit(verb, canonical, "aiohttp", "Controller", handler, defLine)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Bottle (Python) — #2979
+// ---------------------------------------------------------------------------
+//
+// Bottle is a single-file WSGI micro-framework. Routes are declared with the
+// module-level decorator functions (or app-bound equivalents):
+//
+//	@route("/users/<id>")            # default GET
+//	@route("/items", method="POST")  # explicit verb
+//	@route("/x", method=["GET","POST"])
+//	@get("/users/<id:int>")
+//	@post("/items")
+//	def handler(): ...
+//
+// Path parameters use the Flask-style `<name>` / `<name:filter>` angle-bracket
+// convention (FrameworkBottle is grouped with Flask in Canonicalize).
+//
+// The verb decorators may be bare (`@get(...)`) or app-bound
+// (`@app.get(...)`); both are handled. Method composition for the generic
+// `@route(..., method=...)` form mirrors Flask's `methods=[...]` parsing.
+
+// bottleVerbDecoratorRe captures `@get("/path")` / `@app.post("/path")`
+// shorthand verb decorators and the following handler def. The receiver
+// portion (`app.`) is optional.
+//
+// Capture groups: 1 = verb, 2 = path, 3 = handler name.
+var bottleVerbDecoratorRe = regexp.MustCompile(
+	`(?m)^[ \t]*@(?:\w+\.)?(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["'][^)]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+// bottleRouteRe captures the generic `@route("/path", method="POST")` /
+// `@app.route("/path", method=["GET","POST"])` form. The receiver is optional.
+//
+// Capture groups: 1 = path, 2 = kwargs tail, 3 = handler name.
+var bottleRouteRe = regexp.MustCompile(
+	`(?m)^[ \t]*@(?:\w+\.)?route\s*\(\s*["']([^"'\n\r]+)["']([^\n\r]*)\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+// bottleMethodKwargRe extracts the verb(s) from a `method="POST"` or
+// `method=["GET", "POST"]` kwarg on a @route decorator (Bottle uses the
+// singular `method=`, unlike Flask's `methods=`).
+var bottleMethodKwargRe = regexp.MustCompile(`method\s*=\s*(\[[^\]]*\]|["'][^"'\n\r]*["'])`)
+
+// parseBottleMethods returns the verbs declared in a Bottle `@route` decorator
+// `method=` kwarg (string or list form). Empty result means the default (GET).
+func parseBottleMethods(args string) []string {
+	mm := bottleMethodKwargRe.FindStringSubmatch(args)
+	if len(mm) < 2 {
+		return nil
+	}
+	body := strings.Trim(mm[1], "[]")
+	var out []string
+	for _, tok := range strings.Split(body, ",") {
+		tok = strings.TrimSpace(tok)
+		tok = strings.Trim(tok, `"'`)
+		if tok == "" {
+			continue
+		}
+		out = append(out, strings.ToUpper(tok))
+	}
+	return out
+}
+
+func synthesizeBottle(content string, emit emitDefFn) {
+	// File-signal gate: require a Bottle marker. The bare `@get(...)` /
+	// `@route(...)` decorator shapes are generic, so without this gate the
+	// synthesizer could fire on unrelated Python files. `bottle.py` in repo
+	// root is the definitive single-file signal; `from bottle import` /
+	// `import bottle` / `Bottle(` cover the imported-app idioms.
+	if !strings.Contains(content, "bottle") && !strings.Contains(content, "Bottle") {
+		return
+	}
+
+	// Shorthand verb decorators first — unambiguous verb.
+	for _, idx := range bottleVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[2]:idx[3]])
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkBottle, raw)
+		defLine := lineOfOffset(content, idx[6])
+		emit(verb, canonical, "bottle", "Controller", handler, defLine)
+	}
+
+	// Generic @route(..., method=...) form.
+	for _, idx := range bottleRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		raw := content[idx[2]:idx[3]]
+		extras := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkBottle, raw)
+		defLine := lineOfOffset(content, idx[6])
+		methods := parseBottleMethods(extras)
+		if len(methods) == 0 {
+			// Bottle's default for @route without method= is GET.
+			methods = []string{"GET"}
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "bottle", "Controller", handler, defLine)
+		}
 	}
 }
 

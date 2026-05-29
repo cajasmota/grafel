@@ -95,6 +95,15 @@ const (
 	// FrameworkRobyn (#2980) — Robyn `@app.get("/users/:id")` uses the
 	// Express-style `:name` colon-prefixed path parameter convention.
 	FrameworkRobyn = "robyn"
+	// FrameworkAiohttp (#2979) — aiohttp `app.router.add_get("/users/{user_id}")`
+	// and `@routes.get("/users/{user_id}")` use the FastAPI-style `{name}` /
+	// `{name:regex}` curly-brace path parameter convention; the `:regex`
+	// suffix is stripped by canonicalizeCurlyBraces.
+	FrameworkAiohttp = "aiohttp"
+	// FrameworkBottle (#2979) — Bottle `@route("/users/<id>")` / `@get(...)`
+	// use the Flask-style `<name>` / `<name:filter>` angle-bracket path
+	// parameter convention. Canonicalisation reuses the angle-bracket walker.
+	FrameworkBottle = "bottle"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -114,6 +123,13 @@ func Canonicalize(framework, raw string) string {
 
 	var out string
 	switch framework {
+	case FrameworkBottle:
+		// Bottle path params are `<name>` / `<name:filter>` — the NAME comes
+		// FIRST, before the optional filter (the inverse of Flask's
+		// `<converter:name>`). Strip the `:filter` suffix so the shared
+		// angle-bracket walker (which keeps the post-colon segment for Flask)
+		// receives a bare `<name>` and emits `{name}`.
+		out = canonicalizeAngleBrackets(stripBottleFilters(raw))
 	case FrameworkDjango, FrameworkFlask, FrameworkRocket, FrameworkSanic:
 		// #2669 — Django re_path and DRF @action(url_path=…) frequently embed
 		// Python named-group regex `(?P<name>charclass)` inside the URL. Pre-strip
@@ -125,7 +141,7 @@ func Canonicalize(framework, raw string) string {
 		out = canonicalizeAngleBrackets(out)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
 		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi,
-		FrameworkLitestar:
+		FrameworkLitestar, FrameworkAiohttp:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkTornado:
 		// Tornado paths arrive already pre-processed by the synthesizer
@@ -245,6 +261,41 @@ func stripPythonNamedGroups(raw string) string {
 // `{name}`. Used for Django and Flask which both use angle-bracket syntax
 // with optional converter prefixes (Django: `int`, `str`, `slug`, `uuid`,
 // `path`; Flask: `int`, `float`, `path`, `uuid`, `string` — default).
+// stripBottleFilters rewrites Bottle path params from `<name:filter>` to
+// `<name>` (Bottle puts the name FIRST, then an optional `:filter` such as
+// `:int` / `:re:[0-9]+` / `:path`). This inverts Flask's `<converter:name>`
+// ordering, so it must run BEFORE the shared angle-bracket walker — which keeps
+// the post-colon segment — to avoid mangling the param name into the filter.
+// A bare `<name>` (no colon) passes through untouched.
+func stripBottleFilters(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		c := raw[i]
+		if c != '<' {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		end := strings.IndexByte(raw[i+1:], '>')
+		if end < 0 {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		inner := raw[i+1 : i+1+end]
+		if idx := strings.IndexByte(inner, ':'); idx >= 0 {
+			inner = inner[:idx]
+		}
+		b.WriteByte('<')
+		b.WriteString(strings.TrimSpace(inner))
+		b.WriteByte('>')
+		i += 1 + end + 1
+	}
+	return b.String()
+}
+
 func canonicalizeAngleBrackets(raw string) string {
 	var b strings.Builder
 	b.Grow(len(raw))
