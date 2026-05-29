@@ -12516,14 +12516,16 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/hertz.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/hertz.go","internal/custom/golang/hertz_huma_test.go","internal/custom/golang/testdata/hertz_routes.go"],
+            "notes": "Regex AST extractor: server.Default/New engine, h.GET/POST/... verb routes, nested h.Group prefix resolution, Static mounts; fixture-proven.",
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/hertz.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/hertz.go","internal/custom/golang/hertz_huma_test.go","internal/custom/golang/testdata/hertz_routes.go"],
+            "notes": "Trailing-arg handler attribution on each verb route (skips inline middleware); fixture-proven.",
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
             "status": "missing",
@@ -12694,13 +12696,15 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_go_trio.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/hertz_huma_test.go","internal/custom/golang/huma.go","internal/custom/golang/testdata/huma_routes.go","internal/engine/http_endpoint_go_trio.go"],
+            "notes": "huma.Register(api, huma.Operation{Method,Path}, handler) -\u003e endpoint. Engine synthesis (go_trio) + dedicated SCOPE-entity extractor; fixture-proven.",
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_go_trio.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/hertz_huma_test.go","internal/custom/golang/huma.go","internal/custom/golang/testdata/huma_routes.go","internal/engine/http_endpoint_go_trio.go"],
+            "notes": "Final huma.Register argument attributed as handler; fixture-proven.",
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
             "status": "missing",

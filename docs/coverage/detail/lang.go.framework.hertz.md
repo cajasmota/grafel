@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/hertz.yaml` | — |
-| Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/hertz.yaml` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz.go`<br>`internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/testdata/hertz_routes.go` | Regex AST extractor: server.Default/New engine, h.GET/POST/... verb routes, nested h.Group prefix resolution, Static mounts; fixture-proven. |
+| Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz.go`<br>`internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/testdata/hertz_routes.go` | Trailing-arg handler attribution on each verb route (skips inline middleware); fixture-proven. |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth

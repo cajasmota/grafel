@@ -3493,6 +3493,72 @@ records:
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
 
+  lang.go.framework.hertz:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # hertz.go custom extractor (CloudWeGo): reHertzEngine seeds the
+          # *server.Hertz service from server.Default()/server.New(); reHertzRoute
+          # captures h.GET/POST/… verb methods; reHertzGroup records h.Group
+          # prefixes (nested prefixes resolved transitively); reHertzStatic emits
+          # Static/StaticFS/StaticFile mounts as GET endpoints. hertz.yaml provides
+          # detection markers only.
+          status: full
+          symbols:
+            - file: internal/custom/golang/hertz.go
+              functions: [Extract]
+            - file: internal/engine/rules/go/frameworks/hertz.yaml
+          tests:
+            - file: internal/custom/golang/hertz_huma_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # hertz.go binds the trailing identifier/selector argument of each verb
+          # call as the endpoint handler, skipping any inline middleware args.
+          # Heuristic regex resolution, fixture-proven.
+          status: full
+          symbols:
+            - file: internal/custom/golang/hertz.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/hertz_huma_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
+  lang.go.framework.huma:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # huma is OpenAPI-first: routes are declared via huma.Register(api,
+          # huma.Operation{Method, Path, …}, handler). The shared go_trio engine
+          # synthesizes http_endpoint definitions; huma.go adds a dedicated
+          # SCOPE-entity extractor that scans balanced huma.Register(...) calls,
+          # parses the Operation literal's Method (http.Method* const or string
+          # literal) + Path, and emits an endpoint per registration.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_go_trio.go
+              functions: [synthesizeHuma, humaVerbFromBody]
+            - file: internal/custom/golang/huma.go
+              functions: [Extract, humaVerb, balancedArgs]
+          tests:
+            - file: internal/custom/golang/hertz_huma_test.go
+          issues_implemented: ["2686", "3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # The final argument of huma.Register is the handler; both the engine
+          # synthesis pass and huma.go attribute it to the synthesized endpoint.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_go_trio.go
+              functions: [synthesizeHuma]
+            - file: internal/custom/golang/huma.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/hertz_huma_test.go
+          issues_implemented: ["2686", "3212"]
+          verified_at: "2026-05-30"
+
   lang.java.framework.spring-webflux:
     capabilities:
       Observability:
