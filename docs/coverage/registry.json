@@ -33978,20 +33978,19 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing",
-            "cites": ["internal/engine/rules/python/frameworks/litestar.yaml"],
-            "issue": "2980",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/litestar.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "missing",
-            "cites": ["internal/engine/rules/python/frameworks/litestar.yaml"],
-            "issue": "2980",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/litestar.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -34594,20 +34593,19 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing",
-            "cites": ["internal/engine/rules/python/frameworks/robyn.yaml"],
-            "issue": "2980",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/robyn.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "missing",
-            "cites": ["internal/engine/rules/python/frameworks/robyn.yaml"],
-            "issue": "2980",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/robyn.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -34936,20 +34934,19 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing",
-            "cites": ["internal/engine/rules/python/frameworks/sanic.yaml"],
-            "issue": "2980",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/sanic.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "missing",
-            "cites": ["internal/engine/rules/python/frameworks/sanic.yaml"],
-            "issue": "2980",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/sanic.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {

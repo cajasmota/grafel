@@ -83,6 +83,18 @@ const (
 	// FrameworkSails (#2851) — Sails config/routes.js maps `'GET /users/:id':
 	// 'UserController.find'`; the path uses the `:name` colon convention.
 	FrameworkSails = "sails"
+	// FrameworkSanic (#2980) — Sanic `@app.get("/users/<int:user_id>")` and
+	// `@bp.route(...)` use Flask-style `<converter:name>` / `<name>` angle-bracket
+	// path parameters. Canonicalisation reuses the angle-bracket walker.
+	FrameworkSanic = "sanic"
+	// FrameworkLitestar (#2980) — Litestar `@get("/users/{user_id:int}")` route
+	// handlers and `Controller` classes use `{name:type}` curly-brace path
+	// parameters identical to FastAPI; the `:type` suffix is stripped by
+	// canonicalizeCurlyBraces.
+	FrameworkLitestar = "litestar"
+	// FrameworkRobyn (#2980) — Robyn `@app.get("/users/:id")` uses the
+	// Express-style `:name` colon-prefixed path parameter convention.
+	FrameworkRobyn = "robyn"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -102,7 +114,7 @@ func Canonicalize(framework, raw string) string {
 
 	var out string
 	switch framework {
-	case FrameworkDjango, FrameworkFlask, FrameworkRocket:
+	case FrameworkDjango, FrameworkFlask, FrameworkRocket, FrameworkSanic:
 		// #2669 — Django re_path and DRF @action(url_path=…) frequently embed
 		// Python named-group regex `(?P<name>charclass)` inside the URL. Pre-strip
 		// these to `<name>` so the angle-bracket walker can canonicalise them
@@ -112,7 +124,8 @@ func Canonicalize(framework, raw string) string {
 		out = stripPythonNamedGroups(raw)
 		out = canonicalizeAngleBrackets(out)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
-		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi:
+		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi,
+		FrameworkLitestar:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkTornado:
 		// Tornado paths arrive already pre-processed by the synthesizer
@@ -121,7 +134,8 @@ func Canonicalize(framework, raw string) string {
 		// curly-brace frameworks.
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi, FrameworkPhoenix,
-		FrameworkAdonis, FrameworkMarble, FrameworkPolka, FrameworkRestify, FrameworkSails:
+		FrameworkAdonis, FrameworkMarble, FrameworkPolka, FrameworkRestify, FrameworkSails,
+		FrameworkRobyn:
 		out = canonicalizeColonParams(raw)
 	default:
 		// Unknown framework: pass through but still normalise slashes.
