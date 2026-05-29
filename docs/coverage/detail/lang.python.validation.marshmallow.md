@@ -15,27 +15,27 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Nested model extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Schema extraction | ⚠️ `partial` | `2026-05-29` | — | `internal/extractors/python/extractor.go`<br>`internal/extractors/python/extractor_test.go` | marshmallow Schemas surface only as generic Python classes: class + class-attribute fields (e.g. name = fields.Str()) are emitted as SCOPE.Schema/field by extractClassFields. No marshmallow-specific field-type or validate= recognition. |
+| Nested model extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/marshmallow.go`<br>`internal/custom/python/testdata/marshmallow_nested.py` | — |
+| Schema extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/python/marshmallow.go`<br>`internal/custom/python/testdata/marshmallow_nested.py`<br>`internal/patterns/schema_detector.go` | marshmallow Schemas surface only as generic Python classes: class + class-attribute fields (e.g. name = fields.Str()) are emitted as SCOPE.Schema/field by extractClassFields. No marshmallow-specific field-type or validate= recognition. |
 
 ### Constraints
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Constraint extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Custom validator extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Constraint extraction | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2985) | — | — |
+| Custom validator extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/marshmallow.go`<br>`internal/custom/python/testdata/marshmallow_nested.py` | — |
 
 ### Coercion
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type coercion recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type coercion recognition | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/marshmallow.go`<br>`internal/custom/python/testdata/marshmallow_nested.py` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | — |
 
 ## Provenance
 
