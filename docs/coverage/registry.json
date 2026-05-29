@@ -19619,26 +19619,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -19648,12 +19658,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -20617,26 +20633,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -20646,12 +20672,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -20842,26 +20874,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -20871,12 +20913,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -21068,26 +21116,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -21097,12 +21155,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -21595,26 +21659,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -21624,12 +21698,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -21819,26 +21899,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -21848,12 +21938,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -22231,26 +22327,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -22260,12 +22366,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -22487,26 +22599,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -22516,12 +22638,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -23478,26 +23606,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -23507,12 +23645,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -24434,26 +24578,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -24463,12 +24617,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -24648,26 +24808,36 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "issue": "3050",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -24677,12 +24847,18 @@
             "issue": "2905"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (prom-client, OTel metrics): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3050",
+            "notes": "Heuristic import-pattern matching (OTel tracing, Sentry): fires when the app imports these specific libraries. Framework-agnostic but not comprehensive.",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
