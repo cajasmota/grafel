@@ -5111,6 +5111,22 @@ records:
           issues_implemented: ["2989"]
           verified_at: "2026-05-29"
 
+  lang.python.framework.dramatiq:
+    capabilities:
+      Tasks:
+        task_routing:
+          # #3193: queue->actor routing from @dramatiq.actor(queue_name=...)
+          # decorators and actor.send_with_options(queue_name=...) overrides.
+          status: partial
+          symbols:
+            - file: internal/custom/python/dramatiq.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/dramatiq_routing_test.go
+              functions: [TestDramatiq_TaskRouting_GoldenFixture, TestDramatiq_TaskRouting_DecoratorQueueName, TestDramatiq_TaskRouting_SendWithOptionsOverride, TestDramatiq_TaskRouting_NoQueueNameNoMarker]
+          issues_implemented: ["3193"]
+          verified_at: "2026-05-30"
+
   lang.jsts.orm.knex:
     capabilities:
       Models:

@@ -35279,8 +35279,11 @@
             "verified_at": "2026-05-28"
           },
           "task_routing": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2983"
+            "status": "partial",
+            "cites": ["internal/custom/python/dramatiq.go","internal/custom/python/dramatiq_routing_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3193",
+            "notes": "queue-\u003eactor routing extracted from @dramatiq.actor(queue_name=...) decorators and actor.send_with_options(queue_name=...) dispatch overrides. Partial because broker-level routing middleware (broker.add_middleware) and dynamic/computed queue names are not modelled.",
+            "verified_at": "2026-05-30"
           }
         },
         "Schedule": {

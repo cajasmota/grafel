@@ -240,5 +240,5 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
 | [python](../by-language/python.md) | [Celery (task queue)](../detail/lang.python.framework.celery.md) | 🟢 1/1 | 🟢 21/21 | ✅ 6/6 | |
-| [python](../by-language/python.md) | [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | 🟢 1/1 | 🟢 21/21 | 🟡 4/5 | |
+| [python](../by-language/python.md) | [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
 | [python](../by-language/python.md) | [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |

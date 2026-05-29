@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Task extraction | 🟢 `partial` | `2026-05-28` | — | `internal/custom/python/dramatiq.go`<br>`internal/engine/rules/python/frameworks/dramatiq.yaml` | — |
-| Task routing | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
+| Task routing | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3193) | `internal/custom/python/dramatiq.go`<br>`internal/custom/python/dramatiq_routing_test.go` | queue->actor routing extracted from @dramatiq.actor(queue_name=...) decorators and actor.send_with_options(queue_name=...) dispatch overrides. Partial because broker-level routing middleware (broker.add_middleware) and dynamic/computed queue names are not modelled. |
 
 ### Schedule
 
