@@ -1563,6 +1563,51 @@ class AppConfig(BaseSettings):
 	}
 }
 
+// TestSQLModel_TableClass verifies that a SQLModel table=True class is
+// extracted as a SCOPE.Schema ORM entity with framework=sqlmodel.
+// Issue #2990 — schema_extraction partial promotion for SQLModel.
+func TestSQLModel_TableClass(t *testing.T) {
+	src := `from sqlmodel import SQLModel, Field
+
+class Hero(SQLModel, table=True):
+    id: int = Field(default=None, primary_key=True)
+    name: str
+    age: int
+`
+	ents := extract(t, "python_sqlalchemy", src)
+	var found *extractResult
+	for i := range ents {
+		if ents[i].Name == "Hero" && ents[i].Kind == "SCOPE.Schema" {
+			found = &ents[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected SQLModel table class entity for Hero")
+	}
+	if found.Props["framework"] != "sqlmodel" {
+		t.Errorf("expected framework=sqlmodel, got %q", found.Props["framework"])
+	}
+}
+
+// TestSQLModel_SchemaOnlyClass verifies that a SQLModel schema-only class
+// (no table=True) is NOT emitted as a DB-table entity.
+// Issue #2990 — schema-only classes must not be false-positive DB model entities.
+func TestSQLModel_SchemaOnlyClass(t *testing.T) {
+	src := `from sqlmodel import SQLModel, Field
+
+class HeroCreate(SQLModel):
+    name: str
+    age: int
+`
+	ents := extract(t, "python_sqlalchemy", src)
+	for _, e := range ents {
+		if e.Name == "HeroCreate" {
+			t.Fatalf("python_sqlalchemy must not emit entity for SQLModel schema-only class %q", e.Name)
+		}
+	}
+}
+
 // ============================================================================
 // FastAPI Request/Response tests
 // ============================================================================

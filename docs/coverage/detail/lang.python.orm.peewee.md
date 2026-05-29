@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/peewee.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Peewee field definitions (CharField, IntegerField etc.) are not extracted; only model class detection and query attribution are handled. |
 
 ### Relationships
 
@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Peewee does not support lazy loading; all queries are explicit. DeferredForeignKey is a different concept not tracked here. |
 | Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries

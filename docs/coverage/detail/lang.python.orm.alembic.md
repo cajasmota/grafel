@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/alembic.yaml` | — |
+| Migration parsing | ⚠️ `partial` | `2026-05-29` | — | `internal/engine/rules/python/orms/alembic.yaml`<br>`internal/enrichers/migration_sequence_enricher.go` | YAML rule detects alembic.ini and versions/*.py files; migration_sequence_enricher.go parses Alembic filename convention ([A-Za-z0-9]{12}_<name>.py). upgrade()/downgrade() operation content is not yet parsed (full would require a dedicated alembic migration extractor analogous to django_migration.go). |
 
 ## Provenance
 

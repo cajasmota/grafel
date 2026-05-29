@@ -59,6 +59,17 @@ var saBaseIndicators = []string{"Base", "DeclarativeBase", "db.Model"}
 // Pydantic DTOs next to ORM classes).
 var saPydanticBases = []string{"BaseModel", "BaseSettings", "RootModel", "GenericModel"}
 
+// isSQLModelTableClass reports whether a class declaration's base list
+// identifies a SQLModel DB-table model: the base list must contain "SQLModel"
+// AND the keyword argument "table=True". SQLModel schema-only classes (which
+// lack "table=True") are NOT DB-table models and must not be emitted as
+// SCOPE.Schema ORM entities.
+// Issue #2990 — SQLModel schema_extraction partial promotion.
+func isSQLModelTableClass(bases string) bool {
+	return strings.Contains(bases, "SQLModel") &&
+		strings.Contains(bases, "table=True")
+}
+
 func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("custom.python_sqlalchemy")
 	_, span := tracer.Start(ctx, "custom.python_sqlalchemy")
@@ -92,12 +103,18 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 			continue
 		}
 
-		// Check if this looks like a SQLAlchemy model
-		isModel := false
-		for _, indicator := range saBaseIndicators {
-			if strings.Contains(bases, indicator) {
-				isModel = true
-				break
+		// Check if this looks like a SQLAlchemy / SQLModel model.
+		//
+		// SQLModel table classes use `class Hero(SQLModel, table=True):`
+		// — they match the "SQLModel" base name AND carry the table=True kwarg.
+		// Issue #2990 — promote schema_extraction to partial for SQLModel.
+		isModel := isSQLModelTableClass(bases)
+		if !isModel {
+			for _, indicator := range saBaseIndicators {
+				if strings.Contains(bases, indicator) {
+					isModel = true
+					break
+				}
 			}
 		}
 		if !isModel {
@@ -112,7 +129,11 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 		}
 
 		line := lineOf(source, idx[0])
-		props := map[string]string{"framework": "sqlalchemy", "pattern_type": "model", "class_name": className}
+		framework := "sqlalchemy"
+		if isSQLModelTableClass(bases) {
+			framework = "sqlmodel"
+		}
+		props := map[string]string{"framework": framework, "pattern_type": "model", "class_name": className}
 		body := extractClassBody(source, idx[0])
 		if tm := saTablenameRe.FindStringSubmatch(body); tm != nil {
 			props["tablename"] = tm[1]

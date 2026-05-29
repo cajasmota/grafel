@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/python/orms/tortoise_orm.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Tortoise ORM field definitions (fields.CharField etc.) are not parsed by any Go extractor; only model class detection (model_extraction) is handled via YAML rules. |
 
 ### Relationships
 
@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Tortoise ORM does not have a lazy-loading concept comparable to SQLAlchemy; prefetch_related is async-explicit and tracked under query_attribution only. |
 | Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries
