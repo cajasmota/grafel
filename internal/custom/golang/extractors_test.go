@@ -192,6 +192,142 @@ func TestFiberNoMatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Chi
+// ---------------------------------------------------------------------------
+
+func TestChiRouter(t *testing.T) {
+	src := `r := chi.NewRouter()`
+	ents := extract(t, "custom_go_chi", fi("main.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Service", "r") {
+		t.Error("expected r as chi router service")
+	}
+}
+
+func TestChiRoutes(t *testing.T) {
+	src := `
+r := chi.NewRouter()
+r.Get("/users", listUsers)
+r.Post("/users", createUser)
+r.Delete("/users/{id}", deleteUser)
+`
+	ents := extract(t, "custom_go_chi", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users") {
+		t.Error("expected GET /users route")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "POST /users") {
+		t.Error("expected POST /users route")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "DELETE /users/{id}") {
+		t.Error("expected DELETE /users/{id} route")
+	}
+}
+
+func TestChiRouteGroup(t *testing.T) {
+	src := `
+r.Route("/api", func(r chi.Router) {
+	r.Get("/health", healthCheck)
+})
+`
+	ents := extract(t, "custom_go_chi", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Component", "/api") {
+		t.Error("expected /api route-group component")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "GET /health") {
+		t.Error("expected GET /health route inside group")
+	}
+}
+
+func TestChiHandleAndMount(t *testing.T) {
+	src := `
+r.HandleFunc("/legacy", legacyHandler)
+r.Mount("/admin", adminRouter)
+`
+	ents := extract(t, "custom_go_chi", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Operation", "ANY /legacy") {
+		t.Error("expected ANY /legacy from HandleFunc")
+	}
+	if !containsEntity(ents, "SCOPE.Component", "/admin") {
+		t.Error("expected /admin mount component")
+	}
+}
+
+func TestChiMiddleware(t *testing.T) {
+	src := `r.Use(middleware.Logger)`
+	ents := extract(t, "custom_go_chi", fi("main.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "middleware.Logger") {
+		t.Error("expected middleware.Logger pattern")
+	}
+}
+
+func TestChiNoMatch(t *testing.T) {
+	src := `package main`
+	ents := extract(t, "custom_go_chi", fi("main.go", "go", src))
+	if len(ents) != 0 {
+		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Gorilla Mux
+// ---------------------------------------------------------------------------
+
+func TestGorillaRouter(t *testing.T) {
+	src := `r := mux.NewRouter()`
+	ents := extract(t, "custom_go_gorilla_mux", fi("main.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Service", "r") {
+		t.Error("expected r as gorilla router service")
+	}
+}
+
+func TestGorillaRoutesWithMethods(t *testing.T) {
+	src := `
+r := mux.NewRouter()
+r.HandleFunc("/users", listUsers).Methods("GET")
+r.HandleFunc("/users", createUser).Methods("POST")
+`
+	ents := extract(t, "custom_go_gorilla_mux", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users") {
+		t.Error("expected GET /users route")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "POST /users") {
+		t.Error("expected POST /users route")
+	}
+}
+
+func TestGorillaRouteNoMethodsIsAny(t *testing.T) {
+	src := `
+r := mux.NewRouter()
+r.HandleFunc("/health", healthCheck)
+`
+	ents := extract(t, "custom_go_gorilla_mux", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Operation", "ANY /health") {
+		t.Error("expected ANY /health for un-method-constrained route")
+	}
+}
+
+func TestGorillaSubrouterPrefix(t *testing.T) {
+	src := `
+api := r.PathPrefix("/api").Subrouter()
+api.HandleFunc("/orders", listOrders).Methods("GET")
+`
+	ents := extract(t, "custom_go_gorilla_mux", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Component", "/api") {
+		t.Error("expected /api subrouter component")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "GET /api/orders") {
+		t.Error("expected GET /api/orders with subrouter prefix")
+	}
+}
+
+func TestGorillaNoMatch(t *testing.T) {
+	src := `package main`
+	ents := extract(t, "custom_go_gorilla_mux", fi("main.go", "go", src))
+	if len(ents) != 0 {
+		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // GORM
 // ---------------------------------------------------------------------------
 

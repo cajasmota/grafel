@@ -11008,13 +11008,13 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/chi.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/chi.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/chi.yaml"],
+            "verified_at": "2026-05-30"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/go_routes.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/chi.go","internal/engine/go_routes.go"],
+            "verified_at": "2026-05-30"
           },
           "route_extraction": {
             "status": "missing",
@@ -12299,13 +12299,13 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/gorilla_mux.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/gorilla_mux.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/gorilla_mux.yaml"],
+            "verified_at": "2026-05-30"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/go_routes.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/gorilla_mux.go","internal/engine/go_routes.go"],
+            "verified_at": "2026-05-30"
           },
           "route_extraction": {
             "status": "missing",

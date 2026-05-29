@@ -2846,6 +2846,87 @@ records:
           issues_implemented: ["3211"]
           verified_at: "2026-05-30"
 
+  lang.go.framework.chi:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # chi.go custom extractor: reChiRoute captures r.Get/Post/… (Title-case
+          # methods), reChiHandle covers r.Handle/HandleFunc, reChiMount/reChiGroup
+          # record sub-router prefixes; chi.NewRouter() seeds the router service.
+          # go_routes.go AST pass rewrites bare-receiver ROUTES_TO edges to the
+          # qualified handler method. chi.yaml YAML rules add static patterns.
+          status: full
+          symbols:
+            - file: internal/custom/golang/chi.go
+              functions: [Extract]
+            - file: internal/engine/go_routes.go
+              functions:
+                - applyGoRouteComposition
+                - extractGoHandlerBindings
+                - buildGoVarTypeMap
+                - inferGoExprType
+                - typeNameFromExpr
+            - file: internal/engine/rules/go/frameworks/chi.yaml
+          tests:
+            - file: internal/custom/golang/extractors_test.go
+            - file: internal/engine/go_routes_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # go_routes.go resolves the receiver variable in r.Get("/p", h.Method)
+          # to its struct type and rewrites Controller:h → Controller:Type.Method.
+          status: full
+          symbols:
+            - file: internal/custom/golang/chi.go
+              functions: [Extract]
+            - file: internal/engine/go_routes.go
+              functions: [applyGoRouteComposition, extractGoHandlerBindings]
+          tests:
+            - file: internal/custom/golang/extractors_test.go
+            - file: internal/engine/go_routes_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
+  lang.go.framework.gorilla-mux:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # gorilla_mux.go custom extractor: reGorillaRoute captures
+          # r.HandleFunc/Handle("/path", h) with a trailing .Methods("GET",…)
+          # chain (reGorillaMethods) to recover HTTP verbs; reGorillaSubrouter
+          # records PathPrefix(...).Subrouter() prefixes; mux.NewRouter() seeds
+          # the router service. go_routes.go AST pass rewrites bare-receiver
+          # ROUTES_TO edges. gorilla_mux.yaml provides detection markers.
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorilla_mux.go
+              functions: [Extract]
+            - file: internal/engine/go_routes.go
+              functions:
+                - applyGoRouteComposition
+                - extractGoHandlerBindings
+                - buildGoVarTypeMap
+                - inferGoExprType
+                - typeNameFromExpr
+            - file: internal/engine/rules/go/frameworks/gorilla_mux.yaml
+          tests:
+            - file: internal/custom/golang/extractors_test.go
+            - file: internal/engine/go_routes_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorilla_mux.go
+              functions: [Extract]
+            - file: internal/engine/go_routes.go
+              functions: [applyGoRouteComposition, extractGoHandlerBindings]
+          tests:
+            - file: internal/custom/golang/extractors_test.go
+            - file: internal/engine/go_routes_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
   lang.java.framework.spring-webflux:
     capabilities:
       Observability:

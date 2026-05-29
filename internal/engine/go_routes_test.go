@@ -49,6 +49,38 @@ func main() {
 	}
 }
 
+func TestApplyGoRouteComposition_GorillaMuxHandleFunc(t *testing.T) {
+	// gorilla/mux registers via r.HandleFunc("/path", h.Method).Methods(...).
+	// The YAML rule captures only the bare receiver `h`; the AST pass must
+	// rewrite the orphan Controller:h edge to the qualified handler method.
+	src := []byte(`package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+	h := &UsersHandler{}
+	r := mux.NewRouter()
+	r.HandleFunc("/users", h.List).Methods("GET")
+	r.HandleFunc("/users/{id}", h.Get).Methods("GET")
+}
+`)
+	rels := []types.RelationshipRecord{
+		makeRoutesToRel("/users", "h"),
+		makeRoutesToRel("/users/{id}", "h"),
+	}
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
+	if got[0].ToID != "Controller:UsersHandler.List" {
+		t.Errorf("ToID[0] = %q, want Controller:UsersHandler.List", got[0].ToID)
+	}
+	if got[1].ToID != "Controller:UsersHandler.Get" {
+		t.Errorf("ToID[1] = %q, want Controller:UsersHandler.Get", got[1].ToID)
+	}
+	if got[0].Properties["go_route_binding"] != "method_receiver_resolved" {
+		t.Errorf("go_route_binding[0] = %q, want method_receiver_resolved", got[0].Properties["go_route_binding"])
+	}
+}
+
 func TestApplyGoRouteComposition_ConstructorIdiom(t *testing.T) {
 	// `h := handlers.NewUsersHandler(s)` — cross-package NewT() returns *T.
 	src := []byte(`package main
