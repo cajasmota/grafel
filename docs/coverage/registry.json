@@ -32124,8 +32124,9 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/python/python_relational_bundle_test.go","internal/extractors/python/router_register.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -32138,17 +32139,24 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/drf_serializer_fields.go","internal/extractors/python/drf_serializer_fields_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/django_drf_permissions.go","internal/extractors/python/django_drf_permissions_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/engine/django_imports_rewrite.go"],
+            "notes": "Django middleware import rewriting provides partial coverage; DRF-specific middleware detection not yet implemented",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -32171,8 +32179,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/extractors_test.go","internal/custom/python/pytest.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -32211,8 +32221,8 @@
           },
           "def_use_chain_extraction": {
             "status": "partial",
-            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_python.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/substrate/def_use_python.go","internal/substrate/def_use_test.go"],
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -32276,18 +32286,18 @@
           },
           "taint_sink_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/substrate/taint_sites_python.go","internal/substrate/taint_sites_test.go"],
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/substrate/taint_sites_python.go","internal/substrate/taint_sites_test.go"],
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
             "status": "partial",
-            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_python.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/substrate/template_pattern_python.go","internal/substrate/template_pattern_test.go"],
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
             "status": "partial",

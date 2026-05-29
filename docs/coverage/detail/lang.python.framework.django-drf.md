@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/django_drf_actions.go`<br>`internal/extractors/python/django_drf_actions.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/django_drf_actions.go`<br>`internal/extractors/python/drf_serializer_fields.go` | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/python/python_relational_bundle_test.go`<br>`internal/extractors/python/router_register.go` | — |
 
 ### Auth
 
@@ -29,14 +29,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/extractors/python/drf_serializer_fields.go`<br>`internal/extractors/python/drf_serializer_fields_test.go` | — |
+| Request validation | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/extractors/python/django_drf_permissions.go`<br>`internal/extractors/python/django_drf_permissions_test.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | `2026-05-29` | — | `internal/engine/django_imports_rewrite.go` | Django middleware import rewriting provides partial coverage; DRF-specific middleware detection not yet implemented |
 
 ### Type System
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/extractors_test.go`<br>`internal/custom/python/pytest.go` | — |
 
 ### Observability
 
@@ -74,7 +74,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
 | DB effect | ⚠️ `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
 | Dead code detection | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | — |
-| Def use chain extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use.go`<br>`internal/substrate/def_use_python.go` | — |
+| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | — | `internal/substrate/def_use_python.go`<br>`internal/substrate/def_use_test.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
 | Fs effect | ⚠️ `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
 | HTTP effect | ⚠️ `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
@@ -87,9 +87,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
 | Sanitizer recognition | ⚠️ `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
-| Taint sink detection | ⚠️ `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
-| Taint source detection | ⚠️ `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
-| Template pattern catalog | ⚠️ `partial` | `2026-05-28` | — | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern.go`<br>`internal/substrate/template_pattern_python.go` | — |
+| Taint sink detection | ⚠️ `partial` | `2026-05-29` | — | `internal/substrate/taint_sites_python.go`<br>`internal/substrate/taint_sites_test.go` | — |
+| Taint source detection | ⚠️ `partial` | `2026-05-29` | — | `internal/substrate/taint_sites_python.go`<br>`internal/substrate/taint_sites_test.go` | — |
+| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | — | `internal/substrate/template_pattern_python.go`<br>`internal/substrate/template_pattern_test.go` | — |
 | Vulnerability finding | ⚠️ `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
 
 ## Framework-specific

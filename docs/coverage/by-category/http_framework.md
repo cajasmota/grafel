@@ -83,7 +83,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ⚠️ 0/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/21 | ❌ 0/8 | |
+| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 7/21 | ❌ 0/8 | |
 | [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ⚠️ 0/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ⚠️ 0/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
