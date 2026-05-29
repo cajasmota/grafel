@@ -190,7 +190,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 |---|---|---|---|---|---|---|
 | [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/9 | |
 | [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/9 | |
-| [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🔴 0/3 | 🔴 0/1 | 🟡 3/21 | 🔴 0/9 | |
+| [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🔴 0/3 | 🔴 0/1 | 🟡 3/21 | 🟡 3/4 | |
 | [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🔴 0/3 | 🟢 1/1 | 🟡 18/19 | 🟡 5/9 | |
 | [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🔴 0/3 | 🟢 1/1 | 🟡 18/19 | 🟡 5/9 | |
 | [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 13/13 | |
@@ -210,7 +210,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [Uno Platform](../detail/lang.csharp.framework.uno.md) | 🟡 7/10 | 🔴 0/3 | |
 | [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | 🟡 7/10 | 🔴 0/3 | |
 | [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | 🟡 7/10 | 🔴 0/3 | |
-| [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🔴 0/10 | 🔴 0/3 | |
+| [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🔴 0/10 | 🟢 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | 🟢 10/10 | ✅ 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | 🟡 7/10 | 🔴 0/3 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | 🟡 7/10 | 🔴 0/3 | |

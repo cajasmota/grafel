@@ -15,34 +15,34 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | 🔴 `missing` | — | — | — | — |
+| Context extraction | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Deep link extraction | 🔴 `missing` | — | — | — | — |
-| Navigation extraction | 🔴 `missing` | — | — | — | — |
-| Screen detection | 🔴 `missing` | — | — | — | — |
+| Deep link extraction | — `not_applicable` | — | — | — | — |
+| Navigation extraction | — `not_applicable` | — | — | — | — |
+| Screen detection | — `not_applicable` | — | — | — | — |
 
 ### Platform
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Platform branching | 🔴 `missing` | — | — | — | — |
+| Platform branching | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
 
 ### Native Bridge
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | 🔴 `missing` | — | — | — | — |
-| State management | 🔴 `missing` | — | — | — | — |
+| State management | — `not_applicable` | — | — | — | — |
 
 ### Type System
 
@@ -56,7 +56,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | 🔴 `missing` | — | — | — | — |
+| State setter emission | — `not_applicable` | — | — | — | — |
 
 ### Testing
 

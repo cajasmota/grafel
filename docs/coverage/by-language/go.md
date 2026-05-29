@@ -47,14 +47,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🔴 0/3 | 🔴 0/1 | 🟡 3/21 | 🔴 0/9 | |
+| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🔴 0/3 | 🔴 0/1 | 🟡 3/21 | 🟡 3/4 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🔴 0/10 | 🔴 0/3 | |
+| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🔴 0/10 | 🟢 1/1 | |
 
 
 ## Tools

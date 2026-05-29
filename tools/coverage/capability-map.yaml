@@ -3198,6 +3198,69 @@ records:
             - file: internal/custom/golang/extractors_test.go
             - file: internal/engine/go_routes_test.go
           issues_implemented: ["3212"]
+  lang.go.framework.fyne:
+    capabilities:
+      Native:
+        native_module_imports:
+          # fyne.go custom extractor (#3218): reFyneNativeImport matches the
+          # fyne.io/fyne driver/app native packages backing the desktop GUI on
+          # the host platform, emitted as SCOPE.External native_import entities.
+          # Heuristic import match (partial): no cgo symbol resolution. Fyne is
+          # single-process, so Process.ipc_extraction / main_renderer_split are
+          # not_applicable (no Electron-style main/renderer split or IPC).
+          status: partial
+          symbols:
+            - file: internal/custom/golang/fyne.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/fyne_gomobile_test.go
+          issues_implemented: ["3218"]
+          verified_at: "2026-05-30"
+  lang.go.framework.gomobile:
+    capabilities:
+      Structure:
+        context_extraction:
+          # gomobile.go custom extractor (#3218): reGomobileAppMain detects the
+          # app.Main(...) event-loop entry as the mobile app root
+          # (SCOPE.Component). Partial: entry detected, no full component tree.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/gomobile.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/fyne_gomobile_test.go
+          issues_implemented: ["3218"]
+          verified_at: "2026-05-30"
+      Platform:
+        platform_branching:
+          # //go:build and // +build constraints plus runtime.GOOS guards that
+          # name a mobile platform (android/ios/darwin) are emitted as
+          # SCOPE.Pattern platform_branch entities. Partial: heuristic, no
+          # build-tag constraint solving; non-mobile constraints are skipped.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/gomobile.go
+              functions: [Extract, hasMobilePlatformToken]
+          tests:
+            - file: internal/custom/golang/fyne_gomobile_test.go
+          issues_implemented: ["3218"]
+          verified_at: "2026-05-30"
+      Native Bridge:
+        native_module_imports:
+          # golang.org/x/mobile/{app,gl,bind,...} native bridge package imports
+          # become SCOPE.External native_import entities; exported funcs in a
+          # bind package become SCOPE.External native_bridge (FFI) entities.
+          # Partial: heuristic import + exported-func match. Navigation/screen/
+          # deep_link, Data Flow.state_management and Lifecycle.state_setter are
+          # not_applicable — those live host-side (Android/iOS), not in Go.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/gomobile.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/fyne_gomobile_test.go
+          issues_implemented: ["3218"]
+          verified_at: "2026-05-30"
   lang.go.orm.gorm:
     capabilities:
       Models:

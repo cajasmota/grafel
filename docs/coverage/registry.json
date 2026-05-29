@@ -11756,15 +11756,18 @@
       "capabilities": {
         "Process": {
           "ipc_extraction": {
-            "status": "missing"
+            "status": "not_applicable"
           },
           "main_renderer_split": {
-            "status": "missing"
+            "status": "not_applicable"
           }
         },
         "Native": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/fyne.go","internal/custom/golang/fyne_gomobile_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3218",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -12195,28 +12198,37 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/fyne_gomobile_test.go","internal/custom/golang/gomobile.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3218",
+            "verified_at": "2026-05-30"
           }
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing"
+            "status": "not_applicable"
           },
           "navigation_extraction": {
-            "status": "missing"
+            "status": "not_applicable"
           },
           "screen_detection": {
-            "status": "missing"
+            "status": "not_applicable"
           }
         },
         "Platform": {
           "platform_branching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/fyne_gomobile_test.go","internal/custom/golang/gomobile.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3218",
+            "verified_at": "2026-05-30"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/fyne_gomobile_test.go","internal/custom/golang/gomobile.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3218",
+            "verified_at": "2026-05-30"
           }
         },
         "Data Flow": {
@@ -12224,7 +12236,7 @@
             "status": "missing"
           },
           "state_management": {
-            "status": "missing"
+            "status": "not_applicable"
           }
         },
         "Type System": {
@@ -12240,7 +12252,7 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "not_applicable"
           }
         },
         "Testing": {
