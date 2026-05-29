@@ -15771,7 +15771,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/jaxrs_filters.go","internal/custom/java/jaxrs_filters_test.go","testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -15805,16 +15808,22 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/jakarta_ee_advanced.go","internal/custom/java/jaxrs_filters_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/jakarta_ee_advanced.go","internal/custom/java/jaxrs_filters_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/jakarta_ee_advanced.go","internal/custom/java/jaxrs_filters_test.go","testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
@@ -16361,7 +16370,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/jaxrs_filters.go","internal/custom/java/jaxrs_filters_test.go","testdata/fixtures/sources/java/microprofile/MicroProfileFiltersFixture.java"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {

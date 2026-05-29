@@ -5,15 +5,19 @@ import "regexp"
 // Jakarta EE advanced custom extractor: CDI, Security, Batch, SOAP, JAXB, JSON-B, JSP.
 // MicroProfile builds on CDI so this extractor also handles MicroProfile DI
 // (di_binding_extraction, di_injection_point, di_scope_resolution) — Refs #2996.
+// JAX-RS is also gated here for CDI DI (#3083).
 // Ported from: jakarta_ee_advanced_extractor.py
 
 // jakartaEEAdvFrameworks covers Jakarta EE and MicroProfile because MicroProfile
 // inherits CDI for its DI model (@Inject, @Produces, @Qualifier, CDI scopes).
+// JAX-RS applications also use CDI for injection and scope management (#3083).
 var jakartaEEAdvFrameworks = map[string]bool{
 	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
 	"microprofile": true, "eclipse-microprofile": true,
 	// Runtime MicroProfile implementations that share CDI.
 	"open_liberty": true, "payara": true, "helidon": true,
+	// JAX-RS: CDI di_binding_extraction, di_injection_point, di_scope_resolution (#3083).
+	"jaxrs": true, "jax-rs": true,
 }
 
 var (

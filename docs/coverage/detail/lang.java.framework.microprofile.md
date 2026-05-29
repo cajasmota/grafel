@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3083) | `internal/custom/java/jaxrs_filters.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/microprofile/MicroProfileFiltersFixture.java` | — |
 
 ### Testing
 
