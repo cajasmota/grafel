@@ -38,11 +38,13 @@ var extractorNonLanguageFormats = map[string]bool{
 	"hcl":        true,
 	"html":       true,
 	"just":       true,
+	"mage":       true,
 	"markdown":   true,
 	"proto":      true,
 	"razor":      true,
 	"shell":      true,
 	"sql":        true,
+	"task":       true,
 	"yaml":       true,
 }
 

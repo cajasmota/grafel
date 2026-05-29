@@ -63,8 +63,13 @@ type dep struct {
 	name    string
 	version string
 	isDev   bool
-	// kind is "runtime", "dev", or "peer"
+	// kind is "runtime", "dev", "peer", "locked", or (go.mod) "indirect"
 	kind string
+	// indirect marks a transitive dependency. For go.mod this is the
+	// `// indirect` marker on a require line; surfaced via the
+	// "indirect" entity/edge property so direct and transitive deps are
+	// distinguishable (go.mod lockfile_parsing, #3217).
+	indirect bool
 }
 
 // ---------------------------------------------------------------------------
@@ -365,33 +370,41 @@ func parsePnpmLock(source string) []dep {
 
 var goRequireBlockRE = regexp.MustCompile(`(?s)require\s*\(([^)]+)\)`)
 
-// goRequireSingleRE matches `require module version` on its own line,
-// ensuring the token after require is not `(` (which starts a block).
-var goRequireSingleRE = regexp.MustCompile(`(?m)^require\s+([^(\s]\S*)\s+(v\S+)`)
-var goPkgLineRE = regexp.MustCompile(`(?m)^\s+(\S+)\s+(v\S+)(?:\s*//\s*indirect)?`)
+// goRequireSingleRE matches `require module version [// indirect]` on its own
+// line, ensuring the token after require is not `(` (which starts a block).
+// Group 3 captures the trailing `// indirect` marker when present.
+var goRequireSingleRE = regexp.MustCompile(`(?m)^require\s+([^(\s]\S*)\s+(v\S+)[ \t]*(//\s*indirect)?`)
+
+// goPkgLineRE matches a single dependency line inside a require(...) block.
+// Group 3 captures the trailing `// indirect` marker when present, so direct
+// and transitive (indirect) dependencies can be distinguished — the core of
+// go.mod lockfile-style dependency tracking (#3217).
+var goPkgLineRE = regexp.MustCompile(`(?m)^[ \t]+(\S+)\s+(v\S+)[ \t]*(//\s*indirect)?`)
 
 func parseGoMod(source string) []dep {
 	var out []dep
 	seen := map[string]bool{}
 
+	emit := func(name, version string, indirect bool) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		kind := "runtime"
+		if indirect {
+			kind = "indirect"
+		}
+		out = append(out, dep{name: name, version: version, isDev: false, kind: kind, indirect: indirect})
+	}
+
 	for _, bm := range goRequireBlockRE.FindAllStringSubmatch(source, -1) {
 		block := bm[1]
 		for _, lm := range goPkgLineRE.FindAllStringSubmatch(block, -1) {
-			name := lm[1]
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			out = append(out, dep{name: name, version: lm[2], isDev: false, kind: "runtime"})
+			emit(lm[1], lm[2], lm[3] != "")
 		}
 	}
 	for _, m := range goRequireSingleRE.FindAllStringSubmatch(source, -1) {
-		name := m[1]
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-		out = append(out, dep{name: name, version: m[2], isDev: false, kind: "runtime"})
+		emit(m[1], m[2], m[3] != "")
 	}
 	return out
 }
@@ -1075,6 +1088,10 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 				depKind = "dev"
 			}
 		}
+		indirect := "false"
+		if d.indirect {
+			indirect = "true"
+		}
 
 		// #560: emit a single SCOPE.Component carrying the DEPENDS_ON edge
 		// embedded in its Relationships, rather than a real entity plus a
@@ -1092,6 +1109,7 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 				"version":             d.version,
 				"is_dev":              isDev,
 				"dependency_kind":     depKind,
+				"indirect":            indirect,
 				"ref":                 pRef,
 				"provenance":          "INFERRED_FROM_PACKAGE_MANIFEST",
 			},
@@ -1106,6 +1124,7 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 						"version":         d.version,
 						"is_dev":          isDev,
 						"dependency_kind": depKind,
+						"indirect":        indirect,
 					},
 				},
 			},

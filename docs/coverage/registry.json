@@ -287,10 +287,14 @@
       "label": "Mage",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/mage/mage.go"],
+          "verified_at": "2026-05-30"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/mage/mage.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },
@@ -595,10 +599,14 @@
       "label": "Task (taskfile.dev)",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/task/task.go"],
+          "verified_at": "2026-05-30"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/task/task.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },
@@ -47115,7 +47123,9 @@
       "label": "go.mod",
       "capabilities": {
         "lockfile_parsing": {
-          "status": "partial"
+          "status": "full",
+          "cites": ["internal/extractors/cross/manifest/extractor.go"],
+          "verified_at": "2026-05-30"
         },
         "manifest_parsing": {
           "status": "full",

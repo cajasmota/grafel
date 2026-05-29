@@ -32,8 +32,8 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [elixir](../by-language/elixir.md) | [StreamData (property tests)](../detail/test.streamdata.md) | 🔴 | — | — | 🔴 | |
 | [go](../by-language/go.md) | [Ginkgo](../detail/test.ginkgo.md) | 🟢 | — | — | ✅ | |
 | [go](../by-language/go.md) | [Gomega](../detail/test.gomega.md) | 🟢 | — | — | ✅ | |
-| [go](../by-language/go.md) | [Mage](../detail/build.mage.md) | 🔴 | — | — | 🔴 | |
-| [go](../by-language/go.md) | [Task (taskfile.dev)](../detail/build.task.md) | 🔴 | — | — | 🔴 | |
+| [go](../by-language/go.md) | [Mage](../detail/build.mage.md) | ✅ | — | — | ✅ | |
+| [go](../by-language/go.md) | [Task (taskfile.dev)](../detail/build.task.md) | ✅ | — | — | ✅ | |
 | [go](../by-language/go.md) | [go modules (go.mod / go.sum)](../detail/build.go-modules.md) | ✅ | — | — | ✅ | |
 | [go](../by-language/go.md) | [go testing (stdlib)](../detail/test.go-testing.md) | ✅ | — | — | ✅ | |
 | [go](../by-language/go.md) | [testify](../detail/test.testify.md) | ✅ | — | — | ✅ | |

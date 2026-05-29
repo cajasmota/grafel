@@ -475,6 +475,20 @@ const (
 	RelationshipKindBazelDependsOn RelationshipKind = "BAZEL_DEPENDS_ON"
 	RelationshipKindBazelDepStatus RelationshipKind = "BAZEL_DEP_STATUS"
 
+	// #3217 — Go build-system fusion (Cluster 6).
+	//   MAGE_DEPENDS_ON : mage_target → mage_target
+	//     Emitted by internal/extractors/mage for every target named in a
+	//     mg.Deps / mg.SerialDeps / mg.CtxDeps call within a Mage target's
+	//     body. The ToID resolves to a sibling target entity when known, or a
+	//     stable synthetic ID for an unrecognised dependency.
+	//   TASK_DEPENDS_ON : task → task
+	//     Emitted by internal/extractors/task for every deps: prerequisite and
+	//     every { task: <name> } command reference in a Taskfile task. The
+	//     ToID resolves within the same Taskfile, or a synthetic ID for a
+	//     namespaced/cross-file dependency.
+	RelationshipKindMageDependsOn RelationshipKind = "MAGE_DEPENDS_ON"
+	RelationshipKindTaskDependsOn RelationshipKind = "TASK_DEPENDS_ON"
+
 	// #2761: Constant-binding cross-file propagation edge. Emitted by the
 	// Phase 0 substrate (internal/links/constant_propagation.go) once a
 	// use-site identifier resolves to a declaration in another file (or
@@ -627,6 +641,9 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #2183 Bazel BUILD-graph fusion:
 		RelationshipKindBazelDependsOn,
 		RelationshipKindBazelDepStatus,
+		// #3217 Go build-system fusion (mage / task):
+		RelationshipKindMageDependsOn,
+		RelationshipKindTaskDependsOn,
 		// #2666 discriminator comparison edges:
 		RelationshipKindDiscriminatesOn,
 		// #2885 general branch-condition edges:

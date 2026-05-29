@@ -302,6 +302,45 @@ require (
 	}
 }
 
+// TestGoMod_IndirectTracking verifies that go.mod `// indirect` markers are
+// surfaced so transitive dependencies are distinguishable from direct ones
+// (lockfile-style tracking, #3217). Covers both the require(...) block form
+// and the single-line require form.
+func TestGoMod_IndirectTracking(t *testing.T) {
+	src := `module github.com/myorg/myapp
+
+go 1.21
+
+require (
+	github.com/gin-gonic/gin v1.9.1
+	github.com/bytedance/sonic v1.9.1 // indirect
+)
+
+require github.com/leodido/go-urn v1.2.4 // indirect
+`
+	records := runExtract(t, "go.mod", src)
+	deps := depEntities(records)
+	byName := map[string]string{}
+	for _, d := range deps {
+		byName[d.Name] = d.Properties["indirect"]
+	}
+	if byName["github.com/gin-gonic/gin"] != "false" {
+		t.Errorf("gin indirect=%q want false", byName["github.com/gin-gonic/gin"])
+	}
+	if byName["github.com/bytedance/sonic"] != "true" {
+		t.Errorf("sonic (block // indirect) indirect=%q want true", byName["github.com/bytedance/sonic"])
+	}
+	if byName["github.com/leodido/go-urn"] != "true" {
+		t.Errorf("go-urn (single-line // indirect) indirect=%q want true", byName["github.com/leodido/go-urn"])
+	}
+	// The indirect deps should also carry dependency_kind=indirect.
+	for _, d := range deps {
+		if d.Name == "github.com/bytedance/sonic" && d.Properties["dependency_kind"] != "indirect" {
+			t.Errorf("sonic dependency_kind=%q want indirect", d.Properties["dependency_kind"])
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Cargo.toml
 // ---------------------------------------------------------------------------

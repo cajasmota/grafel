@@ -30,7 +30,9 @@ import (
 	bazelextract "github.com/cajasmota/archigraph/internal/extractors/bazel"
 	configextract "github.com/cajasmota/archigraph/internal/extractors/config"
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
+	mageextract "github.com/cajasmota/archigraph/internal/extractors/mage"
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
+	taskextract "github.com/cajasmota/archigraph/internal/extractors/task"
 	"github.com/cajasmota/archigraph/internal/gitmeta"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
@@ -906,6 +908,35 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	if len(bazelRels) > 0 {
 		pass2Rels = append(pass2Rels, bazelRels...)
+	}
+
+	// Pass 3.7 — Mage build-graph fusion (#3217).
+	// Parses mage-tagged magefile.go / magefiles/*.go via go/parser, emitting
+	// one SCOPE.Operation per exported target and MAGE_DEPENDS_ON edges for
+	// mg.Deps / mg.SerialDeps / mg.CtxDeps prerequisites.
+	mageEntities, mageRels, mageErr := mageextract.Discover(ctx, absRepo, allFiles)
+	if mageErr != nil {
+		fmt.Fprintf(os.Stderr, "archigraph: mage-discover warning: %v\n", mageErr)
+	}
+	if len(mageEntities) > 0 {
+		pass3Records = append(pass3Records, mageEntities...)
+	}
+	if len(mageRels) > 0 {
+		pass2Rels = append(pass2Rels, mageRels...)
+	}
+
+	// Pass 3.8 — Task (taskfile.dev) build-graph fusion (#3217).
+	// Parses Taskfile.yml/.yaml, emitting one SCOPE.Operation per task and
+	// TASK_DEPENDS_ON edges for deps: prerequisites and { task: <name> } cmds.
+	taskEntities, taskRels, taskErr := taskextract.Discover(ctx, absRepo, allFiles)
+	if taskErr != nil {
+		fmt.Fprintf(os.Stderr, "archigraph: task-discover warning: %v\n", taskErr)
+	}
+	if len(taskEntities) > 0 {
+		pass3Records = append(pass3Records, taskEntities...)
+	}
+	if len(taskRels) > 0 {
+		pass2Rels = append(pass2Rels, taskRels...)
 	}
 
 	// Pass 2.6 — Django nested URLconf composition.

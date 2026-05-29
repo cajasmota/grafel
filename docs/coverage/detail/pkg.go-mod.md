@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Lockfile parsing | 🟢 `partial` | — | — | — | — |
+| Lockfile parsing | ✅ `full` | `2026-05-30` | — | `internal/extractors/cross/manifest/extractor.go` | — |
 | Manifest parsing | ✅ `full` | `2026-05-28` | — | `internal/extractors/cross/manifest/extractor.go` | — |
 
 ## Provenance

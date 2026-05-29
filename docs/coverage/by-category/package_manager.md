@@ -15,7 +15,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [C#](../by-language/csharp.md) | [.csproj / packages.config](../detail/pkg.csproj.md) | — | 🔴 | 🔴 | — | |
 | [dart](../by-language/dart.md) | [pubspec.yaml](../detail/pkg.pubspec.md) | — | 🔴 | ✅ | — | |
 | [elixir](../by-language/elixir.md) | [mix.exs](../detail/pkg.mix.md) | — | — | 🔴 | — | |
-| [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | 🟢 | ✅ | — | |
+| [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | ✅ | ✅ | — | |
 | [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | 🔴 | 🔴 | — | |
 | [java](../by-language/java.md) | [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | — | |
 | [JS/TS](../by-language/jsts.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ✅ | ✅ | — | |
