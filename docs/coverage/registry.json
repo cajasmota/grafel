@@ -13691,39 +13691,46 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/gen.go"],
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "field detail on wrapped GORM structs (gorm.go)"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "associations are GORM tags (gorm.go)"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "FKs are GORM tags (gorm.go)"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/gen.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "relationships are wrapped GORM tags (gorm.go)"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/golang/gen.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "gen generates query code, not migrations (gorm.go)"
           }
         }
       }
@@ -13897,44 +13904,46 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/sqlc.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/sqlc.go"],
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sqlc.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "no association metadata in sqlc-generated code"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "FKs in source SQL, not generated Go"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "no lazy/eager loading; explicit SQL"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "sqlc generates plain structs; relationships in SQL JOINs"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/sqlc.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/sqlc.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
           "migration_parsing": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/sqlc.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/sqlc.go"],
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -14004,39 +14013,52 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/xo.go"],
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/xo.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/xo.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/xo.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "xo FK accessors are explicit calls; no declared loading mode"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/xo.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/xo.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "xo introspects existing schema; no migration management"
           }
         }
       }

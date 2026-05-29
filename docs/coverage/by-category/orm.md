@@ -46,7 +46,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟡 2/8 | |
 | [go](../by-language/go.md) | [GORM](../detail/lang.go.orm.gorm.md) | 🟢 8/8 | |
 | [go](../by-language/go.md) | [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟡 2/8 | |
-| [go](../by-language/go.md) | [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🔴 0/8 | |
+| [go](../by-language/go.md) | [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🟢 3/3 | |
 | [go](../by-language/go.md) | [go-elasticsearch](../detail/lang.go.driver.elastic.md) | 🟡 1/6 | |
 | [go](../by-language/go.md) | [go-redis](../detail/lang.go.driver.redis.md) | 🟢 2/2 | |
 | [go](../by-language/go.md) | [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟡 1/6 | |
@@ -56,9 +56,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟢 3/3 | |
 | [go](../by-language/go.md) | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 1/6 | |
 | [go](../by-language/go.md) | [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟢 4/4 | |
-| [go](../by-language/go.md) | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 3/8 | |
+| [go](../by-language/go.md) | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟢 4/4 | |
 | [go](../by-language/go.md) | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 5/5 | |
-| [go](../by-language/go.md) | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🔴 0/8 | |
+| [go](../by-language/go.md) | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟢 6/6 | |
 | [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟢 3/3 | |
 | [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟢 7/7 | |
 | [java](../by-language/java.md) | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | 🟢 7/7 | |

@@ -15,29 +15,29 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🔴 `missing` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Model extraction | 🟢 `partial` | `2026-05-29` | — | `internal/custom/golang/gen.go` | — |
+| Schema extraction | — `not_applicable` | — | — | — | field detail on wrapped GORM structs (gorm.go) |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | — | associations are GORM tags (gorm.go) |
+| Foreign key extraction | — `not_applicable` | — | — | — | FKs are GORM tags (gorm.go) |
+| Lazy loading recognition | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/gen.go` | — |
+| Relationship extraction | — `not_applicable` | — | — | — | relationships are wrapped GORM tags (gorm.go) |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | — | — | — |
+| Query attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/gen.go` | — |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | — `not_applicable` | — | — | — | gen generates query code, not migrations (gorm.go) |
 
 ## Provenance
 

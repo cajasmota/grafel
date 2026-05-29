@@ -81,7 +81,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟡 2/8 | |
 | [GORM](../detail/lang.go.orm.gorm.md) | 🟢 8/8 | |
 | [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟡 2/8 | |
-| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🔴 0/8 | |
+| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🟢 3/3 | |
 | [go-elasticsearch](../detail/lang.go.driver.elastic.md) | 🟡 1/6 | |
 | [go-redis](../detail/lang.go.driver.redis.md) | 🟢 2/2 | |
 | [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟡 1/6 | |
@@ -91,6 +91,6 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟢 3/3 | |
 | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 1/6 | |
 | [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟢 4/4 | |
-| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 3/8 | |
+| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟢 4/4 | |
 | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 5/5 | |
-| [xo (codegen)](../detail/lang.go.orm.xo.md) | 🔴 0/8 | |
+| [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟢 6/6 | |
