@@ -3226,6 +3226,165 @@ records:
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
 
+  lang.go.orm.sqlx:
+    capabilities:
+      Models:
+        model_extraction:
+          # Structs carrying `db:"col"` field tags are recognised as schemas
+          # (reDBStruct + reDBField). Heuristic — a db tag does not prove the
+          # struct is a table — hence partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract, detectSQLDriver]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          # Columns from `db:` tags plus CREATE TABLE statements parsed out of
+          # SQL string literals (reCreateTable).
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract, collectSQLLiterals]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        foreign_key_extraction:
+          # FOREIGN KEY (col) REFERENCES other(c) clauses mined from CREATE
+          # TABLE literals (reForeignKey). association/relationship/lazy have
+          # no concept in a relation-layerless driver -> not_applicable.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # Exec/Query/QueryRow/Get/Select/NamedExec call sites (reSQLQueryCall)
+          # plus SELECT/INSERT/UPDATE/DELETE string literals. Cannot bind to a
+          # model by regex alone -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Migrations:
+        migration_parsing:
+          # File-based NNN_slug.up/down.sql migrations recognised by filename
+          # (reSQLMigrationFile), as commonly paired with golang-migrate.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
+  lang.go.orm.pgx:
+    capabilities:
+      Models:
+        model_extraction:
+          # Structs with `db:"col"` tags (pgx.RowToStructByName) -> schemas.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract, detectSQLDriver]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract, collectSQLLiterals]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        foreign_key_extraction:
+          # SQL FOREIGN KEY clauses; relation/association/lazy not_applicable.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # conn.Exec/Query/QueryRow call sites + SQL string literals.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/pgx.yaml
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
+  lang.go.driver.sqlite:
+    capabilities:
+      Models:
+        model_extraction:
+          # Structs with `db:"col"` tags scanned over database/sql + sqlite.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract, detectSQLDriver]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          # Columns from db: tags + CREATE TABLE literals.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract, collectSQLLiterals]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        foreign_key_extraction:
+          # SQL FOREIGN KEY clauses from CREATE TABLE; the driver has no
+          # relation layer so association/relationship/lazy are not_applicable.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # db.Exec/Query/QueryRow call sites + SQL string literals.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/sqlite_go.yaml
+            - file: internal/custom/golang/sql_drivers.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/sql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.net-http:
     capabilities:
       Routing:

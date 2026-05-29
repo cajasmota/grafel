@@ -52,12 +52,12 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟡 1/6 | |
 | [go](../by-language/go.md) | [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟡 1/6 | |
 | [go](../by-language/go.md) | [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟡 1/6 | |
-| [go](../by-language/go.md) | [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟡 1/6 | |
+| [go](../by-language/go.md) | [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟢 4/4 | |
 | [go](../by-language/go.md) | [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟡 1/6 | |
 | [go](../by-language/go.md) | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 1/6 | |
-| [go](../by-language/go.md) | [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟡 1/6 | |
+| [go](../by-language/go.md) | [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟢 4/4 | |
 | [go](../by-language/go.md) | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 3/8 | |
-| [go](../by-language/go.md) | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟡 2/8 | |
+| [go](../by-language/go.md) | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 5/5 | |
 | [go](../by-language/go.md) | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🔴 0/8 | |
 | [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟢 3/3 | |
 | [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟢 7/7 | |

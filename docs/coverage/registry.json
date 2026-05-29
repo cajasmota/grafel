@@ -10613,36 +10613,41 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/sqlite_go.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go","internal/engine/rules/go/orms/sqlite_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
@@ -13813,36 +13818,41 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/pgx.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go","internal/engine/rules/go/orms/pgx.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
@@ -13914,42 +13924,48 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/sqlx.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go","internal/engine/rules/go/orms/sqlx.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/sqlx.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go","internal/engine/rules/go/orms/sqlx.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           }
         }
       }
