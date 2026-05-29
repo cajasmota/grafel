@@ -1,12 +1,15 @@
-// Package javascript_test — issue #2875 React Internals proving tests.
+// Package javascript_test — issue #2875/#2958 React Internals proving tests.
 //
 // Proves the three genuine React framework_specific idioms (lazy code-split,
 // suspense/error-boundary, portal) against the hand-written fixture
 // testdata/react_internals/AppShell.tsx. Each assertion is the proving artifact
 // for a coverage cell flipped in docs/coverage/registry.json["React Internals"]:
 //   - lazy_code_splitting     → react_lazy + lazy_module on the lazy wrapper.
+//     Issue #2958: also handles template-literal and
+//     computed specifiers (template → {*} sentinel;
+//     computed → react_lazy only, no lazy_module).
 //   - suspense_error_boundary → react_suspense on the boundary component +
-//                               react_error_boundary on the ErrorBoundary class.
+//     react_error_boundary on the ErrorBoundary class.
 //   - portal_recognition      → react_portal on the createPortal component.
 //
 // hooks / context_hoc are deliberately NOT asserted here — they are covered by
@@ -49,7 +52,7 @@ func TestIssue2875_ReactInternals(t *testing.T) {
 	ents := extractTSXFixture(t, "react_internals/AppShell.tsx")
 
 	// lazy_code_splitting — the lazy() wrapper carries react_lazy + the
-	// dynamic-import code-split target module.
+	// dynamic-import code-split target module (string-literal specifier).
 	settings := findByName(ents, "SettingsPanel")
 	if settings == nil {
 		t.Fatalf("SettingsPanel (lazy wrapper) not extracted; names: %v", entityNames(ents))
@@ -59,6 +62,32 @@ func TestIssue2875_ReactInternals(t *testing.T) {
 	}
 	if got := settings.Properties["lazy_module"]; got != "./SettingsPanel" {
 		t.Errorf("SettingsPanel: lazy_module=%q, want \"./SettingsPanel\"", got)
+	}
+
+	// Issue #2958 — template-literal specifier: DynamicPanel should carry
+	// react_lazy=true and lazy_module="./panels/{*}" (${…} normalised to {*}).
+	dynamic := findByName(ents, "DynamicPanel")
+	if dynamic == nil {
+		t.Fatalf("DynamicPanel (template-literal lazy) not extracted; names: %v", entityNames(ents))
+	}
+	if dynamic.Properties["react_lazy"] != "true" {
+		t.Errorf("DynamicPanel: react_lazy=%q, want \"true\"; props=%v", dynamic.Properties["react_lazy"], dynamic.Properties)
+	}
+	if got := dynamic.Properties["lazy_module"]; got != "./panels/{*}" {
+		t.Errorf("DynamicPanel: lazy_module=%q, want \"./panels/{*}\"", got)
+	}
+
+	// Issue #2958 — computed/unresolvable specifier: ComputedPanel should carry
+	// react_lazy=true (wrapper is still a code-split point) but NO lazy_module stamp.
+	computed := findByName(ents, "ComputedPanel")
+	if computed == nil {
+		t.Fatalf("ComputedPanel (computed-specifier lazy) not extracted; names: %v", entityNames(ents))
+	}
+	if computed.Properties["react_lazy"] != "true" {
+		t.Errorf("ComputedPanel: react_lazy=%q, want \"true\"; props=%v", computed.Properties["react_lazy"], computed.Properties)
+	}
+	if got, ok := computed.Properties["lazy_module"]; ok && got != "" {
+		t.Errorf("ComputedPanel: lazy_module=%q, want empty (unresolvable specifier should not be stamped)", got)
 	}
 
 	// suspense_error_boundary — AppShell renders <Suspense>.

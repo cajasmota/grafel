@@ -1508,13 +1508,20 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 			_ = inner
 			before := len(x.entities)
 			x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = <wrapper>", name), rels)
-			// Issue #2875 — React Internals/lazy_code_splitting: when the
-			// wrapper is React.lazy(() => import('mod')), decorate the entity
-			// with react_lazy + the code-split target module so the split point
-			// is queryable. lazyImportModule returns "" for non-lazy wrappers.
-			if mod := x.lazyImportModule(valueNode); mod != "" {
+			// Issue #2875/#2958 — React Internals/lazy_code_splitting: when the
+			// wrapper is React.lazy(() => import(specifier)), decorate the entity
+			// with react_lazy=true unconditionally (the wrapper is still a code-
+			// split point even when the specifier is unresolvable). Additionally
+			// stamp lazy_module only when the specifier is recoverable as a
+			// string or template literal (computed/call expressions → no stamp).
+			// lazyImportModule returns "" for non-lazy wrappers (calleeLeaf≠"lazy")
+			// AND for lazy wrappers with computed/unresolvable specifiers; we use
+			// isLazyWrapper to distinguish the two cases.
+			if x.isLazyWrapper(valueNode) {
 				x.stampLastEntityProp("react_lazy", "true")
-				x.stampLastEntityProp("lazy_module", mod)
+				if mod := x.lazyImportModule(valueNode); mod != "" {
+					x.stampLastEntityProp("lazy_module", mod)
+				}
 			}
 			// Issue #1748 — wrapper calls (forwardRef, memo, etc.) inside a
 			// function body are non-addressable; tag as local_scope.
