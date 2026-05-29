@@ -3951,6 +3951,88 @@ records:
           issues_implemented: ["2686", "3212"]
           verified_at: "2026-05-30"
 
+  lang.go.framework.kratos:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # kratos is proto/codegen-driven: the protoc-gen-go-http plugin
+          # generates a *_http.pb.go file per service whose
+          # RegisterXxxHTTPServer(s, srv) body wires verb calls
+          # (r.GET/POST/…("/path", _Svc_Method0_HTTP_Handler(srv))) against a
+          # router from s.Route(prefix). kratos.go's Extract scans the
+          # generated registration sites: reKratosRegister seeds the service
+          # SCOPE from RegisterXxxHTTPServer, reKratosRoute records the
+          # s.Route(prefix) handle (prefix resolved onto routes), reKratosVerb
+          # emits one endpoint per verb call. kratos.yaml provides detection
+          # markers only. full against the committed-codegen layout (proving
+          # fixture is generated-style *_http.pb.go); when only the .proto is
+          # present the generated file — and thus any registration site — is
+          # absent, an inherent limit of the proto-only layout.
+          status: full
+          symbols:
+            - file: internal/custom/golang/kratos.go
+              functions: [Extract]
+            - file: internal/engine/rules/go/frameworks/kratos.yaml
+          tests:
+            - file: internal/custom/golang/kratos_gozero_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # The verb call's second argument is the generated
+          # _Svc_Method<idx>_HTTP_Handler wrapper; kratos.go attributes it as
+          # the endpoint handler and recovers the underlying service method
+          # name (service_method property) via kratosMethodFromHandler. Static
+          # resolution from the generated AST shape, fixture-proven.
+          status: full
+          symbols:
+            - file: internal/custom/golang/kratos.go
+              functions: [Extract, kratosMethodFromHandler]
+          tests:
+            - file: internal/custom/golang/kratos_gozero_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
+  lang.go.framework.go-zero:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # go-zero is codegen-driven: goctl generates
+          # internal/handler/routes.go which registers routes via
+          # server.AddRoutes([]rest.Route{ {Method, Path, Handler}, … },
+          # rest.WithPrefix("/p")). go_zero.go's Extract scans each balanced
+          # AddRoutes(...) call (balancedArgs), seeds the server SCOPE,
+          # captures any rest.WithPrefix group prefix, and parses each leaf
+          # rest.Route struct literal (leafBraceBlocks) into an endpoint from
+          # its Method (http.Method* const or string literal) + Path fields.
+          # go_zero.yaml provides detection markers only. full against the
+          # committed-codegen layout (proving fixture is goctl-generated
+          # routes.go); when only the .api descriptor is present routes.go —
+          # and thus any rest.Route site — is absent, an inherent limit of the
+          # descriptor-only layout.
+          status: full
+          symbols:
+            - file: internal/custom/golang/go_zero.go
+              functions: [Extract, goZeroVerb, leafBraceBlocks]
+            - file: internal/engine/rules/go/frameworks/go_zero.yaml
+          tests:
+            - file: internal/custom/golang/kratos_gozero_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # The Handler field of each rest.Route literal (e.g.
+          # user.GetUserHandler(serverCtx)) is attributed as the endpoint
+          # handler via reGoZeroHandlerField (leading identifier/selector).
+          # Static resolution from the generated struct-literal shape,
+          # fixture-proven.
+          status: full
+          symbols:
+            - file: internal/custom/golang/go_zero.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/kratos_gozero_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
   lang.java.framework.spring-webflux:
     capabilities:
       Observability:
