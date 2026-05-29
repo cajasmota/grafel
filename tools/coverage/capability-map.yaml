@@ -2680,6 +2680,22 @@ records:
           verified_at: "2026-05-30"
 
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto, dto_direction=request|response) per DTO with
+          # its field list. Distinct from request_validation (which emits the rules):
+          # this emits the bound struct shapes. Dedicated end-to-end fixture proves
+          # the request-bind + response-serialise + struct-field case for this
+          # framework -> full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans gin-context files for
           # `binding:"..."` struct-tag rules on bound DTOs, validator.New()/
@@ -2960,6 +2976,22 @@ records:
           verified_at: "2026-05-30"
 
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto, dto_direction=request|response) per DTO with
+          # its field list. Distinct from request_validation (which emits the rules):
+          # this emits the bound struct shapes. Dedicated end-to-end fixture proves
+          # the request-bind + response-serialise + struct-field case for this
+          # framework -> full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans echo-context files for
           # `validate:"..."` struct-tag rules (go-playground), validator.New()/
@@ -3137,6 +3169,22 @@ records:
           verified_at: "2026-05-30"
 
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto, dto_direction=request|response) per DTO with
+          # its field list. Distinct from request_validation (which emits the rules):
+          # this emits the bound struct shapes. Dedicated end-to-end fixture proves
+          # the request-bind + response-serialise + struct-field case for this
+          # framework -> full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans fiber-context files for
           # `validate:"..."` struct-tag rules (go-playground), validator.New()/
@@ -3321,6 +3369,22 @@ records:
           verified_at: "2026-05-30"
 
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto, dto_direction=request|response) per DTO with
+          # its field list. Distinct from request_validation (which emits the rules):
+          # this emits the bound struct shapes. Dedicated end-to-end fixture proves
+          # the request-bind + response-serialise + struct-field case for this
+          # framework -> full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans chi-context files for
           # `validate:"..."` struct-tag rules (go-playground), validator.New()/
@@ -3494,6 +3558,22 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto, dto_direction=request|response) per DTO with
+          # its field list. Distinct from request_validation (which emits the rules):
+          # this emits the bound struct shapes. Dedicated end-to-end fixture proves
+          # the request-bind + response-serialise + struct-field case for this
+          # framework -> full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans gorilla-mux-attributed files for
           # `validate:`/`binding:` struct-tag rules on bound DTOs, validator.New()
@@ -3632,6 +3712,20 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans buffalo-attributed files for
           # `validate:`/`binding:` struct-tag rules on bound DTOs, validator.New()
@@ -3768,6 +3862,20 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # Revel binds request params positionally via controller-method signatures, not via validate:/binding: struct tags.
           # There is no struct-tag binding surface to extract, so the cell is
@@ -4921,6 +5029,20 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # fasthttp's RequestCtx exposes raw byte accessors only (no struct-tag
           # request binding), so there is no validate:/binding: tag surface to
@@ -5053,6 +5175,22 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto, dto_direction=request|response) per DTO with
+          # its field list. Distinct from request_validation (which emits the rules):
+          # this emits the bound struct shapes. Dedicated end-to-end fixture proves
+          # the request-bind + response-serialise + struct-field case for this
+          # framework -> full.
+          status: full
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans net-http-attributed files for
           # `validate:`/`binding:` struct-tag rules on bound DTOs, validator.New()
@@ -5221,6 +5359,20 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans beego-attributed files for
           # `validate:`/`binding:` struct-tag rules on bound DTOs, validator.New()
@@ -5387,6 +5539,20 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans iris-attributed files for
           # `validate:`/`binding:` struct-tag rules on bound DTOs, validator.New()
@@ -5556,6 +5722,20 @@ records:
             - file: internal/custom/golang/observability_test.go
           verified_at: "2026-05-30"
       Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
         request_validation:
           # validation.go (custom_go_validation) scans hertz-attributed files for
           # `validate:`/`binding:` struct-tag rules on bound DTOs, validator.New()
@@ -5649,6 +5829,21 @@ records:
             - file: internal/custom/golang/hertz_huma_test.go
           issues_implemented: ["2686", "3212"]
           verified_at: "2026-05-30"
+      Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.kratos:
     capabilities:
@@ -5734,6 +5929,21 @@ records:
             - file: internal/custom/golang/kratos_gozero_test.go
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
+      Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.go-zero:
     capabilities:
@@ -5818,6 +6028,21 @@ records:
           tests:
             - file: internal/custom/golang/kratos_gozero_test.go
           issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+      Validation:
+        dto_extraction:
+          # dto.go (custom_go_dto) resolves request-bind / response-
+          # serialise call sites to their file-local struct models and emits one
+          # SCOPE.Schema (subtype=dto) per DTO with its field list. Heuristic same-
+          # file type resolution, no cross-file/import resolution and no per-framework
+          # proving fixture for this framework -> partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/dto.go
+              functions: [Extract, catalogStructs, resolveVarType, detectDtoFramework]
+          tests:
+            - file: internal/custom/golang/dto_test.go
+          issues_implemented: ["3255"]
           verified_at: "2026-05-30"
 
   lang.java.framework.spring-webflux:

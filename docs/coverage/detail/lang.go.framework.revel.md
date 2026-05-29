@@ -29,7 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3255) | `internal/custom/golang/dto.go`<br>`internal/custom/golang/dto_test.go` | — |
 | Request validation | — `not_applicable` | `2026-05-29` | — | — | No struct-tag request binding: fasthttp's RequestCtx exposes raw byte accessors only and Revel binds params positionally via controller-method signatures, so there is no validate:/binding: tag surface to extract. |
 
 ### Middleware

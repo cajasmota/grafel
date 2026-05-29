@@ -10721,8 +10721,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -10932,8 +10934,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -11143,8 +11147,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -11352,8 +11358,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -11560,8 +11568,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "not_applicable",
@@ -11769,8 +11779,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -12060,8 +12072,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -12265,8 +12279,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "missing",
@@ -12675,8 +12691,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -12888,8 +12906,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -13099,8 +13119,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "missing",
@@ -13306,8 +13328,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -13515,8 +13539,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "missing",
@@ -13721,8 +13747,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "partial",
@@ -13931,8 +13959,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dto.go","internal/custom/golang/dto_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
             "status": "not_applicable",
