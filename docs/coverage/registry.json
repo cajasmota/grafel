@@ -5732,7 +5732,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_csharp.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -5756,7 +5757,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -5765,7 +5767,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -5807,7 +5810,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_csharp.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {

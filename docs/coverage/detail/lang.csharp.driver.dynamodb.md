@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/csharp/orms/dynamodb_csharp.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-29` | 3262 | `internal/engine/rules/csharp/orms/dynamodb_csharp.yaml` | — |
 
 ### Migrations
 
