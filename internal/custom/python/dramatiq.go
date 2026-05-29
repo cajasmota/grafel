@@ -51,6 +51,18 @@ var (
 	// Retry policy: max_retries=N inside @dramatiq.actor(...) decorator args.
 	dmActorMaxRetriesRe = regexp.MustCompile(
 		`@dramatiq\.actor\s*\([^)]*max_retries\s*=\s*(\d+)`)
+
+	// Routing — queue_name on the @dramatiq.actor(...) decorator, paired with
+	// the actor function it decorates. Captures (1) queue name, (2) func name.
+	// Issue #3193 (task_routing).
+	dmActorQueueNameRe = regexp.MustCompile(
+		`(?m)@dramatiq\.actor\s*\([^)]*queue_name\s*=\s*["']([^"']+)["'][^)]*\)\s*\n(?:\s*#[^\n]*\n)*\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+
+	// Routing — explicit queue override at dispatch:
+	// actor.send_with_options(queue_name="..."). Captures (1) actor ref,
+	// (2) queue name. Issue #3193 (task_routing).
+	dmSendQueueNameRe = regexp.MustCompile(
+		`(?m)(\w+)\.send_with_options\s*\((?:[^()]|\([^()]*\))*?queue_name\s*=\s*["']([^"']+)["']`)
 )
 
 func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -136,6 +148,42 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"pattern_type": "retry_policy",
 				"max_retries":  maxRetries,
 				"provenance":   "INFERRED_FROM_DRAMATIQ_ACTOR_MAX_RETRIES",
+			}))
+	}
+
+	// 6. Routing: queue_name on @dramatiq.actor(...) decorator — maps a queue
+	//    to the actor that consumes it. Issue #3193 (task_routing).
+	for _, m := range dmActorQueueNameRe.FindAllStringSubmatchIndex(source, -1) {
+		queueName := source[m[2]:m[3]]
+		funcName := source[m[4]:m[5]]
+		line := lineOf(source, m[0])
+		out = append(out, entity(funcName, "SCOPE.Pattern", "task_routing", file.Path, line,
+			map[string]string{
+				"framework":    "dramatiq",
+				"pattern_type": "actor_queue",
+				"queue_name":   queueName,
+				"actor":        funcName,
+				"task_id":      "task:dramatiq:" + funcName,
+				"edge_kind":    "ROUTES_TO",
+				"provenance":   "INFERRED_FROM_DRAMATIQ_ACTOR_QUEUE_NAME",
+			}))
+	}
+
+	// 7. Routing: explicit queue override at dispatch via
+	//    actor.send_with_options(queue_name="..."). Issue #3193 (task_routing).
+	for _, m := range dmSendQueueNameRe.FindAllStringSubmatchIndex(source, -1) {
+		actorRef := source[m[2]:m[3]]
+		queueName := source[m[4]:m[5]]
+		line := lineOf(source, m[0])
+		out = append(out, entity(actorRef+".send_with_options", "SCOPE.Pattern", "task_routing", file.Path, line,
+			map[string]string{
+				"framework":    "dramatiq",
+				"pattern_type": "send_queue_override",
+				"queue_name":   queueName,
+				"actor_ref":    actorRef,
+				"task_id":      "task:dramatiq:" + actorRef,
+				"edge_kind":    "ROUTES_TO",
+				"provenance":   "INFERRED_FROM_DRAMATIQ_SEND_WITH_OPTIONS_QUEUE_NAME",
 			}))
 	}
 
