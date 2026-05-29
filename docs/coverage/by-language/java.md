@@ -15,10 +15,10 @@ Back to [summary](../summary.md).
 | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [Apache Struts](../detail/lang.java.framework.struts.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ❌ 2/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
+| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ⚠️ 0/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [Helidon](../detail/lang.java.framework.helidon.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | ❌ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
+| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | ⚠️ 0/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [Micronaut](../detail/lang.java.framework.micronaut.md) | ❌ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [Quarkus](../detail/lang.java.framework.quarkus.md) | ❌ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |

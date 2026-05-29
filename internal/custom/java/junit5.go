@@ -8,9 +8,17 @@ import (
 // JUnit 5 custom extractor: test methods, nested classes, lifecycle, extensions.
 // Ported from: junit5_extractor.py
 
+// junit5Frameworks lists all framework identifiers for which the JUnit 5
+// extractor is active. Jakarta EE and MicroProfile projects typically use
+// JUnit 5 (via Arquillian or plain JUnit) as their test runner — enabling
+// tests_linkage for those records (#2996).
 var junit5Frameworks = map[string]bool{
 	"junit5": true, "junit-jupiter": true, "junit_jupiter": true,
 	"junit_5": true, "junit 5": true,
+	// Jakarta EE and MicroProfile use JUnit 5 for tests_linkage (#2996).
+	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
+	"microprofile": true, "eclipse-microprofile": true,
+	"open_liberty": true, "payara": true, "helidon": true,
 }
 
 var (

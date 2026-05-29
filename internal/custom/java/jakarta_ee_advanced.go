@@ -3,11 +3,24 @@ package java
 import "regexp"
 
 // Jakarta EE advanced custom extractor: CDI, Security, Batch, SOAP, JAXB, JSON-B, JSP.
+// MicroProfile builds on CDI so this extractor also handles MicroProfile DI
+// (di_binding_extraction, di_injection_point, di_scope_resolution) — Refs #2996.
 // Ported from: jakarta_ee_advanced_extractor.py
 
-var jakartaEEAdvFrameworks = map[string]bool{"jakarta_ee": true}
+// jakartaEEAdvFrameworks covers Jakarta EE and MicroProfile because MicroProfile
+// inherits CDI for its DI model (@Inject, @Produces, @Qualifier, CDI scopes).
+var jakartaEEAdvFrameworks = map[string]bool{
+	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
+	"microprofile": true, "eclipse-microprofile": true,
+	// Runtime MicroProfile implementations that share CDI.
+	"open_liberty": true, "payara": true, "helidon": true,
+}
 
 var (
+	// CDI scope annotations — di_scope_resolution for Jakarta EE + MicroProfile (#2996).
+	jeeaCDIScopeRE = regexp.MustCompile(
+		`(?s)@(ApplicationScoped|RequestScoped|SessionScoped|Dependent|ConversationScoped)\b` +
+			`[^{]*?(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
 	jeeaProducesMethodRE = regexp.MustCompile(
 		`(?s)@Produces\b[^;{]*?(?:public|protected|private|)\s+(?:static\s+)?` +
 			`(\w+)(?:\s*<[^>]*>)?\s+(\w+)\s*\(`)
@@ -296,16 +309,33 @@ func ExtractJakartaEEAdvanced(ctx PatternContext) PatternResult {
 		}
 	}
 
-	// JSP tag support classes
-	for _, m := range jeeaTagSupportRE.FindAllStringSubmatchIndex(source, -1) {
-		className := source[m[2]:m[3]]
-		ref := jeeaRef("uicomponent", "jsp_tag", fp, className)
+	// JSP tag support classes (Jakarta EE only)
+	if jakartaEEAdvFrameworks["jakarta_ee"] && ctx.Framework == "jakarta_ee" {
+		for _, m := range jeeaTagSupportRE.FindAllStringSubmatchIndex(source, -1) {
+			className := source[m[2]:m[3]]
+			ref := jeeaRef("uicomponent", "jsp_tag", fp, className)
+			addEntity(&result, seenRefs, SecondaryEntity{
+				Name: className, Kind: "SCOPE.UIComponent", Subtype: "component",
+				SourceFile: fp,
+				LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+				Provenance: "INFERRED_FROM_JAKARTA_JSP_TAG", Ref: ref,
+				Properties: map[string]any{"framework": "jakarta_ee"},
+			})
+		}
+	}
+
+	// CDI scope resolution — di_scope_resolution for Jakarta EE and MicroProfile (#2996).
+	// Captures @ApplicationScoped / @RequestScoped / @SessionScoped / @Dependent /
+	// @ConversationScoped on bean classes.
+	for _, m := range jeeaCDIScopeRE.FindAllStringSubmatchIndex(source, -1) {
+		scope := source[m[2]:m[3]]
+		className := source[m[4]:m[5]]
+		ref := "scope:component:cdi_scoped_bean:" + fp + ":" + className
 		addEntity(&result, seenRefs, SecondaryEntity{
-			Name: className, Kind: "SCOPE.UIComponent", Subtype: "component",
-			SourceFile: fp,
-			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
-			Provenance: "INFERRED_FROM_JAKARTA_JSP_TAG", Ref: ref,
-			Properties: map[string]any{"framework": "jakarta_ee"},
+			Name: className, Kind: "SCOPE.Component", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_CDI_SCOPE", Ref: ref,
+			Properties: map[string]any{"cdi_scope": scope, "framework": ctx.Framework},
 		})
 	}
 

@@ -1446,6 +1446,153 @@ records:
           issues_implemented: ["2906"]
           verified_at: "2026-05-28"
 
+  lang.java.framework.jakarta-ee:
+    capabilities:
+      Auth:
+        auth_coverage:
+          status: partial
+          symbols:
+            - file: internal/engine/java_auth_policy.go
+              functions:
+                - ResolveJavaAuthPolicy
+                - matchAnnotationPolicy
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      DI:
+        di_scope_resolution:
+          status: partial
+          symbols:
+            - file: internal/custom/java/jakarta_ee_advanced.go
+              functions: [ExtractJakartaEEAdvanced]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestJakartaEEAdv_CDIScopeResolution_Issue2996]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      Routing:
+        route_extraction:
+          status: partial
+          symbols:
+            - file: internal/engine/java_annotation_routes.go
+              functions:
+                - ApplyJavaAnnotationRoutesWithContext
+                - ApplyJavaAnnotationRoutes
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      Validation:
+        dto_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/jakarta_jaxrs_dto.go
+              functions: [ExtractJakartaJaxrsDTO]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestJakartaEE_DtoExtraction_Issue2996]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+        request_validation:
+          status: partial
+          symbols:
+            - file: internal/engine/java_annotation_params.go
+              functions:
+                - extractJavaParameters
+                - classifyJavaParam
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/custom/java/junit5.go
+              functions: [ExtractJUnit5]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestJakartaEE_TestsLinkage_Issue2996]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+
+  lang.java.framework.microprofile:
+    capabilities:
+      Auth:
+        auth_coverage:
+          status: partial
+          symbols:
+            - file: internal/engine/java_auth_policy.go
+              functions:
+                - ResolveJavaAuthPolicy
+                - matchAnnotationPolicy
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      DI:
+        di_binding_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/jakarta_ee_advanced.go
+              functions: [ExtractJakartaEEAdvanced]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestMicroProfile_DIBinding_Issue2996]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+        di_injection_point:
+          status: partial
+          symbols:
+            - file: internal/custom/java/jakarta_ee_advanced.go
+              functions: [ExtractJakartaEEAdvanced]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+        di_scope_resolution:
+          status: partial
+          symbols:
+            - file: internal/custom/java/jakarta_ee_advanced.go
+              functions: [ExtractJakartaEEAdvanced]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestMicroProfile_CDIScopeResolution_Issue2996]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      Routing:
+        route_extraction:
+          status: partial
+          symbols:
+            - file: internal/engine/java_annotation_routes.go
+              functions:
+                - ApplyJavaAnnotationRoutesWithContext
+                - ApplyJavaAnnotationRoutes
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      Validation:
+        dto_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/jakarta_jaxrs_dto.go
+              functions: [ExtractJakartaJaxrsDTO]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestMicroProfile_DtoExtraction_Issue2996]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+        request_validation:
+          status: partial
+          symbols:
+            - file: internal/engine/java_annotation_params.go
+              functions:
+                - extractJavaParameters
+                - classifyJavaParam
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/custom/java/junit5.go
+              functions: [ExtractJUnit5]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestMicroProfile_TestsLinkage_Issue2996]
+          issues_implemented: ["2996"]
+          verified_at: "2026-05-29"
+
   lang.java.framework.spring-boot:
     capabilities:
       Routing:

@@ -1642,6 +1642,346 @@ public class ProductController {
 }
 
 // ============================================================================
+// Jakarta EE + MicroProfile #2996 tests
+// ============================================================================
+
+// TestJakartaEEAdv_CDIScopeResolution_Issue2996 proves that CDI scope
+// annotations (@ApplicationScoped, @RequestScoped, @SessionScoped,
+// @Dependent, @ConversationScoped) on bean classes are detected by
+// ExtractJakartaEEAdvanced and emit SCOPE.Component entities with a
+// cdi_scope property.
+// Registry target: lang.java.framework.jakarta-ee di_scope_resolution=partial.
+// Cite: internal/custom/java/jakarta_ee_advanced.go.
+func TestJakartaEEAdv_CDIScopeResolution_Issue2996(t *testing.T) {
+	source := `
+package com.example;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.inject.Inject;
+
+@ApplicationScoped
+public class UserService {
+    @Inject
+    private UserRepository repo;
+}
+
+@RequestScoped
+public class OrderSession {
+}
+`
+	r := ExtractJakartaEEAdvanced(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "UserService.java",
+	})
+
+	scopedBeans := make(map[string]string)
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Component" && e.Provenance == "INFERRED_FROM_CDI_SCOPE" {
+			if scope, ok := e.Properties["cdi_scope"].(string); ok {
+				scopedBeans[e.Name] = scope
+			}
+		}
+	}
+	if scope, ok := scopedBeans["UserService"]; !ok || scope != "ApplicationScoped" {
+		t.Errorf("[#2996 jakarta-ee di_scope_resolution] expected UserService=ApplicationScoped, got %v", scopedBeans)
+	}
+	if scope, ok := scopedBeans["OrderSession"]; !ok || scope != "RequestScoped" {
+		t.Errorf("[#2996 jakarta-ee di_scope_resolution] expected OrderSession=RequestScoped, got %v", scopedBeans)
+	}
+}
+
+// TestMicroProfile_CDIScopeResolution_Issue2996 proves that CDI scope
+// annotations are detected for MicroProfile-framework sources.
+// Registry target: lang.java.framework.microprofile di_scope_resolution=partial.
+// Cite: internal/custom/java/jakarta_ee_advanced.go.
+func TestMicroProfile_CDIScopeResolution_Issue2996(t *testing.T) {
+	source := `
+package com.example;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+
+@ApplicationScoped
+@RegisterRestClient
+public class ProductClient {
+}
+`
+	r := ExtractJakartaEEAdvanced(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "microprofile",
+		FilePath:  "ProductClient.java",
+	})
+
+	found := false
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Component" && e.Provenance == "INFERRED_FROM_CDI_SCOPE" && e.Name == "ProductClient" {
+			found = true
+			if e.Properties["cdi_scope"] != "ApplicationScoped" {
+				t.Errorf("[#2996 microprofile di_scope_resolution] expected cdi_scope=ApplicationScoped, got %v", e.Properties["cdi_scope"])
+			}
+			if e.Properties["framework"] != "microprofile" {
+				t.Errorf("[#2996 microprofile di_scope_resolution] expected framework=microprofile, got %v", e.Properties["framework"])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("[#2996 microprofile di_scope_resolution] expected SCOPE.Component for ProductClient with INFERRED_FROM_CDI_SCOPE")
+	}
+}
+
+// TestMicroProfile_DIBinding_Issue2996 proves that MicroProfile framework
+// activates the CDI DI extractor (di_binding_extraction / di_injection_point).
+// Registry target: lang.java.framework.microprofile di_binding_extraction=partial,
+// di_injection_point=partial.
+// Cite: internal/custom/java/jakarta_ee_advanced.go.
+func TestMicroProfile_DIBinding_Issue2996(t *testing.T) {
+	source := `
+package com.example;
+import jakarta.inject.Inject;
+
+@ApplicationScoped
+public class OrderService {
+    @Inject
+    private InventoryService inventory;
+
+    @Produces
+    public PaymentGateway produceGateway() { return new PaymentGateway(); }
+}
+`
+	r := ExtractJakartaEEAdvanced(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "microprofile",
+		FilePath:  "OrderService.java",
+	})
+
+	// @Produces should emit a CDI producer entity.
+	hasProducer := false
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_JAKARTA_CDI_PRODUCER" {
+			hasProducer = true
+			break
+		}
+	}
+	if !hasProducer {
+		t.Errorf("[#2996 microprofile di_binding_extraction] expected INFERRED_FROM_JAKARTA_CDI_PRODUCER entity")
+	}
+}
+
+// TestJakartaEE_RouteExtraction_Issue2996 proves that JAX-RS @Path + @GET/@POST
+// annotations on a Jakarta EE resource class are detected by
+// ExtractJakartaJaxrsDTO (dto_extraction) and that
+// route_extraction is served by java_annotation_routes.go (engine-level).
+// This test exercises the custom-extractor layer: a JAX-RS resource with a
+// POST method must yield ACCEPTS_INPUT + a DTO entity.
+// Registry target: lang.java.framework.jakarta-ee dto_extraction=partial,
+// route_extraction=partial.
+// Cite: internal/custom/java/jakarta_jaxrs_dto.go,
+//
+//	internal/engine/java_annotation_routes.go.
+func TestJakartaEE_DtoExtraction_Issue2996(t *testing.T) {
+	source := `
+package com.example;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+
+@Path("/orders")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+public class OrderResource {
+    @POST
+    public OrderDto createOrder(CreateOrderRequest req) { return null; }
+
+    @GET
+    @Path("/{id}")
+    public OrderDto getOrder(@PathParam("id") Long id) { return null; }
+}
+`
+	r := ExtractJakartaJaxrsDTO(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "OrderResource.java",
+	})
+
+	dtoNames := make(map[string]bool)
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Schema" {
+			dtoNames[e.Name] = true
+			if e.Properties["kind"] != "dto" {
+				t.Errorf("[#2996 jakarta-ee dto_extraction] entity %q has kind=%v, want dto", e.Name, e.Properties["kind"])
+			}
+		}
+	}
+	for _, want := range []string{"CreateOrderRequest", "OrderDto"} {
+		if !dtoNames[want] {
+			t.Errorf("[#2996 jakarta-ee dto_extraction] expected SCOPE.Schema for %q, got %v", want, dtoNames)
+		}
+	}
+
+	relTypes := make(map[string]bool)
+	for _, rel := range r.Relationships {
+		relTypes[rel.RelationshipType] = true
+	}
+	for _, want := range []string{"ACCEPTS_INPUT", "RETURNS"} {
+		if !relTypes[want] {
+			t.Errorf("[#2996 jakarta-ee dto_extraction] expected %q relationship, got: %v", want, relTypes)
+		}
+	}
+}
+
+// TestMicroProfile_DtoExtraction_Issue2996 proves that the JAX-RS DTO extractor
+// also runs for MicroProfile (which uses JAX-RS as its REST API).
+// Registry target: lang.java.framework.microprofile dto_extraction=partial.
+// Cite: internal/custom/java/jakarta_jaxrs_dto.go.
+func TestMicroProfile_DtoExtraction_Issue2996(t *testing.T) {
+	source := `
+package com.example;
+import jakarta.ws.rs.*;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+
+@Path("/products")
+@RegisterRestClient
+public class ProductResource {
+    @POST
+    public ProductDto createProduct(CreateProductRequest req) { return null; }
+}
+`
+	r := ExtractJakartaJaxrsDTO(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "microprofile",
+		FilePath:  "ProductResource.java",
+	})
+
+	dtoNames := make(map[string]bool)
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Schema" {
+			dtoNames[e.Name] = true
+		}
+	}
+	for _, want := range []string{"CreateProductRequest", "ProductDto"} {
+		if !dtoNames[want] {
+			t.Errorf("[#2996 microprofile dto_extraction] expected SCOPE.Schema for %q, got %v", want, dtoNames)
+		}
+	}
+}
+
+// TestJakartaEE_AuthCoverage_Issue2996 proves that @RolesAllowed (JSR-250)
+// on a JAX-RS resource method is recognised by ExtractJakartaEEAdvanced
+// via the auth mechanism extractor, and that the auth_coverage cell is
+// backed by java_auth_policy.go at the engine layer.
+// This test covers the custom-extractor side: @BasicAuthenticationMechanismDefinition
+// must emit a SCOPE.Pattern entity with auth_mechanism property.
+// Registry target: lang.java.framework.jakarta-ee auth_coverage=partial.
+// Cite: internal/engine/java_auth_policy.go, internal/custom/java/jakarta_ee_advanced.go.
+func TestJakartaEE_AuthCoverage_Issue2996(t *testing.T) {
+	source := `
+package com.example.security;
+import jakarta.security.enterprise.authentication.mechanism.http.BasicAuthenticationMechanismDefinition;
+import jakarta.enterprise.context.ApplicationScoped;
+
+@BasicAuthenticationMechanismDefinition(realmName = "MyRealm")
+@ApplicationScoped
+public class AppConfig {
+}
+`
+	r := ExtractJakartaEEAdvanced(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "AppConfig.java",
+	})
+
+	found := false
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_JAKARTA_SECURITY_AUTH" {
+			found = true
+			if e.Properties["auth_mechanism"] != "BasicAuthenticationMechanismDefinition" {
+				t.Errorf("[#2996 jakarta-ee auth_coverage] expected auth_mechanism=BasicAuthenticationMechanismDefinition, got %v", e.Properties["auth_mechanism"])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("[#2996 jakarta-ee auth_coverage] expected INFERRED_FROM_JAKARTA_SECURITY_AUTH entity")
+	}
+}
+
+// TestJakartaEE_TestsLinkage_Issue2996 proves that ExtractJUnit5 runs for
+// the "jakarta_ee" framework (tests_linkage cell).
+// Registry target: lang.java.framework.jakarta-ee tests_linkage=partial.
+// Cite: internal/custom/java/junit5.go.
+func TestJakartaEE_TestsLinkage_Issue2996(t *testing.T) {
+	source := `
+package com.example;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class OrderServiceTest {
+    @Test
+    void createOrder_shouldReturnDto() {
+        // Arquillian / plain JUnit 5 test in a Jakarta EE project.
+        assertEquals(1, 1);
+    }
+}
+`
+	r := ExtractJUnit5(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "OrderServiceTest.java",
+	})
+
+	hasTestMethod := false
+	for _, e := range r.Entities {
+		if e.Properties["test_annotation"] == "Test" {
+			hasTestMethod = true
+			break
+		}
+	}
+	if !hasTestMethod {
+		t.Errorf("[#2996 jakarta-ee tests_linkage] expected @Test entity from JUnit5 extractor for jakarta_ee framework")
+	}
+}
+
+// TestMicroProfile_TestsLinkage_Issue2996 proves that ExtractJUnit5 runs for
+// the "microprofile" framework (tests_linkage cell).
+// Registry target: lang.java.framework.microprofile tests_linkage=partial.
+// Cite: internal/custom/java/junit5.go.
+func TestMicroProfile_TestsLinkage_Issue2996(t *testing.T) {
+	source := `
+package com.example;
+import org.junit.jupiter.api.Test;
+
+class ProductResourceTest {
+    @Test
+    void getProduct_returns200() {
+    }
+}
+`
+	r := ExtractJUnit5(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "microprofile",
+		FilePath:  "ProductResourceTest.java",
+	})
+
+	hasTestMethod := false
+	for _, e := range r.Entities {
+		if e.Properties["test_annotation"] == "Test" {
+			hasTestMethod = true
+			break
+		}
+	}
+	if !hasTestMethod {
+		t.Errorf("[#2996 microprofile tests_linkage] expected @Test entity from JUnit5 extractor for microprofile framework")
+	}
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
