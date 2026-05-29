@@ -46,6 +46,30 @@ var (
 	rqImportRe = regexp.MustCompile(
 		`(?m)(?:from\s+rq\b|import\s+rq\b)`,
 	)
+
+	// Broker binding: Redis connection used as RQ's broker — Issue #3074.
+	// Captures forms:
+	//   conn = Redis(host="localhost", port=6379)
+	//   Redis(host="redis", port=6379, db=0)
+	//   StrictRedis(host=..., port=...)
+	//   from_url("redis://...")
+	rqRedisConnRe = regexp.MustCompile(
+		`(?m)(?:StrictRedis|Redis)\s*\(\s*(?:host\s*=\s*["']([^"']+)["']|url\s*=\s*["']([^"']+)["'])`)
+	rqRedisFromURLRe = regexp.MustCompile(
+		`(?m)(?:StrictRedis|Redis)\.from_url\s*\(\s*["']([^"']+)["']`)
+
+	// Retry policy: Retry(max=N) or job.retry(max=N) — Issue #3074.
+	rqRetryRe = regexp.MustCompile(
+		`(?m)(?:Retry|retry)\s*\(\s*max\s*=\s*(\d+)`)
+
+	// Schedule extraction: scheduler.enqueue_at / enqueue_in / cron — Issue #3074.
+	// rq-scheduler patterns.
+	rqScheduleEnqueueAtRe = regexp.MustCompile(
+		`(?m)(?:\w+)\.enqueue_at\s*\(`)
+	rqScheduleEnqueueInRe = regexp.MustCompile(
+		`(?m)(?:\w+)\.enqueue_in\s*\(`)
+	rqScheduleCronRe = regexp.MustCompile(
+		`(?m)(?:\w+)\.cron\s*\(\s*["']([^"']+)["']`)
 )
 
 func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -134,6 +158,90 @@ func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 					"provenance":   "INFERRED_FROM_RQ_WORKER",
 				}))
 		}
+	}
+
+	// 5. Broker binding: Redis(...) / StrictRedis(...) connection — Issue #3074.
+	// RQ uses Redis directly as both broker and result store; we detect the
+	// connection instantiation and emit a broker_binding Config entity.
+	if hasRQImport {
+		brokerEmitted := false
+		if m := rqRedisFromURLRe.FindStringSubmatchIndex(source); m != nil {
+			redisURL := source[m[2]:m[3]]
+			line := lineOf(source, m[0])
+			out = append(out, entity("rq.redis_conn", "SCOPE.Config", "broker_binding", file.Path, line,
+				map[string]string{
+					"framework":    "rq",
+					"pattern_type": "broker_binding",
+					"redis_url":    redisURL,
+					"provenance":   "INFERRED_FROM_RQ_REDIS_FROM_URL",
+				}))
+			brokerEmitted = true
+		}
+		if !brokerEmitted {
+			if m := rqRedisConnRe.FindStringSubmatchIndex(source); m != nil {
+				host := ""
+				if m[2] != -1 {
+					host = source[m[2]:m[3]]
+				} else if m[4] != -1 {
+					host = source[m[4]:m[5]]
+				}
+				line := lineOf(source, m[0])
+				out = append(out, entity("rq.redis_conn", "SCOPE.Config", "broker_binding", file.Path, line,
+					map[string]string{
+						"framework":    "rq",
+						"pattern_type": "broker_binding",
+						"redis_host":   host,
+						"provenance":   "INFERRED_FROM_RQ_REDIS_CONN",
+					}))
+			}
+		}
+	}
+
+	// 6. Retry policy: Retry(max=N) — Issue #3074.
+	for _, m := range rqRetryRe.FindAllStringSubmatchIndex(source, -1) {
+		maxRetries := source[m[2]:m[3]]
+		line := lineOf(source, m[0])
+		out = append(out, entity("rq.retry_policy", "SCOPE.Config", "retry_policy", file.Path, line,
+			map[string]string{
+				"framework":    "rq",
+				"pattern_type": "retry_policy",
+				"max_retries":  maxRetries,
+				"provenance":   "INFERRED_FROM_RQ_RETRY",
+			}))
+	}
+
+	// 7. Schedule extraction: rq-scheduler enqueue_at / enqueue_in / cron — Issue #3074.
+	for _, m := range rqScheduleEnqueueAtRe.FindAllStringSubmatchIndex(source, -1) {
+		line := lineOf(source, m[0])
+		out = append(out, entity("rq.schedule_enqueue_at", "SCOPE.Pattern", "scheduled_job", file.Path, line,
+			map[string]string{
+				"framework":     "rq",
+				"pattern_type":  "schedule_extraction",
+				"schedule_type": "enqueue_at",
+				"provenance":    "INFERRED_FROM_RQ_ENQUEUE_AT",
+			}))
+	}
+	for _, m := range rqScheduleEnqueueInRe.FindAllStringSubmatchIndex(source, -1) {
+		line := lineOf(source, m[0])
+		out = append(out, entity("rq.schedule_enqueue_in", "SCOPE.Pattern", "scheduled_job", file.Path, line,
+			map[string]string{
+				"framework":     "rq",
+				"pattern_type":  "schedule_extraction",
+				"schedule_type": "enqueue_in",
+				"provenance":    "INFERRED_FROM_RQ_ENQUEUE_IN",
+			}))
+	}
+	for _, m := range rqScheduleCronRe.FindAllStringSubmatchIndex(source, -1) {
+		cronExpr := source[m[2]:m[3]]
+		line := lineOf(source, m[0])
+		out = append(out, entity("rq.schedule_cron("+cronExpr+")", "SCOPE.Pattern", "scheduled_job", file.Path, line,
+			map[string]string{
+				"framework":     "rq",
+				"pattern_type":  "schedule_extraction",
+				"schedule_type": "cron",
+				"cron_expr":     cronExpr,
+				"provenance":    "INFERRED_FROM_RQ_CRON",
+			}))
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(out)))

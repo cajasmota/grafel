@@ -41,6 +41,16 @@ var (
 	dmBareActorRe = regexp.MustCompile(
 		`(?m)^@actor\s*\n`,
 	)
+
+	// Broker binding: dramatiq.set_broker(SomeBroker(...)) or dramatiq.set_broker(var)
+	// Captures the first identifier passed (broker class or variable).
+	// Issue #3074.
+	dmSetBrokerRe = regexp.MustCompile(
+		`(?m)dramatiq\.set_broker\s*\(\s*([A-Za-z_][\w.]*)`)
+
+	// Retry policy: max_retries=N inside @dramatiq.actor(...) decorator args.
+	dmActorMaxRetriesRe = regexp.MustCompile(
+		`@dramatiq\.actor\s*\([^)]*max_retries\s*=\s*(\d+)`)
 )
 
 func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -100,6 +110,32 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"task_id":      "task:dramatiq:" + actorRef,
 				"edge_kind":    "PRODUCES",
 				"provenance":   "INFERRED_FROM_DRAMATIQ_SEND_WITH_OPTIONS",
+			}))
+	}
+
+	// 4. Broker binding: dramatiq.set_broker(SomeBroker(...)) — Issue #3074.
+	if m := dmSetBrokerRe.FindStringSubmatchIndex(source); m != nil {
+		brokerClass := source[m[2]:m[3]]
+		line := lineOf(source, m[0])
+		out = append(out, entity("dramatiq.broker", "SCOPE.Config", "broker_binding", file.Path, line,
+			map[string]string{
+				"framework":    "dramatiq",
+				"pattern_type": "broker_binding",
+				"broker_class": brokerClass,
+				"provenance":   "INFERRED_FROM_DRAMATIQ_SET_BROKER",
+			}))
+	}
+
+	// 5. Retry policy: @dramatiq.actor(max_retries=N) — Issue #3074.
+	for _, m := range dmActorMaxRetriesRe.FindAllStringSubmatchIndex(source, -1) {
+		maxRetries := source[m[2]:m[3]]
+		line := lineOf(source, m[0])
+		out = append(out, entity("dramatiq.retry_policy", "SCOPE.Config", "retry_policy", file.Path, line,
+			map[string]string{
+				"framework":    "dramatiq",
+				"pattern_type": "retry_policy",
+				"max_retries":  maxRetries,
+				"provenance":   "INFERRED_FROM_DRAMATIQ_ACTOR_MAX_RETRIES",
 			}))
 	}
 

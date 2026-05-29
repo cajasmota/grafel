@@ -33853,14 +33853,18 @@
         },
         "Broker": {
           "broker_binding": {
-            "status": "missing",
-            "issue": "#2982-B-build",
-            "notes": "No broker-URL extraction implemented yet; requires parsing CELERY_BROKER_URL / broker= constructor arg"
+            "status": "full",
+            "cites": ["internal/custom/python/broker_binding_test.go","internal/custom/python/celery.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "notes": "No broker-URL extraction implemented yet; requires parsing CELERY_BROKER_URL / broker= constructor arg",
+            "verified_at": "2026-05-29"
           },
           "result_backend_binding": {
-            "status": "missing",
-            "issue": "#2982-B-build",
-            "notes": "No result-backend extraction implemented yet; requires parsing CELERY_RESULT_BACKEND / backend= constructor arg"
+            "status": "full",
+            "cites": ["internal/custom/python/broker_binding_test.go","internal/custom/python/celery.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "notes": "No result-backend extraction implemented yet; requires parsing CELERY_RESULT_BACKEND / backend= constructor arg",
+            "verified_at": "2026-05-29"
           }
         },
         "Reliability": {
@@ -34748,24 +34752,30 @@
         },
         "Schedule": {
           "schedule_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2983"
+            "status": "partial",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "notes": "django-dramatiq periodiq/APScheduler integration: periodic task declarations via @dramatiq.actor + periodiq.cron are detectable via the @periodiq.cron decorator pattern but are not yet extracted by the dramatiq extractor. Partial because basic actor-based scheduling is not modelled; only per-actor retry intervals."
           }
         },
         "Broker": {
           "broker_binding": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2983"
+            "status": "full",
+            "cites": ["internal/custom/python/broker_binding_test.go","internal/custom/python/dramatiq.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "verified_at": "2026-05-29"
           },
           "result_backend_binding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "notes": "dramatiq has no result_backend concept; task results are stored via middleware (e.g. django-dramatiq result backend), not a single broker URL"
           }
         },
         "Reliability": {
           "retry_policy_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2983"
+            "status": "full",
+            "cites": ["internal/custom/python/broker_binding_test.go","internal/custom/python/dramatiq.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -36809,24 +36819,33 @@
         },
         "Schedule": {
           "schedule_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2983"
+            "status": "partial",
+            "cites": ["internal/custom/python/broker_binding_test.go","internal/custom/python/rq.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "notes": "rq-scheduler enqueue_at/enqueue_in/cron patterns detected. Partial because periodic job re-scheduling (scheduler.schedule) and django-rq integration are not yet modelled.",
+            "verified_at": "2026-05-29"
           }
         },
         "Broker": {
           "broker_binding": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2983"
+            "status": "full",
+            "cites": ["internal/custom/python/broker_binding_test.go","internal/custom/python/rq.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "verified_at": "2026-05-29"
           },
           "result_backend_binding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/rq.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "notes": "RQ stores results in the same Redis instance used as broker; no separate result_backend URL is configured. Partial because the connection is inferred from the broker Redis conn, not a distinct field."
           }
         },
         "Reliability": {
           "retry_policy_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2983"
+            "status": "full",
+            "cites": ["internal/custom/python/broker_binding_test.go","internal/custom/python/rq.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3074",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
