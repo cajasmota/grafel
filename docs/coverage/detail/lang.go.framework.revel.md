@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/revel.yaml` | — |
-| Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/revel.yaml` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/revel.go`<br>`internal/engine/rules/go/frameworks/revel.yaml` | — |
+| Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/revel.go`<br>`internal/engine/rules/go/frameworks/revel.yaml` | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
