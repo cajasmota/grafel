@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | Knex is a SQL query builder, not an ORM — it has no model/entity layer to extract. Persistent model_extraction belongs to Objection.js, which layers Active-Record models on top of Knex (see lang.jsts.orm.objection). |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ✅ `full` | `2026-05-30` | 3187 | `internal/custom/javascript/knex_migrations.go`<br>`internal/custom/javascript/knex_migrations_test.go` | Knex migration schema-builder DSL: knex.schema.createTable() emits SCOPE.Schema/model table entities and t.string()/t.integer()/... column builders emit SCOPE.Component/column entities. Proven by TestKnexMigrationSchemaExtraction / TestKnexMigrationColumnExtraction. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ✅ `full` | `2026-05-30` | 3187 | `internal/custom/javascript/knex_migrations.go`<br>`internal/custom/javascript/knex_migrations_test.go` | Each migration foreign key (.references().inTable() / .foreign().references().inTable()) yields a SCOPE.Pattern/relation association edge between the local column's table and the referenced table. Proven by TestKnexMigrationAssociationExtraction. |
+| Foreign key extraction | ✅ `full` | `2026-05-30` | 3187 | `internal/custom/javascript/knex_migrations.go`<br>`internal/custom/javascript/knex_migrations_test.go` | Resolves both .references('id').inTable('users') and explicit .foreign('col').references().inTable() chains, plus the qualified single-arg .references('table.column') spelling, into SCOPE.Component/foreign_key entities with ref_table/ref_column/local_column. Proven by TestKnexMigrationForeignKeyInline / TestKnexMigrationForeignKeyExplicit / TestKnexMigrationQualifiedReference. |
 | Lazy loading recognition | — `not_applicable` | — | 3071 | — | Knex is a SQL query builder with no ORM model layer; there is no relation or lazy-loading concept to extract. Lazy loading is not applicable. |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ✅ `full` | `2026-05-30` | 3187 | `internal/custom/javascript/knex_migrations.go`<br>`internal/custom/javascript/knex_migrations_test.go` | Migration foreign keys are the only place Knex declares table relationships; each FK emits a SCOPE.Pattern/relation entity (relation_kind=belongs_to) capturing local column → referenced table. Proven by TestKnexMigrationRelationshipExtraction. |
 
 ### Queries
 
