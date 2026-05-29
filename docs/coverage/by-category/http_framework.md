@@ -193,10 +193,10 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/9 | |
 | [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/9 | |
 | [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/9 | |
-| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 13/13 | |
-| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
-| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
-| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 19/19 | |
+| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 13/13 | |
+| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 10/10 | |
+| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 10/10 | |
+| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 19/19 | |
 | [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/3 | ❌ 0/1 | ❌ 14/21 | ❌ 0/9 | |
 | [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 14/21 | ❌ 0/9 | |
 
@@ -211,7 +211,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | ❌ 7/10 | ❌ 0/3 | |
 | [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | ❌ 7/10 | ❌ 0/3 | |
 | [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | ❌ 0/10 | ❌ 0/3 | |
-| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/10 | ✅ 3/3 | |
+| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | ⚠️ 10/10 | ✅ 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ❌ 7/10 | ❌ 0/3 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ❌ 7/10 | ❌ 0/3 | |
 | [rust](../by-language/rust.md) | [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 7/10 | ❌ 0/3 | |

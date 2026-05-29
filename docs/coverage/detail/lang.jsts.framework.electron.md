@@ -33,16 +33,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Constant propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Env fallback recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Import resolution quality | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Confidence overlay | ⚠️ `partial` | — | 3059 | `internal/links/effect_propagation.go`<br>`internal/substrate/jsts.go` | — |
+| Constant propagation | ⚠️ `partial` | — | 3059 | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go` | — |
+| DB effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | Electron main-process runs full Node.js; ORM/DB libraries like Sequelize/TypeORM/Prisma apply |
+| Dead code detection | ⚠️ `partial` | — | 3059 | `internal/patterns/dead_module_detector.go` | — |
+| Env fallback recognition | ⚠️ `partial` | — | 3059 | `internal/substrate/jsts.go` | — |
+| Fs effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| HTTP effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| Import resolution quality | ⚠️ `partial` | — | 3059 | `internal/substrate/jsts.go` | — |
+| Mutation effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| Reachability analysis | ⚠️ `partial` | — | 3059 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
 
 ## Provenance
 

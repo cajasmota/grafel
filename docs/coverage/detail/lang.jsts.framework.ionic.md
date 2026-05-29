@@ -68,27 +68,27 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Confidence overlay | ⚠️ `partial` | — | 3059 | `internal/links/effect_propagation.go`<br>`internal/substrate/jsts.go` | — |
+| Constant propagation | ⚠️ `partial` | `2026-05-28` | 3059 | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go` | — |
+| DB effect | — `not_applicable` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | Mobile apps (RN/Expo/Ionic/NativeScript) call remote HTTP APIs, not Node.js ORM primitives directly; db_effect N/A at the mobile client layer |
+| Dead code detection | ⚠️ `partial` | — | 3059 | `internal/patterns/dead_module_detector.go` | — |
+| Def use chain extraction | ⚠️ `partial` | — | 3059 | `internal/substrate/def_use_jsts.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| HTTP effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_mobile/App.tsx` | — |
-| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Response shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Schema drift detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | ⚠️ `partial` | — | 3059 | `internal/links/module_cycle_pass.go` | — |
+| Mutation effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| Pure function tagging | ⚠️ `partial` | — | 3059 | `internal/links/pure_function_pass.go` | — |
+| Reachability analysis | ⚠️ `partial` | — | 3059 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
+| Request shape extraction | ⚠️ `partial` | — | 3059 | `internal/substrate/payload_shapes_jsts.go` | — |
+| Response shape extraction | ⚠️ `partial` | — | 3059 | `internal/substrate/payload_shapes_jsts.go` | — |
+| Sanitizer recognition | ⚠️ `partial` | — | 3059 | `internal/substrate/taint_sites_jsts.go` | — |
+| Schema drift detection | ⚠️ `partial` | — | 3059 | `internal/links/payload_drift.go` | — |
+| Taint sink detection | ⚠️ `partial` | — | 3059 | `internal/substrate/taint_sites_jsts.go` | — |
+| Taint source detection | ⚠️ `partial` | — | 3059 | `internal/substrate/taint_sites_jsts.go` | — |
+| Template pattern catalog | ⚠️ `partial` | — | 3059 | `internal/substrate/template_pattern_jsts.go` | — |
+| Vulnerability finding | ⚠️ `partial` | — | 3059 | `internal/links/taint_flow.go` | — |
 
 ## Framework-specific
 

@@ -54,17 +54,17 @@ Back to [summary](../summary.md).
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 13/13 | |
-| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
-| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
-| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 19/19 | |
+| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 13/13 | |
+| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 10/10 | |
+| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 10/10 | |
+| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/20 | ✅ 19/19 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/10 | ✅ 3/3 | |
+| [Electron](../detail/lang.jsts.framework.electron.md) | ⚠️ 10/10 | ✅ 3/3 | |
 
 
 ### RPC Framework
