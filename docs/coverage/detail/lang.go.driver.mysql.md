@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | `2026-05-29` | 3214 | `internal/custom/golang/sql_drivers.go`<br>`internal/custom/golang/sql_drivers_test.go` | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | `2026-05-29` | — | — | Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers). |
+| Foreign key extraction | — `not_applicable` | `2026-05-29` | — | — | Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers). |
+| Lazy loading recognition | — `not_applicable` | `2026-05-29` | — | — | Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers). |
+| Relationship extraction | — `not_applicable` | `2026-05-29` | — | — | Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers). |
 
 ### Queries
 

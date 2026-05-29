@@ -10492,26 +10492,32 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/sql_drivers.go","internal/custom/golang/sql_drivers_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers).",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers).",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers).",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw database/sql driver: archigraph models SQL query effects, not an ORM object-relationship graph. Relationship/foreign-key/association/lazy-loading are ORM-mapper concepts with no surface in a bare driver (consistent with sqlite/pgx/sqlx/mongodb sibling drivers).",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
@@ -10700,8 +10706,10 @@
             "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/beego.go","internal/engine/rules/go/frameworks/beego.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -10754,8 +10762,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -10786,8 +10796,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -10906,8 +10917,10 @@
             "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/buffalo.go","internal/engine/rules/go/frameworks/buffalo.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -10960,8 +10973,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -10992,8 +11007,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -11112,8 +11128,10 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/chi.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/chi.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -11166,8 +11184,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -11196,8 +11216,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -11316,8 +11337,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/echo.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -11370,8 +11393,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -11400,8 +11425,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -11520,8 +11546,10 @@
             "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/fasthttp.go","internal/engine/rules/go/frameworks/fasthttp.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -11571,8 +11599,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -11603,8 +11633,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -11723,8 +11754,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/fiber.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -11777,8 +11810,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -11807,8 +11842,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -11933,44 +11969,59 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -11994,8 +12045,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/gin.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -12048,8 +12101,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -12071,8 +12126,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -12196,8 +12252,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/go/frameworks/go_zero.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -12244,22 +12302,29 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -12271,8 +12336,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -12424,13 +12490,19 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Lifecycle": {
@@ -12440,13 +12512,16 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -12454,16 +12529,21 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -12471,12 +12551,16 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -12484,52 +12568,72 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "gomobile is a mobile-binding code generator with no HTTP endpoint surface; the payload-drift pass models HTTP request/response body shapes, which do not exist for this target, so the capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "gomobile is a mobile-binding code generator with no HTTP endpoint surface; the payload-drift pass models HTTP request/response body shapes, which do not exist for this target, so the capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "gomobile is a mobile-binding code generator with no HTTP endpoint surface; the payload-drift pass models HTTP request/response body shapes, which do not exist for this target, so the capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_golang.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -12553,8 +12657,10 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/gorilla_mux.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/gorilla_mux.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -12607,8 +12713,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -12639,8 +12747,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -12761,8 +12870,10 @@
             "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/hertz.go","internal/custom/golang/hertz_huma_test.go","internal/custom/golang/testdata/hertz_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -12815,8 +12926,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -12847,8 +12960,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -12969,8 +13083,10 @@
             "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/hertz_huma_test.go","internal/custom/golang/huma.go","internal/custom/golang/testdata/huma_routes.go","internal/engine/http_endpoint_go_trio.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -13017,22 +13133,29 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -13044,8 +13167,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -13164,8 +13288,10 @@
             "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/iris.go","internal/engine/rules/go/frameworks/iris.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -13218,8 +13344,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -13250,8 +13378,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -13370,8 +13499,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/go/frameworks/kratos.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -13418,22 +13549,29 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -13445,8 +13583,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -13565,8 +13704,10 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/nethttp.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/net_http_stdlib.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -13617,8 +13758,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -13649,8 +13792,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -13769,8 +13913,10 @@
             "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/revel.go","internal/engine/rules/go/frameworks/revel.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -13822,8 +13968,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -13854,8 +14002,9 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -14192,8 +14341,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "golang-migrate is a forward/backward SQL migration runner with no ORM runtime: there is no object-fetch path, so eager/lazy loading is not a modellable concept (consistent with this record's model_extraction=N/A and query_attribution=N/A).",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "missing",
