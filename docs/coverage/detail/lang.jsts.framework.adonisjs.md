@@ -29,7 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | — `not_applicable` | — | 3073 | — | AdonisJS uses service-layer request validators (VineJS/custom schema methods) not DTO classes or functional schema-lib patterns at the route level; request_validation handles it. |
 | Request validation | ✅ `full` | — | 2904 | `internal/extractors/javascript/issue2904_validation_linkage_test.go`<br>`internal/extractors/javascript/validation_linkage.go`<br>`testdata/fixtures/typescript/adonisjs_validation.ts` | — |
 
 ### Middleware

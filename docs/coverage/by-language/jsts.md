@@ -14,18 +14,18 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 6/6 | |
+| [Express](../detail/lang.jsts.framework.express.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
 | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ⚠️ 3/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 6/7 | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 6/7 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ❌ 7/8 | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ⚠️ 20/20 | ⚠️ 8/8 | |
 
 
 ### UI Frontend

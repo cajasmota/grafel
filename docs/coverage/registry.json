@@ -19803,8 +19803,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3073",
+            "notes": "AdonisJS uses service-layer request validators (VineJS/custom schema methods) not DTO classes or functional schema-lib patterns at the route level; request_validation handles it."
           },
           "request_validation": {
             "status": "full",
@@ -20882,8 +20883,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -21126,8 +21128,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -21370,8 +21373,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -22000,8 +22004,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -22242,8 +22247,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -22692,8 +22698,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -22966,8 +22973,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -24069,8 +24077,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -25097,8 +25106,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",
@@ -25329,8 +25339,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/issue3073_dto_extraction_test.go","internal/extractors/javascript/validation_linkage.go","testdata/fixtures/typescript/express_dto.ts","testdata/fixtures/typescript/fastify_dto.ts","testdata/fixtures/typescript/feathers_dto.ts","testdata/fixtures/typescript/hapi_dto.ts","testdata/fixtures/typescript/hono_dto.ts","testdata/fixtures/typescript/koa_dto.ts","testdata/fixtures/typescript/marblejs_dto.ts","testdata/fixtures/typescript/polka_dto.ts","testdata/fixtures/typescript/restify_dto.ts","testdata/fixtures/typescript/sails_dto.ts"],
+            "issue": "3073"
           },
           "request_validation": {
             "status": "full",

@@ -219,6 +219,14 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// NAVIGATES_TO edges from bare `navigate('/path')` call sites.
 	x.navigatorFnVars = buildNavigatorFnVarTable(x, root)
 
+	// Issue #3073 — build the schema-lib DTO map before walk() so that
+	// extractSchemaDTOEdge can emit dto_extraction VALIDATES edges when a
+	// handler body uses a top-level z.object/Joi.object/yup.object/ajv.compile
+	// schema variable. emitSchemaLibDTOEntities runs immediately after so the
+	// schema entities are present in the graph regardless of handler ordering.
+	x.schemaLibDTOs = x.buildSchemaLibDTOs(root)
+	x.emitSchemaLibDTOEntities(root)
+
 	// Issue #2553 — build the dispatch-map registry before walk() so that
 	// callTarget can synthesise CALLS edges when it sees RESOLVERS[k](args).
 	x.dispatchMaps = x.buildDispatchMaps(root)
@@ -476,6 +484,17 @@ type extractor struct {
 	// to find the variable's binding and extract param keys from the
 	// referenced object literal. Nil when no variable references are found.
 	paramsVarRefs []*paramsVarRef
+
+	// schemaLibDTOs — Issue #3073. Built once per file in buildSchemaLibDTOs
+	// (called from Extract before walk). Maps top-level const variable names
+	// whose RHS is a schema-library factory call (z.object, Joi.object,
+	// yup.object, ajv.compile) to their library name. When a handler body
+	// calls a usage method (parse/validate/compile) on one of these variables,
+	// extractSchemaDTOEdge emits a VALIDATES edge with via=dto_extraction
+	// pointing to `dto:<varName>`, making the schema-as-contract relationship
+	// a first-class graph fact for the Express/Fastify family.
+	// Nil when no schema-lib imports are present (fast-path).
+	schemaLibDTOs map[string]string
 }
 
 // dispatchMapInfo records the handlers registered in a Record<string, Fn>
@@ -2260,6 +2279,20 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			if !seen[valKey] {
 				seen[valKey] = true
 				rels = append(rels, valEdge)
+			}
+		}
+		// Issue #3073 — schema-library DTO extraction. When a handler body
+		// calls a usage method on a top-level schema-lib variable (e.g.
+		// `createUserSchema.parse(req.body)` where createUserSchema was
+		// defined as `z.object({...})`), emit a VALIDATES edge with
+		// via=dto_extraction pointing to `dto:<schemaVarName>` so the
+		// schema-as-contract link is a first-class graph fact for the
+		// Express/Fastify/Koa/Hapi/Hono/Feathers/Polka/Restify/Marble/Sails family.
+		if dtoEdge, dtoOK := x.extractSchemaDTOEdge(call); dtoOK {
+			dtoKey := "validates:" + dtoEdge.ToID + ":" + dtoEdge.Properties["line"]
+			if !seen[dtoKey] {
+				seen[dtoKey] = true
+				rels = append(rels, dtoEdge)
 			}
 		}
 
