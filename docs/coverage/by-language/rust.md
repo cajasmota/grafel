@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md).
 
-> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+> Group columns show `glyph covered/applicable`, where **covered** = capabilities with extraction and **applicable** = covered + missing (not-applicable capabilities are excluded from both). The glyph is a **support level**: **✅ comprehensive** (every applicable capability is `full`, fixture-proven) · **🟢 supported** (every applicable capability is extracted; some only *heuristically* — detected by pattern rather than full AST/data-flow resolution) · **🟡 partial** (some extracted, some still missing) · **🔴 not extracted** (none yet). So `🟢 20/20` = fully supported, some capabilities heuristic; `🟡 12/20` = 8 not yet extracted. On detail pages, per-cell glyphs use the same palette (✅ full · 🟢 heuristic · 🔴 missing · — n/a).
 
 ## Frameworks
 
@@ -14,23 +14,23 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
+| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 7/10 | ❌ 0/3 | |
+| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | 🟡 7/10 | 🔴 0/3 | |
 
 
 ## Tools
@@ -38,11 +38,11 @@ Back to [summary](../summary.md).
 | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
 | [Cargo (Cargo.toml)](../detail/build.cargo.md) | ✅ | — | — | ✅ | |
-| [Cargo.toml](../detail/pkg.cargo.md) | — | ❌ | ✅ | — | |
+| [Cargo.toml](../detail/pkg.cargo.md) | — | 🔴 | ✅ | — | |
 | [cargo test (stdlib)](../detail/test.cargo-test.md) | ✅ | — | — | ✅ | |
-| [criterion (benchmark)](../detail/test.criterion.md) | ❌ | — | — | ❌ | |
-| [mockall](../detail/test.mockall.md) | ❌ | — | — | ❌ | |
-| [proptest](../detail/test.proptest.md) | ❌ | — | — | ❌ | |
+| [criterion (benchmark)](../detail/test.criterion.md) | 🔴 | — | — | 🔴 | |
+| [mockall](../detail/test.mockall.md) | 🔴 | — | — | 🔴 | |
+| [proptest](../detail/test.proptest.md) | 🔴 | — | — | 🔴 | |
 
 ## ORMs
 
@@ -51,17 +51,17 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Diesel](../detail/lang.rust.orm.diesel.md) | ❌ 2/8 | |
-| [Rbatis](../detail/lang.rust.orm.rbatis.md) | ❌ 0/8 | |
-| [SeaORM](../detail/lang.rust.orm.seaorm.md) | ❌ 2/8 | |
-| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | ❌ 1/6 | |
-| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | ❌ 1/6 | |
-| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | ❌ 1/6 | |
-| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | ❌ 1/6 | |
-| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | ❌ 1/6 | |
-| [neo4rs](../detail/lang.rust.driver.neo4j.md) | ❌ 1/6 | |
-| [redis-rs](../detail/lang.rust.driver.redis.md) | ❌ 1/6 | |
-| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ❌ 1/6 | |
-| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | ❌ 1/6 | |
-| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | ❌ 2/8 | |
-| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | ❌ 1/6 | |
+| [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 2/8 | |
+| [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🔴 0/8 | |
+| [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 2/8 | |
+| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/6 | |
+| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/6 | |
+| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟡 1/6 | |
+| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🟡 1/6 | |
+| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🟡 1/6 | |
+| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟡 1/6 | |
+| [redis-rs](../detail/lang.rust.driver.redis.md) | 🟡 1/6 | |
+| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 1/6 | |
+| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟡 1/6 | |
+| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 2/8 | |
+| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟡 1/6 | |

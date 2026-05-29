@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ⚠️ `partial` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/mongoose.go` | reMongoosePopulate captures .populate() traversal calls (navigate-to-ref); the definition-side ref: field in Schema() is not extracted, so reference declarations are missing |
+| Association extraction | 🟢 `partial` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/mongoose.go` | reMongoosePopulate captures .populate() traversal calls (navigate-to-ref); the definition-side ref: field in Schema() is not extracted, so reference declarations are missing |
 | Foreign key extraction | — `not_applicable` | — | 3064 | — | MongoDB is a document-oriented database; there is no relational FK concept |
 | Lazy loading recognition | — `not_applicable` | — | 3064 | — | Mongoose/MongoDB has no lazy-loading mechanism |
-| Relationship extraction | ⚠️ `partial` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/mongoose.go` | .populate() traversals are captured as query entities; schema-level ref: declarations (the definition side of Mongoose associations) are not parsed |
+| Relationship extraction | 🟢 `partial` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/mongoose.go` | .populate() traversals are captured as query entities; schema-level ref: declarations (the definition side of Mongoose associations) are not parsed |
 
 ### Queries
 

@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Constraint extraction | ⚠️ `partial` | `2026-05-29` | 3077 | `internal/custom/python/extractors_test.go`<br>`internal/custom/python/marshmallow.go`<br>`internal/custom/python/testdata/marshmallow_nested.py` | validate.Range(min,max), validate.Length(min,max), validate.OneOf([...]) on field declarations emit constraint_<field> SCOPE.Pattern entities with constraint_validator/constraint_min/constraint_max/constraint_choices props; tested in TestMarshmallow_Constraint_Range, TestMarshmallow_Constraint_Length, TestMarshmallow_Constraint_OneOf, TestMarshmallow_Constraint_FullFixture. |
+| Constraint extraction | 🟢 `partial` | `2026-05-29` | 3077 | `internal/custom/python/extractors_test.go`<br>`internal/custom/python/marshmallow.go`<br>`internal/custom/python/testdata/marshmallow_nested.py` | validate.Range(min,max), validate.Length(min,max), validate.OneOf([...]) on field declarations emit constraint_<field> SCOPE.Pattern entities with constraint_validator/constraint_min/constraint_max/constraint_choices props; tested in TestMarshmallow_Constraint_Range, TestMarshmallow_Constraint_Length, TestMarshmallow_Constraint_OneOf, TestMarshmallow_Constraint_FullFixture. |
 | Custom validator extraction | ✅ `full` | `2026-05-29` | 3061 | `internal/custom/python/extractors_test.go`<br>`internal/custom/python/marshmallow.go`<br>`internal/custom/python/testdata/marshmallow_nested.py` | @validates('field') emits SCOPE.Pattern field_validator entities; @validates_schema emits schema_validator entities. Both decorator forms tested in TestMarshmallow_ValidatesDecorator, TestMarshmallow_ValidatesSchema, and TestMarshmallow_FullFixture. |
 
 ### Coercion
@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | — |
+| Tests linkage | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | — |
 
 ## Provenance
 

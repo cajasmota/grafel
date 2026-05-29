@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | — |
-| Foreign key extraction | ⚠️ `partial` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | reObjectionRelation captures named relation entries (relation_type+field_name) from relationMappings, which encode FK join topology implicitly; the from/to column-level FK fields are not explicitly parsed |
+| Foreign key extraction | 🟢 `partial` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | reObjectionRelation captures named relation entries (relation_type+field_name) from relationMappings, which encode FK join topology implicitly; the from/to column-level FK fields are not explicitly parsed |
 | Lazy loading recognition | — `not_applicable` | — | 3071 | — | Objection.js uses withGraphFetched/withGraphJoined for eager loading; there is no built-in lazy-loading mechanism. The library loads related models explicitly on demand via separate queries, not through a lazy proxy or decorator pattern. lazy_loading_recognition is not applicable. |
 | Relationship extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | — |
 

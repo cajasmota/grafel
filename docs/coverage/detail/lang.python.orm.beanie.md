@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/beanie.yaml` | — |
-| Schema extraction | ⚠️ `partial` | `2026-05-29` | 3072 | `internal/custom/python/orm_schema.go` | Beanie Document field definitions (via Pydantic annotations) are not extracted at the ORM level; the schema_detector.go detects Pydantic usage generally but does not emit per-field ORM schema entities. |
+| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/beanie.yaml` | — |
+| Schema extraction | 🟢 `partial` | `2026-05-29` | 3072 | `internal/custom/python/orm_schema.go` | Beanie Document field definitions (via Pydantic annotations) are not extracted at the ORM level; the schema_detector.go detects Pydantic usage generally but does not emit per-field ORM schema entities. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py` | — |
+| Association extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py` | — |
 | Foreign key extraction | — `not_applicable` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py` | — |
-| Lazy loading recognition | ⚠️ `partial` | `2026-05-29` | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py` | Beanie (Motor-based async ODM) does not have a lazy-loading mechanism; all queries are explicit async calls. |
-| Relationship extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py` | — |
+| Lazy loading recognition | 🟢 `partial` | `2026-05-29` | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py` | Beanie (Motor-based async ODM) does not have a lazy-loading mechanism; all queries are explicit async calls. |
+| Relationship extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py` | — |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/beanie.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/beanie.yaml` | — |
 
 ### Migrations
 

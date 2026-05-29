@@ -15,20 +15,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Prompt template extraction | ⚠️ `partial` | `2026-05-29` | — | `internal/custom/java/langchain4j.go` | @SystemMessage/@UserMessage annotation extraction: lc4jSystemMessageRE and lc4jUserMessageRE capture annotation-level prompt template strings. Runtime template variable resolution not captured. |
+| Prompt template extraction | 🟢 `partial` | `2026-05-29` | — | `internal/custom/java/langchain4j.go` | @SystemMessage/@UserMessage annotation extraction: lc4jSystemMessageRE and lc4jUserMessageRE capture annotation-level prompt template strings. Runtime template variable resolution not captured. |
 
 ### Composition
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Chain composition | ⚠️ `partial` | `2026-05-29` | — | `internal/custom/java/langchain4j.go` | @AiService interface extraction plus RAG/ChatMemory component detection: structural composition captured (AiService, EmbeddingStoreContentRetriever, EmbeddingStoreIngestor, ChatMemory fields). Runtime chain wiring not traced. |
-| Tool use detection | ⚠️ `partial` | `2026-05-29` | — | `internal/custom/java/langchain4j.go` | @Tool annotation extraction: lc4jToolMethodRE extracts @Tool-annotated methods, emitting SCOPE.Operation entities with tool_method property. Dynamic tool registration not captured. |
+| Chain composition | 🟢 `partial` | `2026-05-29` | — | `internal/custom/java/langchain4j.go` | @AiService interface extraction plus RAG/ChatMemory component detection: structural composition captured (AiService, EmbeddingStoreContentRetriever, EmbeddingStoreIngestor, ChatMemory fields). Runtime chain wiring not traced. |
+| Tool use detection | 🟢 `partial` | `2026-05-29` | — | `internal/custom/java/langchain4j.go` | @Tool annotation extraction: lc4jToolMethodRE extracts @Tool-annotated methods, emitting SCOPE.Operation entities with tool_method property. Dynamic tool registration not captured. |
 
 ### Tracking
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
 
 ## Provenance
 

@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ansible/_manifest.yaml` | — |
-| Resource extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ansible/_manifest.yaml` | — |
+| Dependency attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ansible/_manifest.yaml` | — |
+| Resource extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ansible/_manifest.yaml` | — |
 
 ## Provenance
 

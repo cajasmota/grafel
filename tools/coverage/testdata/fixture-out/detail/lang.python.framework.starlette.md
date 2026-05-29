@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Handler attribution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Handler attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md).
 
-> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+> Group columns show `glyph covered/applicable`, where **covered** = capabilities with extraction and **applicable** = covered + missing (not-applicable capabilities are excluded from both). The glyph is a **support level**: **✅ comprehensive** (every applicable capability is `full`, fixture-proven) · **🟢 supported** (every applicable capability is extracted; some only *heuristically* — detected by pattern rather than full AST/data-flow resolution) · **🟡 partial** (some extracted, some still missing) · **🔴 not extracted** (none yet). So `🟢 20/20` = fully supported, some capabilities heuristic; `🟡 12/20` = 8 not yet extracted. On detail pages, per-cell glyphs use the same palette (✅ full · 🟢 heuristic · 🔴 missing · — n/a).
 
 ## Frameworks
 
@@ -14,57 +14,57 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 
 
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 14/21 | ❌ 0/8 | |
+| [Qt](../detail/lang.c-cpp.framework.qt.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | ❌ 7/10 | ❌ 0/3 | |
-| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | ❌ 7/10 | ❌ 0/3 | |
+| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟡 7/10 | 🔴 0/3 | |
+| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟡 7/10 | 🔴 0/3 | |
 
 
 ## Tools
 
 | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
-| [Boost.Test](../detail/test.boost-test.md) | ❌ | — | — | ❌ | |
-| [Buck2](../detail/lang.c-cpp.tool.buck2.md) | ❌ | — | — | ❌ | |
-| [CMake](../detail/lang.c-cpp.tool.cmake.md) | ❌ | — | — | ❌ | |
-| [Catch2](../detail/test.catch2.md) | ❌ | — | — | ❌ | |
-| [Conan](../detail/lang.c-cpp.tool.conan.md) | — | ❌ | ❌ | — | |
-| [CppUTest](../detail/test.cpputest.md) | ❌ | — | — | ❌ | |
-| [CppUnit](../detail/test.cppunit.md) | ❌ | — | — | ❌ | |
-| [GNU Make](../detail/lang.c-cpp.tool.make.md) | ❌ | — | — | ❌ | |
-| [GoogleTest (gtest)](../detail/test.gtest.md) | ❌ | — | — | ❌ | |
-| [Hunter](../detail/lang.c-cpp.tool.hunter.md) | — | ❌ | ❌ | — | |
-| [Meson](../detail/lang.c-cpp.tool.meson.md) | ❌ | — | — | ❌ | |
-| [Ninja](../detail/lang.c-cpp.tool.ninja.md) | ❌ | — | — | ❌ | |
-| [build2](../detail/lang.c-cpp.tool.build2.md) | — | ❌ | ❌ | — | |
-| [doctest (C++)](../detail/test.doctest-cpp.md) | ❌ | — | — | ❌ | |
-| [vcpkg](../detail/lang.c-cpp.tool.vcpkg.md) | — | ❌ | ❌ | — | |
-| [xmake](../detail/lang.c-cpp.tool.xmake.md) | ❌ | — | — | ❌ | |
+| [Boost.Test](../detail/test.boost-test.md) | 🔴 | — | — | 🔴 | |
+| [Buck2](../detail/lang.c-cpp.tool.buck2.md) | 🔴 | — | — | 🔴 | |
+| [CMake](../detail/lang.c-cpp.tool.cmake.md) | 🔴 | — | — | 🔴 | |
+| [Catch2](../detail/test.catch2.md) | 🔴 | — | — | 🔴 | |
+| [Conan](../detail/lang.c-cpp.tool.conan.md) | — | 🔴 | 🔴 | — | |
+| [CppUTest](../detail/test.cpputest.md) | 🔴 | — | — | 🔴 | |
+| [CppUnit](../detail/test.cppunit.md) | 🔴 | — | — | 🔴 | |
+| [GNU Make](../detail/lang.c-cpp.tool.make.md) | 🔴 | — | — | 🔴 | |
+| [GoogleTest (gtest)](../detail/test.gtest.md) | 🔴 | — | — | 🔴 | |
+| [Hunter](../detail/lang.c-cpp.tool.hunter.md) | — | 🔴 | 🔴 | — | |
+| [Meson](../detail/lang.c-cpp.tool.meson.md) | 🔴 | — | — | 🔴 | |
+| [Ninja](../detail/lang.c-cpp.tool.ninja.md) | 🔴 | — | — | 🔴 | |
+| [build2](../detail/lang.c-cpp.tool.build2.md) | — | 🔴 | 🔴 | — | |
+| [doctest (C++)](../detail/test.doctest-cpp.md) | 🔴 | — | — | 🔴 | |
+| [vcpkg](../detail/lang.c-cpp.tool.vcpkg.md) | — | 🔴 | 🔴 | — | |
+| [xmake](../detail/lang.c-cpp.tool.xmake.md) | 🔴 | — | — | 🔴 | |
 
 ## ORMs
 
@@ -73,10 +73,10 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | ❌ 0/8 | |
-| [ODB](../detail/lang.c-cpp.orm.odb.md) | ❌ 0/8 | |
-| [SOCI](../detail/lang.c-cpp.orm.soci.md) | ❌ 0/8 | |
-| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | ❌ 0/8 | |
-| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | ❌ 0/8 | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | ❌ 0/8 | |
-| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | ❌ 0/8 | |
+| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🔴 0/8 | |
+| [ODB](../detail/lang.c-cpp.orm.odb.md) | 🔴 0/8 | |
+| [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🔴 0/8 | |
+| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🔴 0/8 | |
+| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🔴 0/8 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/8 | |
+| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🔴 0/8 | |

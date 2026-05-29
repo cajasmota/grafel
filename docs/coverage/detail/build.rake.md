@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency graph | ❌ `missing` | — | — | — | — |
-| Target extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/build_tools.yaml` | — |
+| Dependency graph | 🔴 `missing` | — | — | — | — |
+| Target extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/build_tools.yaml` | — |
 
 ## Provenance
 

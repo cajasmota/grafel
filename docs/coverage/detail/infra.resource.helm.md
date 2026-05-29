@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Resource extraction | ❌ `missing` | — | — | — | — |
+| Resource extraction | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 

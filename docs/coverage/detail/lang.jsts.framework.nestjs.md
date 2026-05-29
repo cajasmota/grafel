@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | 2932 | `internal/custom/javascript/nestjs.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | 2932 | `internal/custom/javascript/nestjs.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml` | — |
-| Route extraction | ⚠️ `partial` | `2026-05-29` | 3062 | `internal/custom/javascript/nestjs.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_test.go` | — |
+| Route extraction | 🟢 `partial` | `2026-05-29` | 3062 | `internal/custom/javascript/nestjs.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_test.go` | — |
 
 ### Auth
 
@@ -30,7 +30,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | DTO extraction | ✅ `full` | — | 2904 | `internal/extractors/javascript/issue2904_validation_linkage_test.go`<br>`internal/extractors/javascript/validation_linkage.go`<br>`testdata/fixtures/typescript/nestjs_validation.ts` | — |
-| Request validation | ⚠️ `partial` | `2026-05-29` | 3062 | `internal/extractors/javascript/issue2904_validation_linkage_test.go`<br>`internal/extractors/javascript/validation_linkage.go` | — |
+| Request validation | 🟢 `partial` | `2026-05-29` | 3062 | `internal/extractors/javascript/issue2904_validation_linkage_test.go`<br>`internal/extractors/javascript/validation_linkage.go` | — |
 
 ### Middleware
 
@@ -42,23 +42,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Type extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Type extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | ⚠️ `partial` | `2026-05-29` | 3062 | `internal/patterns/observability_jsts_extractor.go`<br>`internal/patterns/observability_jsts_extractor_test.go` | — |
-| Metric extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | `2026-05-29` | 3062 | `internal/patterns/observability_jsts_extractor.go`<br>`internal/patterns/observability_jsts_extractor_test.go` | — |
+| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Trace extraction | ✅ `full` | — | 2905 | `internal/extractors/javascript/testdata/substrate_backend_observability/nestjs.ts`<br>`internal/patterns/observability_jsts_extractor.go` | — |
 
 ### Data
@@ -73,24 +73,24 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | ✅ `full` | `2026-05-28` | 2932 | `internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/jsts.go` | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_import_resolution/app.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/config.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts`<br>`internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
-| Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
-| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint source detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

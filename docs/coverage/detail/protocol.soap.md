@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Cross repo linkage | ❌ `missing` | — | — | — | — |
-| Method attribution | ❌ `missing` | — | — | — | — |
-| Service extraction | ❌ `missing` | — | — | — | — |
+| Cross repo linkage | 🔴 `missing` | — | — | — | — |
+| Method attribution | 🔴 `missing` | — | — | — | — |
+| Service extraction | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 

@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/orm_build_3067_test.go`<br>`internal/custom/javascript/sequelize.go` | — |
 | Foreign key extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/orm_build_3067_test.go`<br>`internal/custom/javascript/sequelize.go` | — |
-| Lazy loading recognition | ⚠️ `partial` | — | 3071 | `internal/custom/javascript/issue3071_lazy_loading_test.go`<br>`internal/custom/javascript/sequelize.go` | Detects hasMany/belongsTo/hasOne/belongsToMany association calls with { lazy: true } in options; emits SCOPE.Pattern/lazy_association. Sequelize does not have a built-in lazy-loading mechanism; this detects explicit lazy: true flags in association definitions. |
+| Lazy loading recognition | 🟢 `partial` | — | 3071 | `internal/custom/javascript/issue3071_lazy_loading_test.go`<br>`internal/custom/javascript/sequelize.go` | Detects hasMany/belongsTo/hasOne/belongsToMany association calls with { lazy: true } in options; emits SCOPE.Pattern/lazy_association. Sequelize does not have a built-in lazy-loading mechanism; this detects explicit lazy: true flags in association definitions. |
 | Relationship extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/orm_build_3067_test.go`<br>`internal/custom/javascript/sequelize.go` | — |
 
 ### Queries

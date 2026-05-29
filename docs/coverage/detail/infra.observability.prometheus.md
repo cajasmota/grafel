@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | — `not_applicable` | — | — | — | — |
-| Metric extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/_engine/comment_marker_extractor.yaml` | — |
+| Metric extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/_engine/comment_marker_extractor.yaml` | — |
 | Trace extraction | — `not_applicable` | — | — | — | — |
 
 ## Provenance

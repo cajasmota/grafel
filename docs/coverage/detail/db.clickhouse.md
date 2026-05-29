@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | ❌ `missing` | — | — | — | — |
-| Resource extraction | ❌ `missing` | — | — | — | — |
+| Dependency attribution | 🔴 `missing` | — | — | — | — |
+| Resource extraction | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 

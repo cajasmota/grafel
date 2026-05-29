@@ -15,27 +15,27 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Nested model extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Schema extraction | ⚠️ `partial` | — | — | `internal/extractors/python/extractor.go` | — |
+| Nested model extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | — | `internal/extractors/python/extractor.go` | — |
 
 ### Constraints
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Constraint extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Custom validator extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Constraint extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Custom validator extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Coercion
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type coercion recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type coercion recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

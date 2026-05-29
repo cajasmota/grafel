@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Nested model extraction | ⚠️ `partial` | `2026-05-29` | — | `internal/extractors/python/discriminator.go`<br>`internal/extractors/python/nested_ctor_refs.go` | Discriminated-union tags captured via DISCRIMINATES_ON (discriminator.go); nested model construction referenced via nested_ctor_refs. No structured nested-schema tree. |
+| Nested model extraction | 🟢 `partial` | `2026-05-29` | — | `internal/extractors/python/discriminator.go`<br>`internal/extractors/python/nested_ctor_refs.go` | Discriminated-union tags captured via DISCRIMINATES_ON (discriminator.go); nested model construction referenced via nested_ctor_refs. No structured nested-schema tree. |
 | Schema extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/python/extractor.go`<br>`internal/patterns/patterns_test.go`<br>`internal/patterns/schema_detector.go` | Base Python extractor emits the model class (SCOPE.Component) and its annotated fields (SCOPE.Schema/field) via extractClassFields; schema_detector.go classifies the BaseModel subclass as a pydantic schema_validation entity, exercised by TestSchemaDetector_PydanticBaseModel. |
 
 ### Constraints
@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ⚠️ `partial` | `2026-05-29` | — | `internal/custom/python/pytest.go` | python_pytest extracts pytest test functions/classes/fixtures; tests exercising Pydantic models are captured as test entities but no validator-to-test linkage edge is emitted. |
+| Tests linkage | 🟢 `partial` | `2026-05-29` | — | `internal/custom/python/pytest.go` | python_pytest extracts pytest test functions/classes/fixtures; tests exercising Pydantic models are captured as test entities but no validator-to-test linkage edge is emitted. |
 
 ## Provenance
 

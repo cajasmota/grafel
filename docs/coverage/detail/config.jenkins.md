@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| File parsing | ❌ `missing` | — | — | — | — |
+| File parsing | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 

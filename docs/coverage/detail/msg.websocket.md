@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Consumer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/websocket_edges.go` | — |
 | Producer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/websocket_edges.go` | — |
-| Topic attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/websocket_edges.go` | — |
+| Topic attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/websocket_edges.go` | — |
 
 ## Provenance
 

@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth policy | ❌ `missing` | — | — | — | — |
-| Secret detection | ❌ `missing` | — | — | — | — |
+| Auth policy | 🔴 `missing` | — | — | — | — |
+| Secret detection | 🔴 `missing` | — | — | — | — |
 | SQL injection | — `not_applicable` | — | — | — | — |
 
 ## Provenance

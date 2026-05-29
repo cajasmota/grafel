@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/orms/mongoid.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/orms/mongoid.yaml` | — |
+| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/orms/mongoid.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/orms/mongoid.yaml` | — |
 
 ### Migrations
 

@@ -7,9 +7,9 @@ Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Call line precision | Core extraction | DB effect | Discriminates on | Fs effect | HTTP effect | Import resolution quality | Navigates to | Status | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| [assembly](../by-language/assembly.md) | [ARM armasm](../detail/lang.assembly.toolchain.armasm.md) | ✅ | ⚠️ | — | — | — | — | ⚠️ | — | ⚠️ | |
+| [assembly](../by-language/assembly.md) | [ARM armasm](../detail/lang.assembly.toolchain.armasm.md) | ✅ | 🟢 | — | — | — | — | 🟢 | — | 🟢 | |
 | [assembly](../by-language/assembly.md) | [GNU as (gas)](../detail/lang.assembly.toolchain.gnu-as.md) | ✅ | ✅ | — | — | — | — | ✅ | — | ✅ | |
-| [assembly](../by-language/assembly.md) | [MASM](../detail/lang.assembly.toolchain.masm.md) | ✅ | ⚠️ | — | — | — | — | ⚠️ | — | ⚠️ | |
+| [assembly](../by-language/assembly.md) | [MASM](../detail/lang.assembly.toolchain.masm.md) | ✅ | 🟢 | — | — | — | — | 🟢 | — | 🟢 | |
 | [assembly](../by-language/assembly.md) | [NASM](../detail/lang.assembly.toolchain.nasm.md) | ✅ | ✅ | — | — | — | — | ✅ | — | ✅ | |
 | [COBOL](../by-language/cobol.md) | [COBOL CICS](../detail/lang.cobol.embedded.cics.md) | — | — | — | — | ✅ | ✅ | — | — | ✅ | |
 | [COBOL](../by-language/cobol.md) | [COBOL Embedded DB2 SQL](../detail/lang.cobol.embedded.db2-sql.md) | — | — | ✅ | — | — | — | — | — | ✅ | |

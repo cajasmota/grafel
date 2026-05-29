@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | ❌ `missing` | — | — | — | — |
+| Log extraction | 🔴 `missing` | — | — | — | — |
 | Metric extraction | — `not_applicable` | — | — | — | — |
 | Trace extraction | — `not_applicable` | — | — | — | — |
 

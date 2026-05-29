@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-29` | 3099 | `internal/custom/java/dynamodb_java.go`<br>`internal/engine/rules/java/orms/dynamodb_java.yaml` | custom_java_dynamodb extractor emits SCOPE.Schema/model for @DynamoDbBean classes; YAML rule gates on Enhanced Client imports. |
-| Schema extraction | ⚠️ `partial` | `2026-05-29` | 3099 | `internal/custom/java/dynamodb_java.go` | Detects @DynamoDbBean/@DynamoDbPartitionKey/@DynamoDbSortKey/@DynamoDbAttribute for schema attributes; model and query covered by existing YAML rule. |
+| Schema extraction | 🟢 `partial` | `2026-05-29` | 3099 | `internal/custom/java/dynamodb_java.go` | Detects @DynamoDbBean/@DynamoDbPartitionKey/@DynamoDbSortKey/@DynamoDbAttribute for schema attributes; model and query covered by existing YAML rule. |
 
 ### Relationships
 

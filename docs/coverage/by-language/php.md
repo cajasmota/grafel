@@ -5,7 +5,7 @@
 
 Back to [summary](../summary.md).
 
-> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+> Group columns show `glyph covered/applicable`, where **covered** = capabilities with extraction and **applicable** = covered + missing (not-applicable capabilities are excluded from both). The glyph is a **support level**: **✅ comprehensive** (every applicable capability is `full`, fixture-proven) · **🟢 supported** (every applicable capability is extracted; some only *heuristically* — detected by pattern rather than full AST/data-flow resolution) · **🟡 partial** (some extracted, some still missing) · **🔴 not extracted** (none yet). So `🟢 20/20` = fully supported, some capabilities heuristic; `🟡 12/20` = 8 not yet extracted. On detail pages, per-cell glyphs use the same palette (✅ full · 🟢 heuristic · 🔴 missing · — n/a).
 
 ## Frameworks
 
@@ -14,30 +14,30 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [CakePHP](../detail/lang.php.framework.cakephp.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Drupal](../detail/lang.php.framework.drupal.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Laravel](../detail/lang.php.framework.laravel.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Lumen](../detail/lang.php.framework.lumen.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Magento](../detail/lang.php.framework.magento.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Phalcon](../detail/lang.php.framework.phalcon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Slim](../detail/lang.php.framework.slim.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Symfony](../detail/lang.php.framework.symfony.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [WordPress](../detail/lang.php.framework.wordpress.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
-| [Yii](../detail/lang.php.framework.yii.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
+| [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Drupal](../detail/lang.php.framework.drupal.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Laravel](../detail/lang.php.framework.laravel.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Lumen](../detail/lang.php.framework.lumen.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Magento](../detail/lang.php.framework.magento.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Phalcon](../detail/lang.php.framework.phalcon.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Slim](../detail/lang.php.framework.slim.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [WordPress](../detail/lang.php.framework.wordpress.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Yii](../detail/lang.php.framework.yii.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 
 
 ## Tools
 
 | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|
-| [Behat](../detail/test.behat.md) | ❌ | — | — | ❌ | |
-| [Codeception](../detail/test.codeception.md) | ❌ | — | — | ❌ | |
+| [Behat](../detail/test.behat.md) | 🔴 | — | — | 🔴 | |
+| [Codeception](../detail/test.codeception.md) | 🔴 | — | — | 🔴 | |
 | [Composer](../detail/build.composer.md) | ✅ | — | — | ✅ | |
 | [PHPUnit](../detail/test.phpunit.md) | ✅ | — | — | ✅ | |
-| [Pest](../detail/test.pest.md) | ❌ | — | — | ❌ | |
-| [composer.json](../detail/pkg.composer.md) | — | ❌ | ❌ | — | |
+| [Pest](../detail/test.pest.md) | 🔴 | — | — | 🔴 | |
+| [composer.json](../detail/pkg.composer.md) | — | 🔴 | 🔴 | — | |
 
 ## ORMs
 
@@ -46,17 +46,17 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | ❌ 1/6 | |
-| [CycleORM](../detail/lang.php.orm.cycleorm.md) | ❌ 0/8 | |
-| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ❌ 2/8 | |
-| [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | ❌ 2/8 | |
-| [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | ❌ 1/6 | |
-| [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | ❌ 1/6 | |
-| [PDO SQLite](../detail/lang.php.driver.sqlite.md) | ❌ 1/6 | |
-| [Propel](../detail/lang.php.orm.propel.md) | ❌ 2/8 | |
-| [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | ❌ 2/8 | |
-| [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | ❌ 1/6 | |
-| [elasticsearch-php](../detail/lang.php.driver.elastic.md) | ❌ 1/6 | |
-| [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | ❌ 1/6 | |
-| [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | ❌ 1/6 | |
-| [phpredis / Predis](../detail/lang.php.driver.redis.md) | ❌ 1/6 | |
+| [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟡 1/6 | |
+| [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🔴 0/8 | |
+| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟡 2/8 | |
+| [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | 🟡 2/8 | |
+| [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | 🟡 1/6 | |
+| [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | 🟡 1/6 | |
+| [PDO SQLite](../detail/lang.php.driver.sqlite.md) | 🟡 1/6 | |
+| [Propel](../detail/lang.php.orm.propel.md) | 🟡 2/8 | |
+| [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | 🟡 2/8 | |
+| [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | 🟡 1/6 | |
+| [elasticsearch-php](../detail/lang.php.driver.elastic.md) | 🟡 1/6 | |
+| [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🟡 1/6 | |
+| [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟡 1/6 | |
+| [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/6 | |

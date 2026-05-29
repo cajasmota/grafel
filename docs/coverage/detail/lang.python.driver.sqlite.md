@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Relationships
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/sqlite_py.yaml`<br>`internal/extractors/python/raw_sql_db_calls.go` | — |
+| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/sqlite_py.yaml`<br>`internal/extractors/python/raw_sql_db_calls.go` | — |
 
 ### Migrations
 

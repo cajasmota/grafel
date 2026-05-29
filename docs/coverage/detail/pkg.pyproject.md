@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Lockfile parsing | ⚠️ `partial` | `2026-05-29` | 3075 | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/pylock_test.go` | — |
+| Lockfile parsing | 🟢 `partial` | `2026-05-29` | 3075 | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/pylock_test.go` | — |
 | Manifest parsing | ✅ `full` | `2026-05-28` | — | `internal/extractors/cross/manifest/extractor.go` | — |
 
 ## Provenance

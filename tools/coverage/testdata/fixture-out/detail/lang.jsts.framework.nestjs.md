@@ -22,13 +22,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ⚠️ `partial` | `2026-05-27` | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Auth coverage | 🟢 `partial` | `2026-05-27` | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Request validation | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Request validation | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ### Middleware
 
@@ -67,8 +67,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency injection | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
-| Module graph | ⚠️ `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Dependency injection | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
+| Module graph | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/2940) | — | — |
 
 ## Provenance
 

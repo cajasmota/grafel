@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/orm_build_3067_test.go`<br>`internal/custom/javascript/prisma.go` | — |
 | Foreign key extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/orm_build_3067_test.go`<br>`internal/custom/javascript/prisma.go` | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Relationship extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/orm_build_3067_test.go`<br>`internal/custom/javascript/prisma.go` | — |
 
 ### Queries

@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/neo4j.yaml` | — |
-| Schema extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor; @Node annotation for node entity extraction not implemented. |
+| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/neo4j.yaml` | — |
+| Schema extraction | 🟢 `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor; @Node annotation for node entity extraction not implemented. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor (Spring Data Neo4j @Node/@Relationship annotations not handled). Tracked in issue #3001. |
+| Association extraction | 🟢 `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor (Spring Data Neo4j @Node/@Relationship annotations not handled). Tracked in issue #3001. |
 | Foreign key extraction | — `not_applicable` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j is a graph database with no foreign key concept; foreign_key_extraction is not applicable |
 | Lazy loading recognition | — `not_applicable` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j Spring Data has no lazy-loading concept equivalent to relational ORMs; not applicable |
-| Relationship extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists. |
+| Relationship extraction | 🟢 `partial` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists. |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/neo4j.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/neo4j.yaml` | — |
 
 ### Migrations
 

@@ -65,8 +65,8 @@ func TestStatusGlyph(t *testing.T) {
 		in, want string
 	}{
 		{StatusFull, "✅"},
-		{StatusPartial, "⚠️"},
-		{StatusMissing, "❌"},
+		{StatusPartial, "🟢"},
+		{StatusMissing, "🔴"},
 		{StatusNotApplicable, "—"},
 		{"", "—"},
 		{"bogus", "—"},

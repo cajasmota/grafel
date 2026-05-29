@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ⚠️ `partial` | `2026-05-29` | 3095 | `internal/custom/java/spring_ecosystem.go`<br>`internal/engine/rules/java/orms/spring_data_mongodb.yaml` | — |
+| Model extraction | 🟢 `partial` | `2026-05-29` | 3095 | `internal/custom/java/spring_ecosystem.go`<br>`internal/engine/rules/java/orms/spring_data_mongodb.yaml` | — |
 | Schema extraction | ✅ `full` | `2026-05-29` | 3095 | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_ecosystem.go` | — |
 
 ### Relationships
@@ -31,13 +31,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-29` | 3095 | `internal/custom/java/spring_ecosystem.go`<br>`internal/engine/rules/java/orms/spring_data_mongodb.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-29` | 3095 | `internal/custom/java/spring_ecosystem.go`<br>`internal/engine/rules/java/orms/spring_data_mongodb.yaml` | — |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
+| Migration parsing | 🔴 `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
 
 ## Provenance
 

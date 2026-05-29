@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Constraint extraction | ✅ `full` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go`<br>`internal/engine/java_annotation_params.go` | Bean-Validation annotations (@NotNull/@NotBlank/@NotEmpty/@Size/@Min/@Max/@Pattern/@Email) are collected on each handler parameter and drive the Required flag; captured as annotation strings, not structured constraint records (no value bounds parsed). |
-| Custom validator extraction | ⚠️ `partial` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go` | Extracting classes that implement ConstraintValidator<A,T> requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002. |
+| Custom validator extraction | 🟢 `partial` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go` | Extracting classes that implement ConstraintValidator<A,T> requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002. |
 
 ### Coercion
 
@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/junit5.go` | Bean Validation integration tests use JUnit 5 with jakarta.validation.Validator. The junit5 extractor (internal/custom/java/junit5.go) captures @Test methods for the junit5 framework tag. Tests for bean-validation handlers are linked via the same JUnit 5 test-method extraction path used by other Java frameworks (e.g. Jakarta EE, Spring Boot — see #2996, #2991). |
+| Tests linkage | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/junit5.go` | Bean Validation integration tests use JUnit 5 with jakarta.validation.Validator. The junit5 extractor (internal/custom/java/junit5.go) captures @Test methods for the junit5 framework tag. Tests for bean-validation handlers are linked via the same JUnit 5 test-method extraction path used by other Java frameworks (e.g. Jakarta EE, Spring Boot — see #2996, #2991). |
 
 ## Provenance
 

@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/orm_queries_other.go` | — |
-| Resource extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/orm_queries_other.go` | — |
+| Dependency attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/orm_queries_other.go` | — |
+| Resource extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/orm_queries_other.go` | — |
 
 ## Provenance
 

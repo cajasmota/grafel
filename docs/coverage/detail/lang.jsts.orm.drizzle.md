@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/drizzle.go`<br>`internal/custom/javascript/orm_build_3067_test.go` | — |
 | Foreign key extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/drizzle.go`<br>`internal/custom/javascript/orm_build_3067_test.go` | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Relationship extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/drizzle.go`<br>`internal/custom/javascript/orm_build_3067_test.go` | — |
 
 ### Queries

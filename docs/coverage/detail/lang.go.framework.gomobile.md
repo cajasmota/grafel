@@ -15,80 +15,80 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | ❌ `missing` | — | — | — | — |
+| Context extraction | 🔴 `missing` | — | — | — | — |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Deep link extraction | ❌ `missing` | — | — | — | — |
-| Navigation extraction | ❌ `missing` | — | — | — | — |
-| Screen detection | ❌ `missing` | — | — | — | — |
+| Deep link extraction | 🔴 `missing` | — | — | — | — |
+| Navigation extraction | 🔴 `missing` | — | — | — | — |
+| Screen detection | 🔴 `missing` | — | — | — | — |
 
 ### Platform
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Platform branching | ❌ `missing` | — | — | — | — |
+| Platform branching | 🔴 `missing` | — | — | — | — |
 
 ### Native Bridge
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | ❌ `missing` | — | — | — | — |
+| Native module imports | 🔴 `missing` | — | — | — | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | ❌ `missing` | — | — | — | — |
-| State management | ❌ `missing` | — | — | — | — |
+| Branch conditions | 🔴 `missing` | — | — | — | — |
+| State management | 🔴 `missing` | — | — | — | — |
 
 ### Type System
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | ❌ `missing` | — | — | — | — |
-| Interface extraction | ❌ `missing` | — | — | — | — |
-| Type alias extraction | ❌ `missing` | — | — | — | — |
+| Enum extraction | 🔴 `missing` | — | — | — | — |
+| Interface extraction | 🔴 `missing` | — | — | — | — |
+| Type alias extraction | 🔴 `missing` | — | — | — | — |
 
 ### Lifecycle
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | ❌ `missing` | — | — | — | — |
+| State setter emission | 🔴 `missing` | — | — | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | — | — | — |
+| Tests linkage | 🔴 `missing` | — | — | — | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/golang.go`<br>`internal/substrate/substrate.go` | — |
-| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DB effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/golang.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Import resolution quality | ⚠️ `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/golang.go`<br>`internal/substrate/substrate.go` | — |
-| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Response shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Schema drift detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Import resolution quality | 🟢 `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/golang.go`<br>`internal/substrate/substrate.go` | — |
+| Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint source detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

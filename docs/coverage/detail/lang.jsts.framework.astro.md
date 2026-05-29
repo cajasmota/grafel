@@ -68,26 +68,26 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/markup_script.go` | — |
-| Constant propagation | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
-| DB effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
-| Dead code detection | ❌ `missing` | — | 3057 | — | dead_module_detector.go handles javascript/typescript language tags only; .astro files use the astro extractor (language=astro) which is not in the detector switch |
-| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_markup_script.go` | — |
-| Env fallback recognition | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
-| Fs effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
-| HTTP effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
-| Import resolution quality | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
-| Module cycle detection | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/module_cycle_pass.go` | — |
-| Mutation effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
-| Pure function tagging | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/pure_function_pass.go` | — |
-| Reachability analysis | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
-| Request shape extraction | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_t3.go` | — |
-| Response shape extraction | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_t3.go` | — |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/markup_script.go` | — |
+| Constant propagation | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
+| DB effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
+| Dead code detection | 🔴 `missing` | — | 3057 | — | dead_module_detector.go handles javascript/typescript language tags only; .astro files use the astro extractor (language=astro) which is not in the detector switch |
+| Def use chain extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_markup_script.go` | — |
+| Env fallback recognition | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
+| Fs effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
+| HTTP effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
+| Import resolution quality | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
+| Module cycle detection | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/module_cycle_pass.go` | — |
+| Mutation effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
+| Pure function tagging | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/pure_function_pass.go` | — |
+| Reachability analysis | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
+| Request shape extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_t3.go` | — |
+| Response shape extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_t3.go` | — |
 | Sanitizer recognition | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
-| Schema drift detection | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/payload_drift.go` | — |
+| Schema drift detection | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/payload_drift.go` | — |
 | Taint sink detection | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
 | Taint source detection | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
-| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/template_pattern_markup_script.go` | — |
+| Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/template_pattern_markup_script.go` | — |
 | Vulnerability finding | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_astro/UserPage.astro` | — |
 
 ## Framework-specific

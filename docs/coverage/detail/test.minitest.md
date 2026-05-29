@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency graph | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/tests_edges.go` | — |
-| Target extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/test_patterns.yaml` | — |
+| Dependency graph | 🟢 `partial` | `2026-05-28` | — | `internal/engine/tests_edges.go` | — |
+| Target extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/test_patterns.yaml` | — |
 
 ## Provenance
 

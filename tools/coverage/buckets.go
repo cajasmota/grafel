@@ -58,17 +58,19 @@ func bucketCapabilityKeys(bucket string) []string {
 	return out
 }
 
-// statusGlyph maps a capability status to its single-character glyph.
-// Empty input (capability not declared on this record) renders as "—".
-// The four glyphs (✅ ⚠️ ❌ —) are the rendering contract for #2725.
+// statusGlyph maps a capability status to its per-cell support glyph,
+// aligned with the group-level supportGlyph palette so the whole board
+// speaks one visual language: ✅ comprehensive (full) · 🟢 supported,
+// i.e. extracted heuristically (partial) · 🔴 not extracted (missing) ·
+// — not applicable / not declared. Empty input renders as "—".
 func statusGlyph(status string) string {
 	switch status {
 	case StatusFull:
 		return "✅"
 	case StatusPartial:
-		return "⚠️"
+		return "🟢"
 	case StatusMissing:
-		return "❌"
+		return "🔴"
 	case StatusNotApplicable, "":
 		return "—"
 	}

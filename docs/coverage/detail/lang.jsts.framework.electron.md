@@ -33,16 +33,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ⚠️ `partial` | — | 3059 | `internal/links/effect_propagation.go`<br>`internal/substrate/jsts.go` | — |
-| Constant propagation | ⚠️ `partial` | — | 3059 | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go` | — |
-| DB effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | Electron main-process runs full Node.js; ORM/DB libraries like Sequelize/TypeORM/Prisma apply |
-| Dead code detection | ⚠️ `partial` | — | 3059 | `internal/patterns/dead_module_detector.go` | — |
-| Env fallback recognition | ⚠️ `partial` | — | 3059 | `internal/substrate/jsts.go` | — |
-| Fs effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
-| HTTP effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
-| Import resolution quality | ⚠️ `partial` | — | 3059 | `internal/substrate/jsts.go` | — |
-| Mutation effect | ⚠️ `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
-| Reachability analysis | ⚠️ `partial` | — | 3059 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
+| Confidence overlay | 🟢 `partial` | — | 3059 | `internal/links/effect_propagation.go`<br>`internal/substrate/jsts.go` | — |
+| Constant propagation | 🟢 `partial` | — | 3059 | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go` | — |
+| DB effect | 🟢 `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | Electron main-process runs full Node.js; ORM/DB libraries like Sequelize/TypeORM/Prisma apply |
+| Dead code detection | 🟢 `partial` | — | 3059 | `internal/patterns/dead_module_detector.go` | — |
+| Env fallback recognition | 🟢 `partial` | — | 3059 | `internal/substrate/jsts.go` | — |
+| Fs effect | 🟢 `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| HTTP effect | 🟢 `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| Import resolution quality | 🟢 `partial` | — | 3059 | `internal/substrate/jsts.go` | — |
+| Mutation effect | 🟢 `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
+| Reachability analysis | 🟢 `partial` | — | 3059 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
 
 ## Provenance
 

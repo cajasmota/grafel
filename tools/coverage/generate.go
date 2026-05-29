@@ -422,51 +422,62 @@ func makeGroupView(name string, caps map[string]Capability) groupView {
 	}
 }
 
-// groupDigest returns the worst-glyph + covered/applicable summary for a
-// group's capability cells. Empty groups (no cells declared) render as
-// "—" so pivot rows for sparsely-populated records still align under
+// groupDigest returns a support-tier glyph + covered/applicable summary
+// for a group's capability cells. Empty groups (no cells declared) render
+// as "—" so pivot rows for sparsely-populated records still align under
 // every group column. The numerator counts COVERED cells (StatusFull +
 // StatusPartial — any capability that has real extraction, comprehensive
 // or heuristic); the denominator counts APPLICABLE cells (full + partial
 // + missing), EXCLUDING not_applicable so capabilities that genuinely
 // don't apply to the framework neither help nor hurt the fraction. The
-// glyph still reflects the WORST cell status, so the fraction and glyph
-// together read honestly: "20/20 ⚠️" = every applicable capability is
-// extracted but some only heuristically; "✅" only when all are full;
-// any shortfall in the fraction is exactly the count of missing cells.
-// A group with no applicable cells (all not_applicable, or empty) → "—".
+// glyph is a SUPPORT LEVEL (see supportGlyph), not a worst-cell warning,
+// so a fully-but-heuristically extracted column reads as "🟢 supported"
+// rather than "⚠️ warning". A group with no applicable cells → "—".
 func groupDigest(caps map[string]Capability) string {
 	if len(caps) == 0 {
 		return "—"
 	}
-	covered := 0    // full + partial
-	applicable := 0 // full + partial + missing (excludes not_applicable)
-	worst := ""
-	worstRank := -1
-	rank := map[string]int{
-		StatusMissing:       4,
-		StatusPartial:       3,
-		StatusFull:          2,
-		StatusNotApplicable: 1,
-		"":                  0,
-	}
+	full, partial, missing := 0, 0, 0
 	for _, c := range caps {
 		switch c.Status {
-		case StatusFull, StatusPartial:
-			covered++
-			applicable++
+		case StatusFull:
+			full++
+		case StatusPartial:
+			partial++
 		case StatusMissing:
-			applicable++
-		}
-		if r := rank[c.Status]; r > worstRank {
-			worstRank = r
-			worst = c.Status
+			missing++
 		}
 	}
+	covered := full + partial
+	applicable := covered + missing
 	if applicable == 0 {
 		return "—"
 	}
-	return fmt.Sprintf("%s %d/%d", statusGlyph(worst), covered, applicable)
+	return fmt.Sprintf("%s %d/%d", supportGlyph(full, partial, missing), covered, applicable)
+}
+
+// supportGlyph maps a group's full/partial/missing counts to a four-tier
+// SUPPORT-LEVEL indicator. The point is that "extracted but heuristic" is
+// a positive state, not a warning — so it gets a green circle, not ⚠️:
+//
+//	✅ comprehensive  — every applicable capability is `full` (fixture-proven)
+//	🟢 supported      — every applicable capability is extracted; some only heuristically (partial)
+//	🟡 partial        — some applicable capabilities are extracted, some still missing
+//	🔴 not extracted  — nothing extracted yet (all applicable cells missing)
+//
+// Callers pass counts for a group whose applicable total (full+partial+
+// missing) is already known to be > 0.
+func supportGlyph(full, partial, missing int) string {
+	switch {
+	case missing == 0 && partial == 0:
+		return "✅"
+	case missing == 0:
+		return "🟢"
+	case full+partial > 0:
+		return "🟡"
+	default:
+		return "🔴"
+	}
 }
 
 // languageDisplay maps a language slug to its human-facing label. The

@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Task extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/custom/python/dramatiq.go`<br>`internal/engine/rules/python/frameworks/dramatiq.yaml` | — |
-| Task routing | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
+| Task extraction | 🟢 `partial` | `2026-05-28` | — | `internal/custom/python/dramatiq.go`<br>`internal/engine/rules/python/frameworks/dramatiq.yaml` | — |
+| Task routing | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
 
 ### Schedule
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Schedule extraction | ⚠️ `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3074) | — | django-dramatiq periodiq/APScheduler integration: periodic task declarations via @dramatiq.actor + periodiq.cron are detectable via the @periodiq.cron decorator pattern but are not yet extracted by the dramatiq extractor. Partial because basic actor-based scheduling is not modelled; only per-actor retry intervals. |
+| Schedule extraction | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3074) | — | django-dramatiq periodiq/APScheduler integration: periodic task declarations via @dramatiq.actor + periodiq.cron are detectable via the @periodiq.cron decorator pattern but are not yet extracted by the dramatiq extractor. Partial because basic actor-based scheduling is not modelled; only per-actor retry intervals. |
 
 ### Broker
 
@@ -41,33 +41,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | — |
+| Tests linkage | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ⚠️ `partial` | `2026-05-29` | 3068 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go`<br>`internal/types/confidence.go` | — |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | 3068 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go`<br>`internal/types/confidence.go` | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
-| DB effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
-| Dead code detection | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | dead code derived from reachability + entry-point sniffer; partial because dramatiq @actor entry wiring is not modelled |
-| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/def_use_python.go` | — |
+| DB effect | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
+| Dead code detection | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | dead code derived from reachability + entry-point sniffer; partial because dramatiq @actor entry wiring is not modelled |
+| Def use chain extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/def_use_python.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
-| HTTP effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
-| Import resolution quality | ⚠️ `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
-| Module cycle detection | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/module_cycle_pass.go` | language-agnostic Tarjan SCC over IMPORTS edges; fires on all Python modules; partial because task/actor module cycles are not distinguished from app-level cycles |
-| Mutation effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
-| Pure function tagging | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go` | derivative of effect propagation; fires on all Python entities; partial because actor functions may have side effects missed by heuristic sniffers |
-| Reachability analysis | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | language-wide Python entry-point sniffer covers module-level __main__/test/lifecycle; partial because @dramatiq.actor entry wiring is not modelled |
+| Fs effect | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
+| HTTP effect | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
+| Import resolution quality | 🟢 `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| Module cycle detection | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/module_cycle_pass.go` | language-agnostic Tarjan SCC over IMPORTS edges; fires on all Python modules; partial because task/actor module cycles are not distinguished from app-level cycles |
+| Mutation effect | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
+| Pure function tagging | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go` | derivative of effect propagation; fires on all Python entities; partial because actor functions may have side effects missed by heuristic sniffers |
+| Reachability analysis | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | language-wide Python entry-point sniffer covers module-level __main__/test/lifecycle; partial because @dramatiq.actor entry wiring is not modelled |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
-| Sanitizer recognition | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
+| Sanitizer recognition | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
-| Taint sink detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
-| Taint source detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
-| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/template_pattern_python.go` | — |
-| Vulnerability finding | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | derives from taint source+sink co-occurrence; fires on all Python; partial for dramatiq actor context |
+| Taint sink detection | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
+| Taint source detection | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
+| Template pattern catalog | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/template_pattern_python.go` | — |
+| Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | derives from taint source+sink co-occurrence; fires on all Python; partial for dramatiq actor context |
 
 ## Provenance
 

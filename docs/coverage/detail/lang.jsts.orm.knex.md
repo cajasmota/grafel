@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | Knex is a SQL query builder, not an ORM — it has no model/entity layer to extract. Persistent model_extraction belongs to Objection.js, which layers Active-Record models on top of Knex (see lang.jsts.orm.objection). |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Lazy loading recognition | — `not_applicable` | — | 3071 | — | Knex is a SQL query builder with no ORM model layer; there is no relation or lazy-loading concept to extract. Lazy loading is not applicable. |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries
 

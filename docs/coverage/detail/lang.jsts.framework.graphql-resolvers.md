@@ -34,27 +34,27 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/jsts.go` | — |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/jsts.go` | — |
 | Constant propagation | ✅ `full` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
-| DB effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
-| Dead code detection | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/patterns/dead_module_detector.go` | — |
-| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/def_use_jsts.go` | — |
+| DB effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
+| Dead code detection | 🟢 `partial` | `2026-05-29` | 3057 | `internal/patterns/dead_module_detector.go` | — |
+| Def use chain extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/def_use_jsts.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
-| Fs effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
-| HTTP effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
+| Fs effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
+| HTTP effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
 | Import resolution quality | ✅ `full` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
-| Module cycle detection | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/module_cycle_pass.go` | — |
-| Mutation effect | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
-| Pure function tagging | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/pure_function_pass.go` | — |
-| Reachability analysis | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
-| Request shape extraction | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_jsts.go` | — |
-| Response shape extraction | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_jsts.go` | — |
-| Sanitizer recognition | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
-| Schema drift detection | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/payload_drift.go`<br>`internal/substrate/payload_shapes_jsts.go` | GraphQL resolver return values differ structurally from HTTP request/response bodies; payload_drift.go fires on jsts files but misses resolver-specific field patterns (issue notes borderline B) |
-| Taint sink detection | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
-| Taint source detection | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
-| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/substrate/template_pattern_jsts.go` | — |
-| Vulnerability finding | ⚠️ `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
+| Module cycle detection | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/module_cycle_pass.go` | — |
+| Mutation effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go` | — |
+| Pure function tagging | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/pure_function_pass.go` | — |
+| Reachability analysis | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/reachability.go`<br>`internal/substrate/entry_points_jsts.go` | — |
+| Request shape extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_jsts.go` | — |
+| Response shape extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/payload_shapes_jsts.go` | — |
+| Sanitizer recognition | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
+| Schema drift detection | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/payload_drift.go`<br>`internal/substrate/payload_shapes_jsts.go` | GraphQL resolver return values differ structurally from HTTP request/response bodies; payload_drift.go fires on jsts files but misses resolver-specific field patterns (issue notes borderline B) |
+| Taint sink detection | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
+| Taint source detection | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
+| Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/template_pattern_jsts.go` | — |
+| Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
 
 ## Provenance
 

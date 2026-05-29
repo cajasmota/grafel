@@ -8,22 +8,22 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 
 | Language | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [Conan](../detail/lang.c-cpp.tool.conan.md) | — | ❌ | ❌ | — | |
-| [C/C++](../by-language/c-cpp.md) | [Hunter](../detail/lang.c-cpp.tool.hunter.md) | — | ❌ | ❌ | — | |
-| [C/C++](../by-language/c-cpp.md) | [build2](../detail/lang.c-cpp.tool.build2.md) | — | ❌ | ❌ | — | |
-| [C/C++](../by-language/c-cpp.md) | [vcpkg](../detail/lang.c-cpp.tool.vcpkg.md) | — | ❌ | ❌ | — | |
-| [C#](../by-language/csharp.md) | [.csproj / packages.config](../detail/pkg.csproj.md) | — | ❌ | ❌ | — | |
-| [dart](../by-language/dart.md) | [pubspec.yaml](../detail/pkg.pubspec.md) | — | ❌ | ✅ | — | |
-| [elixir](../by-language/elixir.md) | [mix.exs](../detail/pkg.mix.md) | — | — | ❌ | — | |
-| [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | ⚠️ | ✅ | — | |
-| [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | ❌ | ❌ | — | |
+| [C/C++](../by-language/c-cpp.md) | [Conan](../detail/lang.c-cpp.tool.conan.md) | — | 🔴 | 🔴 | — | |
+| [C/C++](../by-language/c-cpp.md) | [Hunter](../detail/lang.c-cpp.tool.hunter.md) | — | 🔴 | 🔴 | — | |
+| [C/C++](../by-language/c-cpp.md) | [build2](../detail/lang.c-cpp.tool.build2.md) | — | 🔴 | 🔴 | — | |
+| [C/C++](../by-language/c-cpp.md) | [vcpkg](../detail/lang.c-cpp.tool.vcpkg.md) | — | 🔴 | 🔴 | — | |
+| [C#](../by-language/csharp.md) | [.csproj / packages.config](../detail/pkg.csproj.md) | — | 🔴 | 🔴 | — | |
+| [dart](../by-language/dart.md) | [pubspec.yaml](../detail/pkg.pubspec.md) | — | 🔴 | ✅ | — | |
+| [elixir](../by-language/elixir.md) | [mix.exs](../detail/pkg.mix.md) | — | — | 🔴 | — | |
+| [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | 🟢 | ✅ | — | |
+| [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | 🔴 | 🔴 | — | |
 | [java](../by-language/java.md) | [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | — | |
 | [JS/TS](../by-language/jsts.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ✅ | ✅ | — | |
-| [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ❌ | ❌ | — | |
-| [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | ⚠️ | ⚠️ | — | |
-| [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | ⚠️ | ✅ | — | |
+| [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | 🔴 | 🔴 | — | |
+| [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | 🟢 | 🟢 | — | |
+| [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | 🟢 | ✅ | — | |
 | [python](../by-language/python.md) | [requirements.txt](../detail/pkg.requirements.md) | — | — | ✅ | — | |
-| [ruby](../by-language/ruby.md) | [Gemfile](../detail/pkg.gemfile.md) | — | ❌ | ✅ | — | |
-| [rust](../by-language/rust.md) | [Cargo.toml](../detail/pkg.cargo.md) | — | ❌ | ✅ | — | |
-| [scala](../by-language/scala.md) | [build.sbt](../detail/pkg.sbt.md) | — | — | ❌ | — | |
-| [swift](../by-language/swift.md) | [Package.swift / Podfile](../detail/pkg.swift-package.md) | — | — | ❌ | — | |
+| [ruby](../by-language/ruby.md) | [Gemfile](../detail/pkg.gemfile.md) | — | 🔴 | ✅ | — | |
+| [rust](../by-language/rust.md) | [Cargo.toml](../detail/pkg.cargo.md) | — | 🔴 | ✅ | — | |
+| [scala](../by-language/scala.md) | [build.sbt](../detail/pkg.sbt.md) | — | — | 🔴 | — | |
+| [swift](../by-language/swift.md) | [Package.swift / Podfile](../detail/pkg.swift-package.md) | — | — | 🔴 | — | |

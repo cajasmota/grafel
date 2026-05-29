@@ -340,12 +340,12 @@ func TestBuildBucketSectionGroupsBySubcategory(t *testing.T) {
 // TestNonStrandedGroupNames covers the don't-strand render guard (#2902)
 // in isolation: a column whose digest is "—" for every record is dropped,
 // a column with at least one non-"—" cell (including a tracked-but-missing
-// "❌ 0/n" digest) is kept, and canonical order is preserved.
+// "🔴 0/n" digest) is kept, and canonical order is preserved.
 func TestNonStrandedGroupNames(t *testing.T) {
 	candidates := []string{"A", "B", "C", "D"}
 	digests := []map[string]string{
 		// rec0: carries A (full) and C (tracked-but-missing).
-		{"A": "✅ 1/1", "B": "—", "C": "❌ 0/1", "D": "—"},
+		{"A": "✅ 1/1", "B": "—", "C": "🔴 0/1", "D": "—"},
 		// rec1: carries nothing extra; B and D still all-"—".
 		{"A": "—", "B": "—", "C": "—", "D": "—"},
 	}
@@ -416,29 +416,30 @@ func TestGroupForCapability(t *testing.T) {
 	}
 }
 
-// TestGroupDigest checks the worst-glyph + covered/applicable digest:
-// numerator = full+partial (covered), denominator = full+partial+missing
-// (applicable; not_applicable excluded), glyph = worst cell status.
+// TestGroupDigest checks the support-tier glyph + covered/applicable
+// digest: numerator = full+partial (covered), denominator = full+partial+
+// missing (applicable; not_applicable excluded), glyph = support level
+// (✅ all full · 🟢 all covered some heuristic · 🟡 some missing · 🔴 none).
 func TestGroupDigest(t *testing.T) {
-	// full + partial + missing → covered 2 / applicable 3, worst missing.
+	// full + partial + missing → covered 2 / applicable 3, some missing → 🟡.
 	caps := map[string]Capability{
 		"a": {Status: StatusFull},
 		"b": {Status: StatusPartial},
 		"c": {Status: StatusMissing},
 	}
-	if got := groupDigest(caps); got != "❌ 2/3" {
-		t.Errorf("groupDigest = %q, want ❌ 2/3", got)
+	if got := groupDigest(caps); got != "🟡 2/3" {
+		t.Errorf("groupDigest = %q, want 🟡 2/3", got)
 	}
-	// not_applicable is excluded from the denominator entirely.
+	// not_applicable excluded; no missing + a partial → 🟢 supported.
 	naCaps := map[string]Capability{
 		"a": {Status: StatusFull},
 		"b": {Status: StatusPartial},
 		"c": {Status: StatusNotApplicable},
 	}
-	if got := groupDigest(naCaps); got != "⚠️ 2/2" {
-		t.Errorf("groupDigest w/ N/A = %q, want ⚠️ 2/2", got)
+	if got := groupDigest(naCaps); got != "🟢 2/2" {
+		t.Errorf("groupDigest w/ N/A = %q, want 🟢 2/2", got)
 	}
-	// all full (after excluding N/A) → green, fraction saturated.
+	// all full (after excluding N/A) → ✅ comprehensive.
 	allFull := map[string]Capability{
 		"a": {Status: StatusFull},
 		"b": {Status: StatusFull},
@@ -446,6 +447,11 @@ func TestGroupDigest(t *testing.T) {
 	}
 	if got := groupDigest(allFull); got != "✅ 2/2" {
 		t.Errorf("groupDigest all-full = %q, want ✅ 2/2", got)
+	}
+	// all missing → 🔴 not extracted.
+	allMissing := map[string]Capability{"a": {Status: StatusMissing}, "b": {Status: StatusMissing}}
+	if got := groupDigest(allMissing); got != "🔴 0/2" {
+		t.Errorf("groupDigest all-missing = %q, want 🔴 0/2", got)
 	}
 	// all not_applicable (no applicable cells) → em-dash.
 	if got := groupDigest(map[string]Capability{"a": {Status: StatusNotApplicable}}); got != "—" {

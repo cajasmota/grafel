@@ -15,29 +15,29 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/pony_orm.yaml` | — |
-| Schema extraction | ⚠️ `partial` | `2026-05-29` | 3072 | `internal/custom/python/orm_schema.go` | Pony ORM entity field definitions (Required, Optional etc.) are not extracted; only model class detection and query attribution are handled. |
+| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/pony_orm.yaml` | — |
+| Schema extraction | 🟢 `partial` | `2026-05-29` | 3072 | `internal/custom/python/orm_schema.go` | Pony ORM entity field definitions (Required, Optional etc.) are not extracted; only model class detection and query attribution are handled. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
-| Foreign key extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
-| Lazy loading recognition | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Pony ORM lazy loading is implicit via @db_session but not tracked structurally; no extractor emits lazy-load relationship entities. |
-| Relationship extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
+| Association extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
+| Foreign key extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
+| Lazy loading recognition | 🔴 `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Pony ORM lazy loading is implicit via @db_session but not tracked structurally; no extractor emits lazy-load relationship entities. |
+| Relationship extraction | 🟢 `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/pony_relationships.py` | — |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/pony_orm.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/pony_orm.yaml` | — |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — |
+| Migration parsing | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 

@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Env resolution | ❌ `missing` | — | — | — | — |
-| File parsing | ❌ `missing` | — | — | — | — |
+| Env resolution | 🔴 `missing` | — | — | — | — |
+| File parsing | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 

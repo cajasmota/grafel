@@ -15,28 +15,28 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/graphql/frameworks/strawberry_python.yaml`<br>`internal/engine/rules/python/frameworks/strawberry_graphql.yaml` | — |
-| Handler attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/frameworks/strawberry_graphql.yaml` | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/graphql/frameworks/strawberry_python.yaml`<br>`internal/engine/rules/python/frameworks/strawberry_graphql.yaml` | — |
+| Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/frameworks/strawberry_graphql.yaml` | — |
+| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ⚠️ `partial` | `2026-05-29` | 3052 | `internal/mcp/auth_coverage.go`<br>`internal/patterns/decorator_extractor.go` | Strawberry-GraphQL auth context not yet specifically extracted; generic decorator sniffer detects @authorized/@authenticated on resolver functions |
+| Auth coverage | 🟢 `partial` | `2026-05-29` | 3052 | `internal/mcp/auth_coverage.go`<br>`internal/patterns/decorator_extractor.go` | Strawberry-GraphQL auth context not yet specifically extracted; generic decorator sniffer detects @authorized/@authenticated on resolver functions |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ⚠️ `partial` | `2026-05-29` | 3054 | `internal/custom/python/http_middleware.go` | — |
+| Middleware coverage | 🟢 `partial` | `2026-05-29` | 3054 | `internal/custom/python/http_middleware.go` | — |
 
 ### Type System
 
@@ -57,40 +57,40 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | ⚠️ `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Metric extraction | ⚠️ `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Trace extraction | ⚠️ `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
+| Log extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
+| Metric extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
+| Trace extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
 
 ### Data
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DB effect | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
+| DB effect | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ⚠️ `partial` | `2026-05-29` | 3068 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go`<br>`internal/types/confidence.go` | — |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | 3068 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go`<br>`internal/types/confidence.go` | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
-| Dead code detection | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | — |
-| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/substrate/def_use_python.go`<br>`internal/substrate/def_use_test.go` | — |
+| Dead code detection | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | — |
+| Def use chain extraction | 🟢 `partial` | `2026-05-29` | 2972 | `internal/substrate/def_use_python.go`<br>`internal/substrate/def_use_test.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
-| HTTP effect | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
-| Import resolution quality | ⚠️ `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
-| Module cycle detection | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/module_cycle_pass.go` | — |
-| Mutation effect | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
-| Pure function tagging | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go` | — |
-| Reachability analysis | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | — |
+| Fs effect | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
+| HTTP effect | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
+| Import resolution quality | 🟢 `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| Module cycle detection | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/module_cycle_pass.go` | — |
+| Mutation effect | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
+| Pure function tagging | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go` | — |
+| Reachability analysis | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | — |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
-| Sanitizer recognition | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
+| Sanitizer recognition | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
-| Taint sink detection | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/substrate/taint_sites_python.go`<br>`internal/substrate/taint_sites_test.go` | — |
-| Taint source detection | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/substrate/taint_sites_python.go`<br>`internal/substrate/taint_sites_test.go` | — |
-| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/substrate/template_pattern_python.go`<br>`internal/substrate/template_pattern_test.go` | — |
-| Vulnerability finding | ⚠️ `partial` | `2026-05-29` | 2972 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
+| Taint sink detection | 🟢 `partial` | `2026-05-29` | 2972 | `internal/substrate/taint_sites_python.go`<br>`internal/substrate/taint_sites_test.go` | — |
+| Taint source detection | 🟢 `partial` | `2026-05-29` | 2972 | `internal/substrate/taint_sites_python.go`<br>`internal/substrate/taint_sites_test.go` | — |
+| Template pattern catalog | 🟢 `partial` | `2026-05-29` | 2972 | `internal/substrate/template_pattern_python.go`<br>`internal/substrate/template_pattern_test.go` | — |
+| Vulnerability finding | 🟢 `partial` | `2026-05-29` | 2972 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
 
 ## Provenance
 

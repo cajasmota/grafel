@@ -11,9 +11,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Consumer extraction | ❌ `missing` | — | — | — | — |
-| Producer extraction | ❌ `missing` | — | — | — | — |
-| Topic attribution | ❌ `missing` | — | — | — | — |
+| Consumer extraction | 🔴 `missing` | — | — | — | — |
+| Producer extraction | 🔴 `missing` | — | — | — | — |
+| Topic attribution | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 
