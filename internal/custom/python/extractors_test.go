@@ -2327,11 +2327,395 @@ func TestAllExtractors_Registered(t *testing.T) {
 		"python_pytest", "python_langchain", "python_mongodb", "python_redis",
 		"python_sqlalchemy", "python_fastapi_reqresp", "python_flask_reqresp",
 		"python_dramatiq", "python_rq", "python_pydantic",
+		"python_marshmallow", "python_attrs",
 	}
 	for _, key := range keys {
 		_, ok := extractor.Get(key)
 		if !ok {
 			t.Fatalf("%s not registered", key)
+		}
+	}
+}
+
+// ============================================================================
+// Marshmallow tests (issue #2985)
+// ============================================================================
+
+func TestMarshmallow_SchemaClass(t *testing.T) {
+	src := `from marshmallow import Schema, fields
+
+class UserSchema(Schema):
+    name = fields.Str(required=True)
+    email = fields.Email()
+`
+	ents := extract(t, "python_marshmallow", src)
+	found := false
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Pattern" && e.Props["pattern_type"] == "schema_class" && e.Props["schema_name"] == "UserSchema" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected schema_class entity for UserSchema")
+	}
+}
+
+func TestMarshmallow_Fields(t *testing.T) {
+	src := `from marshmallow import Schema, fields
+
+class ProductSchema(Schema):
+    name = fields.Str(required=True)
+    price = fields.Float()
+    tags = fields.List(fields.Str())
+`
+	ents := extract(t, "python_marshmallow", src)
+	fieldCount := 0
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "field" {
+			fieldCount++
+		}
+	}
+	if fieldCount < 2 {
+		t.Fatalf("expected at least 2 field entities, got %d", fieldCount)
+	}
+}
+
+func TestMarshmallow_RequiredField(t *testing.T) {
+	src := `from marshmallow import Schema, fields
+
+class SignupSchema(Schema):
+    username = fields.Str(required=True)
+    email = fields.Email(required=True)
+`
+	ents := extract(t, "python_marshmallow", src)
+	requiredCount := 0
+	for _, e := range ents {
+		if e.Props["required"] == "true" {
+			requiredCount++
+		}
+	}
+	if requiredCount < 2 {
+		t.Fatalf("expected at least 2 required=true field entities, got %d", requiredCount)
+	}
+}
+
+func TestMarshmallow_NestedField(t *testing.T) {
+	src := `from marshmallow import Schema, fields
+
+class AddressSchema(Schema):
+    street = fields.Str()
+
+class UserSchema(Schema):
+    address = fields.Nested(AddressSchema)
+    orders = fields.Nested("OrderSchema", many=True)
+`
+	ents := extract(t, "python_marshmallow", src)
+	nestedCount := 0
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "nested_field" {
+			nestedCount++
+			if e.Props["field"] == "address" && e.Props["nested_schema"] != "AddressSchema" {
+				t.Errorf("nested_schema for address: got %q, want AddressSchema", e.Props["nested_schema"])
+			}
+		}
+	}
+	if nestedCount < 2 {
+		t.Fatalf("expected at least 2 nested_field entities, got %d", nestedCount)
+	}
+}
+
+func TestMarshmallow_ValidatesDecorator(t *testing.T) {
+	src := `from marshmallow import Schema, fields, validates, ValidationError
+
+class UserSchema(Schema):
+    email = fields.Email()
+
+    @validates("email")
+    def validate_email(self, value):
+        if "@" not in value:
+            raise ValidationError("Not a valid email.")
+`
+	ents := extract(t, "python_marshmallow", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "field_validator" && e.Props["target_field"] == "email" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected field_validator entity for @validates('email')")
+	}
+}
+
+func TestMarshmallow_ValidatesSchema(t *testing.T) {
+	src := `from marshmallow import Schema, fields, validates_schema, ValidationError
+
+class OrderSchema(Schema):
+    amount = fields.Float()
+    currency = fields.Str()
+
+    @validates_schema
+    def validate_order(self, data, **kwargs):
+        if data["amount"] <= 0:
+            raise ValidationError("Amount must be positive.")
+`
+	ents := extract(t, "python_marshmallow", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "schema_validator" && e.Props["validator_fn"] == "validate_order" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected schema_validator entity for @validates_schema")
+	}
+}
+
+func TestMarshmallow_PostLoad(t *testing.T) {
+	src := `from marshmallow import Schema, fields, post_load
+
+class UserSchema(Schema):
+    name = fields.Str()
+
+    @post_load
+    def make_user(self, data, **kwargs):
+        return User(**data)
+`
+	ents := extract(t, "python_marshmallow", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "coercion_hook" && e.Props["hook_type"] == "post_load" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected coercion_hook entity for @post_load")
+	}
+}
+
+func TestMarshmallow_NoMatch(t *testing.T) {
+	src := `def regular():
+    pass
+`
+	ents := extract(t, "python_marshmallow", src)
+	if len(ents) != 0 {
+		t.Fatalf("expected 0 entities for non-marshmallow code, got %d", len(ents))
+	}
+}
+
+// TestMarshmallow_FullFixture exercises marshmallow.go against the
+// testdata/marshmallow_nested.py fixture. Proves schema_extraction (full),
+// nested_model_extraction (partial), and custom_validator_extraction (partial).
+// Issue #2985.
+func TestMarshmallow_FullFixture(t *testing.T) {
+	content, err := os.ReadFile("testdata/marshmallow_nested.py")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ext, _ := extractor.Get("python_marshmallow")
+	ents, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "testdata/marshmallow_nested.py",
+		Content:  content,
+		Language: "python",
+	})
+	if err != nil {
+		t.Fatalf("extract fixture: %v", err)
+	}
+
+	want := map[string]bool{
+		"schema_AddressSchema":        false, // schema_class
+		"schema_UserSchema":           false, // schema_class
+		"schema_OrderSchema":          false, // schema_class
+		"nested_address":              false, // nested_field (AddressSchema)
+		"nested_orders":               false, // nested_field (OrderSchema, many)
+		"validate_validate_email":     false, // @validates("email")
+		"validate_schema_validate_name_age": false, // @validates_schema
+		"coerce_make_user":            false, // @post_load
+		"coerce_normalize_amount":     false, // @pre_load
+	}
+	for _, e := range ents {
+		if _, tracked := want[e.Name]; tracked {
+			want[e.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("fixture: expected entity %q not emitted", name)
+		}
+	}
+}
+
+// ============================================================================
+// Attrs tests (issue #2985)
+// ============================================================================
+
+func TestAttrs_ClassDecorator_AttrS(t *testing.T) {
+	src := `import attr
+
+@attr.s
+class Point:
+    x = attr.ib()
+    y = attr.ib()
+`
+	ents := extract(t, "python_attrs", src)
+	found := false
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Pattern" && e.Props["pattern_type"] == "attrs_class" && e.Props["class_name"] == "Point" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected attrs_class entity for @attr.s Point")
+	}
+}
+
+func TestAttrs_ClassDecorator_Define(t *testing.T) {
+	src := `from attrs import define, field
+
+@define
+class User:
+    name: str = field()
+    email: str = field()
+`
+	ents := extract(t, "python_attrs", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "attrs_class" && e.Props["class_name"] == "User" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected attrs_class entity for @define User")
+	}
+}
+
+func TestAttrs_Attrib(t *testing.T) {
+	src := `import attr
+
+@attr.s
+class Item:
+    name = attr.ib()
+    price = attr.ib(default=0.0)
+`
+	ents := extract(t, "python_attrs", src)
+	attribCount := 0
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "attrib" {
+			attribCount++
+		}
+	}
+	if attribCount < 2 {
+		t.Fatalf("expected at least 2 attrib entities, got %d", attribCount)
+	}
+}
+
+func TestAttrs_ValidatorKwarg(t *testing.T) {
+	src := `import attr
+
+@attr.s
+class User:
+    age = attr.ib(validator=attr.validators.instance_of(int))
+`
+	ents := extract(t, "python_attrs", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "attrib" && e.Props["field"] == "age" && e.Props["validator"] != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected attrib entity with validator kwarg for age")
+	}
+}
+
+func TestAttrs_FieldValidator(t *testing.T) {
+	src := `from attrs import define, field
+
+@define
+class Order:
+    amount: float = field()
+
+    @amount.validator
+    def validate_amount(self, attribute, value):
+        if value <= 0:
+            raise ValueError("Amount must be positive")
+`
+	ents := extract(t, "python_attrs", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "field_validator" && e.Props["target_field"] == "amount" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected field_validator entity for @amount.validator")
+	}
+}
+
+func TestAttrs_ConverterKwarg(t *testing.T) {
+	src := `from attrs import define, field
+
+@define
+class Payment:
+    amount: float = field(converter=float)
+`
+	ents := extract(t, "python_attrs", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "attrib" && e.Props["field"] == "amount" && e.Props["converter"] == "float" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected attrib entity with converter=float for amount")
+	}
+}
+
+func TestAttrs_NoMatch(t *testing.T) {
+	src := `def regular():
+    pass
+`
+	ents := extract(t, "python_attrs", src)
+	if len(ents) != 0 {
+		t.Fatalf("expected 0 entities for non-attrs code, got %d", len(ents))
+	}
+}
+
+// TestAttrs_FullFixture exercises attrs.go against the
+// testdata/attrs_validators.py fixture. Proves schema_extraction (partial),
+// custom_validator_extraction (partial), and type_coercion_recognition (partial).
+// Issue #2985.
+func TestAttrs_FullFixture(t *testing.T) {
+	content, err := os.ReadFile("testdata/attrs_validators.py")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ext, _ := extractor.Get("python_attrs")
+	ents, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "testdata/attrs_validators.py",
+		Content:  content,
+		Language: "python",
+	})
+	if err != nil {
+		t.Fatalf("extract fixture: %v", err)
+	}
+
+	want := map[string]bool{
+		"schema_Address":          false, // @attr.s class
+		"schema_User":             false, // @attrs.define class
+		"schema_Order":            false, // @define class
+		"validate_validate_email": false, // @email.validator
+		"validate_validate_age":   false, // @age.validator
+		"validate_validate_amount": false, // @amount.validator
+	}
+	for _, e := range ents {
+		if _, tracked := want[e.Name]; tracked {
+			want[e.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("fixture: expected entity %q not emitted", name)
 		}
 	}
 }

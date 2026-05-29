@@ -3201,3 +3201,119 @@ records:
             - file: internal/patterns/patterns_test.go
           issues_implemented: ["2984"]
           verified_at: "2026-05-29"
+  lang.python.validation.marshmallow:
+    capabilities:
+      Schema:
+        schema_extraction:
+          # class Foo(Schema): / class Foo(ma.Schema): emitted as SCOPE.Pattern
+          # schema_class entities; schemaMarshmallowRE in schema_detector.go also
+          # classifies the file as marshmallow for SCOPE.Component detection.
+          # Fixture: internal/custom/python/testdata/marshmallow_nested.py; issue #2985.
+          status: full
+          symbols:
+            - file: internal/custom/python/marshmallow.go
+              functions: [Extract]
+            - file: internal/patterns/schema_detector.go
+              functions: [Detect]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+            - file: internal/patterns/patterns_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+        nested_model_extraction:
+          # fields.Nested(OtherSchema) / fields.Nested("OtherSchema") detected as
+          # SCOPE.Pattern nested_field entities; full traversal deferred; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/marshmallow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+      Constraints:
+        custom_validator_extraction:
+          # @validates('field') emits SCOPE.Pattern field_validator entities;
+          # @validates_schema emits schema_validator entities; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/marshmallow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+      Coercion:
+        type_coercion_recognition:
+          # @post_load / @pre_load hooks emitted as SCOPE.Pattern coercion_hook
+          # entities; per-field load_default/missing kwarg detection included; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/marshmallow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          # pytest.go provides the general Python test-linkage substrate cited here.
+          # Marshmallow-specific test fixtures added in extractors_test.go; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/pytest.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+  lang.python.validation.attrs:
+    capabilities:
+      Schema:
+        schema_extraction:
+          # @attr.s / @attr.define / @define decorated classes emitted as
+          # SCOPE.Pattern attrs_class entities; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/attrs.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+      Constraints:
+        custom_validator_extraction:
+          # @<field>.validator decorator-style validators emitted as SCOPE.Pattern
+          # field_validator entities; validator= kwarg captured on attrib entities; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/attrs.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+      Coercion:
+        type_coercion_recognition:
+          # converter= kwarg on field()/attrib() captured in attrib entity props;
+          # factory= kwarg also captured. Full converter-chain traversal deferred; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/attrs.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          # pytest.go provides the general Python test-linkage substrate cited here.
+          # Attrs-specific test fixtures added in extractors_test.go; issue #2985.
+          status: partial
+          symbols:
+            - file: internal/custom/python/pytest.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2985"]
+          verified_at: "2026-05-29"

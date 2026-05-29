@@ -1898,3 +1898,51 @@ class Order(pydantic.BaseModel):
 		t.Fatalf("expected pydantic detection for qualified BaseModel, got %+v", results)
 	}
 }
+
+// Schema detector — marshmallow (issue #2985 A-win)
+// ============================================================
+
+func TestSchemaDetector_MarshmallowSchema(t *testing.T) {
+	d := &schemaDetector{}
+	src := `from marshmallow import Schema, fields
+
+class UserSchema(Schema):
+    name = fields.Str(required=True)
+    email = fields.Email()
+`
+	if !d.AppliesTo(src) {
+		t.Fatal("schemaDetector should apply to a marshmallow Schema file")
+	}
+	results := d.Detect("schemas.py", "python", src)
+	found := false
+	for _, e := range results {
+		if e.Properties["library"] == "marshmallow" {
+			found = true
+			if e.Kind != "SCOPE.Component" {
+				t.Errorf("kind = %q, want SCOPE.Component", e.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected a marshmallow schema_validation entity, got %+v", results)
+	}
+}
+
+func TestSchemaDetector_QualifiedMarshmallowSchema(t *testing.T) {
+	d := &schemaDetector{}
+	src := `import marshmallow as ma
+
+class ProductSchema(ma.Schema):
+    name = ma.fields.Str()
+`
+	results := d.Detect("product.py", "python", src)
+	found := false
+	for _, e := range results {
+		if e.Properties["library"] == "marshmallow" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected marshmallow detection for qualified ma.Schema, got %+v", results)
+	}
+}
