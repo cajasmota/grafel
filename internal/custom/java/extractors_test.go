@@ -560,6 +560,114 @@ func TestLangChain4J_WrongFramework(t *testing.T) {
 	}
 }
 
+// TestLangChain4J_AIServiceFixture proves chain_composition + tool_use_detection + prompt_template_extraction
+// using the fixture at testdata/fixtures/sources/java/langchain4j/AIServiceFixture.java (issue #2998).
+func TestLangChain4J_AIServiceFixture(t *testing.T) {
+	source := `
+@AiService
+interface CustomerSupportAgent {
+    @SystemMessage("You are a helpful customer support agent for {companyName}.")
+    @UserMessage("Customer query: {query}")
+    String answer(String companyName, String query);
+}
+
+public class BookingTools {
+    @Tool("Get available flights for a date")
+    public List<Flight> getFlights(String date) { return List.of(); }
+
+    @Tool
+    public BookingResult bookFlight(String flightId) { return new BookingResult(flightId); }
+}
+
+public class SupportBot {
+    private ChatLanguageModel model;
+    private EmbeddingStoreContentRetriever retriever;
+    private MessageWindowChatMemory memory;
+}
+`
+	r := ExtractLangChain4J(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "langchain4j",
+		FilePath:  "AIServiceFixture.java",
+	})
+
+	// chain_composition: @AiService entity
+	hasService := false
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Service" && e.Name == "CustomerSupportAgent" {
+			hasService = true
+		}
+	}
+	if !hasService {
+		t.Error("chain_composition: expected SCOPE.Service entity for CustomerSupportAgent (@AiService)")
+	}
+
+	// chain_composition: RAG component
+	hasRAG := false
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_LANGCHAIN4J_RAG" {
+			hasRAG = true
+		}
+	}
+	if !hasRAG {
+		t.Error("chain_composition: expected SCOPE.Pattern entity for EmbeddingStoreContentRetriever (RAG component)")
+	}
+
+	// chain_composition: ChatMemory component
+	hasMemory := false
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_LANGCHAIN4J_MEMORY" {
+			hasMemory = true
+		}
+	}
+	if !hasMemory {
+		t.Error("chain_composition: expected SCOPE.Component entity for MessageWindowChatMemory")
+	}
+
+	// tool_use_detection: @Tool methods
+	toolMethods := map[string]bool{}
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_LANGCHAIN4J_TOOL" {
+			if m, ok := e.Properties["tool_method"]; ok {
+				toolMethods[m.(string)] = true
+			}
+		}
+	}
+	if !toolMethods["getFlights"] {
+		t.Error("tool_use_detection: expected SCOPE.Operation entity for @Tool method getFlights")
+	}
+	if !toolMethods["bookFlight"] {
+		t.Error("tool_use_detection: expected SCOPE.Operation entity for @Tool method bookFlight")
+	}
+
+	// prompt_template_extraction: @SystemMessage
+	hasSystem := false
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_LANGCHAIN4J_PROMPT" {
+			if pt, ok := e.Properties["prompt_type"]; ok && pt == "system_message" {
+				hasSystem = true
+			}
+		}
+	}
+	if !hasSystem {
+		t.Error("prompt_template_extraction: expected SCOPE.Pattern entity for @SystemMessage on answer()")
+	}
+
+	// prompt_template_extraction: @UserMessage
+	hasUser := false
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_LANGCHAIN4J_PROMPT" {
+			if pt, ok := e.Properties["prompt_type"]; ok && pt == "user_message" {
+				hasUser = true
+			}
+		}
+	}
+	if !hasUser {
+		t.Error("prompt_template_extraction: expected SCOPE.Pattern entity for @UserMessage on answer()")
+	}
+}
+
 // ============================================================================
 // Micronaut tests
 // ============================================================================

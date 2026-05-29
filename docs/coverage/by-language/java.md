@@ -54,7 +54,7 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ❌ 0/3 | |
+| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ⚠️ 0/3 | |
 
 
 ## Tools

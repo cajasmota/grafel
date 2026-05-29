@@ -15757,15 +15757,24 @@
       "capabilities": {
         "Prompts": {
           "prompt_template_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/langchain4j.go"],
+            "notes": "@SystemMessage/@UserMessage annotation extraction: lc4jSystemMessageRE and lc4jUserMessageRE capture annotation-level prompt template strings. Runtime template variable resolution not captured.",
+            "verified_at": "2026-05-29"
           }
         },
         "Composition": {
           "chain_composition": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/langchain4j.go"],
+            "notes": "@AiService interface extraction plus RAG/ChatMemory component detection: structural composition captured (AiService, EmbeddingStoreContentRetriever, EmbeddingStoreIngestor, ChatMemory fields). Runtime chain wiring not traced.",
+            "verified_at": "2026-05-29"
           },
           "tool_use_detection": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/langchain4j.go"],
+            "notes": "@Tool annotation extraction: lc4jToolMethodRE extracts @Tool-annotated methods, emitting SCOPE.Operation entities with tool_method property. Dynamic tool registration not captured.",
+            "verified_at": "2026-05-29"
           }
         }
       }
