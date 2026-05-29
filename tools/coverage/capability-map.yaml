@@ -2635,6 +2635,23 @@ records:
           issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
+      Validation:
+        request_validation:
+          # validation.go (custom_go_validation) scans gin-context files for
+          # `binding:"..."` struct-tag rules on bound DTOs, validator.New()/
+          # RegisterValidation custom validators, and c.ShouldBind*/Bind*
+          # binding call sites, emitting validation SCOPE.Pattern entities
+          # (validation_kind=rule|validator|binding). Heuristic tag/call match,
+          # no rule→call-site data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
       Substrate:
         constant_propagation:
           status: full
@@ -2854,6 +2871,22 @@ records:
           issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
+      Validation:
+        request_validation:
+          # validation.go (custom_go_validation) scans echo-context files for
+          # `validate:"..."` struct-tag rules (go-playground), validator.New()/
+          # RegisterValidation custom validators, and c.Bind/c.Validate binding
+          # call sites, emitting validation SCOPE.Pattern entities. Heuristic
+          # tag/call match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
       Substrate:
         constant_propagation:
           status: full
@@ -2968,6 +3001,22 @@ records:
               functions: [classifyAuthMiddleware, emitMiddlewareChain]
           tests:
             - file: internal/custom/golang/middleware_auth_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
+      Validation:
+        request_validation:
+          # validation.go (custom_go_validation) scans fiber-context files for
+          # `validate:"..."` struct-tag rules (go-playground), validator.New()/
+          # RegisterValidation custom validators, and c.BodyParser/QueryParser/
+          # ParamsParser binding call sites, emitting validation SCOPE.Pattern
+          # entities. Heuristic tag/call match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
           issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
@@ -3092,6 +3141,22 @@ records:
               functions: [classifyAuthMiddleware, emitMiddlewareChain]
           tests:
             - file: internal/custom/golang/middleware_auth_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
+      Validation:
+        request_validation:
+          # validation.go (custom_go_validation) scans chi-context files for
+          # `validate:"..."` struct-tag rules (go-playground), validator.New()/
+          # RegisterValidation custom validators, and render.Bind/render.DecodeJSON
+          # binding call sites, emitting validation SCOPE.Pattern entities.
+          # Heuristic tag/call match → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/validation.go
+              functions: [Extract, findValidationRules, detectValFramework]
+          tests:
+            - file: internal/custom/golang/validation_test.go
           issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
