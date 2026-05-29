@@ -14712,11 +14712,11 @@
             "verified_at": "2026-05-28"
           },
           "lazy_code_splitting": {
-            "status": "partial",
-            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/react_internals.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2875",
-            "notes": "React.lazy(() =\u003e import('mod')) is decorated react_lazy + lazy_module (the code-split target). Partial: the dynamic-import specifier is recovered only when it is a string literal; computed/template specifiers are not resolved.",
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue2875_react_internals_test.go","internal/extractors/javascript/navigation.go","internal/extractors/javascript/react_internals.go","internal/extractors/javascript/testdata/react_internals/AppShell.tsx"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2958",
+            "notes": "React.lazy(() =\u003e import(specifier)) is decorated react_lazy=true unconditionally. lazy_module is stamped for string literals (trimmed) and template literals (${...} normalised to {*} via normalizeTemplateLiteralRoute); computed/call-expression specifiers leave lazy_module unset. Proved by issue2875_react_internals_test.go DynamicPanel + ComputedPanel assertions.",
+            "verified_at": "2026-05-29"
           },
           "portal_recognition": {
             "status": "full",

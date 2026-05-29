@@ -8,21 +8,21 @@
 // them again would double-count. See the React Internals group in
 // docs/coverage/registry.json.
 //
-//   1. lazy_code_splitting — `const X = lazy(() => import('./mod'))`. The lazy
-//      wrapper is already classified as a SCOPE.Operation by
-//      isFunctionWrapperCall (extractor.go). Here we additionally decorate that
-//      entity with react_lazy="true" and lazy_module="<import specifier>" so the
-//      code-split point (the dynamically imported module) is queryable.
+//  1. lazy_code_splitting — `const X = lazy(() => import('./mod'))`. The lazy
+//     wrapper is already classified as a SCOPE.Operation by
+//     isFunctionWrapperCall (extractor.go). Here we additionally decorate that
+//     entity with react_lazy="true" and lazy_module="<import specifier>" so the
+//     code-split point (the dynamically imported module) is queryable.
 //
-//   2. suspense_error_boundary — a component that renders <Suspense> is a
-//      suspense boundary; a class component that declares componentDidCatch or
-//      a static getDerivedStateFromError is an error boundary. We decorate the
-//      enclosing component entity with react_suspense="true" /
-//      react_error_boundary="true".
+//  2. suspense_error_boundary — a component that renders <Suspense> is a
+//     suspense boundary; a class component that declares componentDidCatch or
+//     a static getDerivedStateFromError is an error boundary. We decorate the
+//     enclosing component entity with react_suspense="true" /
+//     react_error_boundary="true".
 //
-//   3. portal_recognition — a component whose body calls createPortal(...) (or
-//      ReactDOM.createPortal(...)) renders a portal. We decorate the component
-//      entity with react_portal="true".
+//  3. portal_recognition — a component whose body calls createPortal(...) (or
+//     ReactDOM.createPortal(...)) renders a portal. We decorate the component
+//     entity with react_portal="true".
 //
 // All three DECORATE existing entities (SCOPE.Operation function/arrow
 // components, SCOPE.Component classes) rather than emitting a new entity Kind —
@@ -130,8 +130,14 @@ func (x *extractor) calleeLeaf(call *sitter.Node) string {
 // lazyImportModule returns the import specifier of a React.lazy split point —
 // the module string inside `lazy(() => import('./mod'))`. Returns "" when
 // valueNode is not a lazy(...) wrapper or the dynamic import specifier cannot be
-// recovered as a string literal. Used to decorate the lazy wrapper entity with
-// its code-split target (lazy_code_splitting).
+// recovered as a static or template-literal specifier. Used to decorate the
+// lazy wrapper entity with its code-split target (lazy_code_splitting).
+//
+// Supported specifier forms (issue #2958):
+//   - String literal:      import('./SettingsPanel')  → "./SettingsPanel"
+//   - Pure template:       import(`./SettingsPanel`)  → "./SettingsPanel"
+//   - Interpolated tmpl:   import(`./panels/${name}`) → "./panels/{*}"
+//   - Computed/call expr:  import(getPath())          → "" (unresolvable)
 func (x *extractor) lazyImportModule(valueNode *sitter.Node) string {
 	if x.calleeLeaf(valueNode) != "lazy" {
 		return ""
@@ -150,12 +156,28 @@ func (x *extractor) lazyImportModule(valueNode *sitter.Node) string {
 		}
 		for i := 0; i < int(args.ChildCount()); i++ {
 			arg := args.Child(i)
-			if arg != nil && arg.Type() == "string" {
+			if arg == nil {
+				continue
+			}
+			switch arg.Type() {
+			case "string":
 				return trimStringQuotes(x.nodeText(arg))
+			case "template_string", "template_literal":
+				// Normalize ${…} interpolations to {*} sentinel — same pattern
+				// used by normalizeTemplateLiteralRoute in navigation.go.
+				return normalizeTemplateLiteralRoute(x.nodeText(arg))
 			}
 		}
 	}
 	return ""
+}
+
+// isLazyWrapper reports whether valueNode is a React.lazy(…) call — i.e. the
+// callee leaf is "lazy". Used by extractor.go to unconditionally stamp
+// react_lazy=true on lazy wrapper entities regardless of whether the import
+// specifier is resolvable (issue #2958).
+func (x *extractor) isLazyWrapper(valueNode *sitter.Node) bool {
+	return x.calleeLeaf(valueNode) == "lazy"
 }
 
 // classIsErrorBoundary reports whether a class body declares the React error
