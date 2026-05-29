@@ -18271,9 +18271,9 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/ebean.go","internal/custom/java/orm_extractors_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3007",
-            "notes": "Captures @Table table_name + Model base-class marker; column-level schema not parsed.",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "Captures @Table table_name + Model base-class marker + @Column(name/nullable/length) attribute depth; full DDL introspection not parsed.",
             "verified_at": "2026-05-29"
           }
         },
@@ -18285,12 +18285,18 @@
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed; emits SCOPE.Component/foreign_key entities",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "FetchType.LAZY and FetchType.EAGER parsed from association annotations; emits SCOPE.Component/fetch_config entities",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "full",
@@ -18329,9 +18335,9 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/orm_extractors_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3007",
-            "notes": "Captures @Table table_name + @Cache L2 marker; column/index introspection not parsed.",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "Captures @Table table_name + @Cache L2 marker + @Column(name/nullable/length) attribute depth; full DDL introspection not parsed.",
             "verified_at": "2026-05-29"
           }
         },
@@ -18343,12 +18349,18 @@
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed; emits SCOPE.Component/foreign_key entities with column_name and constraint_name properties",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "FetchType.LAZY and FetchType.EAGER parsed; emits SCOPE.Component/fetch_config entities",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "full",
@@ -18387,8 +18399,9 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@Table table_name + @Column(name/nullable/length) attribute depth parsed; full DDL index/sequence introspection not parsed.",
             "verified_at": "2026-05-29"
           }
         },
@@ -18400,12 +18413,18 @@
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed; emits SCOPE.Component/foreign_key entities with column_name and constraint_name properties",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "FetchType.LAZY and FetchType.EAGER parsed from association annotations; emits SCOPE.Component/fetch_config entities with fetch_type property",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "partial",
@@ -18498,8 +18517,9 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@Table table_name + @Column(name/nullable/length) attribute depth parsed via hibernate.go shared helper; full DDL introspection not parsed.",
             "verified_at": "2026-05-29"
           }
         },
@@ -18511,12 +18531,18 @@
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed via hibernate.go shared helper; emits SCOPE.Component/foreign_key entities",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "FetchType.LAZY and FetchType.EAGER parsed; emits SCOPE.Component/fetch_config entities",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "partial",
@@ -18853,8 +18879,9 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@Column(name/nullable/length) depth parsed via spring_ecosystem.go FK helper; table_name and entity extraction remain via hibernate.go. Full DDL not parsed.",
             "verified_at": "2026-05-29"
           }
         },
@@ -18866,12 +18893,18 @@
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed via ExtractJPAFKAndLazy from spring_ecosystem.go; emits SCOPE.Component/foreign_key entities",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3097",
+            "notes": "FetchType.LAZY and FetchType.EAGER parsed from association annotations; emits SCOPE.Component/fetch_config entities",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "partial",

@@ -273,6 +273,14 @@ func ExtractHibernate(ctx PatternContext) PatternResult {
 		}
 	}
 
+	// 8. FK + lazy-loading (foreign_key_extraction / lazy_loading_recognition)
+	hibOwnerFn := func(offset int) string {
+		name, _ := findOwningEntity(offset)
+		return name
+	}
+	fkResult := ExtractJPAFKAndLazy(source, hibOwnerFn)
+	emitJPAFKLazy(fkResult, fp, "java", "hibernate", &result.Entities, seenRefs)
+
 	return result
 }
 

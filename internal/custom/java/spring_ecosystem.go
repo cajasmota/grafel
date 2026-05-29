@@ -316,6 +316,17 @@ func ExtractSpringEcosystem(ctx PatternContext) PatternResult {
 		})
 	}
 
+	// JPA FK + lazy-loading for Spring Data JPA / Spring Boot entities.
+	// ExtractSpringEcosystem fires for spring_boot / spring_mvc / spring_webflux
+	// frameworks, which also own Spring Data JPA @Entity classes that carry
+	// @JoinColumn / FetchType annotations. We resolve the owning class via the
+	// general class-declaration scanner.
+	seOwnerFn := func(offset int) string {
+		return findEnclosingClass(source, offset)
+	}
+	seFKResult := ExtractJPAFKAndLazy(source, seOwnerFn)
+	emitJPAFKLazy(seFKResult, fp, "java", "spring_data_jpa", &result.Entities, seenRefs)
+
 	_ = seenRels // used by FeignClient above
 	return result
 }

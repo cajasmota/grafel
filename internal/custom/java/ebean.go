@@ -165,5 +165,9 @@ func (e *ebeanExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		add(ent)
 	}
 
+	// FK + lazy-loading (foreign_key_extraction / lazy_loading_recognition)
+	fkResult := ExtractJPAFKAndLazy(src, owningEntity)
+	emitJPAFKLazyRegistry(fkResult, fp, file.Language, "ebean", add)
+
 	return entities, nil
 }

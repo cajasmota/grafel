@@ -16,15 +16,15 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/java/orms/jpa_jakarta_persistence_api.yaml` | — |
-| Schema extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/hibernate.go` | — |
+| Schema extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3097) | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/jpa_fk_lazy_test.go` | @Table table_name + @Column(name/nullable/length) attribute depth parsed via hibernate.go shared helper; full DDL introspection not parsed. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/hibernate.go` | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3097) | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/jpa_fk_lazy_test.go` | @JoinColumn(name=) and @ForeignKey(name=) parsed via hibernate.go shared helper; emits SCOPE.Component/foreign_key entities |
+| Lazy loading recognition | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3097) | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/jpa_fk_lazy_test.go` | FetchType.LAZY and FetchType.EAGER parsed; emits SCOPE.Component/fetch_config entities |
 | Relationship extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/hibernate.go` | — |
 
 ### Queries

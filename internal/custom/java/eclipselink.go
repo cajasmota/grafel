@@ -167,5 +167,9 @@ func (e *eclipseLinkExtractor) Extract(ctx context.Context, file extreg.FileInpu
 		add(ent)
 	}
 
+	// FK + lazy-loading (foreign_key_extraction / lazy_loading_recognition)
+	fkResult := ExtractJPAFKAndLazy(src, owningEntity)
+	emitJPAFKLazyRegistry(fkResult, fp, file.Language, "eclipselink", add)
+
 	return entities, nil
 }
