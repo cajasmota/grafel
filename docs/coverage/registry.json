@@ -16434,16 +16434,22 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Transactions": {

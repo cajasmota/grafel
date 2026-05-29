@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/quarkus.go` | — |
+| DI injection point | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/quarkus.go` | — |
+| DI scope resolution | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/quarkus.go` | — |
 
 ### Transactions
 

@@ -872,6 +872,138 @@ public class OrderService {}
 	}
 }
 
+// TestQuarkus_CDIScopes proves di_binding_extraction: extractor emits SCOPE.Service
+// with cdi_scope property for all supported CDI scope annotations.
+func TestQuarkus_CDIScopes(t *testing.T) {
+	cases := []struct {
+		annotation string
+		wantScope  string
+	}{
+		{"@ApplicationScoped", "ApplicationScoped"},
+		{"@RequestScoped", "RequestScoped"},
+		{"@Singleton", "Singleton"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.annotation, func(t *testing.T) {
+			source := tc.annotation + "\npublic class MyBean {}"
+			r := ExtractQuarkus(PatternContext{
+				Source: source, Language: "java", Framework: "quarkus",
+				FilePath: "MyBean.java",
+			})
+			found := false
+			for _, e := range r.Entities {
+				if e.Kind == "SCOPE.Service" && e.Properties["cdi_scope"] == tc.wantScope {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("di_binding_extraction: expected SCOPE.Service with cdi_scope=%s for %s", tc.wantScope, tc.annotation)
+			}
+		})
+	}
+}
+
+// TestQuarkus_CDIInjectField proves di_injection_point: @Inject field injection
+// emits a DEPENDS_ON relationship with injection_kind=cdi_inject.
+func TestQuarkus_CDIInjectField(t *testing.T) {
+	source := `
+@RequestScoped
+public class OrderController {
+    @Inject
+    private OrderService orderService;
+}
+`
+	r := ExtractQuarkus(PatternContext{
+		Source: source, Language: "java", Framework: "quarkus",
+		FilePath: "OrderController.java",
+	})
+	hasRel := false
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "DEPENDS_ON" && rel.Properties["injection_kind"] == "cdi_inject" {
+			hasRel = true
+		}
+	}
+	if !hasRel {
+		t.Error("di_injection_point: expected DEPENDS_ON with injection_kind=cdi_inject for @Inject field")
+	}
+}
+
+// TestQuarkus_CDIInjectConstructor proves di_injection_point: @Inject constructor
+// injection emits a DEPENDS_ON relationship with injection_kind=cdi_constructor.
+func TestQuarkus_CDIInjectConstructor(t *testing.T) {
+	source := `
+@ApplicationScoped
+public class OrderService {
+    private final OrderRepository repository;
+
+    @Inject
+    public OrderService(OrderRepository repository) {
+        this.repository = repository;
+    }
+}
+`
+	r := ExtractQuarkus(PatternContext{
+		Source: source, Language: "java", Framework: "quarkus",
+		FilePath: "OrderService.java",
+	})
+	hasRel := false
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "DEPENDS_ON" && rel.Properties["injection_kind"] == "cdi_constructor" {
+			hasRel = true
+		}
+	}
+	if !hasRel {
+		t.Error("di_injection_point: expected DEPENDS_ON with injection_kind=cdi_constructor for @Inject constructor")
+	}
+}
+
+// TestQuarkus_CDIScopeResolution proves di_scope_resolution: the resolved CDI
+// scope name is captured in the cdi_scope property on the SCOPE.Service entity.
+func TestQuarkus_CDIScopeResolution(t *testing.T) {
+	source := `
+@ApplicationScoped
+public class OrderService {}
+
+@RequestScoped
+public class OrderController {
+    @Inject
+    OrderService orderService;
+}
+`
+	r := ExtractQuarkus(PatternContext{
+		Source: source, Language: "java", Framework: "quarkus",
+		FilePath: "CDIBeansFixture.java",
+	})
+
+	scopeMap := make(map[string]string) // className -> cdi_scope
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Service" {
+			if scope, ok := e.Properties["cdi_scope"].(string); ok {
+				scopeMap[e.Name] = scope
+			}
+		}
+	}
+
+	if scopeMap["OrderService"] != "ApplicationScoped" {
+		t.Errorf("di_scope_resolution: OrderService cdi_scope=%q, want ApplicationScoped", scopeMap["OrderService"])
+	}
+	if scopeMap["OrderController"] != "RequestScoped" {
+		t.Errorf("di_scope_resolution: OrderController cdi_scope=%q, want RequestScoped", scopeMap["OrderController"])
+	}
+
+	// Also confirm the injection point is present
+	hasInject := false
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "DEPENDS_ON" && rel.Properties["injection_kind"] == "cdi_inject" {
+			hasInject = true
+		}
+	}
+	if !hasInject {
+		t.Error("di_injection_point: expected DEPENDS_ON cdi_inject from OrderController->OrderService")
+	}
+}
+
 // ============================================================================
 // Android tests
 // ============================================================================
