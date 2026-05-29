@@ -19772,8 +19772,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -20849,8 +20851,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/express.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go","internal/engine/http_endpoint_synthesis_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -21091,8 +21095,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/fastify.go","internal/engine/http_endpoint_jsts_extra.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go","internal/engine/http_endpoint_synthesis_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -21333,8 +21339,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -21961,8 +21969,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -22201,8 +22211,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -22649,8 +22661,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -22921,8 +22935,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -23363,8 +23379,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/nestjs.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -23381,8 +23399,10 @@
             "issue": "2904"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/javascript/issue2904_validation_linkage_test.go","internal/extractors/javascript/validation_linkage.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -23418,8 +23438,10 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
             "status": "missing",
@@ -24016,8 +24038,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -25042,8 +25066,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -25271,8 +25297,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
+            "issue": "3062",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
