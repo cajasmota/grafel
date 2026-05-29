@@ -459,3 +459,211 @@ func TestSubstrate_SvelteKit_TaintSinkAndSanitizer(t *testing.T) {
 		t.Error("expected at least one sanitizer in SvelteKit fixture (DOMPurify.sanitize)")
 	}
 }
+
+// ── Gatsby ────────────────────────────────────────────────────────────────────
+
+// TestSubstrate_Gatsby_ImportResolution proves import_resolution_quality,
+// constant_propagation, and env_fallback_recognition: full for Gatsby.
+// Gatsby API routes are plain .ts/.js files; sniffJSTS handles them directly.
+func TestSubstrate_Gatsby_ImportResolution(t *testing.T) {
+	src := fixtureContent(t, "substrate_gatsby/api-handler.ts")
+
+	bindings := sniffJSTS(src)
+	b := byIdent(bindings)
+
+	// Named import: 'import { db } from "../../lib/db"'
+	if b["db"].ImportSource == "" && b["graphql"].ImportSource == "" {
+		t.Error("expected at least one import binding from Gatsby fixture (db or graphql)")
+	}
+
+	// Env-fallback: const API_BASE = process.env.GATSBY_API_URL ?? 'https://api.example.com'
+	if b["API_BASE"].Value != "https://api.example.com" {
+		t.Errorf("API_BASE fallback: want 'https://api.example.com', got %q (binding: %+v)", b["API_BASE"].Value, b["API_BASE"])
+	}
+
+	// Env-fallback: const SECRET = process.env.GATSBY_SECRET ?? 'dev-only'
+	if b["SECRET"].Value != "dev-only" {
+		t.Errorf("SECRET fallback: want 'dev-only', got %q (binding: %+v)", b["SECRET"].Value, b["SECRET"])
+	}
+}
+
+// TestSubstrate_Gatsby_TaintSource proves taint_source_detection: full for Gatsby.
+// Gatsby Functions receive a standard Node.js req object; sniffTaintJSTS fires.
+func TestSubstrate_Gatsby_TaintSource(t *testing.T) {
+	src := fixtureContent(t, "substrate_gatsby/api-handler.ts")
+
+	matches := sniffTaintJSTS(src)
+	var hasSrc bool
+	for _, m := range matches {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected at least one taint source in Gatsby fixture (req.body/query/params)")
+	}
+}
+
+// TestSubstrate_Gatsby_TaintSinkAndSanitizer proves taint_sink_detection,
+// sanitizer_recognition, and vulnerability_finding: full for Gatsby.
+func TestSubstrate_Gatsby_TaintSinkAndSanitizer(t *testing.T) {
+	src := fixtureContent(t, "substrate_gatsby/api-handler.ts")
+
+	matches := sniffTaintJSTS(src)
+	var hasSink, hasSan bool
+	for _, m := range matches {
+		if m.Kind == TaintKindSink {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer {
+			hasSan = true
+		}
+	}
+	if !hasSink {
+		t.Error("expected at least one taint sink in Gatsby fixture (db.query template string or eval)")
+	}
+	if !hasSan {
+		t.Error("expected at least one sanitizer in Gatsby fixture (DOMPurify.sanitize)")
+	}
+}
+
+// ── GraphQL Resolvers ─────────────────────────────────────────────────────────
+
+// TestSubstrate_GraphQL_ImportResolution proves import_resolution_quality,
+// constant_propagation, and env_fallback_recognition: full for GraphQL resolvers.
+// GraphQL resolver files are plain .ts/.js; sniffJSTS handles them directly.
+func TestSubstrate_GraphQL_ImportResolution(t *testing.T) {
+	src := fixtureContent(t, "substrate_graphql/resolver.ts")
+
+	bindings := sniffJSTS(src)
+	b := byIdent(bindings)
+
+	// Named import: 'import { ApolloServer } from "@apollo/server"'
+	if b["ApolloServer"].ImportSource == "" && b["db"].ImportSource == "" {
+		t.Error("expected at least one import binding from GraphQL fixture (ApolloServer or db)")
+	}
+
+	// Literal: const API_URL = 'https://graphql.example.com'
+	if b["API_URL"].Value != "https://graphql.example.com" {
+		t.Errorf("API_URL literal: want 'https://graphql.example.com', got %q", b["API_URL"].Value)
+	}
+
+	// Env-fallback: const SECRET = process.env.GRAPHQL_SECRET ?? 'dev-only'
+	if b["SECRET"].Value != "dev-only" {
+		t.Errorf("SECRET fallback: want 'dev-only', got %q (binding: %+v)", b["SECRET"].Value, b["SECRET"])
+	}
+}
+
+// TestSubstrate_GraphQL_TaintSource proves taint_source_detection: full for
+// GraphQL resolvers.  The context object carries the HTTP request; context.request
+// is a recognised taint source (jstsSourceReqRe matches ctx.request.body/params).
+func TestSubstrate_GraphQL_TaintSource(t *testing.T) {
+	src := fixtureContent(t, "substrate_graphql/resolver.ts")
+
+	matches := sniffTaintJSTS(src)
+	var hasSrc bool
+	for _, m := range matches {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected at least one taint source in GraphQL fixture (req.params/request.body via context)")
+	}
+}
+
+// TestSubstrate_GraphQL_TaintSinkAndSanitizer proves taint_sink_detection,
+// sanitizer_recognition, and vulnerability_finding: full for GraphQL resolvers.
+func TestSubstrate_GraphQL_TaintSinkAndSanitizer(t *testing.T) {
+	src := fixtureContent(t, "substrate_graphql/resolver.ts")
+
+	matches := sniffTaintJSTS(src)
+	var hasSink, hasSan bool
+	for _, m := range matches {
+		if m.Kind == TaintKindSink {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer {
+			hasSan = true
+		}
+	}
+	if !hasSink {
+		t.Error("expected at least one taint sink in GraphQL fixture (db.query template string or eval)")
+	}
+	if !hasSan {
+		t.Error("expected at least one sanitizer in GraphQL fixture (DOMPurify.sanitize)")
+	}
+}
+
+// ── tRPC ──────────────────────────────────────────────────────────────────────
+
+// TestSubstrate_TRPC_ImportResolution proves import_resolution_quality,
+// constant_propagation, and env_fallback_recognition: full for tRPC.
+// tRPC routers are plain .ts files; sniffJSTS handles them directly.
+func TestSubstrate_TRPC_ImportResolution(t *testing.T) {
+	src := fixtureContent(t, "substrate_trpc/router.ts")
+
+	bindings := sniffJSTS(src)
+	b := byIdent(bindings)
+
+	// Named import: 'import { initTRPC } from "@trpc/server"'
+	if b["initTRPC"].ImportSource == "" && b["db"].ImportSource == "" {
+		t.Error("expected at least one import binding from tRPC fixture (initTRPC or db)")
+	}
+
+	// Literal: const API_URL = 'https://trpc.example.com'
+	if b["API_URL"].Value != "https://trpc.example.com" {
+		t.Errorf("API_URL literal: want 'https://trpc.example.com', got %q", b["API_URL"].Value)
+	}
+
+	// Env-fallback: const SECRET = process.env.TRPC_SECRET ?? 'dev-only'
+	if b["SECRET"].Value != "dev-only" {
+		t.Errorf("SECRET fallback: want 'dev-only', got %q (binding: %+v)", b["SECRET"].Value, b["SECRET"])
+	}
+}
+
+// TestSubstrate_TRPC_TaintSource proves taint_source_detection: partial for tRPC.
+// tRPC procedures expose user input via the typed `input` parameter (post-zod
+// validation) — not matched by jstsSourceReqRe.  However, the ctx object
+// carries the raw HTTP request (ctx.req.body / ctx.req.params), which IS
+// matched.  This test confirms the ctx-shaped source fires; the `input`
+// channel is a known gap (Type-B, tracked separately).
+func TestSubstrate_TRPC_TaintSource(t *testing.T) {
+	src := fixtureContent(t, "substrate_trpc/router.ts")
+
+	matches := sniffTaintJSTS(src)
+	var hasSrc bool
+	for _, m := range matches {
+		if m.Kind == TaintKindSource {
+			hasSrc = true
+		}
+	}
+	if !hasSrc {
+		t.Error("expected at least one taint source in tRPC fixture (ctx.req.body/query/params)")
+	}
+}
+
+// TestSubstrate_TRPC_TaintSinkAndSanitizer proves taint_sink_detection,
+// sanitizer_recognition, and vulnerability_finding: partial for tRPC.
+// The ctx-shaped request sources flow into standard sinks (eval, db.query);
+// the typed `input` parameter path is a known gap.
+func TestSubstrate_TRPC_TaintSinkAndSanitizer(t *testing.T) {
+	src := fixtureContent(t, "substrate_trpc/router.ts")
+
+	matches := sniffTaintJSTS(src)
+	var hasSink, hasSan bool
+	for _, m := range matches {
+		if m.Kind == TaintKindSink {
+			hasSink = true
+		}
+		if m.Kind == TaintKindSanitizer {
+			hasSan = true
+		}
+	}
+	if !hasSink {
+		t.Error("expected at least one taint sink in tRPC fixture (db.query template string or eval)")
+	}
+	if !hasSan {
+		t.Error("expected at least one sanitizer in tRPC fixture (DOMPurify.sanitize)")
+	}
+}

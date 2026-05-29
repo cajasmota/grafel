@@ -175,8 +175,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 |---|---|---|---|---|---|---|---|
 | [elixir](../by-language/elixir.md) | [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 14/21 | ❌ 0/7 | |
 | [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/21 | ❌ 0/7 | |
-| [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 4/21 | ✅ 7/7 | |
-| [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 8/8 | |
+| [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 20/21 | ✅ 7/7 | |
+| [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ⚠️ 21/21 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 17/21 | ✅ 11/11 | |
 | [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 17/21 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 17/21 | ✅ 8/8 | |
@@ -222,8 +222,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ 14/21 | ❌ 0/4 | |
-| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ❌ 0/21 | ✅ 3/3 | |
-| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ❌ 0/21 | ✅ 4/4 | |
+| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ⚠️ 21/21 | ✅ 3/3 | |
+| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ⚠️ 21/21 | ✅ 4/4 | |
 
 
 ## AI Integration

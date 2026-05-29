@@ -20245,64 +20245,93 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "3057",
+            "notes": "dead_module_detector.go handles javascript/typescript language tags only; .astro files use the astro extractor (language=astro) which is not in the detector switch"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_t3.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_t3.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "full",
@@ -20310,8 +20339,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "full",
@@ -20324,8 +20355,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_markup_script.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
             "status": "full",
@@ -21469,88 +21502,130 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/dead_module_detector.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           }
         }
       },
@@ -21603,88 +21678,131 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/dead_module_detector.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3057",
+            "notes": "GraphQL resolver return values differ structurally from HTTP request/response bodies; payload_drift.go fires on jsts files but misses resolver-specific field patterns (issue notes borderline B)",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -25786,88 +25904,134 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/patterns/dead_module_detector.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
+            "issue": "3057",
+            "notes": "ctx.req.body/params shapes are detected by jstsSourceReqRe; the typed input parameter (primary user-input channel in tRPC, post-zod validation) is a known gap — not matched by current sniffer",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
+            "issue": "3057",
+            "notes": "ctx.req.body/params shapes are detected by jstsSourceReqRe; the typed input parameter (primary user-input channel in tRPC, post-zod validation) is a known gap — not matched by current sniffer",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
+            "issue": "3057",
+            "notes": "ctx.req.body/params shapes are detected by jstsSourceReqRe; the typed input parameter (primary user-input channel in tRPC, post-zod validation) is a known gap — not matched by current sniffer",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go"],
+            "issue": "3057",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
+            "issue": "3057",
+            "notes": "ctx.req.body/params shapes are detected by jstsSourceReqRe; the typed input parameter (primary user-input channel in tRPC, post-zod validation) is a known gap — not matched by current sniffer",
+            "verified_at": "2026-05-29"
           }
         }
       }
