@@ -230,7 +230,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Other capabilities | Notes |
 |---|---|---|---|
-| [java](../by-language/java.md) | [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ❌ 0/3 | |
+| [java](../by-language/java.md) | [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ⚠️ 0/3 | |
 | [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ✅ 3/3 | |
 | [python](../by-language/python.md) | [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 0/3 | |
 
