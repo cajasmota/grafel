@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Component extraction | ❌ `missing` | — | — | — | — |
-| Context extraction | ❌ `missing` | — | — | — | — |
+| Component extraction | ⚠️ `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
+| Context extraction | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; context_extraction is a React/JSX-paradigm capability that does not apply |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | ❌ `missing` | — | — | — | — |
-| Data fetching | ❌ `missing` | — | — | — | — |
-| Prop extraction | ❌ `missing` | — | — | — | — |
-| State management | ❌ `missing` | — | — | — | — |
+| Data fetching | ⚠️ `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
+| Prop extraction | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; prop_extraction is a React/JSX-paradigm capability that does not apply |
+| State management | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; state_management is a React/JSX-paradigm capability that does not apply |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Router pattern | ❌ `missing` | — | — | — | — |
+| Router pattern | ⚠️ `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
 
 ### Type System
 
@@ -39,13 +39,13 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | ❌ `missing` | — | — | — | — |
 | Interface extraction | ❌ `missing` | — | — | — | — |
-| Type alias extraction | ❌ `missing` | — | — | — | — |
+| Type alias extraction | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; type_alias_extraction is a React/JSX-paradigm capability that does not apply |
 
 ### Lifecycle
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | ❌ `missing` | — | — | — | — |
+| State setter emission | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; state_setter_emission is a React/JSX-paradigm capability that does not apply |
 
 ### Testing
 

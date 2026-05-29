@@ -14790,10 +14790,14 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/vaadin_gwt.go"],
+            "issue": "3091"
           },
           "context_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; context_extraction is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Data Flow": {
@@ -14804,15 +14808,21 @@
             "status": "missing"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; prop_extraction is a React/JSX-paradigm capability that does not apply"
           },
           "state_management": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; state_management is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Navigation": {
           "router_pattern": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/vaadin_gwt.go"],
+            "issue": "3091"
           }
         },
         "Type System": {
@@ -14823,12 +14833,16 @@
             "status": "missing"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; type_alias_extraction is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; state_setter_emission is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Testing": {
@@ -17950,10 +17964,14 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/vaadin_gwt.go"],
+            "issue": "3091"
           },
           "context_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "Vaadin is a server-side Java UI framework with no React-style concepts; context_extraction is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Data Flow": {
@@ -17961,18 +17979,26 @@
             "status": "missing"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/vaadin_gwt.go"],
+            "issue": "3091"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "Vaadin is a server-side Java UI framework with no React-style concepts; prop_extraction is a React/JSX-paradigm capability that does not apply"
           },
           "state_management": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "Vaadin is a server-side Java UI framework with no React-style concepts; state_management is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Navigation": {
           "router_pattern": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/vaadin_gwt.go"],
+            "issue": "3091"
           }
         },
         "Type System": {
@@ -17983,12 +18009,16 @@
             "status": "missing"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "Vaadin is a server-side Java UI framework with no React-style concepts; type_alias_extraction is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3091",
+            "notes": "Vaadin is a server-side Java UI framework with no React-style concepts; state_setter_emission is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Testing": {
