@@ -33,8 +33,8 @@ Back to [summary](../summary.md).
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 4/21 | ❌ 0/8 | |
-| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ❌ 4/21 | ❌ 0/8 | |
+| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/2 | ❌ 0/1 | ❌ 4/21 | ❌ 2/4 | |
+| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/2 | ❌ 0/1 | ❌ 4/21 | ❌ 3/4 | |
 
 
 ### Meta Framework
