@@ -10775,8 +10775,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -10805,12 +10806,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -10823,8 +10826,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -10973,8 +10977,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -11003,12 +11008,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -11021,8 +11028,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -11169,8 +11177,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -11199,12 +11208,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -11217,8 +11228,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -11365,8 +11377,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -11395,12 +11408,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -11413,8 +11428,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -11560,8 +11576,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -11590,12 +11607,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -11608,8 +11627,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -11756,8 +11776,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -11786,12 +11807,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -11804,8 +11827,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -12208,8 +12232,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -12238,12 +12263,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -12256,8 +12283,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -12568,8 +12596,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -12598,12 +12627,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -12616,8 +12647,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -12768,8 +12800,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -12798,12 +12831,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -12816,8 +12851,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -12957,8 +12993,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -12987,12 +13024,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -13005,8 +13044,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -13155,8 +13195,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -13185,12 +13226,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -13203,8 +13246,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -13342,8 +13386,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -13372,12 +13417,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -13390,8 +13437,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -13538,8 +13586,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -13568,12 +13617,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -13586,8 +13637,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -13735,8 +13787,9 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           }
         },
         "Substrate": {
@@ -13765,12 +13818,14 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -13783,8 +13838,9 @@
             "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
+            "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
             "status": "partial",
