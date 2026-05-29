@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
+| Foreign key extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
+| Lazy loading recognition | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
+| Relationship extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
 
 ### Queries
 
