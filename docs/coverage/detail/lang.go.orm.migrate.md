@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | — `not_applicable` | `2026-05-29` | — | — | golang-migrate is a forward/backward SQL migration runner with no ORM runtime: there is no object-fetch path, so eager/lazy loading is not a modellable concept (consistent with this record's model_extraction=N/A and query_attribution=N/A). |
 | Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries
