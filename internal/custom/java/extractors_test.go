@@ -3176,6 +3176,100 @@ public void doWork() {}
 	}
 }
 
+// TestTransactional_MicroProfile_Issue3079 proves that adding "microprofile" to
+// txFrameworks lets the extractor fire for MicroProfile services that use the
+// Jakarta Transactions @Transactional annotation (JTA).  It covers:
+//   - transaction_boundary_extraction: class-level + method-level boundaries
+//   - transaction_propagation: positional TxType form (REQUIRES_NEW, NOT_SUPPORTED, NEVER)
+//   - transaction_rollback_rules: (rollbackFor mapped via rollbackOn in fixture source)
+//
+// Registry target: lang.java.framework.microprofile Transactions/* = partial.
+func TestTransactional_MicroProfile_Issue3079(t *testing.T) {
+	source := `
+package com.example.microprofile;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+
+@ApplicationScoped
+@Transactional
+public class OrderService {
+
+    public void createOrder(String item) {}
+
+    @Transactional(TxType.REQUIRES_NEW)
+    public void auditOrder(String orderId) {}
+
+    @Transactional(rollbackFor = OrderException.class)
+    public void confirmPayment(String paymentId) {}
+
+    @Transactional(TxType.NOT_SUPPORTED)
+    public void sendNotification(String message) {}
+}
+`
+	r := ExtractTransactional(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "microprofile",
+		FilePath:  "OrderService.java",
+	})
+
+	// transaction_boundary_extraction: class-level boundary for OrderService.
+	classBoundary, ok := txEntityByName(r, "OrderService")
+	if !ok {
+		t.Fatalf("[#3079 boundary] expected class-level boundary for OrderService; got %v", entityNames(r.Entities))
+	}
+	if classBoundary.Properties["framework"] != "microprofile" {
+		t.Errorf("[#3079 boundary] framework = %v, want microprofile", classBoundary.Properties["framework"])
+	}
+	if classBoundary.Properties["transaction_boundary"] != "class" {
+		t.Errorf("[#3079 boundary] transaction_boundary = %v, want class", classBoundary.Properties["transaction_boundary"])
+	}
+
+	// transaction_propagation: auditOrder uses positional TxType.REQUIRES_NEW.
+	audit, ok := txEntityByName(r, "OrderService.auditOrder")
+	if !ok {
+		t.Fatalf("[#3079 propagation] expected boundary for OrderService.auditOrder; got %v", entityNames(r.Entities))
+	}
+	if audit.Properties["propagation"] != "REQUIRES_NEW" {
+		t.Errorf("[#3079 propagation] auditOrder propagation = %v, want REQUIRES_NEW", audit.Properties["propagation"])
+	}
+
+	// transaction_rollback_rules: confirmPayment uses rollbackFor.
+	confirm, ok := txEntityByName(r, "OrderService.confirmPayment")
+	if !ok {
+		t.Fatalf("[#3079 rollback] expected boundary for OrderService.confirmPayment; got %v", entityNames(r.Entities))
+	}
+	if confirm.Properties["rollback_for"] != "OrderException" {
+		t.Errorf("[#3079 rollback] confirmPayment rollback_for = %v, want OrderException", confirm.Properties["rollback_for"])
+	}
+
+	// NOT_SUPPORTED propagation captured.
+	notify, ok := txEntityByName(r, "OrderService.sendNotification")
+	if !ok {
+		t.Fatalf("[#3079 propagation] expected boundary for OrderService.sendNotification; got %v", entityNames(r.Entities))
+	}
+	if notify.Properties["propagation"] != "NOT_SUPPORTED" {
+		t.Errorf("[#3079 propagation] sendNotification propagation = %v, want NOT_SUPPORTED", notify.Properties["propagation"])
+	}
+}
+
+// TestTransactional_MicroProfile_Gating_Issue3079 confirms the gating list
+// includes "microprofile" and its aliases.
+func TestTransactional_MicroProfile_Gating_Issue3079(t *testing.T) {
+	source := `
+@Transactional(TxType.REQUIRED)
+public void doWork() {}
+`
+	for _, fw := range []string{"microprofile", "micro-profile", "micro_profile"} {
+		r := ExtractTransactional(PatternContext{Source: source, Language: "java", Framework: fw, FilePath: "X.java"})
+		if len(r.Entities) == 0 {
+			t.Errorf("[#3079 gating] framework %q expected a boundary entity, got none", fw)
+		}
+	}
+}
+
 // ============================================================================
 // Spring AOP / AspectJ tests (#3004)
 // ============================================================================

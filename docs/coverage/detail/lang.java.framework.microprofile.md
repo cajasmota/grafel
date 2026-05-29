@@ -65,9 +65,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3079) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
+| Transaction propagation | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3079) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
+| Transaction rollback rules | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3079) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
 
 ### AOP
 

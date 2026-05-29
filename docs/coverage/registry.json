@@ -16376,16 +16376,22 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3079",
+            "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3079",
+            "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3079",
+            "verified_at": "2026-05-29"
           }
         },
         "AOP": {

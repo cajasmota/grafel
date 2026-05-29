@@ -31,6 +31,7 @@ var txFrameworks = map[string]bool{
 	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
 	"java_ee": true, "javaee": true,
 	"jaxrs": true, "jax-rs": true, "jax_rs": true,
+	"microprofile": true, "micro-profile": true, "micro_profile": true,
 }
 
 var (
@@ -255,6 +256,8 @@ func canonicalTxFramework(framework string) string {
 		return "jakarta_ee"
 	case "jaxrs", "jax-rs", "jax_rs":
 		return "jaxrs"
+	case "microprofile", "micro-profile", "micro_profile":
+		return "microprofile"
 	default:
 		return framework
 	}
