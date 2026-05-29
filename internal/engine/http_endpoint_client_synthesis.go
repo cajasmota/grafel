@@ -366,7 +366,7 @@ var jsArrowFnTemplateRe = regexp.MustCompile(
 // body is a template literal. Used by canonicalizeTemplateLiteralCore
 // (issue #2708) to inline factory callsites.
 //
-// Only the simple shape `const NAME = (a, b) => `+"`"+`...`+"`"+`` is captured.
+// Only the simple shape `const NAME = (a, b) => `+"`"+`...`+"`"+“ is captured.
 // Multi-statement bodies, conditional returns, async/await wrappers, and
 // tagged templates are NOT captured — those callsites keep their existing
 // `{param}` placeholder behaviour.
@@ -1800,65 +1800,38 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 	}
 }
 
-// synthesizeReactQueryCalls emits FETCHES edges for React Query / SWR /
-// RTK Query patterns that wrap callApi-style invocations (#806 beyond-minimum).
+// synthesizeReactQueryCalls emits FETCHES edges for RTK Query createApi
+// endpoint-builder patterns (#806 beyond-minimum).
 //
 // Recognized patterns:
-//   - useQuery({ queryKey: ['resource'], queryFn: () => callApi('resource', 'GET') })
-//     → FETCHES to /resource/
 //   - createApi builder.query({ query: () => 'resource' })
 //     → FETCHES to /resource/
 //
+// IMPORTANT (#3171): React Query / SWR `queryKey` and `mutationKey` arrays are
+// CACHE KEYS, not request URLs. Code such as
+//
+//	useQuery({ queryKey: ['scoped-permissions'], queryFn: () => api.get('permissions/123/scope_permissions') })
+//
+// names its cache entry 'scoped-permissions' — a logical label that very often
+// does NOT match any backend path. Treating the queryKey first element as an
+// endpoint path fabricated phantom calls (e.g. /scoped-permissions) that no
+// backend exposes, inflating cross-repo orphan counts and producing confidently
+// wrong MCP answers. The REAL endpoint is whatever the queryFn / mutationFn body
+// invokes (fetch / axios / a service method), which is already extracted by
+// synthesizeFetchAxios and the http-wrapper passes. We therefore do NOT derive
+// any endpoint from queryKey / mutationKey arrays here.
+//
+// RTK Query's `builder.query({ query: () => 'users' })` is different: the arrow
+// return value IS the literal request path, so it remains a valid endpoint
+// source and is kept below.
+//
 // The enclosing function at the call site is used as source_caller.
 func synthesizeReactQueryCalls(content string, funcs []jsFuncSpan, syms map[string]string, emit emitFn) {
-	// #2117: include useMutation / useSuspenseQuery in early-exit check.
-	if !strings.Contains(content, "useQuery") && !strings.Contains(content, "useMutation") &&
-		!strings.Contains(content, "createApi") && !strings.Contains(content, "builder.") {
+	// Only RTK Query builder endpoints are synthesized here; useQuery /
+	// useMutation key arrays are intentionally ignored (#3171).
+	_ = syms
+	if !strings.Contains(content, "createApi") && !strings.Contains(content, "builder.") {
 		return
-	}
-
-	// useQuery / useSuspenseQuery ({ queryKey: ['resource'], ... }) patterns.
-	for _, m := range useQueryKeyRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(m) < 4 {
-			continue
-		}
-		resource := content[m[2]:m[3]]
-		if resource == "" {
-			continue
-		}
-		normalized := normalizeBareName(resource)
-		if normalized == "" || normalized == "/" {
-			continue
-		}
-		// Resolve via const symbol table (in case the key is a constant name).
-		if resolved, ok := syms[resource]; ok {
-			normalized = normalizeBareName(resolved)
-		}
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, normalized)
-		caller := enclosingJSFuncAt(funcs, m[0])
-		emit("GET", canonical, "react_query", "Function", caller)
-	}
-
-	// useMutation({ mutationKey: ['resource'], ... }) patterns — #2117.
-	// Mutations default to POST; the mutationKey first string names the resource.
-	for _, m := range useMutationKeyRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(m) < 4 {
-			continue
-		}
-		resource := content[m[2]:m[3]]
-		if resource == "" {
-			continue
-		}
-		normalized := normalizeBareName(resource)
-		if normalized == "" || normalized == "/" {
-			continue
-		}
-		if resolved, ok := syms[resource]; ok {
-			normalized = normalizeBareName(resolved)
-		}
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, normalized)
-		caller := enclosingJSFuncAt(funcs, m[0])
-		emit("POST", canonical, "react_query_mutation", "Function", caller)
 	}
 
 	// RTK Query builder.query/mutation patterns.
