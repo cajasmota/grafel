@@ -5,6 +5,8 @@
 
 Back to [summary](../summary.md).
 
+> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+
 ## Frameworks
 
 
@@ -12,27 +14,27 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Apache Struts](../detail/lang.java.framework.struts.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ⚠️ 2/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ⚠️ 0/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Helidon](../detail/lang.java.framework.helidon.md) | ⚠️ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | ⚠️ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | ⚠️ 0/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Micronaut](../detail/lang.java.framework.micronaut.md) | ⚠️ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Quarkus](../detail/lang.java.framework.quarkus.md) | ⚠️ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ⚠️ 2/3 | ✅ 1/1 | ✅ 3/4 | ⚠️ 0/1 | ⚠️ 8/21 | ❌ 0/18 | |
-| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ❌ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [Vert.x](../detail/lang.java.framework.vertx.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
+| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 6/20 | ❌ 3/16 | |
+| [Apache Struts](../detail/lang.java.framework.struts.md) | ❌ 2/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 6/20 | ❌ 3/16 | |
+| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ⚠️ 3/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 19/20 | ❌ 4/16 | |
+| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ❌ 19/20 | ❌ 12/16 | |
+| [Helidon](../detail/lang.java.framework.helidon.md) | ⚠️ 3/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 19/20 | ❌ 4/16 | |
+| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ❌ 19/20 | ❌ 9/16 | |
+| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ❌ 19/20 | ❌ 12/16 | |
+| [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 19/20 | ❌ 4/16 | |
+| [Micronaut](../detail/lang.java.framework.micronaut.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ❌ 19/20 | ❌ 12/16 | |
+| [Quarkus](../detail/lang.java.framework.quarkus.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ❌ 19/20 | ❌ 12/16 | |
+| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 21/21 | ❌ 14/18 | |
+| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ❌ 2/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ❌ 19/20 | ❌ 14/16 | |
+| [Vert.x](../detail/lang.java.framework.vertx.md) | ❌ 2/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 19/20 | ❌ 4/16 | |
 
 
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
-| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
+| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/8 | |
+| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/8 | |
 
 
 ### Meta Framework
@@ -46,15 +48,15 @@ Back to [summary](../summary.md).
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
-| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
+| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/9 | |
+| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/9 | |
 
 
 ### AI Integration
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ⚠️ 0/3 | |
+| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | ⚠️ 3/3 | |
 
 
 ## Tools
@@ -79,20 +81,20 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ❌ 0/8 | |
-| [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 4/8 | |
-| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 4/8 | |
-| [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 2/8 | |
-| [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 1/8 | |
-| [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 1/8 | |
-| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 0/8 | |
-| [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 1/8 | |
-| [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 1/8 | |
-| [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ 1/8 | |
-| [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ 2/8 | |
-| [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ 1/8 | |
-| [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ 1/8 | |
-| [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ 0/8 | |
+| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ❌ 2/7 | |
+| [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 5/8 | |
+| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 5/8 | |
+| [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 5/8 | |
+| [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 5/8 | |
+| [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 5/8 | |
+| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 2/8 | |
+| [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 5/8 | |
+| [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 3/4 | |
+| [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ 3/4 | |
+| [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ 5/8 | |
+| [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ 3/4 | |
+| [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ 3/4 | |
+| [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ 2/8 | |
 
 
 ## Other
@@ -106,4 +108,4 @@ Back to [summary](../summary.md).
 
 | Name | Testing | Other capabilities | Notes |
 |---|---|---|---|
-| [Bean Validation (Jakarta/javax)](../detail/lang.java.validation.bean-validation.md) | ⚠️ 0/1 | ❌ 0/5 | |
+| [Bean Validation (Jakarta/javax)](../detail/lang.java.validation.bean-validation.md) | ⚠️ 1/1 | ❌ 3/5 | |

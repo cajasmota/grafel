@@ -5,6 +5,8 @@
 
 Back to [summary](../summary.md).
 
+> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+
 ## Frameworks
 
 
@@ -12,23 +14,23 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ⚠️ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/21 | ❌ 0/8 | |
-| [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ⚠️ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ⚠️ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ❌ 0/1 | ❌ 19/20 | ❌ 1/7 | |
+| [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 4/4 | ❌ 0/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 3/7 | |
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 20/21 | ❌ 4/8 | |
+| [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 4/4 | ❌ 0/1 | ❌ 19/20 | ❌ 1/7 | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 4/7 | |
+| [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 4/7 | |
+| [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 4/4 | ❌ 0/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ❌ 2/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
+| [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 1/7 | |
 
 
 ### AI Integration
@@ -42,9 +44,9 @@ Back to [summary](../summary.md).
 
 | Name | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ⚠️ 0/1 | ❌ 5/21 | ❌ 4/6 | |
-| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ⚠️ 0/1 | ❌ 5/21 | ❌ 0/6 | |
-| [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | ⚠️ 0/1 | ❌ 0/21 | ❌ 0/6 | |
+| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ⚠️ 1/1 | ❌ 20/21 | ❌ 4/6 | |
+| [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ⚠️ 1/1 | ❌ 20/21 | ❌ 1/6 | |
+| [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | ⚠️ 1/1 | ❌ 20/21 | ❌ 2/6 | |
 
 
 ## Tools
@@ -74,23 +76,23 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ❌ 0/8 | |
-| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | ❌ 0/8 | |
-| [Django ORM](../detail/lang.python.orm.django.md) | ⚠️ 6/8 | |
-| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | ❌ 0/8 | |
-| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | ❌ 0/8 | |
-| [Peewee](../detail/lang.python.orm.peewee.md) | ❌ 0/8 | |
-| [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ 0/8 | |
-| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ⚠️ 5/8 | |
-| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ❌ 2/8 | |
-| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 1/8 | |
-| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ⚠️ 0/8 | |
-| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ⚠️ 0/8 | |
-| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ⚠️ 0/8 | |
-| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | ⚠️ 0/8 | |
-| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | ❌ 0/8 | |
-| [redis-py](../detail/lang.python.driver.redis.md) | ⚠️ 0/8 | |
-| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | ❌ 0/8 | |
+| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ❌ 1/6 | |
+| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | ❌ 2/7 | |
+| [Django ORM](../detail/lang.python.orm.django.md) | ⚠️ 8/8 | |
+| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | ❌ 2/7 | |
+| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | ❌ 1/2 | |
+| [Peewee](../detail/lang.python.orm.peewee.md) | ❌ 2/8 | |
+| [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ 2/8 | |
+| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ⚠️ 8/8 | |
+| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ❌ 3/8 | |
+| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 2/8 | |
+| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ⚠️ 1/1 | |
+| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ⚠️ 1/1 | |
+| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ⚠️ 1/1 | |
+| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | ⚠️ 1/1 | |
+| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | ❌ 1/2 | |
+| [redis-py](../detail/lang.python.driver.redis.md) | ⚠️ 1/1 | |
+| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | ❌ 1/2 | |
 
 
 ## Other
@@ -105,6 +107,6 @@ Back to [summary](../summary.md).
 
 | Name | Testing | Other capabilities | Notes |
 |---|---|---|---|
-| [Pydantic](../detail/lang.python.validation.pydantic.md) | ⚠️ 0/1 | ⚠️ 3/5 | |
-| [attrs](../detail/lang.python.validation.attrs.md) | ⚠️ 0/1 | ❌ 0/5 | |
-| [marshmallow](../detail/lang.python.validation.marshmallow.md) | ⚠️ 0/1 | ❌ 1/5 | |
+| [Pydantic](../detail/lang.python.validation.pydantic.md) | ⚠️ 1/1 | ⚠️ 5/5 | |
+| [attrs](../detail/lang.python.validation.attrs.md) | ⚠️ 1/1 | ❌ 3/5 | |
+| [marshmallow](../detail/lang.python.validation.marshmallow.md) | ⚠️ 1/1 | ❌ 4/5 | |

@@ -5,6 +5,8 @@
 
 Back to [summary](../summary.md).
 
+> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+
 ## Tools
 
 | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |

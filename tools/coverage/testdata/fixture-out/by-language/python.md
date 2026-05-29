@@ -5,6 +5,8 @@
 
 Back to [summary](../summary.md).
 
+> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+
 ## Frameworks
 
 | Name | Auth coverage | Endpoint synthesis | Handler attribution | Middleware coverage | Notes |
@@ -21,4 +23,4 @@ Back to [summary](../summary.md).
 
 | Name | Testing | Other capabilities | Notes |
 |---|---|---|---|
-| [Pydantic](../detail/lang.python.validation.pydantic.md) | ❌ 0/1 | ❌ 0/5 | |
+| [Pydantic](../detail/lang.python.validation.pydantic.md) | ❌ 0/1 | ❌ 1/5 | |
