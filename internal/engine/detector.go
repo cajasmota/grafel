@@ -404,6 +404,27 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		}
 	}
 
+	// Issue #3172 — Python DRF ViewSet double-emit dedup.
+	//
+	// Every Python framework's YAML rules fire on every Python file because
+	// they all share the "python" language key.  Falcon's catch-all class
+	// source_pattern (class \w+ ...) emits a `Controller` entity for every
+	// class definition it sees, including DRF ViewSet classes in Django
+	// files that the Django source_pattern already emits as `View`.  The
+	// result is two framework-typed nodes — View + Controller — for the
+	// same (Name, SourceFile), where the Controller carries zero edges
+	// (dead phantom, ~72 per Upvate bench).
+	//
+	// Resolution: after all rule-sets have run, drop any `Controller` entity
+	// whose (Name, SourceFile) pair is also covered by a `View` entity in
+	// the same result set.  `View` carries CALLS/ROUTES_TO edges and is the
+	// semantically correct node for a Django/DRF class; `Controller` is the
+	// phantom.  Order-independent — we scan the final slice rather than
+	// relying on rule-set processing order.
+	if file.Language == "python" {
+		entities = deduplicateViewControllerForPython(entities)
+	}
+
 	// Build the base args struct shared across all engine passes.
 	// Each pass reads the fields it needs; unused fields are ignored.
 	// Pass-specific fields (Pass1Entities, RepoRoot) are populated once here
@@ -753,6 +774,51 @@ func (d *Detector) RuleCount() int {
 		count += len(rules)
 	}
 	return count
+}
+
+// deduplicateViewControllerForPython removes `Controller` entities whose
+// (Name, SourceFile) pair is already covered by a `View` entity in the same
+// slice.  Called for Python files only (see issue #3172).
+//
+// The Falcon YAML source_pattern `class\s+(\w+)...` is a catch-all that
+// fires on every Python file, including Django/DRF files where the Django
+// source_pattern already emits the same class as `View`.  Keeping both
+// produces a dead phantom `Controller` node with zero edges alongside the
+// live `View` node that carries CALLS/ROUTES_TO edges.
+//
+// This pass is order-independent: it scans the full entity slice in two
+// passes (index → drop), so it is safe regardless of which YAML rule-set
+// ran first.  The `View` entity is kept; the duplicate `Controller` is
+// dropped.  Entities of other kinds (Model, Route, Config, …) are
+// never affected.
+func deduplicateViewControllerForPython(entities []types.EntityRecord) []types.EntityRecord {
+	if len(entities) == 0 {
+		return entities
+	}
+
+	// First pass: collect all (Name, SourceFile) pairs that have a View entity.
+	viewPairs := make(map[[2]string]bool, len(entities))
+	for i := range entities {
+		e := &entities[i]
+		if e.Kind == "View" {
+			viewPairs[[2]string{e.Name, e.SourceFile}] = true
+		}
+	}
+	if len(viewPairs) == 0 {
+		return entities // no View entities → nothing to dedup
+	}
+
+	// Second pass: drop Controller entities shadowed by a View.
+	out := make([]types.EntityRecord, 0, len(entities))
+	for i := range entities {
+		e := entities[i]
+		if e.Kind == "Controller" && viewPairs[[2]string{e.Name, e.SourceFile}] {
+			// Phantom: a View already exists for the same class symbol.
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // fileConventionName derives an entity name from a file path according to the
