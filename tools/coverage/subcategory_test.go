@@ -416,15 +416,40 @@ func TestGroupForCapability(t *testing.T) {
 	}
 }
 
-// TestGroupDigest checks the worst-glyph + full-count/total digest.
+// TestGroupDigest checks the worst-glyph + covered/applicable digest:
+// numerator = full+partial (covered), denominator = full+partial+missing
+// (applicable; not_applicable excluded), glyph = worst cell status.
 func TestGroupDigest(t *testing.T) {
+	// full + partial + missing → covered 2 / applicable 3, worst missing.
 	caps := map[string]Capability{
 		"a": {Status: StatusFull},
 		"b": {Status: StatusPartial},
 		"c": {Status: StatusMissing},
 	}
-	if got := groupDigest(caps); got != "❌ 1/3" {
-		t.Errorf("groupDigest = %q, want ❌ 1/3", got)
+	if got := groupDigest(caps); got != "❌ 2/3" {
+		t.Errorf("groupDigest = %q, want ❌ 2/3", got)
+	}
+	// not_applicable is excluded from the denominator entirely.
+	naCaps := map[string]Capability{
+		"a": {Status: StatusFull},
+		"b": {Status: StatusPartial},
+		"c": {Status: StatusNotApplicable},
+	}
+	if got := groupDigest(naCaps); got != "⚠️ 2/2" {
+		t.Errorf("groupDigest w/ N/A = %q, want ⚠️ 2/2", got)
+	}
+	// all full (after excluding N/A) → green, fraction saturated.
+	allFull := map[string]Capability{
+		"a": {Status: StatusFull},
+		"b": {Status: StatusFull},
+		"c": {Status: StatusNotApplicable},
+	}
+	if got := groupDigest(allFull); got != "✅ 2/2" {
+		t.Errorf("groupDigest all-full = %q, want ✅ 2/2", got)
+	}
+	// all not_applicable (no applicable cells) → em-dash.
+	if got := groupDigest(map[string]Capability{"a": {Status: StatusNotApplicable}}); got != "—" {
+		t.Errorf("all-N/A groupDigest = %q, want —", got)
 	}
 	if got := groupDigest(map[string]Capability{}); got != "—" {
 		t.Errorf("empty groupDigest = %q, want —", got)

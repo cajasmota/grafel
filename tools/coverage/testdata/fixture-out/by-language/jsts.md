@@ -5,6 +5,8 @@
 
 Back to [summary](../summary.md).
 
+> Group columns show `glyph covered/applicable`: **covered** = capabilities with extraction (✅ full + ⚠️ partial), **applicable** = covered + ❌ missing (not-applicable cells are excluded). The glyph is the group's worst cell — ✅ all full · ⚠️ some heuristic/partial · ❌ some missing. So `20/20 ⚠️` means every applicable capability is extracted, some only heuristically.
+
 ## Frameworks
 
 
@@ -12,7 +14,7 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Auth | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ⚠️ 0/1 | ✅ 1/1 | ❌ 0/3 | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ⚠️ 1/1 | ✅ 1/1 | ❌ 1/3 | |
 
 
 ### Other

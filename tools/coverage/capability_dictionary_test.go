@@ -191,9 +191,10 @@ func TestOtherCapabilitiesDigest(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Other cells = %v, want %v", got, want)
 	}
-	// 3 cells, 0 full, worst = missing → ❌ 0/3.
+	// 3 applicable cells, 1 covered (full+partial), worst = missing →
+	// ❌ 1/3 under the covered/applicable digest convention.
 	view := recordToView(rec)
-	if d := view.GroupDigestByName[OtherCapabilitiesColumn]; d != "❌ 0/3" {
-		t.Errorf("Other digest = %q, want ❌ 0/3", d)
+	if d := view.GroupDigestByName[OtherCapabilitiesColumn]; d != "❌ 1/3" {
+		t.Errorf("Other digest = %q, want ❌ 1/3", d)
 	}
 }

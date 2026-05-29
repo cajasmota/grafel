@@ -11,7 +11,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Routing | Auth | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ⚠️ 0/1 | ✅ 1/1 | ❌ 0/3 | |
+| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ⚠️ 1/1 | ✅ 1/1 | ❌ 1/3 | |
 
 
 ## Other

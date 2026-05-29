@@ -408,7 +408,7 @@ func buildFrameworkSpecificViews(rec Record) []frameworkSpecificView {
 
 // makeGroupView constructs a groupView from a group name + its cell
 // map. The CapList is sorted alphabetically by key; the digest follows
-// the "<glyph> <full-count>/<total>" convention from #2737.
+// the "<glyph> <covered>/<applicable>" convention (see groupDigest).
 func makeGroupView(name string, caps map[string]Capability) groupView {
 	keys := sortedCapKeys(caps)
 	list := make([]capEntry, 0, len(keys))
@@ -422,17 +422,25 @@ func makeGroupView(name string, caps map[string]Capability) groupView {
 	}
 }
 
-// groupDigest returns the worst-glyph + full-count/total summary for a
+// groupDigest returns the worst-glyph + covered/applicable summary for a
 // group's capability cells. Empty groups (no cells declared) render as
 // "—" so pivot rows for sparsely-populated records still align under
-// every group column. The full-count counts StatusFull only — partials
-// are folded into the glyph severity but not the numerator (the cell
-// already differentiates ✅/⚠️/❌).
+// every group column. The numerator counts COVERED cells (StatusFull +
+// StatusPartial — any capability that has real extraction, comprehensive
+// or heuristic); the denominator counts APPLICABLE cells (full + partial
+// + missing), EXCLUDING not_applicable so capabilities that genuinely
+// don't apply to the framework neither help nor hurt the fraction. The
+// glyph still reflects the WORST cell status, so the fraction and glyph
+// together read honestly: "20/20 ⚠️" = every applicable capability is
+// extracted but some only heuristically; "✅" only when all are full;
+// any shortfall in the fraction is exactly the count of missing cells.
+// A group with no applicable cells (all not_applicable, or empty) → "—".
 func groupDigest(caps map[string]Capability) string {
 	if len(caps) == 0 {
 		return "—"
 	}
-	full := 0
+	covered := 0    // full + partial
+	applicable := 0 // full + partial + missing (excludes not_applicable)
 	worst := ""
 	worstRank := -1
 	rank := map[string]int{
@@ -443,15 +451,22 @@ func groupDigest(caps map[string]Capability) string {
 		"":                  0,
 	}
 	for _, c := range caps {
-		if c.Status == StatusFull {
-			full++
+		switch c.Status {
+		case StatusFull, StatusPartial:
+			covered++
+			applicable++
+		case StatusMissing:
+			applicable++
 		}
 		if r := rank[c.Status]; r > worstRank {
 			worstRank = r
 			worst = c.Status
 		}
 	}
-	return fmt.Sprintf("%s %d/%d", statusGlyph(worst), full, len(caps))
+	if applicable == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%s %d/%d", statusGlyph(worst), covered, applicable)
 }
 
 // languageDisplay maps a language slug to its human-facing label. The
