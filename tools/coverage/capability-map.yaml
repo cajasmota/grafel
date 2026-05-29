@@ -4148,6 +4148,215 @@ records:
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
 
+  lang.go.driver.cassandra:
+    capabilities:
+      Models:
+        schema_extraction:
+          # CQL `CREATE TABLE [keyspace.]name (...)` literals embedded in Go
+          # strings => SCOPE.Schema tables with columns enumerated as fields
+          # (reCQLCreateTable + reCQLColumn). Recovered by regex from string
+          # literals, not a CQL parser, hence partial.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/cassandra_go.yaml
+            - file: internal/custom/golang/gocql.go
+              functions: [Extract, gocqlIsColumnLine]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # session.Query("CQL") string literals + gocqlx qb.Select/Insert/...
+          # builder call sites; gocqlVerbKind stamps a coarse CRUD verb from the
+          # leading CQL keyword.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/cassandra_go.yaml
+            - file: internal/custom/golang/gocql.go
+              functions: [Extract, gocqlVerbKind]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        relationship_extraction:
+          status: not_applicable
+          notes: "Cassandra is a wide-column store with no foreign keys or joins; references are a denormalisation convention, not a driver concept."
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Migrations:
+        migration_parsing:
+          status: not_applicable
+          notes: "gocql ships no migration runner; CQL schema evolution is applied out-of-band (cqlsh / external tools)."
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
+  lang.go.driver.dynamodb:
+    capabilities:
+      Models:
+        model_extraction:
+          # Structs with `dynamodbav:"attr"` tags scanned as item shapes.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/dynamodb_go.yaml
+            - file: internal/custom/golang/dynamodb.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          # `TableName: aws.String("x")` / `TableName: "x"` literals => tables;
+          # dynamodbav item attributes enumerated as columns.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/dynamodb_go.yaml
+            - file: internal/custom/golang/dynamodb.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # GetItem/PutItem/Query/Scan/UpdateItem/DeleteItem/BatchGetItem/...
+          # client call sites; dynamoVerbKind stamps a coarse CRUD verb.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/dynamodb_go.yaml
+            - file: internal/custom/golang/dynamodb.go
+              functions: [Extract, dynamoVerbKind]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        relationship_extraction:
+          status: not_applicable
+          notes: "DynamoDB has no foreign keys or joins; GSIs/LSIs are access-path indexes, not relations."
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Migrations:
+        migration_parsing:
+          status: not_applicable
+          notes: "Schema-less; the SDK has no migration runner — tables are created via CreateTable/IaC out-of-band."
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
+  lang.go.driver.elastic:
+    capabilities:
+      Models:
+        model_extraction:
+          # Structs with `json:"field"` tags adjacent to the ES client treated
+          # as document shapes (heuristic — a json tag does not prove the struct
+          # is an ES document).
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/elasticsearch_go.yaml
+            - file: internal/custom/golang/elasticsearch.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          # Index("name") / Index: "name" / Indices("name") call sites =>
+          # SCOPE.Schema indices.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/elasticsearch_go.yaml
+            - file: internal/custom/golang/elasticsearch.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # Search/Index/Get/Update/Delete/Bulk/Count/Msearch/... request-builder
+          # call sites; esVerbKind stamps a coarse CRUD verb.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/elasticsearch_go.yaml
+            - file: internal/custom/golang/elasticsearch.go
+              functions: [Extract, esVerbKind]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Migrations:
+        migration_parsing:
+          # CreateIndex("name") / indices.Create(...) call sites are the index-
+          # creation analogue of a migration. No ordered/versioned migration
+          # runner exists, so partial.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/elasticsearch_go.yaml
+            - file: internal/custom/golang/elasticsearch.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        relationship_extraction:
+          status: not_applicable
+          notes: "Elasticsearch is a document store; join/nested types are denormalisation, not relations."
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
+  lang.go.driver.neo4j:
+    capabilities:
+      Models:
+        schema_extraction:
+          # Node labels in Cypher patterns ((n:Person), (:Movie)) => SCOPE.Schema
+          # nodes (reCypherLabel). Labels are a soft schema recovered from query
+          # strings by regex, hence partial.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/neo4j.yaml
+            - file: internal/custom/golang/neo4j.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        relationship_extraction:
+          # Relationship types in Cypher patterns (-[:ACTED_IN]->, -[r:KNOWS]-)
+          # => SCOPE.Schema subtype=relationship (reCypherRelType). The one driver
+          # in this slice where relationships are first-class. Endpoints are not
+          # always statically resolvable from the query text, so partial.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/neo4j.yaml
+            - file: internal/custom/golang/neo4j.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # session.Run("CYPHER") / tx.Run / ExecuteQuery call sites;
+          # neo4jVerbKind stamps a coarse verb from the leading Cypher clause.
+          status: partial
+          symbols:
+            - file: internal/engine/rules/go/orms/neo4j.yaml
+            - file: internal/custom/golang/neo4j.go
+              functions: [Extract, neo4jVerbKind]
+          tests:
+            - file: internal/custom/golang/nosql_drivers_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Migrations:
+        migration_parsing:
+          status: not_applicable
+          notes: "Neo4j is schema-flexible / graph-native; the driver has no migration runner (constraints/indexes are applied via ad-hoc Cypher)."
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.net-http:
     capabilities:
       Routing:

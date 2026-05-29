@@ -10280,33 +10280,36 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/gocql.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/cassandra_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "NoSQL/graph driver: no ORM association metadata."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No foreign-key concept in this driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No lazy/eager loading; queries are explicit."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Cassandra is a wide-column store with no foreign keys or joins."
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/cassandra_go.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/gocql.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/cassandra_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -10325,36 +10328,42 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dynamodb.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/dynamodb_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/dynamodb.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/dynamodb_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "NoSQL/graph driver: no ORM association metadata."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No foreign-key concept in this driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No lazy/eager loading; queries are explicit."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "DynamoDB has no foreign keys or joins; GSIs/LSIs are access-path indexes."
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/dynamodb_go.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/dynamodb.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/dynamodb_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -10373,41 +10382,50 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/custom/golang/elasticsearch.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/elasticsearch_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/elasticsearch.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/elasticsearch_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "NoSQL/graph driver: no ORM association metadata."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No foreign-key concept in this driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No lazy/eager loading; queries are explicit."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Elasticsearch is a document store; join/nested types are denormalisation, not relations."
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/elasticsearch_go.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/elasticsearch.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/elasticsearch_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/custom/golang/elasticsearch.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/elasticsearch_go.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -10522,33 +10540,38 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/neo4j.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/neo4j.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "NoSQL/graph driver: no ORM association metadata."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No foreign-key concept in this driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No lazy/eager loading; queries are explicit."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/neo4j.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/neo4j.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/neo4j.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/neo4j.yaml"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
