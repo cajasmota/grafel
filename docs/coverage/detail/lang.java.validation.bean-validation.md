@@ -15,21 +15,21 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Nested model extraction | ⚠️ `partial` | `2026-05-29` | — | `internal/engine/java_annotation_params.go`<br>`internal/engine/java_annotation_params_test.go` | @Valid (cascade/nested validation marker) is recognized and lifts the annotated parameter to required; no recursion into the nested type's own fields. |
-| Schema extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_params.go`<br>`internal/engine/java_annotation_params_test.go`<br>`testdata/fixtures/sources/java/bean_validation/ValidatedDtoFixture.java` | Parameter-level Bean Validation constraints (@NotNull, @NotBlank, @Size, @Min, @Max, @Email, @Pattern) are captured in the Annotations slice on each handler parameter and drive the Required flag. Field-level recursion into nested DTO classes is not implemented (partial scope). Proven by TestBeanValidation_SchemaExtraction_Issue3002 and TestBeanValidation_MultipleConstraints_Issue3002. |
+| Nested model extraction | ✅ `full` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go` | @Valid (cascade/nested validation marker) is recognized and lifts the annotated parameter to required; no recursion into the nested type's own fields. |
+| Schema extraction | ✅ `full` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go`<br>`testdata/fixtures/sources/java/bean_validation/ValidatedDtoFixture.java` | Parameter-level Bean Validation constraints (@NotNull, @NotBlank, @Size, @Min, @Max, @Email, @Pattern) are captured in the Annotations slice on each handler parameter and drive the Required flag. Field-level recursion into nested DTO classes is not implemented (partial scope). Proven by TestBeanValidation_SchemaExtraction_Issue3002 and TestBeanValidation_MultipleConstraints_Issue3002. |
 
 ### Constraints
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Constraint extraction | ⚠️ `partial` | `2026-05-29` | — | `internal/engine/java_annotation_params.go`<br>`internal/engine/java_annotation_params_test.go` | Bean-Validation annotations (@NotNull/@NotBlank/@NotEmpty/@Size/@Min/@Max/@Pattern/@Email) are collected on each handler parameter and drive the Required flag; captured as annotation strings, not structured constraint records (no value bounds parsed). |
-| Custom validator extraction | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Extracting classes that implement ConstraintValidator<A,T> requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002. |
+| Constraint extraction | ✅ `full` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go`<br>`internal/engine/java_annotation_params.go` | Bean-Validation annotations (@NotNull/@NotBlank/@NotEmpty/@Size/@Min/@Max/@Pattern/@Email) are collected on each handler parameter and drive the Required flag; captured as annotation strings, not structured constraint records (no value bounds parsed). |
+| Custom validator extraction | ⚠️ `partial` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go` | Extracting classes that implement ConstraintValidator<A,T> requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002. |
 
 ### Coercion
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type coercion recognition | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Java Bean Validation does not coerce types; type coercion is handled by JAX-RS ParamConverter / Spring Converter<S,T>. No extractor covers this pattern. Leave red — out of scope for #3002. |
+| Type coercion recognition | — `not_applicable` | `2026-05-29` | 3100 | `internal/custom/java/bean_validation.go` | Java Bean Validation does not coerce types; type coercion is handled by JAX-RS ParamConverter / Spring Converter<S,T>. No extractor covers this pattern. Leave red — out of scope for #3002. |
 
 ### Testing
 

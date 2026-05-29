@@ -184,6 +184,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindHTTPEndpointDefinition,
 		EntityKindHTTPEndpointCall,
 		HTTPEndpointKindLegacy,
+		// #3100:
+		EntityKindCustomValidator,
 	}
 }
 
@@ -510,6 +512,12 @@ const (
 	//   "operator" : the comparison operator (===, !==, <=, <, >, >=, ==, !=)
 	//   "kind"     : "if", "ternary", or "switch"
 	RelationshipKindBranchesOn RelationshipKind = "BRANCHES_ON"
+
+	// #3100: Bean Validation custom ConstraintValidator<A,T> implementations.
+	// CustomValidator represents a class that implements ConstraintValidator<A,T>
+	// and provides the validation logic for a custom constraint annotation.
+	// Subtype "constraint_validator" is used to distinguish from generic component types.
+	EntityKindCustomValidator EntityKind = "SCOPE.CustomValidator"
 
 	// #2904: Request-validation / DTO-extraction linkage edges. Emitted by
 	// the JS/TS extractor when a route handler / controller method is wired
