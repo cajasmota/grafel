@@ -81,16 +81,16 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [php](../by-language/php.md) | [WordPress](../detail/lang.php.framework.wordpress.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
 | [php](../by-language/php.md) | [Yii](../detail/lang.php.framework.yii.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 17/21 | ❌ 0/6 | |
 | [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
-| [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
+| [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
 | [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ❌ 6/7 | |
 | [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 20/21 | ❌ 7/8 | |
-| [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
+| [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ⚠️ 7/7 | |
 | [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ⚠️ 7/7 | |
-| [python](../by-language/python.md) | [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
+| [python](../by-language/python.md) | [Hug](../detail/lang.python.framework.hug.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
 | [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ❌ 5/7 | |
 | [python](../by-language/python.md) | [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ⚠️ 1/1 | ❌ 19/20 | ❌ 5/7 | |
-| [python](../by-language/python.md) | [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/3 | ⚠️ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ❌ 5/7 | |
+| [python](../by-language/python.md) | [Quart](../detail/lang.python.framework.quart.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ❌ 5/7 | |
 | [python](../by-language/python.md) | [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ❌ 5/7 | |
 | [python](../by-language/python.md) | [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ❌ 5/7 | |
 | [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 3/3 | ⚠️ 1/1 | ✅ 4/4 | ✅ 1/1 | ❌ 19/20 | ❌ 5/7 | |

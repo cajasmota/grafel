@@ -33807,14 +33807,22 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/cherrypy.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/cherrypy.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/cherrypy.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -34678,14 +34686,22 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/falcon.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/falcon.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/falcon.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -35363,14 +35379,22 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/hug.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/hug.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/hug.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
@@ -36063,14 +36087,22 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/quart.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/quart.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/quart.yaml"],
+            "issue": "3065",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {

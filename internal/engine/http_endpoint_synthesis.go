@@ -357,6 +357,13 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// no-op (dual-use skip).
 		synthesizeAiohttp(string(content), emitDef)
 		synthesizeBottle(string(content), emitDef)
+		// #3065 — CherryPy / Falcon / Hug / Quart routing synthesis. Each
+		// synthesizer is gated on a framework-specific marker so it no-ops on
+		// files that use one of the similar frameworks above.
+		synthesizeCherryPy(string(content), emitDef)
+		synthesizeFalcon(string(content), emitDef)
+		synthesizeHug(string(content), emitDef)
+		synthesizeQuart(string(content), emitDef)
 		// Producer side: Flask + FastAPI run FIRST so their synthetics —
 		// which carry a real handler function name as source_handler —
 		// claim each ID before the Django composed-route pass walks the
@@ -2085,6 +2092,291 @@ func synthesizeBottle(content string, emit emitDefFn) {
 		}
 		for _, verb := range methods {
 			emit(verb, canonical, "bottle", "Controller", handler, defLine)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CherryPy (Python) — #3065
+// ---------------------------------------------------------------------------
+//
+// CherryPy exposes handlers via the `@cherrypy.expose` decorator (or
+// `@cp.expose` for a renamed import). The URL is derived from the class and
+// method hierarchy rather than an explicit path string; the most common
+// conventions are:
+//
+//	class Root:
+//	    @cherrypy.expose
+//	    def index(self):       # → GET /
+//	        return "hello"
+//
+//	    @cherrypy.expose
+//	    def users(self):       # → GET /users
+//	        return []
+//
+// CherryPy also supports `@cherrypy.expose(['GET', 'POST'])` and the
+// tools-based `@cherrypy.tools.json_in()` layering, but the dominant
+// convention is the bare `@cherrypy.expose` decorator.
+//
+// Because CherryPy does not carry an explicit path string in the decorator
+// we derive the route from the method name: `index` maps to the parent path
+// segment (bare class root), and every other method name becomes a path
+// segment. The class hierarchy is not walked — same-class methods emit the
+// method name directly. This is a deterministic, partial mapping; the
+// byPath linker normalises trailing slashes.
+//
+// Path parameters are not expressible in the decorator itself (CherryPy
+// passes URL-tail segments as positional args to the handler); we leave the
+// path as a plain segment with no `{param}` substitution. Handler attribution
+// uses the method name.
+
+// cherrypyExposeRe captures `@cherrypy.expose` or `@cp.expose` (common import
+// alias) followed by the method definition. Both bare and called forms are
+// matched: `@cherrypy.expose` and `@cherrypy.expose()`.
+//
+// Capture groups: 1 = method name.
+var cherrypyExposeRe = regexp.MustCompile(
+	`(?m)^[ \t]*@(?:cherrypy|cp)\.expose(?:\([^)]*\))?[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)\s*\(`,
+)
+
+func synthesizeCherryPy(content string, emit emitDefFn) {
+	// File-signal gate: require a CherryPy marker.
+	if !strings.Contains(content, "cherrypy") && !strings.Contains(content, "CherryPy") {
+		return
+	}
+	for _, idx := range cherrypyExposeRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 4 {
+			continue
+		}
+		methodName := content[idx[2]:idx[3]]
+		defLine := lineOfOffset(content, idx[2])
+		// CherryPy's `index` method maps to the bare parent path `/`.
+		path := "/" + methodName
+		if methodName == "index" {
+			path = "/"
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkCherryPy, path)
+		// CherryPy dispatches all verbs to the same handler by default
+		// (explicit verb restriction requires tools.allow). Emit ANY.
+		emit("ANY", canonical, "cherrypy", "Controller", methodName, defLine)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Falcon (Python) — #3065
+// ---------------------------------------------------------------------------
+//
+// Falcon registers routes by pairing a URL template with a Resource class:
+//
+//	app = falcon.App()
+//	app.add_route('/users/{user_id}', UserResource())
+//
+// HTTP verbs are handled by methods named `on_get`, `on_post`, `on_put`,
+// `on_patch`, `on_delete`, etc. on the Resource class. The synthesizer
+// extracts:
+//
+//  1. `add_route('/path', Resource())` calls — path + resource class name.
+//  2. `on_<verb>` methods on classes defined in the same file — for handler
+//     attribution and def-line stamping.
+//
+// If the Resource class is not found in the same file we emit a single ANY
+// synthetic so the cross-file resolver can rebind later.
+
+// falconAddRouteRe captures `<recv>.add_route('/path', ResourceClass(...))`.
+// The receiver is any identifier. The resource may be a bare class name or a
+// call expression; we capture the first identifier after the comma.
+//
+// Capture groups: 1 = path, 2 = resource class name.
+var falconAddRouteRe = regexp.MustCompile(
+	`\b\w+\.add_route\s*\(\s*["']([^"'\n\r]+)["']\s*,\s*([A-Za-z_][\w]*)`,
+)
+
+// falconOnVerbRe captures `def on_<verb>(self, ...)` inside a class body.
+//
+// Capture groups: 1 = verb (lowercase), 2 = method def offset (via index).
+var falconOnVerbRe = regexp.MustCompile(
+	`(?m)^[ \t]+def\s+on_(get|post|put|patch|delete|head|options)\s*\(`,
+)
+
+// falconClassRe matches a class declaration that inherits from anything or
+// has no base. We accept any class that has `on_get`/`on_post` etc. methods.
+//
+// Capture groups: 1 = class name.
+var falconClassRe = regexp.MustCompile(
+	`(?m)^class\s+([A-Za-z_][\w]*)\s*(?:\([^)]*\))?\s*:`,
+)
+
+func synthesizeFalcon(content string, emit emitDefFn) {
+	// File-signal gate: require a Falcon marker.
+	if !strings.Contains(content, "falcon") && !strings.Contains(content, "Falcon") {
+		return
+	}
+
+	// Build a same-file class index: ClassName → {verbs → defLine}.
+	type classVerbInfo struct {
+		verbs    []string
+		defLines map[string]int // upper-case verb → 1-based def line
+	}
+	classes := map[string]*classVerbInfo{}
+	for _, cm := range falconClassRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(cm) < 4 {
+			continue
+		}
+		name := content[cm[2]:cm[3]]
+		bodyStart := cm[1]
+		bodyEnd := findPyClassBodyEnd(content, bodyStart)
+		body := content[bodyStart:bodyEnd]
+		info := &classVerbInfo{defLines: map[string]int{}}
+		for _, vm := range falconOnVerbRe.FindAllStringSubmatchIndex(body, -1) {
+			if len(vm) < 4 {
+				continue
+			}
+			verb := strings.ToUpper(body[vm[2]:vm[3]])
+			if _, dup := info.defLines[verb]; dup {
+				continue
+			}
+			info.verbs = append(info.verbs, verb)
+			info.defLines[verb] = lineOfOffset(content, bodyStart+vm[0])
+		}
+		classes[name] = info
+	}
+
+	for _, m := range falconAddRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		raw := content[m[2]:m[3]]
+		resourceClass := content[m[4]:m[5]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFalcon, raw)
+		if canonical == "" {
+			continue
+		}
+
+		info, sameFile := classes[resourceClass]
+		if sameFile && len(info.verbs) > 0 {
+			for _, verb := range info.verbs {
+				methodName := resourceClass + ".on_" + strings.ToLower(verb)
+				emit(verb, canonical, "falcon", "SCOPE.Operation", methodName, info.defLines[verb])
+			}
+			continue
+		}
+		// Cross-file or no verb methods found: emit ANY with class reference.
+		emit("ANY", canonical, "falcon", "SCOPE.Component", resourceClass, lineOfOffset(content, m[0]))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Hug (Python) — #3065
+// ---------------------------------------------------------------------------
+//
+// Hug is a decorator-driven framework that wraps any WSGI/WSGI2 app. Routes
+// are declared with `@hug.get`, `@hug.post`, `@hug.put`, `@hug.patch`,
+// `@hug.delete`, `@hug.options`, `@hug.head`, `@hug.cli`, `@hug.local`:
+//
+//	@hug.get('/users/{user_id}')
+//	def get_user(user_id: int): ...
+//
+//	@hug.post('/items')
+//	def create_item(body): ...
+//
+// Path parameters use FastAPI-style `{name}` curly-brace convention.
+// Hug also supports `@hug.get()` (no path) — we skip those since there is
+// no path to extract.
+
+// hugVerbDecoratorRe captures `@hug.<verb>('/path')` / `@hug.<verb>("/path")`
+// decorators and the following handler def/async def.
+//
+// Capture groups: 1 = verb, 2 = path, 3 = handler name.
+var hugVerbDecoratorRe = regexp.MustCompile(
+	`@hug\.(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["'][^)]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+func synthesizeHug(content string, emit emitDefFn) {
+	// File-signal gate: require a hug marker.
+	if !strings.Contains(content, "hug") {
+		return
+	}
+	for _, idx := range hugVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[2]:idx[3]])
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkHug, raw)
+		defLine := lineOfOffset(content, idx[6])
+		emit(verb, canonical, "hug", "Controller", handler, defLine)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Quart (Python) — #3065
+// ---------------------------------------------------------------------------
+//
+// Quart is an async-first Python web framework that mirrors the Flask API
+// exactly. Routes are declared with `@app.route('/path')` and shorthand
+// method decorators `@app.get('/path')`, `@app.post('/path')`, etc. Path
+// parameters use the same Flask-style `<converter:name>` / `<name>`
+// angle-bracket convention.
+//
+// Because the decorator shapes are identical to Flask — only the import
+// differs (`from quart import Quart` / `import quart`) — the synthesizer is
+// gated on a Quart-specific marker. The side-scoped dedup in makeEmit ensures
+// the Flask synthesizer (which runs after) does not re-claim Quart endpoints
+// with the wrong framework label.
+
+// quartVerbDecoratorRe captures `@app.<verb>("/path")` shorthand decorators
+// and the following handler def/async def. Mirrors flaskRouteVerbDecoratorRe.
+//
+// Capture groups: 1 = verb, 2 = path, 3 = handler name.
+var quartVerbDecoratorRe = regexp.MustCompile(
+	`@\w+\.(get|post|put|patch|delete)\s*\(\s*["']([^"'\n\r]+)["'][^\n\r]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+// quartRouteRe captures the generic `@app.route("/path", ...)` form and the
+// following handler def/async def. Mirrors flaskRouteRe with optional
+// `async def`.
+//
+// Capture groups: 1 = path, 2 = kwargs tail, 3 = handler name.
+var quartRouteRe = regexp.MustCompile(
+	`@\w+\.route\s*\(\s*["']([^"'\n\r]+)["']([^\n\r]*)\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+func synthesizeQuart(content string, emit emitDefFn) {
+	// File-signal gate: require a Quart marker. The decorator shapes are
+	// identical to Flask so without this gate the synthesizer would fire on
+	// all Flask files too.
+	if !strings.Contains(content, "quart") && !strings.Contains(content, "Quart") {
+		return
+	}
+	// Shorthand verbs first.
+	for _, idx := range quartVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[2]:idx[3]])
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkQuart, raw)
+		defLine := lineOfOffset(content, idx[6])
+		emit(verb, canonical, "quart", "Controller", handler, defLine)
+	}
+	// Generic .route(...) form.
+	for _, idx := range quartRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		raw := content[idx[2]:idx[3]]
+		extras := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkQuart, raw)
+		defLine := lineOfOffset(content, idx[6])
+		methods := parseFlaskMethods(extras) // Quart uses the same methods=[...] shape
+		if len(methods) == 0 {
+			methods = []string{"GET"}
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "quart", "Controller", handler, defLine)
 		}
 	}
 }

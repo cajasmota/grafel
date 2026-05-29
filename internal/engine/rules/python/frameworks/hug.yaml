@@ -1,0 +1,45 @@
+# Hug framework extraction rules. #3065
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema.
+#
+frameworks:
+  name: Hug
+  pypi_package: hug
+  category: web_micro
+  github_stars_2025: 6800+
+  gateway: wsgi
+  detection:
+    config_files:
+    - api.py
+    - app.py
+    dependency_names:
+    - hug
+    import_markers:
+    - import hug
+    - from hug import
+    structural_markers: []
+  notes: >
+    Hug uses decorator-based routing identical in spirit to Flask/FastAPI.
+    HTTP verbs are expressed as @hug.get, @hug.post, @hug.put, @hug.patch,
+    @hug.delete, @hug.options, @hug.head. Path parameters use {name}
+    curly-brace syntax identical to FastAPI. Hug also supports
+    @hug.cli for CLI commands (out of scope for HTTP routing).
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema)
+# ---------------------------------------------------------------------------
+
+# source_patterns: regex patterns that match Hug constructs.
+source_patterns:
+  # HTTP verb decorators: @hug.get('/path'), @hug.post('/path'), etc.
+  - pattern: "@hug\\.(get|post|put|patch|delete|head|options)\\s*\\(\\s*[\"']([^\"'\\n\\r]+)[\"']"
+    entity_type: Route
+    name_group: 2
+    scope: file
+  # @hug.get('/path') followed by def handler
+  - pattern: "@hug\\.(get|post|put|patch|delete|head|options)\\s*\\(\\s*[\"']([^\"'\\n\\r]+)[\"'][^)]*\\)[\\r\\n]+(?:\\s*@[^\\n\\r]*[\\r\\n]+)*\\s*(?:async\\s+)?def\\s+(\\w+)"
+    entity_type: Route
+    name_group: 2
+    scope: file

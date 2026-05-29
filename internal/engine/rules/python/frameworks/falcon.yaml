@@ -1,0 +1,67 @@
+# Falcon framework extraction rules. #3065
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema.
+#
+frameworks:
+  name: Falcon
+  pypi_package: falcon
+  category: web_micro
+  github_stars_2025: 9600+
+  gateway: wsgi
+  detection:
+    config_files:
+    - app.py
+    - api.py
+    dependency_names:
+    - falcon
+    import_markers:
+    - import falcon
+    - from falcon import
+    - falcon.App()
+    - falcon.API()
+    structural_markers: []
+  notes: >
+    Falcon routes are registered imperatively: app.add_route('/path', Resource()).
+    HTTP verbs are handled by on_get / on_post / on_put / on_patch / on_delete
+    / on_head / on_options methods on the Resource class. The synthesizer pairs
+    the add_route path with the Resource's responder methods to emit per-verb
+    http_endpoint_definition entities.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema)
+# ---------------------------------------------------------------------------
+
+# source_patterns: regex patterns that match Falcon constructs.
+source_patterns:
+  # Route registration: app.add_route('/path', Resource())
+  - pattern: "\\.add_route\\s*\\(\\s*[\"']([^\"'\\n\\r]+)[\"']\\s*,\\s*(\\w+)"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # Responder methods: def on_get(self, ...), def on_post(self, ...) etc.
+  - pattern: "def\\s+(on_(?:get|post|put|patch|delete|head|options))\\s*\\(\\s*self"
+    entity_type: Route
+    name_group: 1
+    scope: class
+  # Falcon App / API instantiation
+  - pattern: "(\\w+)\\s*=\\s*(?:falcon\\.)?(?:App|API)\\s*\\("
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # Resource class (any class with on_get/on_post etc.)
+  - pattern: "class\\s+(\\w+)\\s*(?:\\([^)]*\\))?\\s*:"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+# relationship_rules: edges between entities.
+relationship_rules:
+  # app.add_route registers a resource on the app
+  - pattern: "(\\w+)\\.add_route\\s*\\(\\s*[\"']([^\"'\\n\\r]+)[\"']\\s*,\\s*(\\w+)"
+    source_type: Controller
+    target_type: Service
+    relationship: REGISTERED_ON
+    source_group: 3
+    target_group: 1

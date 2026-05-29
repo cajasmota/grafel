@@ -1,0 +1,61 @@
+# CherryPy framework extraction rules. #3065
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema.
+#
+frameworks:
+  name: CherryPy
+  pypi_package: CherryPy
+  category: web_micro
+  github_stars_2025: 1800+
+  gateway: wsgi
+  detection:
+    config_files:
+    - app.py
+    - server.py
+    dependency_names:
+    - CherryPy
+    - cherrypy
+    import_markers:
+    - import cherrypy
+    - from cherrypy import
+    - cherrypy.quickstart(
+    structural_markers: []
+  notes: >
+    CherryPy routes are determined by the class/method hierarchy and the
+    @cherrypy.expose decorator. The URL path corresponds to the method name
+    (with `index` mapping to the parent path). No explicit path string is
+    required in the decorator itself.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema)
+# ---------------------------------------------------------------------------
+
+# source_patterns: regex patterns that match CherryPy constructs.
+source_patterns:
+  # @cherrypy.expose decorator on a method
+  - pattern: "@(?:cherrypy|cp)\\.expose(?:\\([^)]*\\))?\\s*[\\r\\n]+(?:\\s*@[^\\n\\r]*[\\r\\n]+)*\\s*def\\s+(\\w+)\\s*\\("
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # CherryPy application class inheriting from object
+  - pattern: "class\\s+(\\w+)\\s*(?:\\(object\\))?\\s*:"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+  # cherrypy.quickstart(Root()) — application entry point
+  - pattern: "cherrypy\\.quickstart\\s*\\(\\s*(\\w+)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+
+# relationship_rules: edges between entities.
+relationship_rules:
+  # cherrypy.quickstart(Root()) mounts the root class
+  - pattern: "cherrypy\\.quickstart\\s*\\(\\s*(\\w+)"
+    source_type: Service
+    target_type: Controller
+    relationship: MOUNTS
+    source_group: 1
+    target_group: 1

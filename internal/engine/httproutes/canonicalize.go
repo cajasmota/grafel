@@ -104,6 +104,22 @@ const (
 	// use the Flask-style `<name>` / `<name:filter>` angle-bracket path
 	// parameter convention. Canonicalisation reuses the angle-bracket walker.
 	FrameworkBottle = "bottle"
+	// FrameworkCherryPy (#3065) — CherryPy `@cherrypy.expose` method routing
+	// uses plain path strings (the URL is derived from the class/method structure
+	// or from _cp_dispatch). Canonicalisation is identity + slash normalisation.
+	FrameworkCherryPy = "cherrypy"
+	// FrameworkFalcon (#3065) — Falcon `app.add_route('/users/{user_id}', resource)`
+	// uses `{name}` curly-brace path parameters; canonicalisation reuses
+	// canonicalizeCurlyBraces.
+	FrameworkFalcon = "falcon"
+	// FrameworkHug (#3065) — Hug `@hug.get('/path')` / `@hug.post('/path')`
+	// decorators use plain path strings with `{name}` curly-brace parameters
+	// identical to FastAPI. Canonicalisation reuses canonicalizeCurlyBraces.
+	FrameworkHug = "hug"
+	// FrameworkQuart (#3065) — Quart mirrors the Flask routing API exactly:
+	// `@app.route('/path')` / `@app.get('/path')` with Flask-style `<converter:name>`
+	// angle-bracket path parameters. Canonicalisation reuses the angle-bracket walker.
+	FrameworkQuart = "quart"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -130,7 +146,7 @@ func Canonicalize(framework, raw string) string {
 		// angle-bracket walker (which keeps the post-colon segment for Flask)
 		// receives a bare `<name>` and emits `{name}`.
 		out = canonicalizeAngleBrackets(stripBottleFilters(raw))
-	case FrameworkDjango, FrameworkFlask, FrameworkRocket, FrameworkSanic:
+	case FrameworkDjango, FrameworkFlask, FrameworkRocket, FrameworkSanic, FrameworkQuart:
 		// #2669 — Django re_path and DRF @action(url_path=…) frequently embed
 		// Python named-group regex `(?P<name>charclass)` inside the URL. Pre-strip
 		// these to `<name>` so the angle-bracket walker can canonicalise them
@@ -141,7 +157,7 @@ func Canonicalize(framework, raw string) string {
 		out = canonicalizeAngleBrackets(out)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
 		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi,
-		FrameworkLitestar, FrameworkAiohttp:
+		FrameworkLitestar, FrameworkAiohttp, FrameworkFalcon, FrameworkHug:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkTornado:
 		// Tornado paths arrive already pre-processed by the synthesizer
