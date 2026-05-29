@@ -32921,8 +32921,11 @@
             "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_python.go"],
+            "issue": "3047",
+            "notes": "dead code derived from reachability.go + entry_points_python.go; fires on all Python; partial because Celery task entry wiring via @app.task is not modelled",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
             "status": "partial",
@@ -32937,12 +32940,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
+            "issue": "3047",
+            "notes": "language-wide Python effect sniffer (open/pathlib/os/shutil) fires on any Python file; partial because Celery task file I/O is not disambiguated from worker code",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
+            "issue": "3047",
+            "notes": "language-wide Python HTTP-effect sniffer (requests/httpx/boto3) fires on any Python file; partial because Celery task outbound HTTP is not separated from unrelated code",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -32950,16 +32959,25 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3047",
+            "notes": "language-agnostic Tarjan SCC over IMPORTS edges; fires on all Python modules; partial because task module cycles are not distinguished from app-level cycles",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
+            "issue": "3047",
+            "notes": "language-wide Python mutation sniffer (self.attr=) fires on any Python file; partial for Celery task class attribute mutations",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "3047",
+            "notes": "derivative of effect propagation: any entity with no detected effect is tagged pure; fires on all Python entities; partial because task functions may have side effects missed by heuristic sniffers",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
             "status": "partial",
@@ -32979,8 +32997,11 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
+            "issue": "3047",
+            "notes": "language-wide Python sanitizer sniffer (parameterised SQL, bleach, pydantic schemas) fires on any Python file; partial for Celery task context",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -33009,8 +33030,11 @@
             "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
+            "issue": "3047",
+            "notes": "vulnerability_finding derives from taint_source+taint_sink co-occurrence (taint_flow.go); fires on all Python; partial for task queue context",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -33740,8 +33764,11 @@
             "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_python.go"],
+            "issue": "3047",
+            "notes": "dead code derived from reachability + entry-point sniffer; partial because dramatiq @actor entry wiring is not modelled",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
             "status": "partial",
@@ -33772,8 +33799,11 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3047",
+            "notes": "language-agnostic Tarjan SCC over IMPORTS edges; fires on all Python modules; partial because task/actor module cycles are not distinguished from app-level cycles",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
             "status": "partial",
@@ -33782,12 +33812,18 @@
             "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "3047",
+            "notes": "derivative of effect propagation; fires on all Python entities; partial because actor functions may have side effects missed by heuristic sniffers",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_python.go"],
+            "issue": "3047",
+            "notes": "language-wide Python entry-point sniffer covers module-level __main__/test/lifecycle; partial because @dramatiq.actor entry wiring is not modelled",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -33829,8 +33865,11 @@
             "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
+            "issue": "3047",
+            "notes": "derives from taint source+sink co-occurrence; fires on all Python; partial for dramatiq actor context",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -35654,8 +35693,11 @@
             "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_python.go"],
+            "issue": "3047",
+            "notes": "dead code derived from reachability + entry-point sniffer; partial because RQ @job entry wiring is not modelled",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
             "status": "partial",
@@ -35688,8 +35730,11 @@
             "verified_at": "2026-05-29"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3047",
+            "notes": "language-agnostic Tarjan SCC over IMPORTS edges; fires on all Python modules; partial because RQ job module cycles are not distinguished from app-level cycles",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
             "status": "partial",
@@ -35698,12 +35743,18 @@
             "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "3047",
+            "notes": "derivative of effect propagation; fires on all Python entities; partial because RQ job functions may have side effects missed by heuristic sniffers",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_python.go"],
+            "issue": "3047",
+            "notes": "language-wide Python entry-point sniffer covers module-level __main__/test/lifecycle; partial because RQ @job entry wiring is not modelled",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "partial",
@@ -35748,8 +35799,11 @@
             "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
+            "issue": "3047",
+            "notes": "derives from taint source+sink co-occurrence; fires on all Python; partial for RQ job context",
+            "verified_at": "2026-05-29"
           }
         }
       }

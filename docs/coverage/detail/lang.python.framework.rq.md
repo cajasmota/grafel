@@ -50,16 +50,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go` | — |
 | DB effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | dead code derived from reachability + entry-point sniffer; partial because RQ @job entry wiring is not modelled |
 | Def use chain extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/def_use_python.go` | — |
 | Env fallback recognition | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go` | — |
 | Fs effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
 | HTTP effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
 | Import resolution quality | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/python.go` | — |
-| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/module_cycle_pass.go` | language-agnostic Tarjan SCC over IMPORTS edges; fires on all Python modules; partial because RQ job module cycles are not distinguished from app-level cycles |
 | Mutation effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | — |
-| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go` | derivative of effect propagation; fires on all Python entities; partial because RQ job functions may have side effects missed by heuristic sniffers |
+| Reachability analysis | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | language-wide Python entry-point sniffer covers module-level __main__/test/lifecycle; partial because RQ @job entry wiring is not modelled |
 | Request shape extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/payload_shapes_python.go` | — |
 | Response shape extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/payload_shapes_python.go` | — |
 | Sanitizer recognition | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
@@ -67,7 +67,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint sink detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
 | Taint source detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | — |
 | Template pattern catalog | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/template_pattern_python.go` | — |
-| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | ⚠️ `partial` | `2026-05-29` | 3047 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | derives from taint source+sink co-occurrence; fires on all Python; partial for RQ job context |
 
 ## Provenance
 
