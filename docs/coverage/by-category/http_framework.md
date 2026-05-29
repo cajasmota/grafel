@@ -158,9 +158,9 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
 | [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
-| [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
-| [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
-| [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
+| [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/8 | |
+| [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/8 | |
+| [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/8 | |
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🟢 1/1 | 🟢 19/19 | 🟡 3/4 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🟢 1/1 | 🟢 19/19 | 🟡 3/4 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 17/17 | |
@@ -188,8 +188,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/9 | |
-| [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/9 | |
+| [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/9 | |
+| [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/9 | |
 | [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🟢 2/2 | 🟢 1/1 | 🟢 18/18 | 🟢 4/4 | |
 | [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🔴 0/3 | 🟢 1/1 | 🟡 18/19 | 🟡 5/9 | |
 | [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🔴 0/3 | 🟢 1/1 | 🟡 18/19 | 🟡 5/9 | |
@@ -207,9 +207,9 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 |---|---|---|---|---|
 | [C/C++](../by-language/c-cpp.md) | [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟡 7/10 | 🔴 0/3 | |
 | [C/C++](../by-language/c-cpp.md) | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟡 7/10 | 🔴 0/3 | |
-| [C#](../by-language/csharp.md) | [Uno Platform](../detail/lang.csharp.framework.uno.md) | 🟡 7/10 | 🔴 0/3 | |
-| [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | 🟡 7/10 | 🔴 0/3 | |
-| [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | 🟡 7/10 | 🔴 0/3 | |
+| [C#](../by-language/csharp.md) | [Uno Platform](../detail/lang.csharp.framework.uno.md) | 🟢 10/10 | 🔴 0/3 | |
+| [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | 🟢 10/10 | 🔴 0/3 | |
+| [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | 🟢 10/10 | 🔴 0/3 | |
 | [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🟢 10/10 | 🟢 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | 🟢 10/10 | ✅ 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | 🟡 7/10 | 🔴 0/3 | |
@@ -221,7 +221,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | 🟡 14/21 | 🔴 0/4 | |
+| [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | 🟡 17/21 | 🔴 0/4 | |
 | [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🟢 21/21 | ✅ 3/3 | |
 | [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | 🟢 21/21 | ✅ 4/4 | |
 

@@ -38,33 +38,33 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
-| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
-| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
+| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/8 | |
+| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/8 | |
+| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/8 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/9 | |
-| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/9 | |
+| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/9 | |
+| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🔴 0/3 | 🔴 0/1 | 🟡 17/21 | 🔴 0/9 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Uno Platform](../detail/lang.csharp.framework.uno.md) | 🟡 7/10 | 🔴 0/3 | |
-| [WPF](../detail/lang.csharp.framework.wpf.md) | 🟡 7/10 | 🔴 0/3 | |
-| [Windows Forms](../detail/lang.csharp.framework.winforms.md) | 🟡 7/10 | 🔴 0/3 | |
+| [Uno Platform](../detail/lang.csharp.framework.uno.md) | 🟢 10/10 | 🔴 0/3 | |
+| [WPF](../detail/lang.csharp.framework.wpf.md) | 🟢 10/10 | 🔴 0/3 | |
+| [Windows Forms](../detail/lang.csharp.framework.winforms.md) | 🟢 10/10 | 🔴 0/3 | |
 
 
 ### RPC Framework
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | 🟡 14/21 | 🔴 0/4 | |
+| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | 🟡 17/21 | 🔴 0/4 | |
 
 
 ## Tools
