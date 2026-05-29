@@ -1009,7 +1009,7 @@ func (s *Server) registerTools() {
 	// Appends to ~/.archigraph/events/feedback-events-YYYY-MM-DD.jsonl (LOCAL ONLY).
 	// Aggregated by `archigraph feedback rollup`. Internal testing harness.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_feedback_event",
-		mcpapi.WithDescription("Record agent-experience feedback (outcome=helped|partial|wrong|missing_capability) for a test run. LOCAL ONLY."),
+		mcpapi.WithDescription("Record agent-experience feedback for a test run. LOCAL ONLY."),
 		mcpapi.WithString("outcome", mcpapi.Required()),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("phase"),

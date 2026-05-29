@@ -575,6 +575,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_subgraph",
 		// #2474 persona lifecycle telemetry
 		"archigraph_persona_event",
+		// #3204 agent-experience feedback (internal test harness)
+		"archigraph_feedback_event",
 		// #2192 MCP session metrics
 		"archigraph_mcp_metrics",
 		// #2658 NAVIGATES_TO query tool (Phase 2 of #2655)
@@ -680,8 +682,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_payload_drift (#2770 Phase 2A drift findings).
 	// +1 archigraph_security_findings (#2772 Phase 2B taint-flow).
 	// +4 archigraph_pure_functions/_import_cycles/_def_use/_template_patterns (#2774/#2775 Phase 3 misc).
-	if got := len(allRegisteredTools); got != 53 {
-		t.Errorf("expected 53 registered tools, got %d — update this count if tools are added/removed (added archigraph_security_findings #2772 + Phase 3 misc #2774/#2775: pure_functions, import_cycles, def_use, template_patterns)", got)
+	// +1 archigraph_feedback_event (#3204 agent-experience feedback, internal test harness).
+	if got := len(allRegisteredTools); got != 54 {
+		t.Errorf("expected 54 registered tools, got %d — update this count if tools are added/removed (added archigraph_feedback_event #3204)", got)
 	}
 }
 
@@ -3173,7 +3176,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_cross_links":   {"group": "g", "action": "list"},
 		"archigraph_license_audit": {"group": "g"},
 		// #2474 persona lifecycle telemetry
-		"archigraph_persona_event": {"persona": "architect", "event_type": "invoke"},
+		"archigraph_persona_event":  {"persona": "architect", "event_type": "invoke"},
+		"archigraph_feedback_event": {"outcome": "helped"},
 		// #2192 MCP session metrics
 		"archigraph_mcp_metrics": {"days": float64(1)},
 		// #2658 NAVIGATES_TO Phase 2 query tool
@@ -3235,8 +3239,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 53 {
-		t.Errorf("expected 53 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_security_findings #2772 + Phase 3 misc #2774/#2775: pure_functions, import_cycles, def_use, template_patterns)", len(tools))
+	if len(tools) != 54 {
+		t.Errorf("expected 54 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_feedback_event #3204)", len(tools))
 	}
 
 	for _, st := range tools {
