@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 45
+- **Capability cells:** 48
 
 ## Capabilities
 
@@ -70,7 +70,10 @@ Auto-generated. Back to [summary](../summary.md).
 | Mutation effect | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx`<br>`internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/react_substrate_test.go` | — |
 | Pure function tagging | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx`<br>`internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go`<br>`internal/substrate/react_substrate_test.go` | — |
 | Reachability analysis | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_jsts.go` | — |
+| Request shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Sanitizer recognition | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx`<br>`internal/links/taint_flow.go`<br>`internal/substrate/react_substrate_test.go`<br>`internal/substrate/taint_sites_jsts.go` | — |
+| Schema drift detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Taint sink detection | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx`<br>`internal/links/taint_flow.go`<br>`internal/substrate/react_substrate_test.go`<br>`internal/substrate/taint_sites_jsts.go` | — |
 | Taint source detection | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx`<br>`internal/links/taint_flow.go`<br>`internal/substrate/react_substrate_test.go`<br>`internal/substrate/taint_sites_jsts.go` | — |
 | Template pattern catalog | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx`<br>`internal/links/template_pattern_pass.go`<br>`internal/substrate/react_substrate_test.go`<br>`internal/substrate/template_pattern.go`<br>`internal/substrate/template_pattern_jsts.go` | — |

@@ -26,7 +26,7 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ⚠️ 3/14 | ❌ 0/7 | |
+| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/7 | |
 
 
 ## Tools

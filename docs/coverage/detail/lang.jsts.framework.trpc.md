@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** RPC Framework
-- **Capability cells:** 4
+- **Capability cells:** 25
 
 ## Capabilities
 
@@ -34,6 +34,27 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Constant propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Env fallback recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Import resolution quality | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

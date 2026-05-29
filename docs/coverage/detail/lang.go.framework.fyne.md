@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Desktop
-- **Capability cells:** 3
+- **Capability cells:** 13
 
 ## Capabilities
 
@@ -33,6 +33,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Constant propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Env fallback recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Import resolution quality | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

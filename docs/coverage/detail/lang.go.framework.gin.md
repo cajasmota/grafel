@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 24
+- **Capability cells:** 36
 
 ## Capabilities
 
@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/go_routes.go`<br>`internal/engine/rules/go/frameworks/gin.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/go_routes.go` | — |
+| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
 
@@ -28,6 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Middleware
 
@@ -39,16 +42,24 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Enum extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Interface extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Log extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Metric extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Trace extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Data
 
@@ -59,6 +70,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/golang.go`<br>`internal/substrate/substrate.go` | — |
 | DB effect | ⚠️ `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_golang.go` | — |
 | Dead code detection | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_golang.go` | — |

@@ -10,7 +10,7 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Substrate | Notes |
-|---|---|---|---|
-| [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/1 | — 0/4 | |
-| [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/1 | — 0/4 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 0/21 | ❌ 0/6 | |
+| [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 0/21 | ❌ 0/6 | |

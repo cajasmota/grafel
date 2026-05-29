@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 31
+- **Capability cells:** 45
 
 ## Capabilities
 
@@ -57,12 +57,26 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go`<br>`internal/substrate/substrate.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_vue/UserCard.vue` | — |
+| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Sanitizer recognition | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_vue/UserCard.vue` | — |
+| Schema drift detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Taint sink detection | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_vue/UserCard.vue` | — |
 | Taint source detection | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_vue/UserCard.vue` | — |
+| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Vulnerability finding | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_vue/UserCard.vue` | — |
 
 ## Framework-specific

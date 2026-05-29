@@ -10,67 +10,67 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Auth | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 5/6 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Express](../detail/lang.jsts.framework.express.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 5/9 | |
 
 
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 17/17 | |
-| [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ✅ 18/18 | ✅ 21/23 | |
-| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ✅ 7/7 | ⚠️ 16/17 | |
-| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ✅ 7/7 | ⚠️ 18/20 | |
+| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 17/17 | |
+| [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ❌ 18/21 | ✅ 21/23 | |
+| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 16/17 | |
+| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 18/20 | |
 
 
 ### Meta Framework
 
 | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 7/9 | |
-| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 8/8 | |
-| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 11/11 | |
-| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 8/9 | |
-| [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 8/8 | |
-| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 8/9 | |
+| [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 4/21 | ✅ 7/9 | |
+| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 8/8 | |
+| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 11/11 | |
+| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 8/9 | |
+| [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 8/8 | |
+| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 4/21 | ✅ 8/9 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 13/13 | |
-| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 10/10 | |
-| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 10/10 | |
-| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 19/19 | |
+| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 13/13 | |
+| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
+| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
+| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 19/19 | |
 
 
 ### Desktop
 
-| Name | Other capabilities | Notes |
-|---|---|---|
-| [Electron](../detail/lang.jsts.framework.electron.md) | ✅ 3/3 | |
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/10 | ✅ 3/3 | |
 
 
 ### RPC Framework
 
-| Name | Other capabilities | Notes |
-|---|---|---|
-| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ✅ 3/4 | |
-| [tRPC](../detail/lang.jsts.framework.trpc.md) | ✅ 4/4 | |
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ❌ 0/21 | ✅ 3/4 | |
+| [tRPC](../detail/lang.jsts.framework.trpc.md) | ❌ 0/21 | ✅ 4/4 | |
 
 
 ### AI Integration

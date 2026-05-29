@@ -10,20 +10,20 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Auth | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|
-| [CakePHP](../detail/lang.php.framework.cakephp.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Drupal](../detail/lang.php.framework.drupal.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Laravel](../detail/lang.php.framework.laravel.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ❌ 0/1 | |
-| [Lumen](../detail/lang.php.framework.lumen.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Magento](../detail/lang.php.framework.magento.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Phalcon](../detail/lang.php.framework.phalcon.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Slim](../detail/lang.php.framework.slim.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Symfony](../detail/lang.php.framework.symfony.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [WordPress](../detail/lang.php.framework.wordpress.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Yii](../detail/lang.php.framework.yii.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [CakePHP](../detail/lang.php.framework.cakephp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Drupal](../detail/lang.php.framework.drupal.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Laravel](../detail/lang.php.framework.laravel.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [Lumen](../detail/lang.php.framework.lumen.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Magento](../detail/lang.php.framework.magento.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Phalcon](../detail/lang.php.framework.phalcon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Slim](../detail/lang.php.framework.slim.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [WordPress](../detail/lang.php.framework.wordpress.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Yii](../detail/lang.php.framework.yii.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
 
 
 ## Tools

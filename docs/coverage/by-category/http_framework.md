@@ -9,113 +9,113 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 ## Backend HTTP
 
-| Language | Name | Routing | Auth | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 3/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C/C++](../by-language/c-cpp.md) | [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/17 | ❌ 0/1 | |
-| [C#](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ⚠️ 0/1 | |
-| [C#](../by-language/csharp.md) | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [C#](../by-language/csharp.md) | [Carter](../detail/lang.csharp.framework.carter.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [C#](../by-language/csharp.md) | [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [C#](../by-language/csharp.md) | [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [C#](../by-language/csharp.md) | [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [elixir](../by-language/elixir.md) | [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [elixir](../by-language/elixir.md) | [Ash Framework](../detail/lang.elixir.framework.ash.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [elixir](../by-language/elixir.md) | [Bandit](../detail/lang.elixir.framework.bandit.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [elixir](../by-language/elixir.md) | [Cowboy](../detail/lang.elixir.framework.cowboy.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [elixir](../by-language/elixir.md) | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | ⚠️ 0/2 | — 0/1 | ⚠️ 8/17 | — 0/1 | |
-| [elixir](../by-language/elixir.md) | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | ⚠️ 0/2 | — 0/1 | ⚠️ 8/17 | — 0/1 | |
-| [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ❌ 0/1 | |
-| [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Fiber](../detail/lang.go.framework.fiber.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 7/20 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Huma](../detail/lang.go.framework.huma.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Iris](../detail/lang.go.framework.iris.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [Revel](../detail/lang.go.framework.revel.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [chi](../detail/lang.go.framework.chi.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [go-zero](../detail/lang.go.framework.go-zero.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 4/4 | |
-| [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | ✅ 2/2 | ✅ 1/1 | ✅ 7/7 | ✅ 5/6 | |
-| [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/1 | — | — 0/4 | — | |
-| [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/1 | — | — 0/4 | — | |
-| [php](../by-language/php.md) | [CakePHP](../detail/lang.php.framework.cakephp.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Drupal](../detail/lang.php.framework.drupal.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Laravel](../detail/lang.php.framework.laravel.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Lumen](../detail/lang.php.framework.lumen.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Magento](../detail/lang.php.framework.magento.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Phalcon](../detail/lang.php.framework.phalcon.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Slim](../detail/lang.php.framework.slim.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Symfony](../detail/lang.php.framework.symfony.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [WordPress](../detail/lang.php.framework.wordpress.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [php](../by-language/php.md) | [Yii](../detail/lang.php.framework.yii.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ✅ 2/2 | ⚠️ 0/1 | ⚠️ 5/6 | ⚠️ 0/1 | |
-| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 2/2 | ✅ 1/1 | ⚠️ 7/20 | ❌ 0/3 | |
-| [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 2/2 | ⚠️ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [python](../by-language/python.md) | [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | ⚠️ 0/2 | — 0/1 | ⚠️ 8/17 | — 0/1 | |
-| [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Poem](../detail/lang.rust.framework.poem.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Tide](../detail/lang.rust.framework.tide.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/1 | — | ⚠️ 0/8 | — | |
+| Language | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [C/C++](../by-language/c-cpp.md) | [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Crow](../detail/lang.c-cpp.framework.crow.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 3/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [libev](../detail/lang.c-cpp.framework.libev.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [libevent](../detail/lang.c-cpp.framework.libevent.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [libuv](../detail/lang.c-cpp.framework.libuv.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
+| [C#](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [C#](../by-language/csharp.md) | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [C#](../by-language/csharp.md) | [Carter](../detail/lang.csharp.framework.carter.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [C#](../by-language/csharp.md) | [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [C#](../by-language/csharp.md) | [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [C#](../by-language/csharp.md) | [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Ash Framework](../detail/lang.elixir.framework.ash.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Bandit](../detail/lang.elixir.framework.bandit.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Cowboy](../detail/lang.elixir.framework.cowboy.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | ❌ 0/3 | — 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | ❌ 0/3 | — 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Fiber](../detail/lang.go.framework.fiber.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/21 | ❌ 0/6 | |
+| [go](../by-language/go.md) | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Huma](../detail/lang.go.framework.huma.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Iris](../detail/lang.go.framework.iris.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [Revel](../detail/lang.go.framework.revel.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [chi](../detail/lang.go.framework.chi.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [go-zero](../detail/lang.go.framework.go-zero.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 5/9 | |
+| [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 0/21 | ❌ 0/6 | |
+| [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 0/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [CakePHP](../detail/lang.php.framework.cakephp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Drupal](../detail/lang.php.framework.drupal.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Laravel](../detail/lang.php.framework.laravel.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Lumen](../detail/lang.php.framework.lumen.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Magento](../detail/lang.php.framework.magento.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Phalcon](../detail/lang.php.framework.phalcon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Slim](../detail/lang.php.framework.slim.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Symfony](../detail/lang.php.framework.symfony.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [WordPress](../detail/lang.php.framework.wordpress.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [php](../by-language/php.md) | [Yii](../detail/lang.php.framework.yii.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ❌ 2/3 | ⚠️ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/21 | ❌ 0/8 | |
+| [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ❌ 2/3 | ⚠️ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Pyramid](../detail/lang.python.framework.pyramid.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Robyn](../detail/lang.python.framework.robyn.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Sanic](../detail/lang.python.framework.sanic.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Tornado](../detail/lang.python.framework.tornado.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [aiohttp](../detail/lang.python.framework.aiohttp.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | ❌ 0/3 | — 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Poem](../detail/lang.rust.framework.poem.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Tide](../detail/lang.rust.framework.tide.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 0/21 | ❌ 0/6 | |
 
 
 ## JVM Backend
@@ -157,73 +157,73 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/8 | |
-| [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/8 | |
-| [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/8 | |
-| [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/8 | |
-| [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/8 | |
-| [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/8 | |
-| [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 17/17 | |
-| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ✅ 18/18 | ✅ 21/23 | |
-| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ✅ 7/7 | ⚠️ 16/17 | |
-| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ✅ 7/7 | ⚠️ 18/20 | |
+| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/8 | |
+| [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/8 | |
+| [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/8 | |
+| [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/8 | |
+| [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
+| [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
+| [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 17/17 | |
+| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ❌ 18/21 | ✅ 21/23 | |
+| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 16/17 | |
+| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 18/20 | |
 
 
 ## Meta Framework
 
 | Language | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [elixir](../by-language/elixir.md) | [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/7 | |
-| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | — | ❌ 0/7 | |
-| [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 7/9 | |
-| [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 8/8 | |
-| [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 11/11 | |
-| [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 8/9 | |
-| [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | — | ✅ 8/8 | |
-| [JS/TS](../by-language/jsts.md) | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 8/9 | |
-| [scala](../by-language/scala.md) | [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ⚠️ 3/14 | ❌ 0/7 | |
+| [elixir](../by-language/elixir.md) | [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/7 | |
+| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/21 | ❌ 0/7 | |
+| [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 4/21 | ✅ 7/9 | |
+| [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 8/8 | |
+| [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 11/11 | |
+| [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 8/9 | |
+| [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 0/21 | ✅ 8/8 | |
+| [JS/TS](../by-language/jsts.md) | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 4/21 | ✅ 8/9 | |
+| [scala](../by-language/scala.md) | [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 3/21 | ❌ 0/7 | |
 
 
 ## Mobile
 
 | Language | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
-| [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
-| [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/9 | |
-| [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/9 | |
-| [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/9 | |
-| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 13/13 | |
-| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 10/10 | |
-| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 10/10 | |
-| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 19/19 | |
-| [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
-| [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
+| [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/9 | |
+| [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/9 | |
+| [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
+| [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
+| [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
+| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 13/13 | |
+| [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
+| [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 10/10 | |
+| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 19/19 | |
+| [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/9 | |
+| [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/9 | |
 
 
 ## Desktop
 
 | Language | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [C/C++](../by-language/c-cpp.md) | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [C#](../by-language/csharp.md) | [Uno Platform](../detail/lang.csharp.framework.uno.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | — | ❌ 0/3 | |
-| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | — | ✅ 3/3 | |
-| [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [rust](../by-language/rust.md) | [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ⚠️ 3/7 | ❌ 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | ❌ 3/10 | ❌ 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | ❌ 3/10 | ❌ 0/3 | |
+| [C#](../by-language/csharp.md) | [Uno Platform](../detail/lang.csharp.framework.uno.md) | ❌ 3/10 | ❌ 0/3 | |
+| [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | ❌ 3/10 | ❌ 0/3 | |
+| [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | ❌ 3/10 | ❌ 0/3 | |
+| [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | ❌ 0/10 | ❌ 0/3 | |
+| [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | ❌ 0/10 | ✅ 3/3 | |
+| [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ❌ 3/10 | ❌ 0/3 | |
+| [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ❌ 3/10 | ❌ 0/3 | |
+| [rust](../by-language/rust.md) | [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 3/10 | ❌ 0/3 | |
 
 
 ## RPC Framework
 
 | Language | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ⚠️ 5/14 | ❌ 0/3 | |
-| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | — | ✅ 3/4 | |
-| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | — | ✅ 4/4 | |
+| [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ❌ 5/21 | ❌ 0/4 | |
+| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | ❌ 0/21 | ✅ 3/4 | |
+| [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | ❌ 0/21 | ✅ 4/4 | |
 
 
 ## AI Integration

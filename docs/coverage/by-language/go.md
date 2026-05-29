@@ -10,37 +10,37 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Auth | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|
-| [Beego](../detail/lang.go.framework.beego.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Buffalo](../detail/lang.go.framework.buffalo.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Echo](../detail/lang.go.framework.echo.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Fiber](../detail/lang.go.framework.fiber.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Gin](../detail/lang.go.framework.gin.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 7/20 | ❌ 0/1 | |
-| [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Huma](../detail/lang.go.framework.huma.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Iris](../detail/lang.go.framework.iris.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [Revel](../detail/lang.go.framework.revel.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [chi](../detail/lang.go.framework.chi.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [fasthttp](../detail/lang.go.framework.fasthttp.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [go-zero](../detail/lang.go.framework.go-zero.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
-| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 5/6 | ❌ 0/1 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Beego](../detail/lang.go.framework.beego.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Buffalo](../detail/lang.go.framework.buffalo.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Echo](../detail/lang.go.framework.echo.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Fiber](../detail/lang.go.framework.fiber.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Gin](../detail/lang.go.framework.gin.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/21 | ❌ 0/6 | |
+| [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Huma](../detail/lang.go.framework.huma.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Iris](../detail/lang.go.framework.iris.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Revel](../detail/lang.go.framework.revel.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [chi](../detail/lang.go.framework.chi.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [fasthttp](../detail/lang.go.framework.fasthttp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [go-zero](../detail/lang.go.framework.go-zero.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/9 | |
+| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
 
 
 ### Desktop
 
-| Name | Other capabilities | Notes |
-|---|---|---|
-| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | ❌ 0/3 | |
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | ❌ 0/10 | ❌ 0/3 | |
 
 
 ## Tools

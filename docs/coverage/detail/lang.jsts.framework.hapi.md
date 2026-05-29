@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 14
+- **Capability cells:** 36
 
 ## Capabilities
 
@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/hapi.yaml`<br>`testdata/fixtures/typescript/hapi_routes.ts` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/hapi.yaml`<br>`testdata/fixtures/typescript/hapi_routes.ts` | — |
+| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
 
@@ -28,6 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Request validation | ✅ `full` | — | 2904 | `internal/extractors/javascript/issue2904_validation_linkage_test.go`<br>`internal/extractors/javascript/validation_linkage.go`<br>`testdata/fixtures/typescript/hapi_validation.ts` | — |
 
 ### Middleware
@@ -40,17 +42,24 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Enum extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Interface extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | ✅ `full` | — | 2905 | `internal/extractors/javascript/testdata/substrate_backend_observability/hapi.ts`<br>`internal/patterns/observability_jsts_extractor.go` | — |
+| Metric extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Trace extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Data
 
@@ -64,11 +73,24 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | ✅ `full` | `2026-05-28` | 2932 | `internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/jsts.go` | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_import_resolution/app.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/config.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts`<br>`internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
+| Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
+| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

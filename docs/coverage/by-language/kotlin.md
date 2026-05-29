@@ -26,16 +26,16 @@ Back to [summary](../summary.md).
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
-| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 5/14 | ❌ 0/9 | |
+| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/9 | |
+| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 5/21 | ❌ 0/9 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ⚠️ 3/7 | ❌ 0/3 | |
-| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ⚠️ 3/7 | ❌ 0/3 | |
+| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | ❌ 3/10 | ❌ 0/3 | |
+| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | ❌ 3/10 | ❌ 0/3 | |
 
 
 ## ORMs

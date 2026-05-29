@@ -10,16 +10,16 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Auth | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|
-| [Cuba](../detail/lang.ruby.framework.cuba.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Grape](../detail/lang.ruby.framework.grape.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Hanami](../detail/lang.ruby.framework.hanami.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Padrino](../detail/lang.ruby.framework.padrino.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Roda](../detail/lang.ruby.framework.roda.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ❌ 0/1 | |
-| [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | ⚠️ 0/2 | — 0/1 | ⚠️ 8/17 | — 0/1 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Cuba](../detail/lang.ruby.framework.cuba.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Grape](../detail/lang.ruby.framework.grape.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Hanami](../detail/lang.ruby.framework.hanami.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Padrino](../detail/lang.ruby.framework.padrino.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Roda](../detail/lang.ruby.framework.roda.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | ❌ 0/3 | — 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
 
 
 ## Tools

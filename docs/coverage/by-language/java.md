@@ -31,23 +31,23 @@ Back to [summary](../summary.md).
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/8 | |
-| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/8 | |
+| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
+| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
 
 
 ### Meta Framework
 
-| Name | Routing | Type System | Testing | Other capabilities | Notes |
-|---|---|---|---|---|---|
-| [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/7 | |
+| Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|
+| [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 0/21 | ❌ 0/7 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/9 | |
-| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 2/3 | ❌ 0/9 | |
+| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
+| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/9 | |
 
 
 ### AI Integration

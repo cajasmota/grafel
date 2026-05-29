@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 26
+- **Capability cells:** 38
 
 ## Capabilities
 
@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/django_drf_actions.go`<br>`internal/extractors/python/django_drf_actions.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/django_drf_actions.go`<br>`internal/extractors/python/drf_serializer_fields.go` | — |
+| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
 
@@ -28,6 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Middleware
 
@@ -39,16 +42,24 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Enum extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Interface extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Log extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Metric extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Trace extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Data
 
@@ -59,6 +70,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
 | DB effect | ⚠️ `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | — |
 | Dead code detection | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | — |

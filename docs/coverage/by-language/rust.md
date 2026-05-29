@@ -10,25 +10,25 @@ Back to [summary](../summary.md).
 
 ### Backend HTTP
 
-| Name | Routing | Auth | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 6/17 | ❌ 0/1 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | ✅ 2/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | ⚠️ 0/2 | ❌ 0/1 | ⚠️ 8/17 | ❌ 0/1 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Actix Web](../detail/lang.rust.framework.actix.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 6/21 | ❌ 0/6 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ⚠️ 3/7 | ❌ 0/3 | |
+| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | ❌ 3/10 | ❌ 0/3 | |
 
 
 ## Tools
