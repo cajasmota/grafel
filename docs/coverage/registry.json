@@ -13566,43 +13566,52 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/bun.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "bun relations are explicit and loaded at query time via .Relation(\"...\"); there is no static eager/lazy declaration to extract."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/bun.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
+            "issue": "3214",
+            "notes": "Builder verbs (NewSelect/Insert/Update/Delete/Raw) detected; model binding resolves literal .Model(\u0026T{})/(*T)(nil) forms but not bare-variable .Model(v) (needs data flow).",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -13617,42 +13626,49 @@
         "Models": {
           "model_extraction": {
             "status": "full",
-            "cites": ["internal/engine/rules/go/orms/ent.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "ent loading is query-time via .With\u003cEdge\u003e() eager-load calls; there is no static eager/lazy declaration on the schema to extract."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "full",
-            "cites": ["internal/engine/orm_queries.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
+            "verified_at": "2026-05-29"
           }
         }
       }
