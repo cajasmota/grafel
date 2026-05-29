@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency graph | ❌ `missing` | — | — | — | — |
-| Target extraction | ❌ `missing` | — | — | — | — |
+| Dependency graph | — `not_applicable` | — | 3078 | — | — |
+| Target extraction | ⚠️ `partial` | — | 3078 | `internal/engine/py_hypothesis_targets.go`<br>`internal/engine/rules/python/test_patterns.yaml` | — |
 
 ## Provenance
 

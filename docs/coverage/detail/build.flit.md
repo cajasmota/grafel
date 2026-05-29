@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency graph | ❌ `missing` | — | — | — | — |
-| Target extraction | ❌ `missing` | — | — | — | — |
+| Dependency graph | ⚠️ `partial` | — | 3078 | `internal/engine/rules/python/build_tools.yaml` | — |
+| Target extraction | ⚠️ `partial` | — | 3078 | `internal/engine/rules/python/build_tools.yaml` | — |
 
 ## Provenance
 

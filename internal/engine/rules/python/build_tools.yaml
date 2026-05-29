@@ -130,3 +130,17 @@ build_package_tools:
     pixi.toml is definitive.
 
     '
+- name: Flit
+  detection:
+    config_files:
+    - pyproject.toml
+    lock_files: []
+    distinguishing_markers:
+    - '[tool.flit] section in pyproject.toml'
+    - '[tool.flit.metadata] section in pyproject.toml'
+    - build-backend = flit_core.buildapi in pyproject.toml
+  notes: 'Lightweight PEP 517 build tool aimed at pure-Python packages. Detected
+    via [tool.flit] or [tool.flit.metadata] in pyproject.toml, or via the
+    flit_core.buildapi build-backend declaration. No lock file by default.
+
+    '

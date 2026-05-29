@@ -75,13 +75,13 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [php](../by-language/php.md) | [Composer](../detail/build.composer.md) | ✅ | — | — | ✅ | |
 | [php](../by-language/php.md) | [PHPUnit](../detail/test.phpunit.md) | ✅ | — | — | ✅ | |
 | [php](../by-language/php.md) | [Pest](../detail/test.pest.md) | ❌ | — | — | ❌ | |
-| [python](../by-language/python.md) | [Flit](../detail/build.flit.md) | ❌ | — | — | ❌ | |
+| [python](../by-language/python.md) | [Flit](../detail/build.flit.md) | ⚠️ | — | — | ⚠️ | |
 | [python](../by-language/python.md) | [Hatch](../detail/build.hatch.md) | ⚠️ | — | — | ⚠️ | |
-| [python](../by-language/python.md) | [Hypothesis (property tests)](../detail/test.hypothesis.md) | ❌ | — | — | ❌ | |
+| [python](../by-language/python.md) | [Hypothesis (property tests)](../detail/test.hypothesis.md) | — | — | — | ⚠️ | |
 | [python](../by-language/python.md) | [Pipenv](../detail/build.pipenv.md) | ⚠️ | — | — | ⚠️ | |
 | [python](../by-language/python.md) | [Poetry](../detail/build.poetry.md) | ✅ | — | — | ✅ | |
-| [python](../by-language/python.md) | [doctest (stdlib)](../detail/test.doctest.md) | ❌ | — | — | ❌ | |
-| [python](../by-language/python.md) | [nose2](../detail/test.nose2.md) | ❌ | — | — | ❌ | |
+| [python](../by-language/python.md) | [doctest (stdlib)](../detail/test.doctest.md) | — | — | — | ⚠️ | |
+| [python](../by-language/python.md) | [nose2](../detail/test.nose2.md) | — | — | — | ⚠️ | |
 | [python](../by-language/python.md) | [pip (requirements.txt)](../detail/build.pip.md) | ✅ | — | — | ✅ | |
 | [python](../by-language/python.md) | [pytest](../detail/test.pytest.md) | ✅ | — | — | ✅ | |
 | [python](../by-language/python.md) | [setuptools / setup.py](../detail/build.setuptools.md) | ⚠️ | — | — | ⚠️ | |
