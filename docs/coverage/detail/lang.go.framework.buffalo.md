@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/buffalo.yaml` | — |
-| Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/buffalo.yaml` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/buffalo.go`<br>`internal/engine/rules/go/frameworks/buffalo.yaml` | — |
+| Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/buffalo.go`<br>`internal/engine/rules/go/frameworks/buffalo.yaml` | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth

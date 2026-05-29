@@ -10843,14 +10843,14 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/buffalo.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/buffalo.go","internal/engine/rules/go/frameworks/buffalo.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/buffalo.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/buffalo.go","internal/engine/rules/go/frameworks/buffalo.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
             "status": "missing",
@@ -11388,14 +11388,14 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/fasthttp.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/fasthttp.go","internal/engine/rules/go/frameworks/fasthttp.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/fasthttp.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/fasthttp.go","internal/engine/rules/go/frameworks/fasthttp.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
             "status": "missing",
@@ -13401,14 +13401,14 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/revel.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/revel.go","internal/engine/rules/go/frameworks/revel.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/revel.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/revel.go","internal/engine/rules/go/frameworks/revel.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
             "status": "missing",

@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
-| Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/fasthttp.go`<br>`internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
+| Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/fasthttp.go`<br>`internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth

@@ -1,0 +1,13 @@
+# Revel routes configuration
+# Routes are prioritized from top to bottom.
+
+GET     /                                       App.Index
+GET     /login                                  App.Login
+POST    /users                                  Users.Create
+GET     /users/:id                              Users.Show
+DELETE  /users/:id                              Users.Delete
+
+module:testrunner
+
+# Catch-all auto-routing
+*       /:controller/:action                    :controller.:action
