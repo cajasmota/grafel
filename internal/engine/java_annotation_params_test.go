@@ -458,3 +458,146 @@ func TestJAXRS_RequestValidation_Engine_Issue2995(t *testing.T) {
 		t.Errorf("[#2995 jaxrs request_validation] header name=%q, want X-Idempotency-Key", header.Name)
 	}
 }
+
+// TestBeanValidation_SchemaExtraction_Issue3002 proves that the parameter-level
+// Bean Validation annotations (@NotNull, @Size, @Min, @Max, @Email, @NotBlank)
+// are captured in the Annotations slice and drive the Required flag.
+// This is the proving fixture for #3002 schema_extraction (partial):
+// parameter-level constraints are recorded; field-level recursion is not.
+// Cite: internal/engine/java_annotation_params.go
+// Fixture: testdata/fixtures/sources/java/bean_validation/ValidatedDtoFixture.java
+func TestBeanValidation_SchemaExtraction_Issue3002(t *testing.T) {
+	// Mimics a Spring handler with a Bean-Validated DTO body:
+	//   createOrder(@NotNull @Valid @RequestBody CreateOrderRequest req,
+	//               @NotBlank @RequestParam String correlationId)
+	frag := `@NotNull @Valid @RequestBody CreateOrderRequest req, @NotBlank @RequestParam("correlationId") String correlationId)`
+	params := extractJavaParameters(frag, []string{"POST"})
+
+	if len(params) < 2 {
+		t.Fatalf("[#3002 schema_extraction] expected >=2 params, got %d: %+v", len(params), params)
+	}
+
+	body := findParamByIn(params, "body")
+	if body == nil {
+		t.Fatalf("[#3002 schema_extraction] body param not found; params=%+v", params)
+	}
+	if !body.Required {
+		t.Errorf("[#3002 schema_extraction] @NotNull @Valid body must have required=true")
+	}
+	// Bean Validation annotations must appear in the Annotations slice.
+	hasNotNull := false
+	hasValid := false
+	for _, a := range body.Annotations {
+		switch a {
+		case "@NotNull":
+			hasNotNull = true
+		case "@Valid":
+			hasValid = true
+		}
+	}
+	if !hasNotNull {
+		t.Errorf("[#3002 schema_extraction] @NotNull missing from body annotations: %v", body.Annotations)
+	}
+	if !hasValid {
+		t.Errorf("[#3002 schema_extraction] @Valid missing from body annotations: %v", body.Annotations)
+	}
+
+	query := findParamByName(params, "correlationId")
+	if query == nil {
+		t.Fatalf("[#3002 schema_extraction] correlationId query param not found; params=%+v", params)
+	}
+	if query.In != "query" {
+		t.Errorf("[#3002 schema_extraction] correlationId expected in=query, got %q", query.In)
+	}
+	if !query.Required {
+		t.Errorf("[#3002 schema_extraction] @NotBlank correlationId must have required=true")
+	}
+	hasNotBlank := false
+	for _, a := range query.Annotations {
+		if a == "@NotBlank" {
+			hasNotBlank = true
+		}
+	}
+	if !hasNotBlank {
+		t.Errorf("[#3002 schema_extraction] @NotBlank missing from correlationId annotations: %v", query.Annotations)
+	}
+}
+
+// TestBeanValidation_MultipleConstraints_Issue3002 tests that multiple
+// Bean Validation constraints on a single parameter are all captured.
+// Covers @Min/@Max/@Size/@Pattern/@Email for schema_extraction recording.
+// Cite: internal/engine/java_annotation_params.go
+func TestBeanValidation_MultipleConstraints_Issue3002(t *testing.T) {
+	frag := `@Min(1) @Max(1000) @RequestParam("quantity") int quantity, @Email @NotBlank @RequestParam("email") String email, @Size(min=1, max=255) @NotNull @RequestParam("productId") String productId)`
+	params := extractJavaParameters(frag, []string{"GET"})
+
+	if len(params) < 3 {
+		t.Fatalf("[#3002 multi-constraints] expected >=3 params, got %d: %+v", len(params), params)
+	}
+
+	qty := findParamByName(params, "quantity")
+	if qty == nil {
+		t.Fatalf("[#3002 multi-constraints] quantity param not found")
+	}
+	if qty.In != "query" {
+		t.Errorf("[#3002 multi-constraints] quantity expected in=query, got %q", qty.In)
+	}
+	hasMin, hasMax := false, false
+	for _, a := range qty.Annotations {
+		switch a {
+		case "@Min":
+			hasMin = true
+		case "@Max":
+			hasMax = true
+		}
+	}
+	if !hasMin {
+		t.Errorf("[#3002 multi-constraints] @Min missing from quantity annotations: %v", qty.Annotations)
+	}
+	if !hasMax {
+		t.Errorf("[#3002 multi-constraints] @Max missing from quantity annotations: %v", qty.Annotations)
+	}
+
+	email := findParamByName(params, "email")
+	if email == nil {
+		t.Fatalf("[#3002 multi-constraints] email param not found")
+	}
+	hasEmail, hasNotBlank := false, false
+	for _, a := range email.Annotations {
+		switch a {
+		case "@Email":
+			hasEmail = true
+		case "@NotBlank":
+			hasNotBlank = true
+		}
+	}
+	if !hasEmail {
+		t.Errorf("[#3002 multi-constraints] @Email missing from email annotations: %v", email.Annotations)
+	}
+	if !hasNotBlank {
+		t.Errorf("[#3002 multi-constraints] @NotBlank missing from email annotations: %v", email.Annotations)
+	}
+	if !email.Required {
+		t.Errorf("[#3002 multi-constraints] @NotBlank email must have required=true")
+	}
+
+	pid := findParamByName(params, "productId")
+	if pid == nil {
+		t.Fatalf("[#3002 multi-constraints] productId param not found")
+	}
+	hasSize, hasNotNullPid := false, false
+	for _, a := range pid.Annotations {
+		switch a {
+		case "@Size":
+			hasSize = true
+		case "@NotNull":
+			hasNotNullPid = true
+		}
+	}
+	if !hasSize {
+		t.Errorf("[#3002 multi-constraints] @Size missing from productId annotations: %v", pid.Annotations)
+	}
+	if !hasNotNullPid {
+		t.Errorf("[#3002 multi-constraints] @NotNull missing from productId annotations: %v", pid.Annotations)
+	}
+}

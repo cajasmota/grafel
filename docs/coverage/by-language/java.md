@@ -106,4 +106,4 @@ Back to [summary](../summary.md).
 
 | Name | Testing | Other capabilities | Notes |
 |---|---|---|---|
-| [Bean Validation (Jakarta/javax)](../detail/lang.java.validation.bean-validation.md) | ❌ 0/1 | ❌ 0/5 | |
+| [Bean Validation (Jakarta/javax)](../detail/lang.java.validation.bean-validation.md) | ⚠️ 0/1 | ❌ 0/5 | |

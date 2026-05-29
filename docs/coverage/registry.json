@@ -18611,8 +18611,11 @@
             "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/java_annotation_params.go","internal/engine/java_annotation_params_test.go","testdata/fixtures/sources/java/bean_validation/ValidatedDtoFixture.java"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Parameter-level Bean Validation constraints (@NotNull, @NotBlank, @Size, @Min, @Max, @Email, @Pattern) are captured in the Annotations slice on each handler parameter and drive the Required flag. Field-level recursion into nested DTO classes is not implemented (partial scope). Proven by TestBeanValidation_SchemaExtraction_Issue3002 and TestBeanValidation_MultipleConstraints_Issue3002.",
+            "verified_at": "2026-05-29"
           }
         },
         "Constraints": {
@@ -18624,19 +18627,26 @@
           },
           "custom_validator_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Extracting classes that implement ConstraintValidator\u003cA,T\u003e requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002.",
+            "verified_at": "2026-05-29"
           }
         },
         "Coercion": {
           "type_coercion_recognition": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Java Bean Validation does not coerce types; type coercion is handled by JAX-RS ParamConverter / Spring Converter\u003cS,T\u003e. No extractor covers this pattern. Leave red — out of scope for #3002.",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Bean Validation integration tests use JUnit 5 with jakarta.validation.Validator. The junit5 extractor (internal/custom/java/junit5.go) captures @Test methods for the junit5 framework tag. Tests for bean-validation handlers are linked via the same JUnit 5 test-method extraction path used by other Java frameworks (e.g. Jakarta EE, Spring Boot — see #2996, #2991).",
+            "verified_at": "2026-05-29"
           }
         }
       }
