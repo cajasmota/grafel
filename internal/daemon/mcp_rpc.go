@@ -60,6 +60,15 @@ const (
 	// LogFieldRepo is the slog attribute key for the caller's repo / CWD label.
 	LogFieldRepo = "repo"
 
+	// LogFieldWireBytes is the slog attribute key for the final on-wire
+	// tool-result payload size in bytes (issue #2828). Emitted on the
+	// phase=done line. Absent (and parsed as 0) on legacy logs.
+	LogFieldWireBytes = "wire_bytes"
+
+	// LogFieldTokenEst is the slog attribute key for the char/4 token
+	// estimate of the wire payload (issue #2828). Emitted on phase=done.
+	LogFieldTokenEst = "payload_token_estimate"
+
 	// LogFieldTS is the slog attribute key for the RFC3339 timestamp.
 	// Note: slog's built-in handler emits its own "time" key; LogFieldTS is
 	// retained for compatibility with log-shipper field expectations.
@@ -82,6 +91,18 @@ type MCPCallResult struct {
 	// IsError is true when the tool returned an error result (not a
 	// protocol error — those surface as a returned Go error).
 	IsError bool
+	// WireBytes is the size in bytes of the final on-wire tool-result
+	// payload (sum of len(TextContent.Text) across Content), measured by
+	// the injected MCPCallToolFunc AFTER applyIDInterning so it reflects
+	// the real serialized size. Used by `bench-capture rpc` to attribute
+	// billed-token cost to daemon-side payload size vs model ingestion
+	// (issue #2828 measure-first prerequisite). Zero when not measured.
+	WireBytes int
+	// TokenEstimate is a rough char/4 estimate of WireBytes, matching the
+	// quality-bench skill's token-estimate convention. Approximate (the
+	// host tokenizer differs) — treat as a relative lever-finder, not an
+	// exact reconciliation against billed input tokens.
+	TokenEstimate int
 }
 
 // MCPListToolsFunc returns the tool catalog for a given caller cwd (#1769).
@@ -238,6 +259,8 @@ func (s *Service) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) er
 			LogFieldPhase, "done",
 			LogFieldTool, args.Name,
 			LogFieldElapsedMS, elapsed.Milliseconds(),
+			LogFieldWireBytes, result.WireBytes,
+			LogFieldTokenEst, result.TokenEstimate,
 			LogFieldRepo, repoLabel,
 			LogFieldTS, time.Now().UTC().Format(time.RFC3339),
 		)

@@ -304,3 +304,81 @@ func TestBenchCaptureRPCHelp(t *testing.T) {
 		}
 	}
 }
+
+// TestParseBenchCapture_WithByteFields verifies the #2828 wire_bytes /
+// payload_token_estimate fields are captured and aggregated, both at the
+// top level and per-tool.
+func TestParseBenchCapture_WithByteFields(t *testing.T) {
+	lines := strings.Join([]string{
+		"archigraph-daemon: 2026/05/29 10:00:00 [mcp-rpc] tool=archigraph_search elapsed=100ms wire_bytes=4000 payload_token_estimate=1000 repo=/r",
+		"archigraph-daemon: 2026/05/29 10:00:01 [mcp-rpc] tool=archigraph_search elapsed=200ms wire_bytes=800 payload_token_estimate=200 repo=/r",
+		"archigraph-daemon: 2026/05/29 10:00:02 [mcp-rpc] tool=archigraph_describe elapsed=50ms wire_bytes=1200 payload_token_estimate=300 repo=/r",
+	}, "\n") + "\n"
+
+	out := parseBenchCapture([]byte(lines))
+
+	if out.McpRPCCount != 3 {
+		t.Fatalf("count: got %d, want 3", out.McpRPCCount)
+	}
+	if out.McpRPCWireBytesSum != 6000 {
+		t.Errorf("wire_bytes_sum: got %d, want 6000", out.McpRPCWireBytesSum)
+	}
+	if out.McpRPCTokenEstSum != 1500 {
+		t.Errorf("token_est_sum: got %d, want 1500", out.McpRPCTokenEstSum)
+	}
+	search := out.McpRPCPerTool["archigraph_search"]
+	if search == nil {
+		t.Fatal("per_tool missing archigraph_search")
+	}
+	if search.SumBytes != 4800 {
+		t.Errorf("search sum_bytes: got %d, want 4800", search.SumBytes)
+	}
+	if search.SumTokenEst != 1200 {
+		t.Errorf("search sum_token_est: got %d, want 1200", search.SumTokenEst)
+	}
+	if search.SumMs != 300 {
+		t.Errorf("search sum_ms: got %d, want 300", search.SumMs)
+	}
+}
+
+// TestParseBenchCapture_BackwardCompatOldFormat verifies that a legacy log
+// line WITHOUT the #2828 byte/token fields still parses for ms, and that its
+// byte/token sums stay 0 (proving backward compatibility). It also mixes a
+// new-format line to confirm the two coexist in one slice.
+func TestParseBenchCapture_BackwardCompatOldFormat(t *testing.T) {
+	lines := strings.Join([]string{
+		// Old format — no wire_bytes / payload_token_estimate.
+		"archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=8095ms repo=/path",
+		// New format — with the #2828 fields.
+		"archigraph-daemon: 2026/05/29 10:00:00 [mcp-rpc] tool=archigraph_search elapsed=100ms wire_bytes=2000 payload_token_estimate=500 repo=/path",
+	}, "\n") + "\n"
+
+	out := parseBenchCapture([]byte(lines))
+
+	if out.McpRPCCount != 2 {
+		t.Fatalf("count: got %d, want 2 (both ms lines counted)", out.McpRPCCount)
+	}
+	if out.McpRPCHandlerMsSum != 8195 {
+		t.Errorf("ms_sum: got %d, want 8195", out.McpRPCHandlerMsSum)
+	}
+	// Only the new-format line contributes bytes/tokens.
+	if out.McpRPCWireBytesSum != 2000 {
+		t.Errorf("wire_bytes_sum: got %d, want 2000", out.McpRPCWireBytesSum)
+	}
+	if out.McpRPCTokenEstSum != 500 {
+		t.Errorf("token_est_sum: got %d, want 500", out.McpRPCTokenEstSum)
+	}
+}
+
+// TestParseBenchCapture_AllLegacyZeroBytes verifies that a slice of only
+// legacy lines yields count>0 but byte/token sums of exactly 0 (not garbage).
+func TestParseBenchCapture_AllLegacyZeroBytes(t *testing.T) {
+	line := "archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=42ms repo=/p\n"
+	out := parseBenchCapture([]byte(line))
+	if out.McpRPCCount != 1 {
+		t.Fatalf("count: got %d, want 1", out.McpRPCCount)
+	}
+	if out.McpRPCWireBytesSum != 0 || out.McpRPCTokenEstSum != 0 {
+		t.Errorf("legacy byte/token sums: got %d/%d, want 0/0", out.McpRPCWireBytesSum, out.McpRPCTokenEstSum)
+	}
+}

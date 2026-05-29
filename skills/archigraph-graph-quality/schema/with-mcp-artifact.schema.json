@@ -183,6 +183,16 @@
           "additionalProperties": {
             "$ref": "#/$defs/ToolRPCStats"
           }
+        },
+        "mcp_rpc_wire_bytes_sum": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Sum of the final on-wire tool-result payload size (bytes, sum of len(TextContent.Text)) across all captured calls, measured daemon-side AFTER applyIDInterning (issue #2828). Compare against billed input_tokens to split daemon-side payload cost vs model ingestion. Null when mcp_rpc_count is null; 0 when only legacy log lines (without wire_bytes) were captured."
+        },
+        "mcp_rpc_payload_token_estimate_sum": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Sum of the char/4 token estimate of the wire payloads across all captured calls (issue #2828). Approximate (host tokenizer differs) — a relative lever-finder, not exact reconciliation. Null when mcp_rpc_count is null; 0 when only legacy log lines were captured."
         }
       }
     },
@@ -201,12 +211,22 @@
           "type": "integer",
           "minimum": 0,
           "description": "Sum of handler durations in milliseconds for this tool."
+        },
+        "sum_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of on-wire payload bytes for this tool (issue #2828). 0 for legacy log lines without wire_bytes."
+        },
+        "sum_token_est": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of char/4 payload token estimates for this tool (issue #2828). 0 for legacy log lines."
         }
       }
     },
     "BenchCaptureOutput": {
       "type": "object",
-      "required": ["mcp_rpc_count", "mcp_rpc_handler_ms_sum", "mcp_rpc_handler_ms_p50", "mcp_rpc_handler_ms_p99", "mcp_rpc_per_tool"],
+      "required": ["mcp_rpc_count", "mcp_rpc_handler_ms_sum", "mcp_rpc_handler_ms_p50", "mcp_rpc_handler_ms_p99", "mcp_rpc_per_tool", "mcp_rpc_wire_bytes_sum", "mcp_rpc_payload_token_estimate_sum"],
       "additionalProperties": false,
       "description": "Top-level JSON output of `archigraph bench-capture rpc`. Matches the mcp_rpc_* fields in QuestionMetrics so the CLI output can be merged directly into a question's metrics block.",
       "properties": {
@@ -236,6 +256,16 @@
             "$ref": "#/$defs/ToolRPCStats"
           },
           "description": "Per-tool aggregation. Empty object when count=0."
+        },
+        "mcp_rpc_wire_bytes_sum": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of on-wire tool-result payload bytes across all captured calls, measured daemon-side AFTER applyIDInterning (issue #2828). 0 when only legacy log lines (without wire_bytes) were captured."
+        },
+        "mcp_rpc_payload_token_estimate_sum": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of char/4 payload token estimates across all captured calls (issue #2828). 0 when only legacy log lines were captured."
         }
       }
     }

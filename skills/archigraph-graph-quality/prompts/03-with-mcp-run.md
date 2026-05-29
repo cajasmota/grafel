@@ -24,7 +24,7 @@ For each question in `questions.json`:
    ```
    archigraph bench-capture rpc --start $START --end $END
    ```
-   Merge the resulting JSON directly into this question's `metrics` block (`mcp_rpc_count`, `mcp_rpc_handler_ms_sum`, `mcp_rpc_handler_ms_p50`, `mcp_rpc_handler_ms_p99`, `mcp_rpc_per_tool`). If the command fails (missing binary, permissions, sandbox), set `mcp_rpc_count: null` and add `"mcp_rpc_capture_error": "<reason>"` to the artifact. See "Daemon RPC capture" below for the field semantics.
+   Merge the resulting JSON directly into this question's `metrics` block (`mcp_rpc_count`, `mcp_rpc_handler_ms_sum`, `mcp_rpc_handler_ms_p50`, `mcp_rpc_handler_ms_p99`, `mcp_rpc_per_tool`, `mcp_rpc_wire_bytes_sum`, `mcp_rpc_payload_token_estimate_sum`). The two byte/token sums are the **daemon-side payload cost** (final on-wire result size, measured after id-interning); comparing `mcp_rpc_payload_token_estimate_sum` against this question's billed `input_tokens` splits handler-payload cost from model-ingestion/transport overhead (#2828). If the command fails (missing binary, permissions, sandbox), set `mcp_rpc_count: null` and add `"mcp_rpc_capture_error": "<reason>"` to the artifact. See "Daemon RPC capture" below for the field semantics.
 8. Compute the delta and record the metrics below.
 
 ## Daemon RPC capture
@@ -62,10 +62,12 @@ See `prompts/03a-rpc-capture.md` for the detailed daemon RPC capture protocol, i
         "mcp_rpc_handler_ms_p50": 1850,
         "mcp_rpc_handler_ms_p99": 2410,
         "mcp_rpc_per_tool": {
-          "archigraph_search": {"count": 2, "sum_ms": 3600},
-          "archigraph_describe": {"count": 1, "sum_ms": 2120},
-          "archigraph_related": {"count": 1, "sum_ms": 2260}
-        }
+          "archigraph_search": {"count": 2, "sum_ms": 3600, "sum_bytes": 4096, "sum_token_est": 1024},
+          "archigraph_describe": {"count": 1, "sum_ms": 2120, "sum_bytes": 1536, "sum_token_est": 384},
+          "archigraph_related": {"count": 1, "sum_ms": 2260, "sum_bytes": 2048, "sum_token_est": 512}
+        },
+        "mcp_rpc_wire_bytes_sum": 7680,
+        "mcp_rpc_payload_token_estimate_sum": 1920
       },
       "notes": "Mentioned archigraph_search returned 0 hits initially; widened query."
     }

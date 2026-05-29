@@ -410,6 +410,42 @@ func TestMCPToolCall_JSONLog_ParseableJSON(t *testing.T) {
 	}
 }
 
+// TestMCPToolCall_DoneLine_HasWireBytes verifies the #2828 payload-size fields
+// (wire_bytes / payload_token_estimate) propagate from the MCPCallResult onto
+// the phase=done log line. The injected dispatcher reports a known size.
+func TestMCPToolCall_DoneLine_HasWireBytes(t *testing.T) {
+	const wantBytes = 4096
+	const wantTokens = 1024
+	svc, buf := testServiceWithJSONLogger(func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
+		return MCPCallResult{
+			Content:       []map[string]any{{"type": "text", "text": "ok"}},
+			WireBytes:     wantBytes,
+			TokenEstimate: wantTokens,
+		}, nil
+	})
+
+	var reply MCPToolCallReply
+	if err := svc.MCPToolCall(&MCPToolCallArgs{Name: "archigraph_find", CWD: "/r"}, &reply); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	var done map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(lines[len(lines)-1])), &done); err != nil {
+		t.Fatalf("done line not JSON: %v", err)
+	}
+	if done[LogFieldPhase] != "done" {
+		t.Fatalf("last line phase=%v, want done", done[LogFieldPhase])
+	}
+	// JSON numbers decode as float64.
+	if b, _ := done[LogFieldWireBytes].(float64); int(b) != wantBytes {
+		t.Errorf("%s=%v, want %d", LogFieldWireBytes, done[LogFieldWireBytes], wantBytes)
+	}
+	if tk, _ := done[LogFieldTokenEst].(float64); int(tk) != wantTokens {
+		t.Errorf("%s=%v, want %d", LogFieldTokenEst, done[LogFieldTokenEst], wantTokens)
+	}
+}
+
 // TestMCPToolCall_JSONLog_TrueVariant verifies that a JSON-handler slog logger
 // produces parseable JSON lines (mirrors the old ARCHIGRAPH_DAEMON_LOG_JSON=true
 // variant; handler selection is now at construction time).

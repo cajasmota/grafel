@@ -128,10 +128,36 @@ func daemonMCPCallTool(name string, args map[string]any, cwd string) (daemon.MCP
 		return daemon.MCPCallResult{Content: []map[string]any{}}, nil
 	}
 
+	// #2828 measure-first: capture the final on-wire payload size HERE rather
+	// than inside internal/mcp.wrap. This is the cleanest placement because
+	// (a) result is the *mcpapi.CallToolResult AFTER wrap has run the whole
+	// finalizeDeferred → appendElapsedTrailer → applyIDInterning pipeline, so
+	// it already reflects the real, interned on-wire payload; and (b) it keeps
+	// mcp-go's CallToolResult type out of the internal/daemon package (which
+	// only sees the plain MCPCallResult wire shape). wireBytes is the sum of
+	// len(TextContent.Text) across Content; tokenEst is the char/4 estimate
+	// matching the quality-bench skill convention.
+	wireBytes := mcpWireBytes(result.Content)
 	return daemon.MCPCallResult{
-		IsError: result.IsError,
-		Content: mcpContentToMaps(result.Content),
+		IsError:       result.IsError,
+		Content:       mcpContentToMaps(result.Content),
+		WireBytes:     wireBytes,
+		TokenEstimate: wireBytes / 4,
 	}, nil
+}
+
+// mcpWireBytes returns the total on-wire payload size of a tool result: the
+// sum of len(Text) across every TextContent block. Non-text content blocks
+// (images, embedded resources) are not currently produced by archigraph tools
+// and contribute 0. Measured after applyIDInterning (see daemonMCPCallTool).
+func mcpWireBytes(content []mcpapi.Content) int {
+	total := 0
+	for _, c := range content {
+		if tc, ok := mcpapi.AsTextContent(c); ok {
+			total += len(tc.Text)
+		}
+	}
+	return total
 }
 
 // mcpContentToMaps converts the mcp-go Content slice to the

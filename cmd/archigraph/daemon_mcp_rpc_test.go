@@ -183,3 +183,41 @@ func TestDaemonMCPCallTool_UnknownTool_ReturnsErrorBlock(t *testing.T) {
 		t.Fatal("expected IsError=true")
 	}
 }
+
+// TestMCPWireBytes verifies wire-byte measurement of a known CallToolResult:
+// the sum of len(Text) across TextContent blocks, with the char/4 token
+// estimate derived from it (#2828 measure-first).
+func TestMCPWireBytes(t *testing.T) {
+	// Two text blocks: 5 + 7 = 12 bytes.
+	content := []mcpapi.Content{
+		mcpapi.NewTextContent("hello"),   // 5
+		mcpapi.NewTextContent("world!!"), // 7
+	}
+	got := mcpWireBytes(content)
+	if got != 12 {
+		t.Fatalf("mcpWireBytes: got %d, want 12", got)
+	}
+	if est := got / 4; est != 3 {
+		t.Errorf("token estimate: got %d, want 3", est)
+	}
+}
+
+// TestMCPWireBytes_Empty verifies an empty/nil content slice measures 0.
+func TestMCPWireBytes_Empty(t *testing.T) {
+	if got := mcpWireBytes(nil); got != 0 {
+		t.Errorf("nil content: got %d, want 0", got)
+	}
+	if got := mcpWireBytes([]mcpapi.Content{}); got != 0 {
+		t.Errorf("empty content: got %d, want 0", got)
+	}
+}
+
+// TestMCPWireBytes_UTF8 verifies byte length (not rune count) is measured —
+// a multibyte string contributes its full byte size to the on-wire payload.
+func TestMCPWireBytes_UTF8(t *testing.T) {
+	// "é" is 2 bytes in UTF-8; "→" is 3 bytes. Total = 5.
+	got := mcpWireBytes([]mcpapi.Content{mcpapi.NewTextContent("é→")})
+	if got != 5 {
+		t.Fatalf("utf8 byte length: got %d, want 5", got)
+	}
+}
