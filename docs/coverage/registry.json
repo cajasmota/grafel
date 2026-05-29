@@ -17768,13 +17768,20 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
+            "issue": "3089",
+            "notes": "Extracts @Action(value=...) annotations and struts.xml \u003caction\u003e elements; @Namespace prefix composition; HANDLED_BY relationships to action classes",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
+            "issue": "3089",
+            "notes": "Detects JAAS (LoginContext/Subject) and Spring Security (SecurityContextHolder/@PreAuthorize/@Secured) integration markers; Struts has no built-in auth, so detection is heuristic based on common integration patterns",
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
@@ -17789,7 +17796,11 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
+            "issue": "3089",
+            "notes": "Detects Interceptor/AbstractInterceptor implementors and intercept(ActionInvocation) overrides; the Struts interceptor stack is the primary middleware mechanism",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -17821,44 +17832,62 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "Struts 2 has no intrinsic DI; Spring-plugin DI is optional and handled by the Spring DI extractor"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "Struts 2 has no intrinsic DI injection points; Spring-plugin injection is optional"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "Struts 2 has no intrinsic DI scope management"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "Struts has no transaction management; projects use Spring @Transactional or JTA outside the framework"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "No transaction propagation in Struts core; deferred to Spring/JTA layer"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "No rollback-rule declarations in Struts; deferred to Spring/JTA layer"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "Struts uses interceptor chain for cross-cutting concerns, not AspectJ AOP; Spring AOP extractor must not fire for framework=struts"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "Struts uses interceptors not AspectJ @Aspect"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/struts_routes.go"],
+            "issue": "3089",
+            "notes": "Struts has no pointcut concept; interceptors cover this role"
           }
         },
         "Observability": {

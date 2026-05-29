@@ -334,6 +334,8 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeJavalin(string(content), emit)
 		// Vert.x (#3086): lambda DSL `router.get("/path").handler(...)` routing.
 		synthesizeVertx(string(content), emit)
+		// Struts (#3089): @Action annotation + struts.xml <action> routing.
+		synthesizeStruts(string(content), emit)
 		// Consumer side (#721): HttpClient / RestTemplate /
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
@@ -872,6 +874,65 @@ func synthesizeVertx(content string, emit emitFn) {
 		rawPath := m[2]
 		canonical := httproutes.Canonicalize(httproutes.FrameworkVertx, rawPath)
 		emit(verb, canonical, "vertx", "Route", "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Struts (Java) — @Action annotation + struts.xml routing (#3089)
+// ---------------------------------------------------------------------------
+
+// strutsActionAnnotationSynthRe captures @Action(value="/path") and the
+// shorthand @Action("/path") on Struts 2 action classes or methods.
+// Capture group 1: the path string.
+var strutsActionAnnotationSynthRe = regexp.MustCompile(
+	`@Action\s*\(\s*(?:value\s*=\s*)?"([^"]+)"`)
+
+// strutsNamespaceSynthRe captures @Namespace("/prefix") at the class level.
+var strutsNamespaceSynthRe = regexp.MustCompile(
+	`@Namespace\s*\(\s*"([^"]+)"`)
+
+// synthesizeStruts scans a Java file for Struts 2 @Action annotation route
+// declarations and emits one http_endpoint_definition per annotated action.
+// Struts routes do not carry an explicit HTTP verb (all HTTP methods can
+// reach an action), so we emit "ANY" as the canonical method. The path is
+// the value attribute of @Action, optionally prefixed by @Namespace.
+//
+// FrameworkSpring is reused for canonicalization because Struts 2 uses the
+// same {param} curly-brace parameter syntax as Spring and JAX-RS.
+func synthesizeStruts(content string, emit emitFn) {
+	// File-signal gate: require a Struts-specific import or annotation.
+	if !strings.Contains(content, "@Action") &&
+		!strings.Contains(content, "ActionSupport") &&
+		!strings.Contains(content, "org.apache.struts2") &&
+		!strings.Contains(content, "opensymphony") {
+		return
+	}
+
+	// Detect package-level @Namespace prefix.
+	namespace := ""
+	if m := strutsNamespaceSynthRe.FindStringSubmatch(content); len(m) >= 2 {
+		namespace = strings.TrimRight(m[1], "/")
+		if namespace == "/" {
+			namespace = ""
+		}
+	}
+
+	for _, m := range strutsActionAnnotationSynthRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		rawPath := m[1]
+		fullPath := rawPath
+		if namespace != "" && !strings.HasPrefix(rawPath, namespace) {
+			if !strings.HasPrefix(rawPath, "/") {
+				rawPath = "/" + rawPath
+			}
+			fullPath = namespace + rawPath
+		} else if !strings.HasPrefix(rawPath, "/") {
+			fullPath = "/" + rawPath
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, fullPath)
+		emit("ANY", canonical, "struts", "Route", "")
 	}
 }
 

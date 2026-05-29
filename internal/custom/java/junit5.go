@@ -29,6 +29,9 @@ var junit5Frameworks = map[string]bool{
 	"javalin": true,
 	// Vert.x uses JUnit 5 with VertxExtension / VertxTestContext for tests_linkage (#3086).
 	"vertx": true, "vert.x": true, "vert_x": true, "vertx_web": true, "vertx-web": true,
+	// Struts uses JUnit 5 (or JUnit 4 via Struts Test Plugin) for tests_linkage (#3089).
+	"struts": true, "struts2": true, "struts-2": true, "apache_struts": true, "apache-struts": true,
+	"struts_2": true,
 }
 
 var (

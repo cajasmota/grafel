@@ -15,7 +15,7 @@ Back to [summary](../summary.md).
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 7/20 | ❌ 3/16 | |
-| [Apache Struts](../detail/lang.java.framework.struts.md) | ❌ 2/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 7/20 | ❌ 3/16 | |
+| [Apache Struts](../detail/lang.java.framework.struts.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
 | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ⚠️ 13/13 | |
 | [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ❌ 13/16 | |
 | [Helidon](../detail/lang.java.framework.helidon.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ⚠️ 13/13 | |

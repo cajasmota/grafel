@@ -123,7 +123,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|---|
 | [java](../by-language/java.md) | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 7/20 | ❌ 3/16 | |
-| [java](../by-language/java.md) | [Apache Struts](../detail/lang.java.framework.struts.md) | ❌ 2/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ❌ 7/20 | ❌ 3/16 | |
+| [java](../by-language/java.md) | [Apache Struts](../detail/lang.java.framework.struts.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
 | [java](../by-language/java.md) | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ⚠️ 13/13 | |
 | [java](../by-language/java.md) | [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ❌ 13/16 | |
 | [java](../by-language/java.md) | [Helidon](../detail/lang.java.framework.helidon.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ⚠️ 13/13 | |

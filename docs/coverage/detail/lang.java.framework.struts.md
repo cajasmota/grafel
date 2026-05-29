@@ -17,13 +17,13 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/apache_struts.yaml` | — |
 | Handler attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/apache_struts.yaml` | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | ⚠️ `partial` | `2026-05-29` | 3089 | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Extracts @Action(value=...) annotations and struts.xml <action> elements; @Namespace prefix composition; HANDLED_BY relationships to action classes |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ❌ `missing` | — | — | — | — |
+| Auth coverage | ⚠️ `partial` | `2026-05-29` | 3089 | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Detects JAAS (LoginContext/Subject) and Spring Security (SecurityContextHolder/@PreAuthorize/@Secured) integration markers; Struts has no built-in auth, so detection is heuristic based on common integration patterns |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | `2026-05-29` | 3089 | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Detects Interceptor/AbstractInterceptor implementors and intercept(ActionInvocation) overrides; the Struts interceptor stack is the primary middleware mechanism |
 
 ### Testing
 
@@ -57,25 +57,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | Struts 2 has no intrinsic DI; Spring-plugin DI is optional and handled by the Spring DI extractor |
+| DI injection point | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | Struts 2 has no intrinsic DI injection points; Spring-plugin injection is optional |
+| DI scope resolution | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | Struts 2 has no intrinsic DI scope management |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | Struts has no transaction management; projects use Spring @Transactional or JTA outside the framework |
+| Transaction propagation | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | No transaction propagation in Struts core; deferred to Spring/JTA layer |
+| Transaction rollback rules | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | No rollback-rule declarations in Struts; deferred to Spring/JTA layer |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | Struts uses interceptor chain for cross-cutting concerns, not AspectJ AOP; Spring AOP extractor must not fire for framework=struts |
+| Aspect extraction | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | Struts uses interceptors not AspectJ @Aspect |
+| Pointcut resolution | — `not_applicable` | — | 3089 | `internal/custom/java/struts_routes.go` | Struts has no pointcut concept; interceptors cover this role |
 
 ### Observability
 
