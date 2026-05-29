@@ -39,6 +39,11 @@ var (
 	reMikroRelation = regexp.MustCompile(
 		`@(ManyToOne|OneToMany|OneToOne|ManyToMany)\s*\([^@]*?\)\s+(\w+)`,
 	)
+	// Relation decorators with lazy: true OR LoadStrategy.LAZY/EXTRA_LAZY in options.
+	// Issue #3071 — lazy_loading_recognition for MikroORM.
+	reMikroLazyRelation = regexp.MustCompile(
+		`@(ManyToOne|OneToMany|OneToOne|ManyToMany)\s*\(([^@]*?(?:lazy\s*:\s*true|LoadStrategy\.(?:LAZY|EXTRA_LAZY))[^@]*?)\)\s+(\w+)`,
+	)
 	// MikroORM migration class: class Migration20240101 extends Migration {}
 	reMikroMigrationClass = regexp.MustCompile(
 		`(?:export\s+)?class\s+([A-Za-z0-9_]+)\s+extends\s+Migration\b`,
@@ -115,6 +120,24 @@ func (e *mikroORMExtractor) Extract(ctx context.Context, file extreg.FileInput) 
 		ent := makeEntity(relType+":"+fieldName, "SCOPE.Component", "relation", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "mikro-orm", "relation_type", relType, "field_name", fieldName,
 			"provenance", "INFERRED_FROM_MIKROORM_RELATION")
+		addEntity(ent)
+	}
+
+	// Lazy relations: relation decorator with lazy: true or LoadStrategy.LAZY/EXTRA_LAZY.
+	// Issue #3071 — lazy_loading_recognition for MikroORM.
+	for _, m := range reMikroLazyRelation.FindAllStringSubmatchIndex(src, -1) {
+		relType := src[m[2]:m[3]]
+		opts := src[m[4]:m[5]]
+		fieldName := src[m[6]:m[7]]
+		strategy := "lazy"
+		if strings.Contains(opts, "EXTRA_LAZY") {
+			strategy = "extra_lazy"
+		} else if strings.Contains(opts, "LoadStrategy") {
+			strategy = "lazy"
+		}
+		ent := makeEntity("lazy:"+relType+":"+fieldName, "SCOPE.Pattern", "lazy_relation", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "mikro-orm", "relation_type", relType, "field_name", fieldName,
+			"lazy_loading", strategy, "provenance", "INFERRED_FROM_MIKROORM_LAZY_RELATION")
 		addEntity(ent)
 	}
 

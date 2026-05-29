@@ -41,6 +41,12 @@ var (
 	reTypeORMRelation = regexp.MustCompile(
 		`@(OneToMany|ManyToOne|OneToOne|ManyToMany)\s*\([^@]*?\)\s+(\w+)`,
 	)
+	// lazy: true inside a TypeORM relation decorator options object.
+	// Matches the full decorator block so we can extract field name alongside it.
+	// Issue #3071 — lazy_loading_recognition for TypeORM.
+	reTypeORMLazyRelation = regexp.MustCompile(
+		`@(OneToMany|ManyToOne|OneToOne|ManyToMany)\s*\(([^@]*?lazy\s*:\s*true[^@]*?)\)\s+(\w+)`,
+	)
 	// @Repository / Repository<Entity> usage
 	reTypeORMRepository = regexp.MustCompile(
 		`getRepository\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)|getCustomRepository\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)`,
@@ -203,6 +209,18 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 		ent := makeEntity(name, "SCOPE.Component", "relation", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "typeorm", "relation_type", relType, "field_name", fieldName,
 			"provenance", "INFERRED_FROM_TYPEORM_RELATION")
+		addEntity(ent)
+	}
+
+	// Lazy relations: @OneToMany/@ManyToOne/etc. with { lazy: true } option.
+	// Issue #3071 — lazy_loading_recognition for TypeORM.
+	for _, m := range reTypeORMLazyRelation.FindAllStringSubmatchIndex(src, -1) {
+		relType := src[m[2]:m[3]]
+		fieldName := src[m[6]:m[7]]
+		name := fmt.Sprintf("lazy:%s:%s", relType, fieldName)
+		ent := makeEntity(name, "SCOPE.Pattern", "lazy_relation", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "typeorm", "relation_type", relType, "field_name", fieldName,
+			"lazy_loading", "true", "provenance", "INFERRED_FROM_TYPEORM_LAZY_RELATION")
 		addEntity(ent)
 	}
 

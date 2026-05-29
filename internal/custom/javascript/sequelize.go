@@ -43,6 +43,11 @@ var (
 	reSequelizeAssociation = regexp.MustCompile(
 		`([A-Z][A-Za-z0-9_]*)\s*\.\s*(hasMany|belongsTo|hasOne|belongsToMany)\s*\(\s*([A-Z][A-Za-z0-9_]*)`,
 	)
+	// Association call with { lazy: true } in the options object.
+	// Issue #3071 — lazy_loading_recognition for Sequelize.
+	reSequelizeLazyAssoc = regexp.MustCompile(
+		`([A-Z][A-Za-z0-9_]*)\s*\.\s*(hasMany|belongsTo|hasOne|belongsToMany)\s*\(\s*([A-Z][A-Za-z0-9_]*)[^)]*lazy\s*:\s*true`,
+	)
 	// new Sequelize(...) / Sequelize.authenticate
 	reSequelizeInstance = regexp.MustCompile(
 		`new\s+Sequelize\s*\(`,
@@ -226,6 +231,20 @@ func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput)
 		setProps(&ent, "framework", "sequelize", "source_model", sourceModel,
 			"association_type", assocType, "target_model", targetModel,
 			"provenance", "INFERRED_FROM_SEQUELIZE_ASSOCIATION")
+		addEntity(ent)
+	}
+
+	// Lazy associations: association call with { lazy: true } in options.
+	// Issue #3071 — lazy_loading_recognition for Sequelize.
+	for _, m := range reSequelizeLazyAssoc.FindAllStringSubmatchIndex(src, -1) {
+		sourceModel := src[m[2]:m[3]]
+		assocType := src[m[4]:m[5]]
+		targetModel := src[m[6]:m[7]]
+		name := fmt.Sprintf("lazy:%s.%s(%s)", sourceModel, assocType, targetModel)
+		ent := makeEntity(name, "SCOPE.Pattern", "lazy_association", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "sequelize", "source_model", sourceModel,
+			"association_type", assocType, "target_model", targetModel,
+			"lazy_loading", "true", "provenance", "INFERRED_FROM_SEQUELIZE_LAZY_ASSOC")
 		addEntity(ent)
 	}
 

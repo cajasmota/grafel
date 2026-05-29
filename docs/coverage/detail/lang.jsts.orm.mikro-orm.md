@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/mikroorm.go`<br>`internal/custom/javascript/orm_build_3067_test.go` | — |
 | Foreign key extraction | ⚠️ `partial` | — | 3067 | `internal/custom/javascript/mikroorm.go`<br>`internal/custom/javascript/orm_build_3067_test.go` | FK columns inferred from @ManyToOne decorator; no explicit FK column extraction (FK column not separately defined in MikroORM decorator-first pattern) |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ⚠️ `partial` | — | 3071 | `internal/custom/javascript/issue3071_lazy_loading_test.go`<br>`internal/custom/javascript/mikroorm.go` | Detects relation decorators with lazy: true or LoadStrategy.LAZY/EXTRA_LAZY; emits SCOPE.Pattern/lazy_relation with lazy_loading strategy. Promise<T> wrapper inference not yet implemented. |
 | Relationship extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/mikroorm.go`<br>`internal/custom/javascript/orm_build_3067_test.go` | — |
 
 ### Queries

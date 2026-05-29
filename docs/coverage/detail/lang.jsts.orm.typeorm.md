@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_test.go`<br>`internal/custom/javascript/typeorm.go` | — |
 | Foreign key extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/typeorm.go` | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ⚠️ `partial` | — | 3071 | `internal/custom/javascript/issue3071_lazy_loading_test.go`<br>`internal/custom/javascript/typeorm.go` | Detects @OneToMany/@ManyToOne/@OneToOne/@ManyToMany relation decorators carrying { lazy: true }; emits SCOPE.Pattern/lazy_relation with lazy_loading=true. Promise<T> return-type inference not yet implemented. |
 | Relationship extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/javascript/typeorm.go` | — |
 
 ### Queries

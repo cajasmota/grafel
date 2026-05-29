@@ -26704,8 +26704,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3071",
+            "notes": "Knex is a SQL query builder with no ORM model layer; there is no relation or lazy-loading concept to extract. Lazy loading is not applicable."
           },
           "relationship_extraction": {
             "status": "missing",
@@ -26762,8 +26763,10 @@
             "notes": "FK columns inferred from @ManyToOne decorator; no explicit FK column extraction (FK column not separately defined in MikroORM decorator-first pattern)"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/issue3071_lazy_loading_test.go","internal/custom/javascript/mikroorm.go"],
+            "issue": "3071",
+            "notes": "Detects relation decorators with lazy: true or LoadStrategy.LAZY/EXTRA_LAZY; emits SCOPE.Pattern/lazy_relation with lazy_loading strategy. Promise\u003cT\u003e wrapper inference not yet implemented."
           },
           "relationship_extraction": {
             "status": "full",
@@ -26877,8 +26880,9 @@
             "notes": "reObjectionRelation captures named relation entries (relation_type+field_name) from relationMappings, which encode FK join topology implicitly; the from/to column-level FK fields are not explicitly parsed"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3071",
+            "notes": "Objection.js uses withGraphFetched/withGraphJoined for eager loading; there is no built-in lazy-loading mechanism. The library loads related models explicitly on demand via separate queries, not through a lazy proxy or decorator pattern. lazy_loading_recognition is not applicable."
           },
           "relationship_extraction": {
             "status": "full",
@@ -27005,8 +27009,10 @@
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/issue3071_lazy_loading_test.go","internal/custom/javascript/sequelize.go"],
+            "issue": "3071",
+            "notes": "Detects hasMany/belongsTo/hasOne/belongsToMany association calls with { lazy: true } in options; emits SCOPE.Pattern/lazy_association. Sequelize does not have a built-in lazy-loading mechanism; this detects explicit lazy: true flags in association definitions."
           },
           "relationship_extraction": {
             "status": "full",
@@ -27061,8 +27067,10 @@
             "issue": "3064"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/issue3071_lazy_loading_test.go","internal/custom/javascript/typeorm.go"],
+            "issue": "3071",
+            "notes": "Detects @OneToMany/@ManyToOne/@OneToOne/@ManyToMany relation decorators carrying { lazy: true }; emits SCOPE.Pattern/lazy_relation with lazy_loading=true. Promise\u003cT\u003e return-type inference not yet implemented."
           },
           "relationship_extraction": {
             "status": "full",

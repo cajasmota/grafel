@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | — `not_applicable` | — | 3071 | — | Knex is a SQL query builder with no ORM model layer; there is no relation or lazy-loading concept to extract. Lazy loading is not applicable. |
 | Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries
