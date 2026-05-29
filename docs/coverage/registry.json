@@ -18719,39 +18719,45 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "3095",
             "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -18772,39 +18778,45 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "3095",
             "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -18881,39 +18893,45 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "3095",
             "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -18934,39 +18952,45 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_redis.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_redis.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "3095",
             "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3095",
+            "notes": "NoSQL store has no relational join/FK/lazy-load concept; not_applicable by design."
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_redis.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_redis.yaml"],
+            "issue": "3095",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
