@@ -561,6 +561,43 @@ records:
 
   lang.python.framework.django-drf:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -779,6 +816,43 @@ records:
 
   lang.python.framework.flask:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -847,6 +921,43 @@ records:
 
   lang.python.framework.sanic:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -880,6 +991,43 @@ records:
 
   lang.python.framework.litestar:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -913,6 +1061,43 @@ records:
 
   lang.python.framework.robyn:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -946,6 +1131,43 @@ records:
 
   lang.python.framework.aiohttp:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -979,6 +1201,43 @@ records:
 
   lang.python.framework.bottle:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -1012,6 +1271,43 @@ records:
 
   lang.python.framework.fastapi:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -3573,4 +3869,355 @@ records:
           tests:
             - file: internal/custom/java/orm_extractors_test.go
           issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+  lang.python.framework.cherrypy:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.django:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.falcon:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.hug:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.pyramid:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.quart:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.starlette:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.strawberry-graphql:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+  lang.python.framework.tornado:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [applyTypeSystemAnnotations, annotateTypeClass, classBaseLeafNames]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [buildAssignmentTypeAlias, buildPEP695TypeAlias, newTypeAliasEntity, rhsLooksLikeTypeExpression]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classEnumMembers]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
+          verified_at: "2026-05-29"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/python/types.go
+              functions: [annotateTypeClass, classAnnotatedFields, classHasDataclassDecorator]
+          tests:
+            - file: internal/extractors/python/types_test.go
+          issues_implemented: ["2989"]
           verified_at: "2026-05-29"

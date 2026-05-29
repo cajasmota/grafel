@@ -42,10 +42,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Type extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2989) | `internal/extractors/python/types.go` | — |
+| Interface extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2989) | `internal/extractors/python/types.go` | — |
+| Type alias extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2989) | `internal/extractors/python/types.go` | — |
+| Type extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2989) | `internal/extractors/python/types.go` | — |
 
 ### Testing
 

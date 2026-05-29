@@ -400,6 +400,18 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitGenericDecoratorProperties(root, file, &entities)
 	}()
 
+	// Issue #2989 — Type System extraction. Stamps pattern_type +
+	// structural properties on Protocol / Enum / TypedDict / NamedTuple /
+	// dataclass class entities and emits SCOPE.Schema/type_alias entities for
+	// module-level type aliases (X = Union[...], X: TypeAlias = ..., PEP 695
+	// `type X = ...`). Mirrors the TypeScript type-extraction precedent
+	// (#1343). Runs after the primary walk so the class entities it annotates
+	// already exist. Append-and-annotate only — never removes prior entities.
+	func() {
+		defer func() { _ = recover() }()
+		applyTypeSystemAnnotations(root, file, &entities)
+	}()
+
 	// Issue #1991 — __init__.py re-export annotation.
 	// Stamps re_export / package_init / public / alias properties on
 	// IMPORTS edges of package __init__.py files. Returns the public

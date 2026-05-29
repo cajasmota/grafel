@@ -31896,20 +31896,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -32102,20 +32110,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -32472,20 +32488,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -32687,20 +32711,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -32905,20 +32937,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -33266,20 +33306,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -33480,20 +33528,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -33696,20 +33752,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -33899,20 +33963,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -34127,20 +34199,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -34333,20 +34413,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -34536,20 +34624,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -34742,20 +34838,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -35115,20 +35219,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -35321,20 +35433,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -35528,20 +35648,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -35734,20 +35862,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/types.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2989",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
