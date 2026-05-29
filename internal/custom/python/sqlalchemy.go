@@ -29,6 +29,11 @@ var (
 	saMappedAnnotationRe = regexp.MustCompile(`:\s*Mapped\s*\[`)
 	saRelationshipRe     = regexp.MustCompile(
 		`(?m)^\s+(\w+)\s*(?::\s*Mapped\[[^\]]*\])?\s*=\s*relationship\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']([^)]*)\)`)
+	// saLazyKwargRe matches a lazy= keyword argument in a relationship() call.
+	// Captures the lazy strategy value: "dynamic", "select", "joined",
+	// "subquery", "raise", "raise_on_sql", True, False, or "write_only".
+	// Issue #2986 — lazy_loading_recognition partial for SQLAlchemy.
+	saLazyKwargRe       = regexp.MustCompile(`\blazy\s*=\s*["']?([A-Za-z_][A-Za-z0-9_]*)["']?`)
 	saForeignKeyRe      = regexp.MustCompile(`ForeignKey\s*\(\s*["']([^"']+)["']`)
 	saAssocTableRe      = regexp.MustCompile(`(?m)^(\w+)\s*=\s*Table\s*\(\s*["']([^"']+)["']`)
 	saCreateEngineRe    = regexp.MustCompile(`(?m)(\w+)\s*=\s*create_(?:async_)?engine\s*\(\s*["']([^"']*)["']`)
@@ -119,8 +124,22 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 			relAttr := body[rIdx[2]:rIdx[3]]
 			targetModel := body[rIdx[4]:rIdx[5]]
 			relLine := line + strings.Count(body[:rIdx[0]], "\n")
-			out = append(out, entity(className+"."+relAttr, "SCOPE.Schema", "", file.Path, relLine,
-				map[string]string{"framework": "sqlalchemy", "pattern_type": "relationship", "target_model": targetModel, "parent_class": className}))
+			relProps := map[string]string{
+				"framework":    "sqlalchemy",
+				"pattern_type": "relationship",
+				"target_model": targetModel,
+				"parent_class": className,
+			}
+			// Issue #2986 — detect lazy= kwarg in the relationship args blob.
+			// Captures strategies like "dynamic", "select", "joined", "subquery",
+			// "raise", "raise_on_sql", "write_only", True, False.
+			if rIdx[7] >= 0 {
+				argsBlob := body[rIdx[6]:rIdx[7]]
+				if lm := saLazyKwargRe.FindStringSubmatch(argsBlob); lm != nil {
+					relProps["lazy_strategy"] = lm[1]
+				}
+			}
+			out = append(out, entity(className+"."+relAttr, "SCOPE.Schema", "", file.Path, relLine, relProps))
 		}
 
 		// ForeignKey references in the class body

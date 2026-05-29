@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/python/orms/django_orm.yaml`<br>`internal/extractors/python/django_relational.go` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/extractors/python/django_relational.go` | field_type and all keyword arguments (max_length, null, blank, on_delete, related_name, etc.) are stamped on each SCOPE.Schema/field entity by stampDjangoFieldProperties(); structured JSON Schema or OpenAPI emission not yet implemented |
 
 ### Relationships
 
@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/python/django_relational.go` | — |
 | Foreign key extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/python/django_relational.go` | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/orm_queries_python.go` | select_related() and prefetch_related() detected as is_join=true by pythonIsJoinDjango(); full recognition of all lazy strategies not yet implemented |
 | Relationship extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/python/django_relational.go` | — |
 
 ### Queries

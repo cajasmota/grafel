@@ -35003,8 +35003,11 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/python/django_relational.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "field_type and all keyword arguments (max_length, null, blank, on_delete, related_name, etc.) are stamped on each SCOPE.Schema/field entity by stampDjangoFieldProperties(); structured JSON Schema or OpenAPI emission not yet implemented",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35019,8 +35022,11 @@
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/orm_queries_python.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "select_related() and prefetch_related() detected as is_join=true by pythonIsJoinDjango(); full recognition of all lazy strategies not yet implemented",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "full",
@@ -35208,8 +35214,11 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/sqlalchemy.go","internal/engine/orm_field_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "__tablename__, Mapped[] columns, relationship attributes, and ForeignKey targets are extracted as SCOPE.Schema entities; structured JSON Schema or OpenAPI emission not yet implemented",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35224,8 +35233,11 @@
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/sqlalchemy.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "lazy= kwarg in relationship() calls is detected and recorded as lazy_strategy on the SCOPE.Schema entity; lazy_select_in, write_only, and dynamic_write_only strategies not yet distinguished",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "full",

@@ -2803,3 +2803,59 @@ records:
           - file: internal/extractors/cross/abibridge/extractor_test.go
         issues_implemented: ["2837"]
         verified_at: "2026-05-28"
+
+  lang.python.orm.django:
+    capabilities:
+      Relationships:
+        lazy_loading_recognition:
+          # select_related() and prefetch_related() are detected as is_join=true
+          # by pythonIsJoinDjango(); issue #2986.
+          status: partial
+          symbols:
+            - file: internal/engine/orm_queries_python.go
+              functions: [pythonIsJoinDjango, scanPythonORM]
+          tests:
+            - file: internal/engine/orm_queries_test.go
+          issues_implemented: ["2986"]
+          verified_at: "2026-05-29"
+      Models:
+        schema_extraction:
+          # field_type + all kwargs stamped on each SCOPE.Schema/field entity;
+          # issue #2986.
+          status: partial
+          symbols:
+            - file: internal/extractors/python/django_relational.go
+              functions: [stampDjangoFieldProperties, enrichDjangoModelFieldsAndManagers]
+          tests:
+            - file: internal/extractors/python/django_relational_test.go
+          issues_implemented: ["2986"]
+          verified_at: "2026-05-29"
+
+  lang.python.orm.sqlalchemy:
+    capabilities:
+      Relationships:
+        lazy_loading_recognition:
+          # lazy= kwarg in relationship() recorded as lazy_strategy property;
+          # issue #2986.
+          status: partial
+          symbols:
+            - file: internal/custom/python/sqlalchemy.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2986"]
+          verified_at: "2026-05-29"
+      Models:
+        schema_extraction:
+          # __tablename__, Mapped[] annotations, relationship attrs, ForeignKey
+          # targets extracted as SCOPE.Schema entities; issue #2986.
+          status: partial
+          symbols:
+            - file: internal/engine/field_index.go
+              functions: [BuildFieldIndex]
+            - file: internal/custom/python/sqlalchemy.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+          issues_implemented: ["2986"]
+          verified_at: "2026-05-29"

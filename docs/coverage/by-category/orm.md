@@ -114,12 +114,12 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | ❌ 0/8 | |
 | [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ❌ 0/8 | |
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | ❌ 0/8 | |
-| [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ❌ 6/8 | |
+| [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ⚠️ 6/8 | |
 | [python](../by-language/python.md) | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | ❌ 0/8 | |
 | [python](../by-language/python.md) | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | ❌ 0/8 | |
 | [python](../by-language/python.md) | [Peewee](../detail/lang.python.orm.peewee.md) | ❌ 0/8 | |
 | [python](../by-language/python.md) | [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ 0/8 | |
-| [python](../by-language/python.md) | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ❌ 5/8 | |
+| [python](../by-language/python.md) | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ⚠️ 5/8 | |
 | [python](../by-language/python.md) | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ❌ 2/8 | |
 | [python](../by-language/python.md) | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 1/8 | |
 | [python](../by-language/python.md) | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ❌ 0/8 | |

@@ -76,12 +76,12 @@ Back to [summary](../summary.md).
 |---|---|---|
 | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ❌ 0/8 | |
 | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | ❌ 0/8 | |
-| [Django ORM](../detail/lang.python.orm.django.md) | ❌ 6/8 | |
+| [Django ORM](../detail/lang.python.orm.django.md) | ⚠️ 6/8 | |
 | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | ❌ 0/8 | |
 | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | ❌ 0/8 | |
 | [Peewee](../detail/lang.python.orm.peewee.md) | ❌ 0/8 | |
 | [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ 0/8 | |
-| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ❌ 5/8 | |
+| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ⚠️ 5/8 | |
 | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ❌ 2/8 | |
 | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 1/8 | |
 | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ❌ 0/8 | |

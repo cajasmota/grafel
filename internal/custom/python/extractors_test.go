@@ -1476,6 +1476,43 @@ func TestSQLAlchemy_Relationship(t *testing.T) {
 	}
 }
 
+// TestSQLAlchemy_LazyLoadingRecognition verifies that a relationship() with a
+// lazy= kwarg is detected and the strategy is recorded on the entity.
+// Issue #2986 — lazy_loading_recognition partial for SQLAlchemy.
+func TestSQLAlchemy_LazyLoadingRecognition(t *testing.T) {
+	src := `class User(Base):
+    __tablename__ = "users"
+    posts = relationship("Post", back_populates="author", lazy="dynamic")
+    orders = relationship("Order", lazy='select')
+`
+	ents := extract(t, "python_sqlalchemy", src)
+	var dynamicEnt, selectEnt *extractResult
+	for i := range ents {
+		e := &ents[i]
+		if e.Props["pattern_type"] != "relationship" {
+			continue
+		}
+		switch e.Props["target_model"] {
+		case "Post":
+			dynamicEnt = e
+		case "Order":
+			selectEnt = e
+		}
+	}
+	if dynamicEnt == nil {
+		t.Fatal("expected relationship entity for Post")
+	}
+	if dynamicEnt.Props["lazy_strategy"] != "dynamic" {
+		t.Errorf("expected lazy_strategy=dynamic, got %q", dynamicEnt.Props["lazy_strategy"])
+	}
+	if selectEnt == nil {
+		t.Fatal("expected relationship entity for Order")
+	}
+	if selectEnt.Props["lazy_strategy"] != "select" {
+		t.Errorf("expected lazy_strategy=select, got %q", selectEnt.Props["lazy_strategy"])
+	}
+}
+
 func TestSQLAlchemy_Engine(t *testing.T) {
 	src := `engine = create_engine("postgresql://user:pass@localhost/db")
 `
