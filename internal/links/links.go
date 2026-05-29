@@ -152,7 +152,8 @@ type PassResult struct {
 	//   - "exact"               byPath bucket hit with a same-name producer
 	//   - "prefix_stripped"     prefix-injection retry (#2569)
 	//   - "mount_prefix_added"  consumer-side mount-prefix retry (#2702)
-	//   - "case_normalized"     per-segment case/separator normalization (#2703)
+	//   - "case_style_normalized" per-segment camelCase↔snake_case↔kebab-case
+	//                           normalization (#2703, broadened in #3169)
 	//   - "param_normalized"    path-param NAME bridge, e.g. {clientId}↔{pk}
 	//                           with identical {*}-collapsed shape (#2808)
 	//   - "literal_param_fill"  a CONCRETE caller segment fills a producer
