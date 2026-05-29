@@ -17035,8 +17035,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Substrate passes emit per-binding/per-finding confidence (Binding.Confidence, TaintMatch.Confidence, EffectMatch.Confidence); constant_propagation stamps substrate_confidence property on entities. Top-level EntityRecord.Confidence field not yet stamped by the Java extractor directly; confidence data not exposed via MCP min_confidence filtering. Full requires a confidence-scoring pass that writes EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -17044,9 +17047,10 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
-            "verified_at": "2026-05-28"
+            "notes": "Covers JPA/Hibernate (EntityManager.find/persist/merge/remove/flush), Spring Data JPA (JpaRepository.findById/findAll/findBy*/save/saveAll/delete/count/exists), JdbcTemplate/NamedJdbcTemplate (queryFor*/query/queryForList/update/batchUpdate/execute), raw Statement (executeQuery/executeUpdate), Spring Data MongoDB (findBy* patterns). Read and write sides both covered with per-match confidence. Dominant Spring Boot DB access patterns are fully represented.",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
             "status": "full",

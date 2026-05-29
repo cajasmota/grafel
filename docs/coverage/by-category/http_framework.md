@@ -132,7 +132,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [Micronaut](../detail/lang.java.framework.micronaut.md) | ⚠️ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [Quarkus](../detail/lang.java.framework.quarkus.md) | ⚠️ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ⚠️ 2/3 | ✅ 1/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 7/21 | ❌ 0/18 | |
+| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ⚠️ 2/3 | ✅ 1/1 | ✅ 3/4 | ⚠️ 0/1 | ⚠️ 8/21 | ❌ 0/18 | |
 | [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ❌ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [kotlin](../by-language/kotlin.md) | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | ⚠️ 0/3 | — 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/15 | |
