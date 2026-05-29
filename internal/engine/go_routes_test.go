@@ -81,6 +81,39 @@ func main() {
 	}
 }
 
+func TestApplyGoRouteComposition_NetHTTPServeMux(t *testing.T) {
+	// stdlib net/http: mux.HandleFunc("/path", h.Method) — the nethttp custom
+	// extractor synthesizes the endpoint; the shared AST pass resolves the
+	// bare receiver to the qualified handler method (HandleFunc is in
+	// goHTTPVerbs). Covers the Go 1.22+ method-prefixed pattern too.
+	src := []byte(`package main
+
+import "net/http"
+
+func main() {
+	h := &UsersHandler{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/users", h.List)
+	mux.HandleFunc("GET /users/{id}", h.Get)
+}
+`)
+	rels := []types.RelationshipRecord{
+		makeRoutesToRel("/users", "h"),
+		makeRoutesToRel("/users/{id}", "h"),
+	}
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
+	if got[0].ToID != "Controller:UsersHandler.List" {
+		t.Errorf("ToID[0] = %q, want Controller:UsersHandler.List", got[0].ToID)
+	}
+	if got[1].ToID != "Controller:UsersHandler.Get" {
+		t.Errorf("ToID[1] = %q, want Controller:UsersHandler.Get", got[1].ToID)
+	}
+	if got[0].Properties["go_route_binding"] != "method_receiver_resolved" {
+		t.Errorf("go_route_binding[0] = %q, want method_receiver_resolved", got[0].Properties["go_route_binding"])
+	}
+}
+
 func TestApplyGoRouteComposition_ConstructorIdiom(t *testing.T) {
 	// `h := handlers.NewUsersHandler(s)` — cross-package NewT() returns *T.
 	src := []byte(`package main

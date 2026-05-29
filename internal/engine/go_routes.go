@@ -100,6 +100,13 @@ func applyGoRouteComposition(args DetectorPassArgs) DetectorPassResult {
 	rewrite := map[key]string{}
 	for _, b := range bindings {
 		rewrite[key{b.routePath, b.recvVar}] = b.qualified
+		// Go 1.22+ stdlib patterns embed the method in the pattern string
+		// (`"GET /users/{id}"`). The handler arg is keyed by the full pattern,
+		// but the ROUTES_TO edge's path may be the bare route ("/users/{id}").
+		// Register a method-stripped alias so either keying resolves.
+		if stripped := stripGoMethodPrefix(b.routePath); stripped != b.routePath {
+			rewrite[key{stripped, b.recvVar}] = b.qualified
+		}
 	}
 
 	for i, r := range rawRels {
@@ -354,6 +361,23 @@ func inferGoExprType(expr ast.Expr) string {
 		}
 	}
 	return ""
+}
+
+// stripGoMethodPrefix removes a leading Go 1.22+ stdlib method token from a
+// net/http pattern (`"GET /users/{id}"` -> `"/users/{id}"`). Only a recognised
+// HTTP verb followed by a single space is stripped; all other patterns
+// (including third-party-router paths that happen to contain spaces) are
+// returned unchanged.
+func stripGoMethodPrefix(pattern string) string {
+	sp := strings.IndexByte(pattern, ' ')
+	if sp <= 0 {
+		return pattern
+	}
+	switch pattern[:sp] {
+	case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "CONNECT", "OPTIONS", "TRACE":
+		return strings.TrimSpace(pattern[sp+1:])
+	}
+	return pattern
 }
 
 // typeNameFromExpr returns the bare type name from a type expression, peeling

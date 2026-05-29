@@ -3103,6 +3103,47 @@ records:
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
 
+  lang.go.framework.net-http:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # nethttp.go custom extractor: reNetHTTPRoute captures
+          # http.HandleFunc/Handle("/path", …) on the DefaultServeMux and
+          # <mux>.HandleFunc/Handle on an explicit http.NewServeMux() (seeded as
+          # a SCOPE.Service via reNetHTTPMux). netHTTPMethodToken splits the
+          # Go 1.22+ method-prefixed pattern ("GET /users/{id}") into verb+path;
+          # patterns without a verb default to ANY. net_http_stdlib.yaml
+          # provides import/structural detection markers only.
+          status: full
+          symbols:
+            - file: internal/custom/golang/nethttp.go
+              functions: [Extract, netHTTPMethodToken]
+            - file: internal/engine/rules/go/frameworks/net_http_stdlib.yaml
+          tests:
+            - file: internal/custom/golang/extractors_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # go_routes.go AST pass rewrites bare-receiver ROUTES_TO edges
+          # (Controller:h) into the qualified handler method
+          # (Controller:UsersHandler.List). HandleFunc/Handle are in
+          # goHTTPVerbs; stripGoMethodPrefix aliases method-prefixed patterns so
+          # `mux.HandleFunc("GET /p", h.M)` resolves against a "/p" route edge.
+          status: full
+          symbols:
+            - file: internal/custom/golang/nethttp.go
+              functions: [Extract]
+            - file: internal/engine/go_routes.go
+              functions:
+                - applyGoRouteComposition
+                - extractGoHandlerBindings
+                - stripGoMethodPrefix
+          tests:
+            - file: internal/custom/golang/extractors_test.go
+            - file: internal/engine/go_routes_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
   lang.java.framework.spring-webflux:
     capabilities:
       Observability:

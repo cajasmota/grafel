@@ -328,6 +328,78 @@ func TestGorillaNoMatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// net/http (stdlib)
+// ---------------------------------------------------------------------------
+
+func TestNetHTTPServeMux(t *testing.T) {
+	src := `mux := http.NewServeMux()`
+	ents := extract(t, "custom_go_nethttp", fi("main.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Service", "mux") {
+		t.Error("expected mux as net/http ServeMux service")
+	}
+}
+
+func TestNetHTTPDefaultMuxRoutes(t *testing.T) {
+	src := `
+http.HandleFunc("/users", listUsers)
+http.Handle("/static", fileServer)
+`
+	ents := extract(t, "custom_go_nethttp", fi("main.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Operation", "ANY /users") {
+		t.Error("expected ANY /users from http.HandleFunc")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "ANY /static") {
+		t.Error("expected ANY /static from http.Handle")
+	}
+}
+
+func TestNetHTTPMuxScopedRoutes(t *testing.T) {
+	src := `
+mux := http.NewServeMux()
+mux.HandleFunc("/health", healthCheck)
+mux.Handle("/metrics", promHandler)
+`
+	ents := extract(t, "custom_go_nethttp", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Service", "mux") {
+		t.Error("expected mux service")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "ANY /health") {
+		t.Error("expected ANY /health from mux.HandleFunc")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "ANY /metrics") {
+		t.Error("expected ANY /metrics from mux.Handle")
+	}
+}
+
+func TestNetHTTPMethodPrefixedPatterns(t *testing.T) {
+	// Go 1.22+ method-prefixed patterns.
+	src := `
+mux := http.NewServeMux()
+mux.HandleFunc("GET /users/{id}", getUser)
+mux.HandleFunc("POST /users", createUser)
+mux.HandleFunc("DELETE /users/{id}", deleteUser)
+`
+	ents := extract(t, "custom_go_nethttp", fi("routes.go", "go", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users/{id}") {
+		t.Error("expected GET /users/{id} with method token split off")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "POST /users") {
+		t.Error("expected POST /users")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "DELETE /users/{id}") {
+		t.Error("expected DELETE /users/{id}")
+	}
+}
+
+func TestNetHTTPNoMatch(t *testing.T) {
+	src := `package main`
+	ents := extract(t, "custom_go_nethttp", fi("main.go", "go", src))
+	if len(ents) != 0 {
+		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // GORM
 // ---------------------------------------------------------------------------
 

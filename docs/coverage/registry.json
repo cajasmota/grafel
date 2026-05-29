@@ -13184,13 +13184,13 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/net_http_stdlib.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/nethttp.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/net_http_stdlib.yaml"],
+            "verified_at": "2026-05-30"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/go_routes.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/nethttp.go","internal/engine/go_routes.go"],
+            "verified_at": "2026-05-30"
           },
           "route_extraction": {
             "status": "missing",

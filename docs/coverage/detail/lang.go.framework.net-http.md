@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/go_routes.go`<br>`internal/engine/rules/go/frameworks/net_http_stdlib.yaml` | — |
-| Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/go_routes.go` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/nethttp.go`<br>`internal/engine/go_routes.go`<br>`internal/engine/rules/go/frameworks/net_http_stdlib.yaml` | — |
+| Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/nethttp.go`<br>`internal/engine/go_routes.go` | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
