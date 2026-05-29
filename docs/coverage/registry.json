@@ -5224,7 +5224,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/cassandra_csharp.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5272,7 +5273,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/dynamodb_csharp.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5320,7 +5322,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/nest_elasticsearch.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5368,7 +5371,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/mongodb_csharp.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5416,7 +5420,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/mysql_csharp.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5464,7 +5469,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5512,7 +5518,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/npgsql.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5560,7 +5567,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/redis_stackexchange.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -5608,7 +5616,8 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/engine/rules/csharp/orms/sqlite_csharp.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -7942,26 +7951,31 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
@@ -7973,7 +7987,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "full",
+            "issue": "3262",
+            "verified_at": "2026-05-29"
           }
         }
       }

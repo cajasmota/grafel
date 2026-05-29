@@ -6461,6 +6461,227 @@ records:
           issues_implemented: ["2773"]
           verified_at: "2026-05-28"
 
+  lang.csharp.orm.efcore:
+    capabilities:
+      Models:
+        model_extraction:
+          # DbSet<T> patterns extracted as SCOPE.Component entities via reEFDbSet
+          # and modelBuilder.Entity<T>() patterns; issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          # Entity property patterns captured via DbSet<T> and Entity<T>()
+          # configuration; issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+      Relationships:
+        relationship_extraction:
+          # HasOne/HasMany fluent patterns detected via reEFFluentHasOne;
+          # issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+        foreign_key_extraction:
+          # HasOne/HasMany fluent patterns model foreign key relationships;
+          # issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+        association_extraction:
+          # Fluent API HasOne/HasMany associations are extracted as
+          # SCOPE.Component; issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+        lazy_loading_recognition:
+          # Include/ThenInclude patterns via reEFLINQInclude recognize eager
+          # loading; issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # LINQ Where/Include patterns extracted via reEFLINQWhere and
+          # reEFLINQInclude as SCOPE.Operation/query; issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+      Migrations:
+        migration_parsing:
+          # Migration class declarations extracted as SCOPE.Component via
+          # reEFMigration; issue #3262.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/ef_core.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/extractors_test.go
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.cassandra:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.dynamodb:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.elastic:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.mongodb:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.mysql:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.neo4j:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.npgsql:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.redis:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.driver.sqlite:
+    capabilities:
+      Queries:
+        query_attribution:
+          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
+          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
+          # issue #3262.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_csharp.go
+              functions: [sniffEffectsCSharp]
+          issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+
   lang.csharp.framework.aspnet-core:
     capabilities:
       Substrate:
