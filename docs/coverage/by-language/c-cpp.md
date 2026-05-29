@@ -66,12 +66,15 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | ❌ | ❌ | ❌ | |
-| [ODB](../detail/lang.c-cpp.orm.odb.md) | ❌ | ❌ | ❌ | |
-| [SOCI](../detail/lang.c-cpp.orm.soci.md) | ❌ | ❌ | ❌ | |
-| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | ❌ | ❌ | ❌ | |
-| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | ❌ | ❌ | ❌ | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | ❌ | ❌ | ❌ | |
-| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | ❌ | ❌ | ❌ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | ❌ 0/8 | |
+| [ODB](../detail/lang.c-cpp.orm.odb.md) | ❌ 0/8 | |
+| [SOCI](../detail/lang.c-cpp.orm.soci.md) | ❌ 0/8 | |
+| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | ❌ 0/8 | |
+| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | ❌ 0/8 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | ❌ 0/8 | |
+| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | ❌ 0/8 | |

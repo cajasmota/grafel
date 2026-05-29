@@ -53,6 +53,7 @@ categories:
     subcategory_order: [http_backend, jvm_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration, task_queue]
   orm:
     capabilities: [model_extraction, query_attribution, migration_parsing]
+    subcategory_order: [orm_mapper]
   message_broker:
     capabilities: [producer_extraction, consumer_extraction, topic_attribution]
   observability:
@@ -525,6 +526,28 @@ subcategories:
         keys: [tests_linkage]
       - name: Substrate
         keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, template_pattern_catalog]
+
+  orm_mapper:
+    display: "ORM / Data Mapper"
+    parent_category: orm
+    capabilities:
+      - model_extraction
+      - schema_extraction
+      - relationship_extraction
+      - foreign_key_extraction
+      - association_extraction
+      - lazy_loading_recognition
+      - query_attribution
+      - migration_parsing
+    groups:
+      - name: Models
+        keys: [model_extraction, schema_extraction]
+      - name: Relationships
+        keys: [relationship_extraction, foreign_key_extraction, association_extraction, lazy_loading_recognition]
+      - name: Queries
+        keys: [query_attribution]
+      - name: Migrations
+        keys: [migration_parsing]
 
   validation_lib:
     display: "Validation"

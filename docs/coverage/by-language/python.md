@@ -69,25 +69,29 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ⚠️ | — | — | |
-| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | — | ⚠️ | ⚠️ | |
-| [Django ORM](../detail/lang.python.orm.django.md) | ✅ | ✅ | ✅ | |
-| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | — | ⚠️ | ⚠️ | |
-| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | — | — | ⚠️ | |
-| [Peewee](../detail/lang.python.orm.peewee.md) | ❌ | ⚠️ | ⚠️ | |
-| [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ | ⚠️ | ⚠️ | |
-| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ⚠️ | ✅ | ✅ | |
-| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ❌ | ✅ | ✅ | |
-| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ | ✅ | ⚠️ | |
-| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | — | — | ⚠️ | |
-| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | — | — | ⚠️ | |
-| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | — | — | ⚠️ | |
-| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | — | — | ⚠️ | |
-| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | — | — | ⚠️ | |
-| [redis-py](../detail/lang.python.driver.redis.md) | — | — | ⚠️ | |
-| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | — | — | ⚠️ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ❌ 0/8 | |
+| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | ❌ 0/8 | |
+| [Django ORM](../detail/lang.python.orm.django.md) | ❌ 6/8 | |
+| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | ❌ 0/8 | |
+| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | ❌ 0/8 | |
+| [Peewee](../detail/lang.python.orm.peewee.md) | ❌ 0/8 | |
+| [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ 0/8 | |
+| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ❌ 5/8 | |
+| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ❌ 2/8 | |
+| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 1/8 | |
+| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ❌ 0/8 | |
+| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ❌ 0/8 | |
+| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ❌ 0/8 | |
+| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | ❌ 0/8 | |
+| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | ❌ 0/8 | |
+| [redis-py](../detail/lang.python.driver.redis.md) | ❌ 0/8 | |
+| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | ❌ 0/8 | |
+
 
 ## Other
 

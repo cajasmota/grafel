@@ -67,19 +67,22 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | — | — | ⚠️ | |
-| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | — | — | ⚠️ | |
-| [Dapper](../detail/lang.csharp.orm.dapper.md) | ❌ | ⚠️ | ⚠️ | |
-| [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ❌ | ✅ | ✅ | |
-| [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | ❌ | ⚠️ | ⚠️ | |
-| [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | ❌ | ❌ | ❌ | |
-| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | — | — | ⚠️ | |
-| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | — | — | ⚠️ | |
-| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | — | — | ⚠️ | |
-| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | — | — | ⚠️ | |
-| [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | ❌ | ⚠️ | ⚠️ | |
-| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | — | — | ⚠️ | |
-| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | — | — | ⚠️ | |
-| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | — | — | ⚠️ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | ❌ 0/8 | |
+| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | ❌ 0/8 | |
+| [Dapper](../detail/lang.csharp.orm.dapper.md) | ❌ 0/8 | |
+| [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ❌ 2/8 | |
+| [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | ❌ 0/8 | |
+| [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | ❌ 0/8 | |
+| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | ❌ 0/8 | |
+| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | ❌ 0/8 | |
+| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | ❌ 0/8 | |
+| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | ❌ 0/8 | |
+| [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | ❌ 0/8 | |
+| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | ❌ 0/8 | |
+| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | ❌ 0/8 | |
+| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | ❌ 0/8 | |

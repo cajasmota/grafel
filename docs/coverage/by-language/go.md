@@ -58,22 +58,25 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | — | — | ⚠️ | |
-| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | ❌ | ⚠️ | ⚠️ | |
-| [GORM](../detail/lang.go.orm.gorm.md) | ❌ | ✅ | ✅ | |
-| [ent (Facebook)](../detail/lang.go.orm.ent.md) | ❌ | ✅ | ✅ | |
-| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | ❌ | ❌ | ❌ | |
-| [go-elasticsearch](../detail/lang.go.driver.elastic.md) | — | — | ⚠️ | |
-| [go-redis](../detail/lang.go.driver.redis.md) | — | — | ⚠️ | |
-| [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | — | — | ⚠️ | |
-| [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | — | — | ⚠️ | |
-| [golang-migrate](../detail/lang.go.orm.migrate.md) | ⚠️ | — | — | |
-| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | — | — | ⚠️ | |
-| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | — | — | ⚠️ | |
-| [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | — | — | ⚠️ | |
-| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | — | — | ⚠️ | |
-| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | ⚠️ | ⚠️ | ⚠️ | |
-| [sqlx](../detail/lang.go.orm.sqlx.md) | ❌ | ⚠️ | ⚠️ | |
-| [xo (codegen)](../detail/lang.go.orm.xo.md) | ❌ | ❌ | ❌ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | ❌ 0/8 | |
+| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | ❌ 0/8 | |
+| [GORM](../detail/lang.go.orm.gorm.md) | ❌ 2/8 | |
+| [ent (Facebook)](../detail/lang.go.orm.ent.md) | ❌ 2/8 | |
+| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | ❌ 0/8 | |
+| [go-elasticsearch](../detail/lang.go.driver.elastic.md) | ❌ 0/8 | |
+| [go-redis](../detail/lang.go.driver.redis.md) | ❌ 0/8 | |
+| [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | ❌ 0/8 | |
+| [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | ❌ 0/8 | |
+| [golang-migrate](../detail/lang.go.orm.migrate.md) | ❌ 0/8 | |
+| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | ❌ 0/8 | |
+| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | ❌ 0/8 | |
+| [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | ❌ 0/8 | |
+| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | ❌ 0/8 | |
+| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | ❌ 0/8 | |
+| [sqlx](../detail/lang.go.orm.sqlx.md) | ❌ 0/8 | |
+| [xo (codegen)](../detail/lang.go.orm.xo.md) | ❌ 0/8 | |

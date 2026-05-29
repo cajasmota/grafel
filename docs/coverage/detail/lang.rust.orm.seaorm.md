@@ -5,15 +5,39 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [orm](../by-category/orm.md)
-- **Capability cells:** 3
+- **Subcategory:** ORM / Data Mapper
+- **Capability cells:** 8
 
 ## Capabilities
+
+
+### Models
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/orms/seaorm.yaml` | — |
+| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Relationships
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Queries
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/orms/seaorm.yaml` | — |
+
+### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ❌ `missing` | — | — | — | — |
-| Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/orms/seaorm.yaml` | — |
-| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/orms/seaorm.yaml` | — |
 
 ## Provenance
 

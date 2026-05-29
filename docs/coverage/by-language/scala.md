@@ -39,11 +39,14 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [Doobie](../detail/lang.scala.orm.doobie.md) | ❌ | ⚠️ | ⚠️ | |
-| [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | — | ⚠️ | ⚠️ | |
-| [Quill](../detail/lang.scala.orm.quill.md) | ❌ | ⚠️ | ⚠️ | |
-| [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | ❌ | ⚠️ | ⚠️ | |
-| [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | — | ⚠️ | ⚠️ | |
-| [Slick](../detail/lang.scala.orm.slick.md) | ❌ | ⚠️ | ⚠️ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [Doobie](../detail/lang.scala.orm.doobie.md) | ❌ 0/8 | |
+| [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | ❌ 0/8 | |
+| [Quill](../detail/lang.scala.orm.quill.md) | ❌ 0/8 | |
+| [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | ❌ 0/8 | |
+| [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | ❌ 0/8 | |
+| [Slick](../detail/lang.scala.orm.slick.md) | ❌ 0/8 | |

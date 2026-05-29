@@ -41,6 +41,8 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return cmdUpdate(rest, stdout)
 	case "backfill":
 		return cmdBackfill(rest, stdout)
+	case "regroup":
+		return cmdRegroup(rest, stdout)
 	case "remove":
 		return cmdRemove(rest, stdout)
 	case "gaps":
@@ -79,6 +81,7 @@ subcommands:
             --capability, --status (required); --cites, --verified-now, --issue, --notes, --clear-issue
             when status=full or not_applicable the issue field is auto-cleared unless --issue is given
   backfill  seed missing lane cells declared by the group taxonomy (--file, --issue, --language, --subcategory, --dry-run, --check)
+  regroup   migrate flat records whose subcategory declares a group taxonomy: move each flat key into its canonical group (--file, --subcategory, --dry-run, --check)
   remove    delete a record by id
   gaps      list missing/partial records (--language, --category, --json)
   stats     counters across the registry (--json)

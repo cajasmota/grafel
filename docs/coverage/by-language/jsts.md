@@ -108,26 +108,30 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | — | — | ✅ | |
-| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | — | — | ✅ | |
-| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ✅ | ✅ | ✅ | |
-| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ | — | ✅ | |
-| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ✅ | ✅ | ✅ | |
-| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | — | — | ✅ | |
-| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | — | ✅ | ✅ | |
-| [Objection.js](../detail/lang.jsts.orm.objection.md) | ✅ | ✅ | ✅ | |
-| [Prisma](../detail/lang.jsts.orm.prisma.md) | ✅ | ✅ | ✅ | |
-| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ✅ | ✅ | ✅ | |
-| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ✅ | ✅ | ✅ | |
-| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | — | — | ✅ | |
-| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | — | — | ✅ | |
-| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | — | — | ✅ | |
-| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | — | — | ✅ | |
-| [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | — | — | ✅ | |
-| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | — | — | ✅ | |
-| [supabase-js](../detail/lang.jsts.driver.supabase.md) | — | — | ✅ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ❌ 1/8 | |
+| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ❌ 1/8 | |
+| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ❌ 3/8 | |
+| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ❌ 2/8 | |
+| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ❌ 3/8 | |
+| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ❌ 1/8 | |
+| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | ❌ 2/8 | |
+| [Objection.js](../detail/lang.jsts.orm.objection.md) | ❌ 4/9 | |
+| [Prisma](../detail/lang.jsts.orm.prisma.md) | ❌ 3/8 | |
+| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ❌ 3/8 | |
+| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ❌ 4/8 | |
+| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | ❌ 1/8 | |
+| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ❌ 1/8 | |
+| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ❌ 1/8 | |
+| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | ❌ 1/8 | |
+| [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | ❌ 1/8 | |
+| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | ❌ 1/8 | |
+| [supabase-js](../detail/lang.jsts.driver.supabase.md) | ❌ 1/8 | |
+
 
 ## Other
 

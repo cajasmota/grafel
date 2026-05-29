@@ -5,15 +5,39 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [orm](../by-category/orm.md)
-- **Capability cells:** 3
+- **Subcategory:** ORM / Data Mapper
+- **Capability cells:** 8
 
 ## Capabilities
+
+
+### Models
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Model extraction | — `not_applicable` | — | — | — | — |
+| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Relationships
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Queries
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries_jsts_drivers.go`<br>`internal/engine/orm_queries_jsts_drivers_test.go` | Includes Cypher node-label attribution: session.run('MATCH (n:Label) ...') resolves the graph node label as the queried resource and maps MATCH/CREATE/MERGE/SET/DELETE clauses to canonical operations. |
+
+### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | — `not_applicable` | — | — | — | — |
-| Model extraction | — `not_applicable` | — | — | — | — |
-| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries_jsts_drivers.go`<br>`internal/engine/orm_queries_jsts_drivers_test.go` | Includes Cypher node-label attribution: session.run('MATCH (n:Label) ...') resolves the graph node label as the queried resource and maps MATCH/CREATE/MERGE/SET/DELETE clauses to canonical operations. |
 
 ## Provenance
 

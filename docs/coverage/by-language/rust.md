@@ -44,19 +44,22 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [Diesel](../detail/lang.rust.orm.diesel.md) | ❌ | ✅ | ✅ | |
-| [Rbatis](../detail/lang.rust.orm.rbatis.md) | ❌ | ❌ | ❌ | |
-| [SeaORM](../detail/lang.rust.orm.seaorm.md) | ❌ | ✅ | ✅ | |
-| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | — | — | ⚠️ | |
-| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | — | — | ⚠️ | |
-| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | — | — | ⚠️ | |
-| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | — | — | ⚠️ | |
-| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | — | — | ⚠️ | |
-| [neo4rs](../detail/lang.rust.driver.neo4j.md) | — | — | ⚠️ | |
-| [redis-rs](../detail/lang.rust.driver.redis.md) | — | — | ⚠️ | |
-| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | — | — | ⚠️ | |
-| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | — | — | ⚠️ | |
-| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | ❌ | ⚠️ | ⚠️ | |
-| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | — | — | ⚠️ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [Diesel](../detail/lang.rust.orm.diesel.md) | ❌ 2/8 | |
+| [Rbatis](../detail/lang.rust.orm.rbatis.md) | ❌ 0/8 | |
+| [SeaORM](../detail/lang.rust.orm.seaorm.md) | ❌ 2/8 | |
+| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | ❌ 0/8 | |
+| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | ❌ 0/8 | |
+| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | ❌ 0/8 | |
+| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | ❌ 0/8 | |
+| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | ❌ 0/8 | |
+| [neo4rs](../detail/lang.rust.driver.neo4j.md) | ❌ 0/8 | |
+| [redis-rs](../detail/lang.rust.driver.redis.md) | ❌ 0/8 | |
+| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ❌ 0/8 | |
+| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | ❌ 0/8 | |
+| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | ❌ 0/8 | |
+| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | ❌ 0/8 | |

@@ -64,7 +64,10 @@ func TestValidSubcategory(t *testing.T) {
 		t.Errorf("bogus should not be valid")
 	}
 	if validSubcategory("orm", "ui_frontend") {
-		t.Errorf("orm has no subcategories — ui_frontend should not validate")
+		t.Errorf("ui_frontend belongs to http_framework, not orm — should not validate")
+	}
+	if !validSubcategory("orm", "orm_mapper") {
+		t.Errorf("orm_mapper should be valid for orm")
 	}
 }
 

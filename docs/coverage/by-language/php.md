@@ -39,19 +39,22 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | — | — | ⚠️ | |
-| [CycleORM](../detail/lang.php.orm.cycleorm.md) | ❌ | ❌ | ❌ | |
-| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ❌ | ✅ | ✅ | |
-| [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | ❌ | ✅ | ✅ | |
-| [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | — | — | ⚠️ | |
-| [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | — | — | ⚠️ | |
-| [PDO SQLite](../detail/lang.php.driver.sqlite.md) | — | — | ⚠️ | |
-| [Propel](../detail/lang.php.orm.propel.md) | ❌ | ⚠️ | ⚠️ | |
-| [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | ❌ | ⚠️ | ⚠️ | |
-| [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | — | — | ⚠️ | |
-| [elasticsearch-php](../detail/lang.php.driver.elastic.md) | — | — | ⚠️ | |
-| [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | — | — | ⚠️ | |
-| [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | — | — | ⚠️ | |
-| [phpredis / Predis](../detail/lang.php.driver.redis.md) | — | — | ⚠️ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | ❌ 0/8 | |
+| [CycleORM](../detail/lang.php.orm.cycleorm.md) | ❌ 0/8 | |
+| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ❌ 2/8 | |
+| [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | ❌ 2/8 | |
+| [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | ❌ 0/8 | |
+| [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | ❌ 0/8 | |
+| [PDO SQLite](../detail/lang.php.driver.sqlite.md) | ❌ 0/8 | |
+| [Propel](../detail/lang.php.orm.propel.md) | ❌ 0/8 | |
+| [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | ❌ 0/8 | |
+| [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | ❌ 0/8 | |
+| [elasticsearch-php](../detail/lang.php.driver.elastic.md) | ❌ 0/8 | |
+| [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | ❌ 0/8 | |
+| [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | ❌ 0/8 | |
+| [phpredis / Predis](../detail/lang.php.driver.redis.md) | ❌ 0/8 | |

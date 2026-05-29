@@ -41,15 +41,18 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [Ecto](../detail/lang.elixir.orm.ecto.md) | ❌ | ✅ | ✅ | |
-| [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | — | — | ⚠️ | |
-| [MyXQL](../detail/lang.elixir.driver.myxql.md) | — | — | ⚠️ | |
-| [Postgrex](../detail/lang.elixir.driver.postgrex.md) | — | — | ⚠️ | |
-| [Redix](../detail/lang.elixir.driver.redix.md) | — | — | ⚠️ | |
-| [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | — | — | ⚠️ | |
-| [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | — | — | ⚠️ | |
-| [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | ❌ | ⚠️ | ⚠️ | |
-| [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | — | — | ⚠️ | |
-| [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | — | — | ⚠️ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [Ecto](../detail/lang.elixir.orm.ecto.md) | ❌ 2/8 | |
+| [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | ❌ 0/8 | |
+| [MyXQL](../detail/lang.elixir.driver.myxql.md) | ❌ 0/8 | |
+| [Postgrex](../detail/lang.elixir.driver.postgrex.md) | ❌ 0/8 | |
+| [Redix](../detail/lang.elixir.driver.redix.md) | ❌ 0/8 | |
+| [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | ❌ 0/8 | |
+| [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | ❌ 0/8 | |
+| [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | ❌ 0/8 | |
+| [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | ❌ 0/8 | |
+| [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | ❌ 0/8 | |

@@ -74,21 +74,25 @@ Back to [summary](../summary.md).
 
 ## ORMs
 
-| Name | Migration parsing | Model extraction | Query attribution | Notes |
-|---|---|---|---|---|
-| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | — | ⚠️ | ⚠️ | |
-| [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ | ❌ | ❌ | |
-| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ | ❌ | ❌ | |
-| [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ | ✅ | ✅ | |
-| [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ | ✅ | ⚠️ | |
-| [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ | ⚠️ | ⚠️ | |
-| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ | ⚠️ | ⚠️ | |
-| [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ | ⚠️ | ⚠️ | |
-| [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ | ⚠️ | ⚠️ | |
-| [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ | ✅ | ✅ | |
-| [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ | ⚠️ | ⚠️ | |
-| [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ | ⚠️ | ⚠️ | |
-| [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ | ⚠️ | ⚠️ | |
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ❌ 0/8 | |
+| [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 0/8 | |
+| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 0/8 | |
+| [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 2/8 | |
+| [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 1/8 | |
+| [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 0/8 | |
+| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 0/8 | |
+| [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 0/8 | |
+| [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ 0/8 | |
+| [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ 2/8 | |
+| [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ 0/8 | |
+| [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ 0/8 | |
+| [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ 0/8 | |
+
 
 ## Other
 
