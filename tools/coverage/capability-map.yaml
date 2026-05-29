@@ -4709,6 +4709,54 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+  lang.java.framework.android-sdk:
+    capabilities:
+      Platform:
+        platform_branching:
+          status: partial
+          symbols:
+            - file: internal/custom/java/android.go
+              functions: [ExtractAndroid]
+          tests:
+            - file: internal/custom/java/android_platform_native_test.go
+              functions: [TestAndroid_PlatformBranching_SdkInt_Issue3188]
+          issues_implemented: ["3188"]
+          verified_at: "2026-05-30"
+      Native Bridge:
+        native_module_imports:
+          status: partial
+          symbols:
+            - file: internal/custom/java/android.go
+              functions: [ExtractAndroid]
+          tests:
+            - file: internal/custom/java/android_platform_native_test.go
+              functions: [TestAndroid_NativeModuleImports_Manifest_Issue3188, TestAndroid_NativeModuleImports_JavaImports_Issue3188]
+          issues_implemented: ["3188"]
+          verified_at: "2026-05-30"
+  lang.java.framework.android-jetpack:
+    capabilities:
+      Platform:
+        platform_branching:
+          status: partial
+          symbols:
+            - file: internal/custom/java/android.go
+              functions: [ExtractAndroid]
+          tests:
+            - file: internal/custom/java/android_platform_native_test.go
+              functions: [TestAndroid_PlatformBranching_SdkInt_Issue3188]
+          issues_implemented: ["3188"]
+          verified_at: "2026-05-30"
+      Native Bridge:
+        native_module_imports:
+          status: partial
+          symbols:
+            - file: internal/custom/java/android.go
+              functions: [ExtractAndroid]
+          tests:
+            - file: internal/custom/java/android_platform_native_test.go
+              functions: [TestAndroid_NativeModuleImports_Manifest_Issue3188, TestAndroid_NativeModuleImports_JavaImports_Issue3188]
+          issues_implemented: ["3188"]
+          verified_at: "2026-05-30"
   lang.java.framework.vertx:
     capabilities:
       Observability:

@@ -14259,12 +14259,16 @@
         },
         "Platform": {
           "platform_branching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT API-level comparisons as platform-branch operations owned by the enclosing class (#3188)"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adUsesPermissionRE+adUsesFeatureRE (manifest android.hardware.*) and adHardwareImportRE (import android.hardware.*) emit native-module references (#3188)"
           }
         },
         "Data Flow": {
@@ -14437,12 +14441,16 @@
         },
         "Platform": {
           "platform_branching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT API-level comparisons as platform-branch operations owned by the enclosing class (#3188)"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adUsesPermissionRE+adUsesFeatureRE (manifest android.hardware.*) and adHardwareImportRE (import android.hardware.*) emit native-module references (#3188)"
           }
         },
         "Data Flow": {

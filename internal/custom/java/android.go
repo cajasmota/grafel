@@ -2,6 +2,7 @@ package java
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -48,6 +49,23 @@ var (
 			`\s*\(\s*\)[^;]*?\.(?:add|replace)\s*\([^,]*,\s*(?:new\s+)?(\w+)\s*(?:\(\s*\))?`)
 	adViewModelProviderRE = regexp.MustCompile(
 		`(?m)(?:new\s+)?ViewModelProvider\s*\([^)]*\)\s*\.get\s*\(\s*(\w+)\.class\s*\)`)
+	// platform_branching: Build.VERSION.SDK_INT comparisons against an API level.
+	// Captures the comparison operator and the right-hand API-level token
+	// (e.g. Build.VERSION_CODES.O, an int literal, or a constant).
+	adSdkIntBranchRE = regexp.MustCompile(
+		`(?m)Build\.VERSION\.SDK_INT\s*(>=|<=|>|<|==|!=)\s*([A-Za-z0-9_.]+)`)
+	// native_module_imports: <uses-permission android:name="android.hardware.*">
+	// (or android.permission.*) declarations in AndroidManifest.xml.
+	adUsesPermissionRE = regexp.MustCompile(
+		`(?m)<uses-permission\b[^>]*android:name\s*=\s*\"([^\"]+)\"`)
+	// native_module_imports: <uses-feature android:name="android.hardware.*">
+	// declarations in AndroidManifest.xml (hardware/software feature gates).
+	adUsesFeatureRE = regexp.MustCompile(
+		`(?m)<uses-feature\b[^>]*android:name\s*=\s*\"([^\"]+)\"`)
+	// native_module_imports: import android.hardware.* statements in Java source
+	// (Camera, Sensor, fingerprint, usb, etc. — the native-device bridge surface).
+	adHardwareImportRE = regexp.MustCompile(
+		`(?m)^\s*import\s+(android\.hardware\.[A-Za-z0-9_.]+)\s*;`)
 )
 
 func androidFrameworkMatches(fw string) bool {
@@ -248,7 +266,90 @@ func ExtractAndroid(ctx PatternContext) PatternResult {
 		})
 	}
 
+	// platform_branching: Build.VERSION.SDK_INT API-level comparisons.
+	// Each comparison site becomes a branch operation owned by the enclosing
+	// class, mirroring the JS mobile platform_branching capability for Android.
+	for _, m := range adSdkIntBranchRE.FindAllStringSubmatchIndex(source, -1) {
+		op := source[m[2]:m[3]]
+		apiLevel := source[m[4]:m[5]]
+		enclosing := findEnclosingClass(source, m[0])
+		expr := "Build.VERSION.SDK_INT " + op + " " + apiLevel
+		branchRef := "scope:operation:android_platform_branch:" + fp + ":" +
+			expr + ":" + lineToStr(source, m[0])
+		props := map[string]any{
+			"branch_kind": "sdk_int", "operator": op,
+			"api_level": apiLevel, "expression": expr,
+			"framework": "android",
+		}
+		if enclosing != "" {
+			props["enclosing_class"] = enclosing
+		}
+		if addEntity(&result, seenRefs, SecondaryEntity{
+			Name: expr, Kind: "SCOPE.Operation", Subtype: "branch",
+			SourceFile: fp,
+			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_ANDROID_SDK_INT_BRANCH", Ref: branchRef,
+			Properties: props,
+		}) && enclosing != "" {
+			addRel(&result, seenRels, Relationship{
+				SourceRef: resolveRef(enclosing), TargetRef: branchRef,
+				RelationshipType: "OWNS",
+				Properties:       map[string]string{"branch_kind": "platform_sdk_int"},
+			})
+		}
+	}
+
+	// native_module_imports: AndroidManifest <uses-permission> / <uses-feature>
+	// hardware declarations + `import android.hardware.*` statements. These
+	// surface the native-device bridge surface (camera, sensors, usb, biometrics).
+	emitNativeModule := func(name, declKind, prov string, line int) {
+		ref := "scope:reference:android_native_module:" + fp + ":" + name
+		props := map[string]any{
+			"module_name": name, "declaration_kind": declKind,
+			"framework": "android",
+		}
+		if i := strings.LastIndex(name, "."); i >= 0 {
+			props["category"] = name[:i]
+		}
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: name, Kind: "SCOPE.Reference", Subtype: "native_module",
+			SourceFile: fp, LineStart: line, LineEnd: line,
+			Provenance: prov, Ref: ref, Properties: props,
+		})
+	}
+
+	if isManifest {
+		for _, m := range adUsesPermissionRE.FindAllStringSubmatchIndex(source, -1) {
+			name := source[m[2]:m[3]]
+			if !strings.HasPrefix(name, "android.hardware.") {
+				continue
+			}
+			emitNativeModule(name, "uses-permission",
+				"INFERRED_FROM_ANDROID_USES_PERMISSION", lineOf(source, m[0]))
+		}
+		for _, m := range adUsesFeatureRE.FindAllStringSubmatchIndex(source, -1) {
+			name := source[m[2]:m[3]]
+			if !strings.HasPrefix(name, "android.hardware.") {
+				continue
+			}
+			emitNativeModule(name, "uses-feature",
+				"INFERRED_FROM_ANDROID_USES_FEATURE", lineOf(source, m[0]))
+		}
+	} else {
+		for _, m := range adHardwareImportRE.FindAllStringSubmatchIndex(source, -1) {
+			name := source[m[2]:m[3]]
+			emitNativeModule(name, "import",
+				"INFERRED_FROM_ANDROID_HARDWARE_IMPORT", lineOf(source, m[0]))
+		}
+	}
+
 	return result
+}
+
+// lineToStr returns the 1-indexed line number for offset as a string, for use
+// in synthetic entity refs that must stay unique across like-named branches.
+func lineToStr(source string, offset int) string {
+	return strconv.Itoa(lineOf(source, offset))
 }
 
 func shortClassName(fullName string) string {
