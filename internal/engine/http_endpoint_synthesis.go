@@ -330,6 +330,8 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeSpringFromComposed(entities, path, emit)
 		// JAX-RS: scan the file directly.
 		synthesizeJAXRS(string(content), emit)
+		// Javalin (#3085): lambda DSL `app.get("/path", handler)` routing.
+		synthesizeJavalin(string(content), emit)
 		// Consumer side (#721): HttpClient / RestTemplate /
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
@@ -795,6 +797,40 @@ func synthesizeJAXRS(content string, emit emitFn) {
 		full := joinPathFragments(classPrefix, methodPath)
 		canonical := httproutes.Canonicalize(httproutes.FrameworkJAXRS, full)
 		emit(verb, canonical, "jaxrs", "Controller", methodName)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Javalin (Java) — lambda DSL routing (#3085)
+// ---------------------------------------------------------------------------
+
+// javalinRouteRe captures Javalin lambda-DSL route registrations of the form:
+//
+//	app.get("/path", handler)
+//	app.post("/path", ctx -> { ... })
+//
+// The receiver is always `app` (or any variable name Javalin is assigned to);
+// we match against the well-known verb names and capture verb + path.
+var javalinRouteRe = regexp.MustCompile(
+	`\bapp\s*\.\s*(get|post|put|delete|patch|head|options)\s*\(\s*"([^"]+)"`)
+
+// synthesizeJavalin scans a Java file for Javalin lambda-DSL route
+// registrations and emits one http_endpoint_definition per (verb, path) pair.
+// Javalin uses `{param}` curly-brace path parameters (JAX-RS style), so
+// FrameworkJavalin is passed to Canonicalize.
+func synthesizeJavalin(content string, emit emitFn) {
+	// File-signal gate: require a Javalin-specific import or API reference.
+	if !strings.Contains(content, "javalin") && !strings.Contains(content, "Javalin") {
+		return
+	}
+	for _, m := range javalinRouteRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		verb := strings.ToUpper(m[1])
+		rawPath := m[2]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkJavalin, rawPath)
+		emit(verb, canonical, "javalin", "Route", "")
 	}
 }
 

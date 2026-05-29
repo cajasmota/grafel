@@ -15535,40 +15535,52 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3085"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go"],
+            "issue": "3085"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go","internal/engine/http_endpoint_synthesis.go","testdata/fixtures/sources/java/javalin/App.java"],
+            "issue": "3085"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go"],
+            "issue": "3085"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go"],
+            "issue": "3085"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go"],
+            "issue": "3085"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go"],
+            "issue": "3085"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/junit5.go"],
+            "issue": "3085"
           }
         },
         "Type System": {
@@ -15594,44 +15606,53 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin is a micro-framework with no built-in DI container; dependency injection is not part of the framework and must be provided externally (e.g. Guice, Koin). DI binding is therefore not_applicable for lang.java.framework.javalin."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin has no built-in DI container; @Inject is not a Javalin concept. DI injection points are not_applicable."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin has no DI scopes (@Singleton, @RequestScoped, etc.); scope resolution is not_applicable."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin is a micro HTTP framework with no built-in transaction management. @Transactional is a Spring/JTA concept; transaction boundary extraction is not_applicable for Javalin."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin has no transaction propagation model; not_applicable."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin has no transaction rollback rules; not_applicable."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin has no AOP support; @Aspect / @Before / @Around are Spring/AspectJ concepts not present in Javalin. Advice attribution is not_applicable."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin has no AOP aspect system; aspect extraction is not_applicable."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3085",
+            "notes": "Javalin has no AOP pointcut system; pointcut resolution is not_applicable."
           }
         },
         "Observability": {
