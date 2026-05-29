@@ -359,6 +359,47 @@ public class MoneyConverter implements AttributeConverter<Money, BigDecimal> {}
 	}
 }
 
+func TestHibernate_AssociationSpringDataJPA(t *testing.T) {
+	source := `
+@Entity
+public class Product {
+    @OneToMany
+    private List<OrderItem> items;
+}
+`
+	r := ExtractHibernate(PatternContext{Source: source, Language: "java", Framework: "spring_data_jpa", FilePath: "Product.java"})
+	if len(r.Relationships) == 0 {
+		t.Error("expected DEPENDS_ON relationship for spring_data_jpa association")
+	}
+	found := false
+	for _, rel := range r.Relationships {
+		if rel.Properties["association_kind"] == "OneToMany" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected association_kind=OneToMany in spring_data_jpa relationship")
+	}
+}
+
+func TestHibernate_SchemaExtraction(t *testing.T) {
+	source := `
+@Entity
+@Table(name="products")
+public class Product {
+    @Id
+    private Long id;
+}
+`
+	r := ExtractHibernate(PatternContext{Source: source, Language: "java", Framework: "jpa", FilePath: "Product.java"})
+	if len(r.Entities) == 0 {
+		t.Fatal("expected entity for jpa schema extraction")
+	}
+	if r.Entities[0].Properties["table_name"] != "products" {
+		t.Errorf("expected table_name=products, got %v", r.Entities[0].Properties["table_name"])
+	}
+}
+
 func TestHibernate_WrongFramework(t *testing.T) {
 	source := `@Entity public class X {}`
 	r := ExtractHibernate(PatternContext{Source: source, Language: "java", Framework: "django", FilePath: "X.java"})
