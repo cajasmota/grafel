@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/neo4j.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No Neo4j Java ORM extractor; @Node annotation for node entity extraction not implemented. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No Neo4j Java ORM extractor (Spring Data Neo4j @Node/@Relationship annotations not handled). Tracked in issue #3001. |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists. |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — |
+| Migration parsing | ❌ `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
 
 ## Provenance
 

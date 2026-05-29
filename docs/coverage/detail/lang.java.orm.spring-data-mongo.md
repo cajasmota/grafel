@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/spring_data_mongodb.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/spring_ecosystem.go` | — |
 
 ### Relationships
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — |
+| Migration parsing | ❌ `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
 
 ## Provenance
 

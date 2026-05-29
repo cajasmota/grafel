@@ -15,17 +15,17 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ❌ `missing` | — | — | — | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Model extraction | ❌ `missing` | — | — | — | No Ebean extractor; Ebean uses non-JPA @Entity from io.ebean package. |
+| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No Ebean extractor; Ebean uses non-JPA @Entity from io.ebean package. Not extracted by Hibernate extractor. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001. |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001. |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — |
+| Migration parsing | ❌ `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
 
 ## Provenance
 

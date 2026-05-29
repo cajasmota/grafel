@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ❌ `missing` | — | — | — | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No EclipseLink-specific extractor. EclipseLink-specific schema annotations not extracted; tracked in issue #3001. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No EclipseLink-specific extractor. EclipseLink is a JPA provider, but its proprietary extensions (@Cache, @ReadTransformer, etc.) are not covered. Hibernate extractor handles standard JPA subset only. |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No EclipseLink-specific extractor. Proprietary EclipseLink relationship annotations not extracted. |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | — |
+| Migration parsing | ❌ `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
 
 ## Provenance
 

@@ -18061,13 +18061,15 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No DynamoDB Java extractor for @DynamoDbBean table schema. Tracked in issue #3001."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No DynamoDB Java ORM extractor. AWS SDK DynamoDB Java uses @DynamoDbBean/@DynamoDbPartitionKey from software.amazon.awssdk; no extractor for these annotations."
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18079,7 +18081,8 @@
           },
           "relationship_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DynamoDB is a key-value/document store; relationships are not expressed at the ORM annotation level."
           }
         },
         "Queries": {
@@ -18105,17 +18108,20 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Ebean extractor; Ebean uses non-JPA @Entity from io.ebean package."
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No Ebean extractor; Ebean uses non-JPA @Entity from io.ebean package. Not extracted by Hibernate extractor."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001."
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18127,7 +18133,8 @@
           },
           "relationship_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001."
           }
         },
         "Queries": {
@@ -18137,7 +18144,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18155,13 +18163,15 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No EclipseLink-specific extractor. EclipseLink-specific schema annotations not extracted; tracked in issue #3001."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No EclipseLink-specific extractor. EclipseLink is a JPA provider, but its proprietary extensions (@Cache, @ReadTransformer, etc.) are not covered. Hibernate extractor handles standard JPA subset only."
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18173,7 +18183,8 @@
           },
           "relationship_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No EclipseLink-specific extractor. Proprietary EclipseLink relationship annotations not extracted."
           }
         },
         "Queries": {
@@ -18183,7 +18194,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18259,17 +18271,20 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "jOOQ schema is expressed via generated Table/Record classes from DDL, not annotations. Cannot be extracted via annotation scanning."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "jOOQ is code-generation first; relationships are expressed via generated FKs in schema classes, not annotations. Static type-safe DSL extraction requires a different paradigm; tracked in issue #3001."
           },
           "foreign_key_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "jOOQ FK extraction requires parsing generated schema classes or DDL, not annotation scanning. Not currently implemented; tracked in issue #3001."
           },
           "lazy_loading_recognition": {
             "status": "missing",
@@ -18277,7 +18292,8 @@
           },
           "relationship_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "jOOQ relationships are in generated code; no extractor for generated jOOQ schema classes."
           }
         },
         "Queries": {
@@ -18289,7 +18305,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18365,13 +18382,15 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "MyBatis does not use schema annotations. Table/column mapping is done in XML mappers or via @Results/@Result. No XML mapper extractor exists; tracked in issue #3001."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "MyBatis uses XML mapper files (\u003cassociation\u003e, \u003ccollection\u003e elements) for relationship mapping. No XML ORM extractor exists; associations cannot be inferred from Java annotations alone."
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18383,7 +18402,8 @@
           },
           "relationship_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "MyBatis relationship extraction requires parsing XML mapper files; no XML ORM extractor exists."
           }
         },
         "Queries": {
@@ -18395,7 +18415,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18415,13 +18436,15 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No Neo4j Java ORM extractor; @Node annotation for node entity extraction not implemented."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "No Neo4j Java ORM extractor (Spring Data Neo4j @Node/@Relationship annotations not handled). Tracked in issue #3001."
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18433,7 +18456,8 @@
           },
           "relationship_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists."
           }
         },
         "Queries": {
@@ -18445,7 +18469,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18526,8 +18551,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/spring_ecosystem.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -18557,7 +18584,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18576,8 +18604,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/spring_ecosystem.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -18607,7 +18637,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18682,8 +18713,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/spring_ecosystem.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -18713,7 +18746,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
@@ -18732,8 +18766,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/spring_ecosystem.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -18763,7 +18799,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "missing",
+            "notes": "No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record."
           }
         }
       }
