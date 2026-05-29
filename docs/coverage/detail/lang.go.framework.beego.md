@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | — | — | — |
+| Auth coverage | 🟢 `partial` | `2026-05-29` | — | `internal/custom/golang/helpers.go`<br>`internal/custom/golang/middleware_auth_extend.go`<br>`internal/custom/golang/middleware_auth_extend_test.go` | — |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | — | — | — |
+| Middleware coverage | 🟢 `partial` | `2026-05-29` | — | `internal/custom/golang/helpers.go`<br>`internal/custom/golang/middleware_auth_extend.go`<br>`internal/custom/golang/middleware_auth_extend_test.go` | — |
 
 ### Type System
 

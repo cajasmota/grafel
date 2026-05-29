@@ -3198,6 +3198,119 @@ records:
             - file: internal/custom/golang/extractors_test.go
             - file: internal/engine/go_routes_test.go
           issues_implemented: ["3212"]
+      Middleware:
+        middleware_coverage:
+          # gorilla_mux.go already records r.Use(...) middleware;
+          # middleware_auth_extend.go (custom_go_middleware_auth) extends this
+          # via the framework-agnostic pass, reading balanced r.Use(...) chains
+          # with the shared findUseCalls/parseMiddlewareChain helpers and
+          # emitting ordered SCOPE.Pattern (mw_order) middleware. Heuristic
+          # ordering, no data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/gorilla_mux.go
+              functions: [Extract]
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, detectMWExtendFramework]
+            - file: internal/custom/golang/helpers.go
+              functions: [findUseCalls, parseMiddlewareChain, emitMiddlewareChain, splitTopLevelArgs]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # classifyAuthMiddleware substring-matches each gorilla-mux r.Use
+          # middleware expression against the shared auth-pattern catalog,
+          # flagging is_auth + auth_kind and emitting a dedicated auth:
+          # SCOPE.Pattern. Pattern match only, no enforcement proof → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware, emitMiddlewareChain]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
+  lang.go.framework.buffalo:
+    capabilities:
+      Middleware:
+        middleware_coverage:
+          # buffalo.go already records app.Use / app.Middleware.Use middleware;
+          # middleware_auth_extend.go (custom_go_middleware_auth) provides the
+          # framework-agnostic coverage, reading balanced .Use(...) chains via
+          # the shared findUseCalls/parseMiddlewareChain helpers and emitting
+          # ordered SCOPE.Pattern (mw_order) middleware. Heuristic ordering,
+          # no data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/buffalo.go
+              functions: [Extract]
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, detectMWExtendFramework]
+            - file: internal/custom/golang/helpers.go
+              functions: [findUseCalls, parseMiddlewareChain, emitMiddlewareChain, splitTopLevelArgs]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # classifyAuthMiddleware substring-matches each buffalo .Use
+          # middleware expression against the shared auth-pattern catalog,
+          # flagging is_auth + auth_kind and emitting a dedicated auth:
+          # SCOPE.Pattern. Pattern match only, no enforcement proof → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware, emitMiddlewareChain]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
+  lang.go.framework.revel:
+    capabilities:
+      Middleware:
+        middleware_coverage:
+          # middleware_auth_extend.go (custom_go_middleware_auth) scans
+          # revel-attributed files for interceptor registration
+          # revel.InterceptFunc/InterceptMethod(fn, revel.BEFORE/AFTER) via
+          # reRevelExtendIntercept, emitting one SCOPE.Pattern
+          # (pattern_kind=middleware, middleware_form=interceptor) per
+          # interceptor. Heuristic regex match, no data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, detectMWExtendFramework, emitFilterMiddleware]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # classifyAuthMiddleware substring-matches each revel interceptor
+          # function/method expression against the shared auth-pattern catalog,
+          # flagging is_auth + auth_kind and emitting a dedicated auth:
+          # SCOPE.Pattern. Pattern match only, no enforcement proof → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, emitFilterMiddleware]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.fyne:
     capabilities:
       Native:
@@ -4109,6 +4222,41 @@ records:
             - file: internal/custom/golang/beego_iris_test.go
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
+      Middleware:
+        middleware_coverage:
+          # middleware_auth_extend.go (custom_go_middleware_auth) scans
+          # beego-attributed files for the filter-registration API
+          # web/beego.InsertFilter("/p", BeforeRouter, FilterFn) via
+          # reBeegoInsertFilter, emitting one SCOPE.Pattern
+          # (pattern_kind=middleware) per filter with filter_position +
+          # filter_path props. Heuristic regex match, no data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, detectMWExtendFramework, emitFilterMiddleware]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # classifyAuthMiddleware substring-matches each beego InsertFilter
+          # function expression against the shared auth-pattern catalog
+          # (jwt/oauth/basic/session/rbac/api_key/…), flagging is_auth +
+          # auth_kind and emitting a dedicated auth: SCOPE.Pattern. Pattern
+          # match only, no enforcement proof → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, emitFilterMiddleware]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.iris:
     capabilities:
@@ -4142,6 +4290,40 @@ records:
             - file: internal/custom/golang/beego_iris_test.go
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
+      Middleware:
+        middleware_coverage:
+          # middleware_auth_extend.go (custom_go_middleware_auth) scans
+          # iris-attributed files for app.Use / .UseRouter / .UseGlobal
+          # middleware chains via the shared findUseCalls/parseMiddlewareChain
+          # helpers (reUseHead's optional Router/Global suffix covers the iris
+          # variants), emitting one ordered SCOPE.Pattern (mw_order) per
+          # middleware. Heuristic ordering, no data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, detectMWExtendFramework]
+            - file: internal/custom/golang/helpers.go
+              functions: [findUseCalls, parseMiddlewareChain, emitMiddlewareChain, splitTopLevelArgs]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # classifyAuthMiddleware substring-matches each iris middleware
+          # expression against the shared auth-pattern catalog, flagging
+          # is_auth + auth_kind and emitting a dedicated auth: SCOPE.Pattern.
+          # Pattern match only, no enforcement proof → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware, emitMiddlewareChain]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.hertz:
     capabilities:
@@ -4173,6 +4355,44 @@ records:
           tests:
             - file: internal/custom/golang/hertz_huma_test.go
           issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+      Middleware:
+        middleware_coverage:
+          # hertz.go already reads balanced h.Use(...) chains via the shared
+          # findUseCalls/parseMiddlewareChain helpers, emitting ordered
+          # SCOPE.Pattern (mw_order) middleware; middleware_auth_extend.go
+          # (custom_go_middleware_auth) provides the same coverage via the
+          # framework-agnostic pass for hertz-attributed files. Heuristic
+          # ordering, no data flow → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/hertz.go
+              functions: [Extract]
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract, detectMWExtendFramework]
+            - file: internal/custom/golang/helpers.go
+              functions: [findUseCalls, parseMiddlewareChain, emitMiddlewareChain, splitTopLevelArgs]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # classifyAuthMiddleware substring-matches each hertz .Use middleware
+          # expression against the shared auth-pattern catalog, flagging
+          # is_auth + auth_kind and emitting a dedicated auth: SCOPE.Pattern.
+          # Pattern match only, no enforcement proof → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/hertz.go
+              functions: [Extract]
+            - file: internal/custom/golang/middleware_auth_extend.go
+              functions: [Extract]
+            - file: internal/custom/golang/helpers.go
+              functions: [classifyAuthMiddleware, emitMiddlewareChain]
+          tests:
+            - file: internal/custom/golang/middleware_auth_extend_test.go
+          issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
   lang.go.framework.huma:

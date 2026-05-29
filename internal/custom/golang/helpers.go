@@ -160,8 +160,11 @@ type useCall struct {
 }
 
 // reUseHead locates the `<ident>.Use(` token; the balanced argument span is
-// then scanned forward from the opening paren.
-var reUseHead = regexp.MustCompile(`(\w+)\.Use\s*\(`)
+// then scanned forward from the opening paren. The optional Router/Global
+// suffix covers Iris's `.UseRouter(...)` / `.UseGlobal(...)` middleware
+// registration variants (gin/echo/fiber/chi/hertz/buffalo/gorilla-mux use the
+// bare `.Use(...)` form, which the optional group still matches).
+var reUseHead = regexp.MustCompile(`(\w+)\.Use(?:Router|Global)?\s*\(`)
 
 // findUseCalls returns every balanced `.Use(...)` call in src. Unlike a flat
 // regex, it tracks paren depth (skipping quoted strings) so arbitrarily nested

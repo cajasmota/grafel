@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | — | — | — |
+| Auth coverage | — `not_applicable` | — | — | — | net/http has no middleware-registration primitive; middleware is manual handler wrapping (func(http.Handler) http.Handler) with no .Use() chain to extract. |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | — | — | — |
+| Middleware coverage | — `not_applicable` | — | — | — | net/http has no middleware-registration primitive; middleware is manual handler wrapping (func(http.Handler) http.Handler) with no .Use() chain to extract. |
 
 ### Type System
 

@@ -10683,7 +10683,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
@@ -10698,7 +10700,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -10860,7 +10864,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
@@ -10875,7 +10881,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -11409,7 +11417,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "fasthttp / fasthttp-router has no middleware-registration primitive; middleware is manual RequestHandler wrapping with no .Use() chain to extract."
           }
         },
         "Validation": {
@@ -11424,7 +11433,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "fasthttp / fasthttp-router has no middleware-registration primitive; middleware is manual RequestHandler wrapping with no .Use() chain to extract."
           }
         },
         "Type System": {
@@ -12376,7 +12386,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
@@ -12391,7 +12403,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -12555,7 +12569,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
@@ -12570,7 +12586,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -12911,7 +12929,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
@@ -12926,7 +12946,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -13265,7 +13287,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "net/http has no middleware-registration primitive; middleware is manual handler wrapping (func(http.Handler) http.Handler) with no .Use() chain to extract."
           }
         },
         "Validation": {
@@ -13280,7 +13303,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "net/http has no middleware-registration primitive; middleware is manual handler wrapping (func(http.Handler) http.Handler) with no .Use() chain to extract."
           }
         },
         "Type System": {
@@ -13442,7 +13466,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
@@ -13457,7 +13483,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
