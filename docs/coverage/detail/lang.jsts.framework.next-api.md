@@ -83,12 +83,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Reachability analysis | 🟢 `partial` | `2026-05-29` | 3055 | `internal/links/reachability.go`<br>`internal/links/reachability_test.go`<br>`internal/substrate/entry_points_jsts.go` | — |
 | Request shape extraction | ✅ `full` | `2026-05-29` | 3055 | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-29` | 3055 | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
-| Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Sanitizer recognition | 🟢 `partial` | `2026-05-29` | 3186 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_jsts_metafw_test.go` | Framework-blind: parameterised SQL, DOMPurify/validator/lodash.escape/he.encode, and zod/joi/yup schema declarations (hard rule per #2772). |
 | Schema drift detection | ✅ `full` | `2026-05-29` | 3055 | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
-| Taint sink detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | 🟢 `partial` | `2026-05-29` | 3186 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_jsts_metafw_test.go` | Framework-blind via jstsSink* regexes: SQL injection, command injection, path traversal, XSS (res.send/innerHTML), ReDoS. Not Next-specific. |
+| Taint source detection | 🟢 `partial` | `2026-05-29` | 3186 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_jsts_metafw_test.go` | Framework-blind: Next.js Pages-Router req.query/body via jstsSourceReqRe and App-Router Web-Fetch request.json()/formData()/text() via jstsSourceMetaFrameworkRe (#3186). No resolved binding → partial. |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3055 | `internal/substrate/template_pattern_jsts.go`<br>`internal/substrate/template_pattern_test.go` | — |
-| Vulnerability finding | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3186 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_jsts_metafw_test.go` | taint_flow.go propagates Next.js API-route sources (req.query/body, request.json) to SQL/command/path/XSS sinks. Heuristic regex chain → partial. |
 
 ## Framework-specific
 

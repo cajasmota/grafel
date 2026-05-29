@@ -20668,8 +20668,11 @@
             "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Angular is a client framework (no server request source); taint_flow.go pairs the DOM XSS sink (.innerHTML=) against the recognised sanitizer (DOMPurify.sanitize). Sink/sanitizer-driven, framework-blind → partial.",
+            "verified_at": "2026-05-29"
           }
         }
       },
@@ -24256,8 +24259,11 @@
             "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind: parameterised SQL, DOMPurify/validator/lodash.escape/he.encode, and zod/joi/yup schema declarations (hard rule per #2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -24266,12 +24272,18 @@
             "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind via jstsSink* regexes: SQL injection, command injection, path traversal, XSS (res.send/innerHTML), ReDoS. Not Next-specific.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind: Next.js Pages-Router req.query/body via jstsSourceReqRe and App-Router Web-Fetch request.json()/formData()/text() via jstsSourceMetaFrameworkRe (#3186). No resolved binding → partial.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
             "status": "partial",
@@ -24280,8 +24292,11 @@
             "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "taint_flow.go propagates Next.js API-route sources (req.query/body, request.json) to SQL/command/path/XSS sinks. Heuristic regex chain → partial.",
+            "verified_at": "2026-05-29"
           }
         }
       },
@@ -24492,8 +24507,11 @@
             "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind: parameterised SQL, DOMPurify/validator/lodash.escape/he.encode, and zod/joi/yup schema declarations (hard rule per #2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -24502,12 +24520,18 @@
             "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind via jstsSink* regexes: SQL injection, command injection, path traversal, XSS, ReDoS. Not Nuxt-specific.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind: Nuxt/Nitro (h3) untrusted-input helpers readBody/readRawBody/getQuery/getRouterParam(s)/getHeader(s)/getCookie via jstsSourceMetaFrameworkRe (#3186). No resolved binding → partial.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
             "status": "partial",
@@ -24516,8 +24540,11 @@
             "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "taint_flow.go propagates Nuxt h3 sources (readBody/getQuery/getRouterParam) to SQL/command/path/XSS sinks. Heuristic regex chain → partial.",
+            "verified_at": "2026-05-29"
           }
         }
       },
@@ -25527,8 +25554,11 @@
             "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind: parameterised SQL, DOMPurify.sanitize/validator.escape/lodash.escape/he.encode, and zod/joi/yup schema declarations (hard rule per #2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -25537,12 +25567,18 @@
             "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind via jstsSink* regexes: SQL injection (db.query non-literal), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (res.send/innerHTML), ReDoS. Not Remix-specific.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "Framework-blind: Remix loader/action route params via jstsSourceLoaderParamsRe (params.*), and request.formData()/json()/text() via jstsSourceMetaFrameworkRe (#3186). No resolved data-flow binding, so partial.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
             "status": "partial",
@@ -25551,8 +25587,11 @@
             "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_metafw_test.go"],
+            "issue": "3186",
+            "notes": "taint_flow.go propagates Remix source (params.*, request.formData/json) to SQL/command/path/XSS sinks. Heuristic regex chain, no precise data-flow resolution → partial.",
+            "verified_at": "2026-05-29"
           }
         }
       },

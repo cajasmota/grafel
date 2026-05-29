@@ -1946,6 +1946,78 @@ records:
             - file: internal/engine/rules/javascript_typescript/frameworks/next_js.yaml
           issues_implemented: ["2671", "2687"]
           verified_at: "2026-05-28"
+      Substrate:
+        # #3186: framework-blind JS/TS taint sniffer wired to the Next.js
+        # API-route record. Pages-Router req.query/body via jstsSourceReqRe,
+        # App-Router Web-Fetch request.json()/formData()/text() via the new
+        # jstsSourceMetaFrameworkRe. Sinks/sanitizers are the shared JS/TS set.
+        taint_source_detection: &jsts_meta_taint_source
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_jsts.go
+              functions: [sniffTaintJSTS, appendTaintMatches]
+          tests:
+            - file: internal/substrate/taint_sites_jsts_metafw_test.go
+          issues_implemented: ["3186"]
+          verified_at: "2026-05-30"
+        taint_sink_detection: &jsts_meta_taint_sink
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_jsts.go
+              functions: [sniffTaintJSTS, appendTaintMatches]
+          tests:
+            - file: internal/substrate/taint_sites_jsts_metafw_test.go
+          issues_implemented: ["3186"]
+          verified_at: "2026-05-30"
+        sanitizer_recognition: &jsts_meta_taint_sanitizer
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_jsts.go
+              functions: [sniffTaintJSTS, appendTaintMatches]
+          tests:
+            - file: internal/substrate/taint_sites_jsts_metafw_test.go
+          issues_implemented: ["3186"]
+          verified_at: "2026-05-30"
+        vulnerability_finding: &jsts_meta_taint_vuln
+          status: partial
+          symbols:
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+            - file: internal/substrate/taint_sites_jsts.go
+              functions: [sniffTaintJSTS]
+          tests:
+            - file: internal/substrate/taint_sites_jsts_metafw_test.go
+          issues_implemented: ["3186"]
+          verified_at: "2026-05-30"
+
+  lang.jsts.framework.remix:
+    capabilities:
+      Substrate:
+        # #3186: Remix loader/action route params (jstsSourceLoaderParamsRe)
+        # and request.formData()/json()/text() (jstsSourceMetaFrameworkRe).
+        taint_source_detection: *jsts_meta_taint_source
+        taint_sink_detection: *jsts_meta_taint_sink
+        sanitizer_recognition: *jsts_meta_taint_sanitizer
+        vulnerability_finding: *jsts_meta_taint_vuln
+
+  lang.jsts.framework.nuxt:
+    capabilities:
+      Substrate:
+        # #3186: Nuxt/Nitro (h3) untrusted-input helpers readBody/getQuery/
+        # getRouterParam(s)/getHeader(s)/getCookie via jstsSourceMetaFrameworkRe.
+        taint_source_detection: *jsts_meta_taint_source
+        taint_sink_detection: *jsts_meta_taint_sink
+        sanitizer_recognition: *jsts_meta_taint_sanitizer
+        vulnerability_finding: *jsts_meta_taint_vuln
+
+  lang.jsts.framework.angular:
+    capabilities:
+      Substrate:
+        # #3186: Angular is a client framework — vulnerability_finding is
+        # driven by pairing the DOM XSS sink (.innerHTML=) against the
+        # recognised sanitizer (DOMPurify.sanitize). Source/sink/sanitizer
+        # cells were landed earlier under #3053.
+        vulnerability_finding: *jsts_meta_taint_vuln
 
   lang.jsts.framework.graphql-resolvers:
     capabilities:

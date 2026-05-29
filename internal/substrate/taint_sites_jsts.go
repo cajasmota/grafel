@@ -66,6 +66,36 @@ var jstsSourceLoaderParamsRe = regexp.MustCompile(
 	`\bparams\s*(?:\.\s*[A-Za-z_$][\w$]*|\[\s*['"][^'"]+['"]\s*\])`,
 )
 
+// jstsSourceMetaFrameworkRe matches the request-input accessors used by the
+// meta-frameworks whose handlers do NOT expose the canonical `req.body`/
+// `request.query` shape that jstsSourceReqRe keys on (#3186). These are
+// framework-blind by construction — the regex fires on the well-known
+// untrusted-input call/accessor regardless of the surrounding framework, so
+// the same primitive is detected in any file that uses it:
+//
+//   - Nuxt / Nitro (h3): readBody(event), readRawBody(event), getQuery(event),
+//     getRouterParam(event,…), getRouterParams(event), getHeader(event,…),
+//     getHeaders(event), getCookie(event,…) — the canonical h3 event helpers
+//     that read the incoming request. These return untrusted input.
+//   - Remix / React-Router data APIs and the Web Fetch `Request`: the loader/
+//     action receives a standard `Request`, and untrusted input is read via
+//     request.formData(), request.json(), request.text(), request.arrayBuffer(),
+//     and request.blob(). (Route `params` are already covered by
+//     jstsSourceLoaderParamsRe.)
+//   - Next.js App-Router route handlers: the handler argument is the same Web
+//     Fetch `Request`, so request.json()/formData()/text() cover it too. The
+//     Pages-Router `req.query`/`req.body` shape is already covered by
+//     jstsSourceReqRe.
+//
+// The Web-Fetch `request.<reader>()` arm is also written to match the bare
+// `req.<reader>()` receiver so Next.js handlers that name the argument `req`
+// are caught. Confidence is 0.85 — these are heuristic receiver-name / helper
+// matches, not a resolved data-flow binding.
+var jstsSourceMetaFrameworkRe = regexp.MustCompile(
+	`\b(?:readBody|readRawBody|getQuery|getRouterParam|getRouterParams|getHeader|getHeaders|getCookie)\s*\(` +
+		`|\b(?:req|request)\s*\.\s*(?:formData|json|text|arrayBuffer|blob)\s*\(`,
+)
+
 // jstsSourceNestJSDecoratorRe matches NestJS controller-method parameters
 // annotated with @Body, @Query, @Param, @Headers, @Req, or @Request (#3163).
 // These decorators inject untrusted HTTP input directly as a typed parameter
@@ -74,12 +104,13 @@ var jstsSourceLoaderParamsRe = regexp.MustCompile(
 // (possibly with an optional string-literal key inside the parens) followed
 // by an optional TypeScript type annotation and then the parameter name.
 // Examples matched:
-//   @Body() dto                       → "dto" is tainted
-//   @Query('q') q: string             → "q" is tainted
-//   @Param('id') id: string           → "id" is tainted
-//   @Headers() headers: Record<…>     → "headers" is tainted
-//   @Req() req: Request               → "req" is tainted
-//   @Request() request: any           → "request" is tainted
+//
+//	@Body() dto                       → "dto" is tainted
+//	@Query('q') q: string             → "q" is tainted
+//	@Param('id') id: string           → "id" is tainted
+//	@Headers() headers: Record<…>     → "headers" is tainted
+//	@Req() req: Request               → "req" is tainted
+//	@Request() request: any           → "request" is tainted
 var jstsSourceNestJSDecoratorRe = regexp.MustCompile(
 	`@(?:Body|Query|Param|Headers|Req|Request)\s*\([^)]*\)\s*[A-Za-z_$][\w$]*`,
 )
@@ -175,6 +206,7 @@ func sniffTaintJSTS(content string) []TaintMatch {
 	var out []TaintMatch
 	out = appendTaintMatches(out, content, headers, jstsSourceReqRe, TaintKindSource, TaintCategoryGeneric, "req.body/query/headers", 1.0)
 	out = appendTaintMatches(out, content, headers, jstsSourceLoaderParamsRe, TaintKindSource, TaintCategoryGeneric, "loader params.*", 0.8)
+	out = appendTaintMatches(out, content, headers, jstsSourceMetaFrameworkRe, TaintKindSource, TaintCategoryGeneric, "readBody/getQuery/request.json/formData", 0.85)
 	out = appendTaintMatches(out, content, headers, jstsSourceNestJSDecoratorRe, TaintKindSource, TaintCategoryGeneric, "@Body/@Query/@Param/@Headers/@Req", 1.0)
 	out = appendTaintMatches(out, content, headers, jstsSourceEnvRe, TaintKindSource, TaintCategoryGeneric, "process.env", 0.85)
 	out = appendTaintMatches(out, content, headers, jstsSourceJSONParseRe, TaintKindSource, TaintCategoryDeserialization, "JSON.parse(ident)", 0.7)
