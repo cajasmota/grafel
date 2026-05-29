@@ -28,8 +28,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Broker binding | ❌ `missing` | — | #2982-B-build | — | No broker-URL extraction implemented yet; requires parsing CELERY_BROKER_URL / broker= constructor arg |
-| Result backend binding | ❌ `missing` | — | #2982-B-build | — | No result-backend extraction implemented yet; requires parsing CELERY_RESULT_BACKEND / backend= constructor arg |
+| Broker binding | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/celery.go` | No broker-URL extraction implemented yet; requires parsing CELERY_BROKER_URL / broker= constructor arg |
+| Result backend binding | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/celery.go` | No result-backend extraction implemented yet; requires parsing CELERY_RESULT_BACKEND / backend= constructor arg |
 
 ### Reliability
 

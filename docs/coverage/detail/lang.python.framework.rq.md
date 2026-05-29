@@ -22,20 +22,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Schedule extraction | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
+| Schedule extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/rq.go` | rq-scheduler enqueue_at/enqueue_in/cron patterns detected. Partial because periodic job re-scheduling (scheduler.schedule) and django-rq integration are not yet modelled. |
 
 ### Broker
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Broker binding | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
-| Result backend binding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Broker binding | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/rq.go` | — |
+| Result backend binding | ⚠️ `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/rq.go` | RQ stores results in the same Redis instance used as broker; no separate result_backend URL is configured. Partial because the connection is inferred from the broker Redis conn, not a distinct field. |
 
 ### Reliability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Retry policy extraction | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
+| Retry policy extraction | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/rq.go` | — |
 
 ### Testing
 

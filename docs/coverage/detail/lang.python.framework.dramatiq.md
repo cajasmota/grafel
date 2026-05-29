@@ -22,20 +22,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Schedule extraction | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
+| Schedule extraction | ⚠️ `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3074) | — | django-dramatiq periodiq/APScheduler integration: periodic task declarations via @dramatiq.actor + periodiq.cron are detectable via the @periodiq.cron decorator pattern but are not yet extracted by the dramatiq extractor. Partial because basic actor-based scheduling is not modelled; only per-actor retry intervals. |
 
 ### Broker
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Broker binding | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
-| Result backend binding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Broker binding | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/dramatiq.go` | — |
+| Result backend binding | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3074) | — | dramatiq has no result_backend concept; task results are stored via middleware (e.g. django-dramatiq result backend), not a single broker URL |
 
 ### Reliability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Retry policy extraction | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2983) | — | — |
+| Retry policy extraction | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/dramatiq.go` | — |
 
 ### Testing
 

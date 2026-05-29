@@ -44,6 +44,27 @@ var (
 	celTaskRoutesEntryRe = regexp.MustCompile(
 		`(?m)["']([^"']+)["']:\s*\{([^}]*)\}`)
 	celRoutingQueueRe = regexp.MustCompile(`["']queue["']:\s*["']([^"']+)["']`)
+
+	// Broker / result-backend binding patterns (Issue #3074).
+	//
+	// Detected forms:
+	//   app.conf.broker_url = "amqp://..."
+	//   app.conf.update(broker_url="amqp://...")
+	//   Celery(broker="redis://...")
+	//   CELERY_BROKER_URL = "redis://..."
+	// Same shapes for result_backend / CELERY_RESULT_BACKEND.
+	celBrokerURLAssignRe = regexp.MustCompile(
+		`(?m)(?:\w+\.conf\.broker_url|CELERY_BROKER_URL)\s*=\s*["']([^"']+)["']`)
+	celBrokerURLUpdateRe = regexp.MustCompile(
+		`(?m)(?:\w+\.conf\.update|update)\s*\([^)]*broker_url\s*=\s*["']([^"']+)["']`)
+	celBrokerConstructorRe = regexp.MustCompile(
+		`(?m)Celery\s*\([^)]*broker\s*=\s*["']([^"']+)["']`)
+	celResultBackendAssignRe = regexp.MustCompile(
+		`(?m)(?:\w+\.conf\.result_backend|CELERY_RESULT_BACKEND)\s*=\s*["']([^"']+)["']`)
+	celResultBackendUpdateRe = regexp.MustCompile(
+		`(?m)(?:\w+\.conf\.update|update)\s*\([^)]*result_backend\s*=\s*["']([^"']+)["']`)
+	celResultBackendConstructorRe = regexp.MustCompile(
+		`(?m)Celery\s*\([^)]*backend\s*=\s*["']([^"']+)["']`)
 )
 
 func (e *CeleryExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -169,6 +190,39 @@ func (e *CeleryExtractor) Extract(ctx context.Context, file extractor.FileInput)
 				props["queue"] = qm[1]
 			}
 			out = append(out, entity(taskName, "SCOPE.Pattern", "task_route", file.Path, line, props))
+		}
+	}
+
+	// 7. Broker binding — detect broker_url / CELERY_BROKER_URL / Celery(broker=...)
+	brokerURL := ""
+	for _, re := range []*regexp.Regexp{celBrokerURLAssignRe, celBrokerURLUpdateRe, celBrokerConstructorRe} {
+		if m := re.FindStringSubmatchIndex(source); m != nil {
+			brokerURL = source[m[2]:m[3]]
+			line := lineOf(source, m[0])
+			out = append(out, entity("celery.broker_url", "SCOPE.Config", "broker_binding", file.Path, line,
+				map[string]string{
+					"framework":    "celery",
+					"pattern_type": "broker_binding",
+					"broker_url":   brokerURL,
+					"provenance":   "INFERRED_FROM_CELERY_BROKER_URL",
+				}))
+			break
+		}
+	}
+
+	// 8. Result-backend binding — detect result_backend / CELERY_RESULT_BACKEND / Celery(backend=...)
+	for _, re := range []*regexp.Regexp{celResultBackendAssignRe, celResultBackendUpdateRe, celResultBackendConstructorRe} {
+		if m := re.FindStringSubmatchIndex(source); m != nil {
+			resultBackend := source[m[2]:m[3]]
+			line := lineOf(source, m[0])
+			out = append(out, entity("celery.result_backend", "SCOPE.Config", "result_backend_binding", file.Path, line,
+				map[string]string{
+					"framework":      "celery",
+					"pattern_type":   "result_backend_binding",
+					"result_backend": resultBackend,
+					"provenance":     "INFERRED_FROM_CELERY_RESULT_BACKEND",
+				}))
+			break
 		}
 	}
 
