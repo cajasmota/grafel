@@ -30,7 +30,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/django.go` | Django admin registrations (admin.site.register, @admin.register) and form patterns; full form field introspection not yet implemented |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | 🟢 `partial` | `2026-05-29` | 3185 | `internal/custom/python/django.go`<br>`internal/custom/python/http_reqresp_generic.go` | Django Form.is_valid() + cleaned_data patterns in FBV/CBV handlers; DRF request.data/.validated_data/.is_valid() patterns detected via generic HTTP extractor. |
 
 ### Middleware
 

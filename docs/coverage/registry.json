@@ -33845,12 +33845,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies; Django Form/ModelForm class definitions. Covers all 13 non-FastAPI/Flask frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -34075,12 +34081,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -34507,12 +34519,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -34744,8 +34762,11 @@
             "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/django.go","internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Django Form.is_valid() + cleaned_data patterns in FBV/CBV handlers; DRF request.data/.validated_data/.is_valid() patterns detected via generic HTTP extractor.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -35402,12 +35423,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -36101,12 +36128,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -36368,12 +36401,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -36598,12 +36637,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -36830,12 +36875,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -37059,12 +37110,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -37481,12 +37538,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -37710,12 +37773,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -37942,12 +38011,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -38171,12 +38246,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies. Generic extractor covering all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "issue": "3185",
+            "notes": "Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {

@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | 🟢 `partial` | `2026-05-29` | 3185 | `internal/custom/python/http_reqresp_generic.go` | Pydantic BaseModel type-hinted params in route/handler functions; marshmallow schema.load() in handler bodies; Django Form/ModelForm class definitions. Covers all 13 non-FastAPI/Flask frameworks. |
+| Request validation | 🟢 `partial` | `2026-05-29` | 3185 | `internal/custom/python/http_reqresp_generic.go` | Pydantic model_validate/parse_obj calls in handler bodies; marshmallow schema.load() validation evidence. Generic extractor for all non-FastAPI/Flask Python web frameworks. |
 
 ### Middleware
 
