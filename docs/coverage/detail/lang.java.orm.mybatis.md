@@ -16,22 +16,22 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/mybatis.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | MyBatis does not use schema annotations. Table/column mapping is done in XML mappers or via @Results/@Result. No XML mapper extractor exists; tracked in issue #3001. |
+| Schema extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | Annotation @Results + XML <resultMap> become result_map schema entities; column DDL not parsed. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | MyBatis uses XML mapper files (<association>, <collection> elements) for relationship mapping. No XML ORM extractor exists; associations cannot be inferred from Java annotations alone. |
+| Association extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | result_map result_type captured; <association>/<collection> nested joins not yet parsed. |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | MyBatis relationship extraction requires parsing XML mapper files; no XML ORM extractor exists. |
+| Relationship extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | Result maps + mapper->statement ownership; FK/join-result associations not modeled. |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/mybatis.yaml` | — |
+| Query attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | — |
 
 ### Migrations
 

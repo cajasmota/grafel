@@ -60,11 +60,11 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [sqlx](../detail/lang.go.orm.sqlx.md) | ❌ 0/8 | |
 | [go](../by-language/go.md) | [xo (codegen)](../detail/lang.go.orm.xo.md) | ❌ 0/8 | |
 | [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ❌ 0/8 | |
-| [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 0/8 | |
-| [java](../by-language/java.md) | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 0/8 | |
+| [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 4/8 | |
+| [java](../by-language/java.md) | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 4/8 | |
 | [java](../by-language/java.md) | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 2/8 | |
 | [java](../by-language/java.md) | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 1/8 | |
-| [java](../by-language/java.md) | [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 0/8 | |
+| [java](../by-language/java.md) | [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 1/8 | |
 | [java](../by-language/java.md) | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 0/8 | |
 | [java](../by-language/java.md) | [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 1/8 | |
 | [java](../by-language/java.md) | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 0/8 | |

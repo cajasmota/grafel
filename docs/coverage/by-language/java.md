@@ -80,11 +80,11 @@ Back to [summary](../summary.md).
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ❌ 0/8 | |
-| [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 0/8 | |
-| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 0/8 | |
+| [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 4/8 | |
+| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 4/8 | |
 | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 2/8 | |
 | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 1/8 | |
-| [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 0/8 | |
+| [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 1/8 | |
 | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 0/8 | |
 | [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 1/8 | |
 | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 0/8 | |

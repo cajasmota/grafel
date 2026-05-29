@@ -18180,20 +18180,25 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "missing",
-            "notes": "No Ebean extractor; Ebean uses non-JPA @Entity from io.ebean package."
+            "status": "full",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/orm_extractors_test.go"],
+            "notes": "No Ebean extractor; Ebean uses non-JPA @Entity from io.ebean package.",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No Ebean extractor; Ebean uses non-JPA @Entity from io.ebean package. Not extracted by Hibernate extractor."
+            "status": "partial",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/orm_extractors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3007",
+            "notes": "Captures @Table table_name + Model base-class marker; column-level schema not parsed.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001."
+            "status": "full",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/orm_extractors_test.go"],
+            "notes": "No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001.",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18204,14 +18209,17 @@
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001."
+            "status": "full",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/orm_extractors_test.go"],
+            "notes": "No Ebean extractor exists. Ebean has its own annotation style (@Entity from io.ebean). A dedicated extractor would be needed; tracked in issue #3001.",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/java/ebean.go","internal/custom/java/orm_extractors_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -18231,19 +18239,24 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/orm_extractors_test.go"],
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No EclipseLink-specific extractor. EclipseLink-specific schema annotations not extracted; tracked in issue #3001."
+            "status": "partial",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/orm_extractors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3007",
+            "notes": "Captures @Table table_name + @Cache L2 marker; column/index introspection not parsed.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No EclipseLink-specific extractor. EclipseLink is a JPA provider, but its proprietary extensions (@Cache, @ReadTransformer, etc.) are not covered. Hibernate extractor handles standard JPA subset only."
+            "status": "full",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/orm_extractors_test.go"],
+            "notes": "No EclipseLink-specific extractor. EclipseLink is a JPA provider, but its proprietary extensions (@Cache, @ReadTransformer, etc.) are not covered. Hibernate extractor handles standard JPA subset only.",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18254,14 +18267,17 @@
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No EclipseLink-specific extractor. Proprietary EclipseLink relationship annotations not extracted."
+            "status": "full",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/orm_extractors_test.go"],
+            "notes": "No EclipseLink-specific extractor. Proprietary EclipseLink relationship annotations not extracted.",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/java/eclipselink.go","internal/custom/java/orm_extractors_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -18453,16 +18469,20 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "MyBatis does not use schema annotations. Table/column mapping is done in XML mappers or via @Results/@Result. No XML mapper extractor exists; tracked in issue #3001."
+            "status": "partial",
+            "cites": ["internal/custom/java/mybatis.go","internal/custom/java/orm_extractors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3007",
+            "notes": "Annotation @Results + XML \u003cresultMap\u003e become result_map schema entities; column DDL not parsed.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "MyBatis uses XML mapper files (\u003cassociation\u003e, \u003ccollection\u003e elements) for relationship mapping. No XML ORM extractor exists; associations cannot be inferred from Java annotations alone."
+            "status": "partial",
+            "cites": ["internal/custom/java/mybatis.go","internal/custom/java/orm_extractors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3007",
+            "notes": "result_map result_type captured; \u003cassociation\u003e/\u003ccollection\u003e nested joins not yet parsed.",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -18473,16 +18493,18 @@
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "MyBatis relationship extraction requires parsing XML mapper files; no XML ORM extractor exists."
+            "status": "partial",
+            "cites": ["internal/custom/java/mybatis.go","internal/custom/java/orm_extractors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3007",
+            "notes": "Result maps + mapper-\u003estatement ownership; FK/join-result associations not modeled.",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/mybatis.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/java/mybatis.go","internal/custom/java/orm_extractors_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {

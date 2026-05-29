@@ -3430,3 +3430,147 @@ records:
             - file: internal/custom/python/extractors_test.go
           issues_implemented: ["2985"]
           verified_at: "2026-05-29"
+
+  lang.java.orm.eclipselink:
+    capabilities:
+      Models:
+        model_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/eclipselink.go
+              functions: [Extract, looksLikeEclipseLink]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+        schema_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/eclipselink.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+      Relationships:
+        association_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/eclipselink.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+        relationship_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/eclipselink.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+      Queries:
+        query_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/java/eclipselink.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+
+  lang.java.orm.ebean:
+    capabilities:
+      Models:
+        model_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/ebean.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+        schema_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/ebean.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+      Relationships:
+        association_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/ebean.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+        relationship_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/ebean.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+      Queries:
+        query_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/java/ebean.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+
+  lang.java.orm.mybatis:
+    capabilities:
+      Models:
+        schema_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/mybatis.go
+              functions: [extractAnnotations, extractXML]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+      Relationships:
+        association_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/mybatis.go
+              functions: [extractAnnotations, extractXML]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+        relationship_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/mybatis.go
+              functions: [extractAnnotations, extractXML]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"
+      Queries:
+        query_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/java/mybatis.go
+              functions: [Extract, extractAnnotations, extractXML]
+          tests:
+            - file: internal/custom/java/orm_extractors_test.go
+          issues_implemented: ["3007"]
+          verified_at: "2026-05-29"

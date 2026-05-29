@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ❌ `missing` | — | — | — | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No EclipseLink-specific extractor. EclipseLink-specific schema annotations not extracted; tracked in issue #3001. |
+| Model extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/java/eclipselink.go`<br>`internal/custom/java/orm_extractors_test.go` | — |
+| Schema extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/eclipselink.go`<br>`internal/custom/java/orm_extractors_test.go` | Captures @Table table_name + @Cache L2 marker; column/index introspection not parsed. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No EclipseLink-specific extractor. EclipseLink is a JPA provider, but its proprietary extensions (@Cache, @ReadTransformer, etc.) are not covered. Hibernate extractor handles standard JPA subset only. |
+| Association extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/java/eclipselink.go`<br>`internal/custom/java/orm_extractors_test.go` | No EclipseLink-specific extractor. EclipseLink is a JPA provider, but its proprietary extensions (@Cache, @ReadTransformer, etc.) are not covered. Hibernate extractor handles standard JPA subset only. |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No EclipseLink-specific extractor. Proprietary EclipseLink relationship annotations not extracted. |
+| Relationship extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/java/eclipselink.go`<br>`internal/custom/java/orm_extractors_test.go` | No EclipseLink-specific extractor. Proprietary EclipseLink relationship annotations not extracted. |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ❌ `missing` | — | — | — | — |
+| Query attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/java/eclipselink.go`<br>`internal/custom/java/orm_extractors_test.go` | — |
 
 ### Migrations
 
