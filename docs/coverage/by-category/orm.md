@@ -129,19 +129,19 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [python](../by-language/python.md) | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
 | [python](../by-language/python.md) | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |
-| [ruby](../by-language/ruby.md) | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🟡 1/6 | |
+| [ruby](../by-language/ruby.md) | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🟡 1/4 | |
 | [ruby](../by-language/ruby.md) | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | 🟡 2/8 | |
 | [ruby](../by-language/ruby.md) | [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟡 2/8 | |
 | [ruby](../by-language/ruby.md) | [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟡 2/7 | |
 | [ruby](../by-language/ruby.md) | [ROM (Ruby Object Mapper)](../detail/lang.ruby.orm.rom-rb.md) | 🟡 2/8 | |
 | [ruby](../by-language/ruby.md) | [Sequel](../detail/lang.ruby.orm.sequel.md) | 🟡 2/8 | |
-| [ruby](../by-language/ruby.md) | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | 🟡 1/6 | |
-| [ruby](../by-language/ruby.md) | [elasticsearch-ruby](../detail/lang.ruby.driver.elastic.md) | 🟡 1/6 | |
-| [ruby](../by-language/ruby.md) | [mysql2 (Ruby driver)](../detail/lang.ruby.driver.mysql.md) | 🟡 1/6 | |
-| [ruby](../by-language/ruby.md) | [neo4j-ruby-driver](../detail/lang.ruby.driver.neo4j.md) | 🟡 1/6 | |
-| [ruby](../by-language/ruby.md) | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🟡 1/6 | |
-| [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🟡 1/6 | |
-| [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🟡 1/6 | |
+| [ruby](../by-language/ruby.md) | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | 🟡 1/4 | |
+| [ruby](../by-language/ruby.md) | [elasticsearch-ruby](../detail/lang.ruby.driver.elastic.md) | 🟡 1/4 | |
+| [ruby](../by-language/ruby.md) | [mysql2 (Ruby driver)](../detail/lang.ruby.driver.mysql.md) | 🟡 1/4 | |
+| [ruby](../by-language/ruby.md) | [neo4j-ruby-driver](../detail/lang.ruby.driver.neo4j.md) | 🟡 1/4 | |
+| [ruby](../by-language/ruby.md) | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🟡 1/4 | |
+| [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🟡 1/4 | |
+| [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🟡 1/4 | |
 | [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 2/8 | |
 | [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🔴 0/8 | |
 | [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 2/8 | |
