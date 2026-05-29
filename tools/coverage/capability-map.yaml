@@ -3838,6 +3838,23 @@ records:
             - file: internal/custom/golang/fyne_gomobile_test.go
           issues_implemented: ["3218"]
           verified_at: "2026-05-30"
+      Data Flow:
+        branch_conditions:
+          # runtime.GOOS `if`/`switch` control-flow sites are emitted as
+          # SCOPE.Operation/branch entities with a BRANCHES_ON edge — the Go
+          # port of the JS/TS branchconditions pass to the runtime.GOOS idiom
+          # (#3255). Partial: regex over `if runtime.GOOS ==/!= "x"` and
+          # `switch runtime.GOOS { case "x": }` (incl. multi-platform arms),
+          # deduped by normalised condition; no AST control-flow graph and
+          # aliased/indirect GOOS values are not resolved.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/gomobile.go
+              functions: [Extract, normalizeGoBranchExpr, goosSwitchBody]
+          tests:
+            - file: internal/custom/golang/gomobile_branch_test.go
+          issues_implemented: ["3255"]
+          verified_at: "2026-05-29"
   lang.go.orm.gorm:
     capabilities:
       Models:
