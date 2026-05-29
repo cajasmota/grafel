@@ -121,11 +121,11 @@ Back to [summary](../summary.md).
 | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ❌ 2/7 | |
 | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ❌ 3/8 | |
 | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ✅ 1/1 | |
-| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | ❌ 2/7 | |
-| [Objection.js](../detail/lang.jsts.orm.objection.md) | ❌ 4/9 | |
+| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | ⚠️ 5/5 | |
+| [Objection.js](../detail/lang.jsts.orm.objection.md) | ❌ 8/9 | |
 | [Prisma](../detail/lang.jsts.orm.prisma.md) | ❌ 3/8 | |
 | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ❌ 3/8 | |
-| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ❌ 4/8 | |
+| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ❌ 6/8 | |
 | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | ✅ 1/1 | |
 | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ✅ 1/1 | |
 | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ✅ 1/1 | |

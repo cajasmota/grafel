@@ -26331,26 +26331,33 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/extractors_test.go","internal/custom/javascript/mongoose.go"],
+            "issue": "3064"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mongoose.go"],
+            "issue": "3064",
+            "notes": "reMongoosePopulate captures .populate() traversal calls (navigate-to-ref); the definition-side ref: field in Schema() is not extracted, so reference declarations are missing"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3064",
+            "notes": "MongoDB is a document-oriented database; there is no relational FK concept"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3064",
+            "notes": "Mongoose/MongoDB has no lazy-loading mechanism"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mongoose.go"],
+            "issue": "3064",
+            "notes": ".populate() traversals are captured as query entities; schema-level ref: declarations (the definition side of Mongoose associations) are not parsed"
           }
         },
         "Queries": {
@@ -26381,26 +26388,31 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go"],
+            "issue": "3064"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go"],
+            "issue": "3064"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go"],
+            "issue": "3064",
+            "notes": "reObjectionRelation captures named relation entries (relation_type+field_name) from relationMappings, which encode FK join topology implicitly; the from/to column-level FK fields are not explicitly parsed"
           },
           "lazy_loading_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go"],
+            "issue": "3064"
           }
         },
         "Queries": {
@@ -26552,12 +26564,14 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/extractors_test.go","internal/custom/javascript/typeorm.go"],
+            "issue": "3064"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/typeorm.go"],
+            "issue": "3064"
           },
           "lazy_loading_recognition": {
             "status": "missing",

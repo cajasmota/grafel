@@ -22,8 +22,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_test.go`<br>`internal/custom/javascript/typeorm.go` | — |
+| Foreign key extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/typeorm.go` | — |
 | Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Relationship extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/javascript/typeorm.go` | — |
 

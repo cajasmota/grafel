@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go`<br>`internal/engine/rules/javascript_typescript/orms/objection.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | — |
+| Foreign key extraction | ⚠️ `partial` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | reObjectionRelation captures named relation entries (relation_type+field_name) from relationMappings, which encode FK join topology implicitly; the from/to column-level FK fields are not explicitly parsed |
 | Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_coverage_test.go`<br>`internal/custom/javascript/objection.go` | — |
 
 ### Queries
 
