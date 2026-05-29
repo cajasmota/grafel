@@ -3426,6 +3426,73 @@ records:
           issues_implemented: ["3212"]
           verified_at: "2026-05-30"
 
+  lang.go.framework.beego:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # beego.go custom extractor: reBeegoRouter captures the method-style
+          # beego/web/ns.Router("/path", &Ctrl{}, "get:GetAll;post:Post") form,
+          # expanding the verb:handler mapping (beegoMethodMap) into one endpoint
+          # per verb; reBeegoAnnotation reads the // @router /path [get,post]
+          # comment style; reBeegoNamespace records NewNamespace prefixes as
+          # SCOPE.Component; reBeegoAutoRouter covers AutoRouter; beego.Run()
+          # seeds the app service. beego.yaml provides detection markers only.
+          status: full
+          symbols:
+            - file: internal/custom/golang/beego.go
+              functions: [Extract, beegoMethodMap]
+            - file: internal/engine/rules/go/frameworks/beego.yaml
+          tests:
+            - file: internal/custom/golang/beego_iris_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # beego.go binds each endpoint to its controller via the "controller"
+          # property (and, where a verb:handler mapping is present, the
+          # qualified "handler" Controller.Method). Heuristic regex resolution;
+          # no AST receiver-type pass is required for the method-mapping form.
+          status: full
+          symbols:
+            - file: internal/custom/golang/beego.go
+              functions: [Extract, beegoMethodMap]
+          tests:
+            - file: internal/custom/golang/beego_iris_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
+  lang.go.framework.iris:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          # iris.go custom extractor: reIrisRoute captures app.Get/Post/… verb
+          # methods, reIrisHandle covers app.Handle("METHOD","/path",…) (incl.
+          # HandleMany space-separated verbs); reIrisParty records Party/PartyFunc
+          # group prefixes (nested prefixes resolved transitively); iris.New()/
+          # iris.Default() seeds the app service. iris.yaml provides detection
+          # markers only.
+          status: full
+          symbols:
+            - file: internal/custom/golang/iris.go
+              functions: [Extract]
+            - file: internal/engine/rules/go/frameworks/iris.yaml
+          tests:
+            - file: internal/custom/golang/beego_iris_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+        handler_attribution:
+          # iris.go records the handler-receiver variable (router_var) and route
+          # path on each endpoint; the go_routes.go AST pass (shared, untouched
+          # here) rewrites bare-receiver ROUTES_TO edges for the gin/echo-style
+          # verb calls iris shares. Heuristic regex resolution.
+          status: full
+          symbols:
+            - file: internal/custom/golang/iris.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/beego_iris_test.go
+          issues_implemented: ["3212"]
+          verified_at: "2026-05-30"
+
   lang.java.framework.spring-webflux:
     capabilities:
       Observability:
