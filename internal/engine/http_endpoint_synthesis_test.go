@@ -60,6 +60,21 @@ func requireContains(t *testing.T, got, want []string, label string) {
 	}
 }
 
+// requireNotContains asserts that none of the unwanted IDs appear in got.
+// Used to prove phantom endpoints (e.g. React-Query cache keys mistaken for
+// URLs, #3171) are NOT synthesized.
+func requireNotContains(t *testing.T, got, unwanted []string, label string) {
+	t.Helper()
+	for _, u := range unwanted {
+		for _, g := range got {
+			if g == u {
+				t.Errorf("%s: phantom synthetic %q should NOT be present (got: %v)", label, u, got)
+				break
+			}
+		}
+	}
+}
+
 // TestSynth_Flask covers @app.route(methods=["GET","POST"]), @bp.get(),
 // and Flask path converters.
 func TestSynth_Flask(t *testing.T) {

@@ -287,18 +287,63 @@ func TestIsHTTPWrapperHeuristic_ConfigOverride(t *testing.T) {
 // React Query / SWR / RTK Query beyond-minimum
 // ---------------------------------------------------------------------------
 
-// TestSynth806_ReactQueryUseQuery verifies that useQuery with a string key
-// matching a resource name emits a FETCHES edge to the normalized path.
+// TestSynth806_ReactQueryUseQuery verifies that the REAL endpoint inside a
+// useQuery's queryFn is captured. The endpoint comes from the queryFn body
+// (the fetch call) — NOT from the queryKey array. See #3171: the queryKey is a
+// cache key, not a URL.
 func TestSynth806_ReactQueryUseQuery(t *testing.T) {
 	src := `import { useQuery } from '@tanstack/react-query';
 
 export function useUsers() {
-  return useQuery({ queryKey: ['users'], queryFn: () => callApi('users', 'GET') });
+  return useQuery({ queryKey: ['users'], queryFn: () => fetch('/users') });
 }
 `
 	got, _ := runDetect(t, "typescript", "806-rq-useQuery.ts", src)
 	want := []string{"http:GET:/users"}
-	requireContains(t, got, want, "#806 React Query useQuery queryKey resource name")
+	requireContains(t, got, want, "#806 React Query useQuery queryFn real call")
+}
+
+// TestSynth3171_QueryKeyNotEndpoint is the proving fixture for #3171: a
+// React-Query queryKey/mutationKey that does NOT match any URL must NOT
+// fabricate an endpoint, while the REAL call in the same queryFn/mutationFn
+// must still be extracted.
+//
+// Before the fix, archigraph emitted phantom calls GET /scoped-permissions and
+// POST /role-permissions (the cache keys). The cache keys are logical labels;
+// the real endpoint is the literal URL passed to fetch/axios. This proves both
+// halves: (a) no phantom from the key array, (b) the real URL survives.
+func TestSynth3171_QueryKeyNotEndpoint(t *testing.T) {
+	src := `import { useQuery, useMutation } from '@tanstack/react-query';
+import axios from 'axios';
+
+export function useScopedPermissions(id) {
+  return useQuery({
+    queryKey: ['scoped-permissions', id],
+    queryFn: () => axios.get('/permissions/123/scope_permissions'),
+  });
+}
+
+export function useAssignRole() {
+  return useMutation({
+    mutationKey: ['role-permissions'],
+    mutationFn: (body) => axios.post('/permissions/assign_role', body),
+  });
+}
+`
+	got, _ := runDetect(t, "typescript", "3171-querykey.ts", src)
+
+	// (a) The cache keys must NOT become endpoints.
+	requireNotContains(t, got, []string{
+		"http:GET:/scoped-permissions",
+		"http:POST:/role-permissions",
+		"http:GET:/role-permissions",
+	}, "#3171 queryKey/mutationKey cache keys must not be endpoints")
+
+	// (b) The real URLs passed to axios.get / axios.post must still be extracted.
+	requireContains(t, got, []string{
+		"http:GET:/permissions/123/scope_permissions",
+		"http:POST:/permissions/assign_role",
+	}, "#3171 real queryFn/mutationFn calls still extracted")
 }
 
 // TestSynth806_RTKQueryBuilderQuery verifies that RTK Query
