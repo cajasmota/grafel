@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | `2026-05-29` | 3054 | `internal/custom/python/http_middleware.go` | — |
 
 ### Type System
 

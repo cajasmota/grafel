@@ -32944,7 +32944,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -33162,7 +33165,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -33565,7 +33571,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -34416,7 +34425,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -35078,7 +35090,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -35315,7 +35330,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -35533,7 +35551,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -35744,7 +35765,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -35961,7 +35985,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -36360,7 +36387,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -36577,7 +36607,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -36793,7 +36826,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -37010,7 +37046,10 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/http_middleware.go"],
+            "issue": "3054",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
