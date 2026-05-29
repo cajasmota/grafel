@@ -135,20 +135,21 @@ func TestBackfillDryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// TestCompletenessWarningsZeroAfterBackfill confirms that once backfill
-// has seeded every declared lane cell, validateRegistry emits zero
-// grouped-completeness warnings.
-func TestCompletenessWarningsZeroAfterBackfill(t *testing.T) {
+// TestCompletenessErrorsZeroAfterBackfill confirms that once backfill has
+// seeded every declared lane cell, validateRegistry emits zero grouped-
+// completeness errors. (The gate was flipped to error in #2971; the
+// function was previously named TestCompletenessWarningsZeroAfterBackfill.)
+func TestCompletenessErrorsZeroAfterBackfill(t *testing.T) {
 	dst := copyFixture(t)
 
 	// Before: the fixture's grouped nestjs record is incomplete, so at
-	// least one completeness warning must be present.
+	// least one completeness error must be present.
 	before, err := loadRegistry(dst)
 	if err != nil {
 		t.Fatalf("load before: %v", err)
 	}
-	if n := countCompletenessWarnings(validateRegistry(before, repoRoot(t))); n == 0 {
-		t.Fatal("fixture precondition: expected completeness warnings before backfill")
+	if n := countCompletenessErrors(validateRegistry(before, repoRoot(t))); n == 0 {
+		t.Fatal("fixture precondition: expected completeness errors before backfill")
 	}
 
 	if _, _, err := runCmd(t, "backfill", "--file", dst); err != nil {
@@ -158,17 +159,18 @@ func TestCompletenessWarningsZeroAfterBackfill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load after: %v", err)
 	}
-	if n := countCompletenessWarnings(validateRegistry(after, repoRoot(t))); n != 0 {
-		t.Errorf("expected 0 completeness warnings after backfill, got %d", n)
+	if n := countCompletenessErrors(validateRegistry(after, repoRoot(t))); n != 0 {
+		t.Errorf("expected 0 completeness errors after backfill, got %d", n)
 	}
 }
 
-// countCompletenessWarnings counts warnings emitted by
+// countCompletenessErrors counts errors emitted by
 // validateGroupedCompleteness (identified by their stable message stem).
-func countCompletenessWarnings(res *ValidationResult) int {
+// Before #2971 these were warnings; the gate is now true so they are errors.
+func countCompletenessErrors(res *ValidationResult) int {
 	n := 0
-	for _, w := range res.Warnings {
-		if strings.Contains(w, "declared by subcategory") {
+	for _, e := range res.Errors {
+		if strings.Contains(e, "declared by subcategory") {
 			n++
 		}
 	}

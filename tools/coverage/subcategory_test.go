@@ -259,22 +259,28 @@ func TestValidateRegistrySubcategory(t *testing.T) {
 		},
 	}
 	res := validateRegistry(reg, ".")
-	// React record should be clean (no errors involving it).
-	hasError := func(needle string) bool {
+	// React record should be clean — no structural errors. Since the gate is
+	// now true (#2971), the minimal in-memory record will have completeness
+	// errors for undeclared lane cells; those are expected and excluded here
+	// (this test is scoped to subcategory/key validation, not completeness).
+	hasStructuralError := func(needle string) bool {
 		for _, e := range res.Errors {
+			if containsStr(e, "declared by subcategory") {
+				continue // completeness error — not this test's concern
+			}
 			if containsStr(e, needle) {
 				return true
 			}
 		}
 		return false
 	}
-	if hasError("lang.jsts.framework.react") {
-		t.Errorf("react record should validate; got errors: %v", res.Errors)
+	if hasStructuralError("lang.jsts.framework.react") {
+		t.Errorf("react record should have no structural errors; got errors: %v", res.Errors)
 	}
-	if !hasError("no_such_subcategory") {
+	if !hasStructuralError("no_such_subcategory") {
 		t.Errorf("expected unknown-subcategory error; got: %v", res.Errors)
 	}
-	if !hasError("ipc_extraction") {
+	if !hasStructuralError("ipc_extraction") {
 		t.Errorf("expected cross-subcategory key rejection; got: %v", res.Errors)
 	}
 }
@@ -465,24 +471,31 @@ func TestValidateGroupedRecord(t *testing.T) {
 		},
 	}
 	res := validateRegistry(reg, ".")
-	hasError := func(needle string) bool {
+	// Since the completeness gate is now true (#2971), the minimal in-memory
+	// records will carry completeness errors for undeclared lane cells.
+	// Exclude those from structural-rule checks — this test is scoped to
+	// group-name validation, capability placement, and dup-key detection.
+	hasStructuralError := func(needle string) bool {
 		for _, e := range res.Errors {
+			if containsStr(e, "declared by subcategory") {
+				continue // completeness error — not this test's concern
+			}
 			if containsStr(e, needle) {
 				return true
 			}
 		}
 		return false
 	}
-	if hasError("lang.jsts.framework.react") {
-		t.Errorf("react should validate; got: %v", res.Errors)
+	if hasStructuralError("lang.jsts.framework.react") {
+		t.Errorf("react should have no structural errors; got: %v", res.Errors)
 	}
-	if !hasError(`unknown group "Strcture"`) {
+	if !hasStructuralError(`unknown group "Strcture"`) {
 		t.Errorf("expected unknown group error; got: %v", res.Errors)
 	}
-	if !hasError("does not belong to group") {
+	if !hasStructuralError("does not belong to group") {
 		t.Errorf("expected capability-belongs-to-group error; got: %v", res.Errors)
 	}
-	if !hasError("already declared under group") {
+	if !hasStructuralError("already declared under group") {
 		t.Errorf("expected duplicate-key error; got: %v", res.Errors)
 	}
 }

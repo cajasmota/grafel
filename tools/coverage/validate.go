@@ -23,12 +23,11 @@ const staleDays = 90
 // completenessGateIsError controls the severity of the grouped-
 // completeness check (validateGroupedCompleteness): a lane key declared
 // by a record's subcategory group taxonomy but absent from the record's
-// cells. While false (this PR, #2942) these surface as WARNINGS, which
-// never fail CI — the `backfill` subcommand exists to seed those cells so
-// they become explicit `missing` placeholders. A later PR flips this to
-// true once the registry is backfilled, turning dictionary completeness
-// into a hard gate.
-const completenessGateIsError = false
+// cells. Now true (#2971, Foundation Wave 2 final step): the registry was
+// fully backfilled in #2970, so any missing lane cell is a hard ERROR that
+// fails CI. Use `go run ./tools/coverage backfill` to seed new cells before
+// adding a record to a grouped subcategory.
+const completenessGateIsError = true
 
 // ValidationResult collects errors (block) and warnings (advisory).
 type ValidationResult struct {

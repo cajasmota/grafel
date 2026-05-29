@@ -214,7 +214,15 @@ func TestStatsJSON(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	_, errout, err := runCmd(t, "validate", "--file", fixturePath(t), "--repo-root", repoRoot(t), "--skip-map")
+	// The checked-in fixture is intentionally incomplete (backfill tests need
+	// absent lane cells). Backfill a temp copy first so completeness errors
+	// don't interfere with this schema/cite smoke-test. (#2971: gate is now
+	// true, so an incomplete fixture would exit non-zero.)
+	tmp := copyFixture(t)
+	if _, _, err := runCmd(t, "backfill", "--file", tmp); err != nil {
+		t.Fatalf("backfill before validate: %v", err)
+	}
+	_, errout, err := runCmd(t, "validate", "--file", tmp, "--repo-root", repoRoot(t), "--skip-map")
 	if err != nil {
 		t.Fatalf("validate: %v\nstderr:\n%s", err, errout)
 	}

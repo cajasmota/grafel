@@ -19,6 +19,8 @@ jobs:
           go-version: '1.22'
       - name: Validate schema + cites
         run: go run ./tools/coverage validate
+      - name: Guard against incomplete grouped records (#2971)
+        run: go run ./tools/coverage backfill --check
       - name: Verify registry.json is canonical (guards against recompaction, #2907)
         run: |
           if ! go run ./tools/coverage fmt --check; then

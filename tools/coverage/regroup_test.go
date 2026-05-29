@@ -116,14 +116,19 @@ func TestRegroupIdempotent(t *testing.T) {
 	}
 }
 
-// TestRegroupThenValidateZeroErrors confirms that after regroup the record
-// has no flat-shape-forbidden / shape errors (validate reports 0 errors
-// for it). Backfill-able missing relationship cells are advisory warnings,
-// not errors.
+// TestRegroupThenValidateZeroErrors confirms that after regroup + backfill
+// the record has no errors (validate reports 0 errors for it). Prior to
+// #2971 backfill-able missing cells were advisory warnings; they are now
+// hard errors, so the test runs backfill after regroup to seed them.
 func TestRegroupThenValidateZeroErrors(t *testing.T) {
 	dst := writeFlatORMFixture(t)
 	if _, _, err := runCmd(t, "regroup", "--file", dst); err != nil {
 		t.Fatalf("regroup: %v", err)
+	}
+	// Seed any lane cells that regroup left unset so the completeness gate
+	// (now an error since #2971) doesn't trip on the regrouped record.
+	if _, _, err := runCmd(t, "backfill", "--file", dst); err != nil {
+		t.Fatalf("backfill after regroup: %v", err)
 	}
 	reg, err := loadRegistry(dst)
 	if err != nil {
@@ -137,7 +142,7 @@ func TestRegroupThenValidateZeroErrors(t *testing.T) {
 		}
 	}
 	if len(errs) > 0 {
-		t.Errorf("validate reported errors for regrouped record:\n%s", strings.Join(errs, "\n"))
+		t.Errorf("validate reported errors for regrouped+backfilled record:\n%s", strings.Join(errs, "\n"))
 	}
 }
 
