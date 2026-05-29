@@ -116,7 +116,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟢 6/6 | |
 | [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
 | [python](../by-language/python.md) | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟢 6/6 | |
-| [python](../by-language/python.md) | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 1/2 | |
+| [python](../by-language/python.md) | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [Peewee](../detail/lang.python.orm.peewee.md) | 🟢 6/6 | |
 | [python](../by-language/python.md) | [Pony ORM](../detail/lang.python.orm.pony.md) | 🟢 6/6 | |
 | [python](../by-language/python.md) | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
@@ -126,9 +126,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [python](../by-language/python.md) | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟢 1/1 | |
 | [python](../by-language/python.md) | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟢 1/1 | |
 | [python](../by-language/python.md) | [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | 🟢 1/1 | |
-| [python](../by-language/python.md) | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟡 1/2 | |
+| [python](../by-language/python.md) | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
-| [python](../by-language/python.md) | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟡 1/2 | |
+| [python](../by-language/python.md) | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |
 | [ruby](../by-language/ruby.md) | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🟡 1/6 | |
 | [ruby](../by-language/ruby.md) | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | 🟡 2/8 | |
 | [ruby](../by-language/ruby.md) | [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟡 2/8 | |
