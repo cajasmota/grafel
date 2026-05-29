@@ -11,20 +11,20 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Crow](../detail/lang.c-cpp.framework.crow.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Crow](../detail/lang.c-cpp.framework.crow.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
 | [C#](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 1/6 | |
 | [C#](../by-language/csharp.md) | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🔴 0/6 | |
 | [C#](../by-language/csharp.md) | [Carter](../detail/lang.csharp.framework.carter.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🔴 0/6 | |
@@ -157,7 +157,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/8 | |
+| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | 🟡 1/3 | 🟢 1/1 | 🟢 21/21 | 🔴 0/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
 | [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
@@ -205,8 +205,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟡 7/10 | 🔴 0/3 | |
-| [C/C++](../by-language/c-cpp.md) | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟡 7/10 | 🔴 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟢 10/10 | 🔴 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟢 10/10 | 🔴 0/3 | |
 | [C#](../by-language/csharp.md) | [Uno Platform](../detail/lang.csharp.framework.uno.md) | 🟢 10/10 | 🔴 0/3 | |
 | [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | 🟢 10/10 | 🔴 0/3 | |
 | [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | 🟢 10/10 | 🔴 0/3 | |

@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | — | — | — |
+| Enum extraction | 🟢 `partial` | — | — | `internal/extractors/cpp/extractor.go` | — |
 | Interface extraction | 🔴 `missing` | — | — | — | — |
 | Type alias extraction | 🔴 `missing` | — | — | — | — |
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | — | — | — | — |
+| Tests linkage | 🟢 `partial` | — | — | `internal/substrate/entry_points_c_cpp.go` | — |
 
 ### Substrate
 
@@ -61,22 +61,22 @@ Auto-generated. Back to [summary](../summary.md).
 | Constant propagation | ✅ `full` | `2026-05-27` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/c_cpp.go`<br>`internal/substrate/substrate.go` | — |
 | DB effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_c_cpp.go` | — |
 | Dead code detection | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_c_cpp.go` | — |
-| Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_c_cpp.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-27` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/c_cpp.go`<br>`internal/substrate/substrate.go` | — |
 | Fs effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_c_cpp.go` | — |
 | HTTP effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_c_cpp.go` | — |
 | Import resolution quality | 🟢 `partial` | `2026-05-27` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/c_cpp.go`<br>`internal/substrate/substrate.go` | — |
-| Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/module_cycle_pass.go` | — |
 | Mutation effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_c_cpp.go` | — |
-| Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/pure_function_pass.go` | — |
 | Reachability analysis | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_c_cpp.go` | — |
-| Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/substrate/payload_shapes_c_cpp.go` | — |
+| Response shape extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/substrate/payload_shapes_c_cpp.go` | — |
 | Sanitizer recognition | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_c_cpp.go` | — |
-| Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/payload_drift.go` | — |
 | Taint sink detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_c_cpp.go` | — |
 | Taint source detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_c_cpp.go` | — |
-| Template pattern catalog | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_c_cpp.go` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_c_cpp.go` | — |
 
 ## Provenance
