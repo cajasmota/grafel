@@ -3263,64 +3263,6 @@ records:
               functions: [Extract]
           tests:
             - file: internal/custom/golang/sql_drivers_test.go
-  lang.go.orm.ent:
-    capabilities:
-      Models:
-        model_extraction:
-          # reEntSchemaStruct + reEntSchemaEmbed detect ent.Schema-embedding
-          # structs under ent/schema/ as SCOPE.Schema entities.
-          status: full
-          symbols:
-            - file: internal/custom/golang/ent.go
-              functions: [Extract, entOwningSchema, entInSchemaDir]
-          tests:
-            - file: internal/custom/golang/ent_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-        schema_extraction:
-          # field.<Type>("name") builders in Fields() become SCOPE.Component
-          # field entities with column_name + ent_field_type properties.
-          status: full
-          symbols:
-            - file: internal/custom/golang/ent.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/golang/ent_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-      Relationships:
-        relationship_extraction:
-          # edge.To/edge.From("name", T.Type) in Edges() become
-          # SCOPE.Component relation entities with target + direction.
-          status: full
-          symbols:
-            - file: internal/custom/golang/ent.go
-              functions: [Extract, entEdgeTail]
-          tests:
-            - file: internal/custom/golang/ent_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-        association_extraction:
-          # has_one/has_many/belongs_to classified from edge direction +
-          # .Unique() (to-one) vs default (to-many).
-          status: full
-          symbols:
-            - file: internal/custom/golang/ent.go
-              functions: [Extract, entEdgeTail]
-          tests:
-            - file: internal/custom/golang/ent_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-        foreign_key_extraction:
-          # ent foreign keys are implicit in the edge graph; .Ref("...") names
-          # the inverse field (inverse_ref) but no explicit FK column is
-          # declared in the schema, so FK recovery is heuristic.
-          status: partial
-          symbols:
-            - file: internal/custom/golang/ent.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/golang/ent_test.go
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
       Queries:
@@ -3334,14 +3276,6 @@ records:
               functions: [Extract]
           tests:
             - file: internal/custom/golang/sql_drivers_test.go
-          # Generated typed builder usage client.<Entity>.Query/Create/Update/
-          # Delete/Get binds the operation to a concrete entity.
-          status: full
-          symbols:
-            - file: internal/custom/golang/ent.go
-              functions: [Extract, isExportedIdent]
-          tests:
-            - file: internal/custom/golang/ent_test.go
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
       Migrations:
@@ -3388,74 +3322,6 @@ records:
               functions: [Extract]
           tests:
             - file: internal/custom/golang/sql_drivers_test.go
-          # client.Schema.Create(ctx) auto-migration call becomes a
-          # SCOPE.Operation migration entity.
-          status: full
-          symbols:
-            - file: internal/custom/golang/ent.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/golang/ent_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-
-  lang.go.orm.bun:
-    capabilities:
-      Models:
-        model_extraction:
-          # reBunStruct + reBunTable detect a struct carrying bun:"table:..."
-          # on its embedded bun.BaseModel as a SCOPE.Schema entity.
-          status: full
-          symbols:
-            - file: internal/custom/golang/bun.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/golang/bun_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-        schema_extraction:
-          # Scalar fields with bun:"col,..." tags become SCOPE.Component field
-          # entities with column_name + primary_key properties.
-          status: full
-          symbols:
-            - file: internal/custom/golang/bun.go
-              functions: [Extract, bunColumnName, bunHasFlag, isBunIdent]
-          tests:
-            - file: internal/custom/golang/bun_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-      Relationships:
-        relationship_extraction:
-          # bun:"rel:..." and bare m2m:<table> tags become SCOPE.Component
-          # relation entities with target + join mapping.
-          status: full
-          symbols:
-            - file: internal/custom/golang/bun.go
-              functions: [Extract, relationshipTargetLocal]
-          tests:
-            - file: internal/custom/golang/bun_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-        association_extraction:
-          # has_one/belongs_to/has_many/many2many normalised from the rel:
-          # tag value (and the m2m: shorthand) by bunRelKind.
-          status: full
-          symbols:
-            - file: internal/custom/golang/bun.go
-              functions: [Extract, bunRelKind]
-          tests:
-            - file: internal/custom/golang/bun_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-        foreign_key_extraction:
-          # join:<a>=<b> captured into the relation's join property; this is the
-          # FK mapping but is recorded heuristically (no column resolution).
-          status: partial
-          symbols:
-            - file: internal/custom/golang/bun.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/golang/bun_test.go
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
       Queries:
@@ -3516,28 +3382,6 @@ records:
               functions: [Extract]
           tests:
             - file: internal/custom/golang/sql_drivers_test.go
-          # db.New<Verb>() builders detected; .Model(&T{})/(*T)(nil) literal
-          # forms bind to a model, bare-variable .Model(v) does not (no data
-          # flow), hence partial.
-          status: partial
-          symbols:
-            - file: internal/custom/golang/bun.go
-              functions: [Extract, bunQueryModel]
-          tests:
-            - file: internal/custom/golang/bun_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
-      Migrations:
-        migration_parsing:
-          # DDL builders (NewCreateTable/NewDropTable/...) + the bun migrate API
-          # (migrate.NewMigrations/MustRegister/Migrator.Migrate/...) become
-          # SCOPE.Operation migration entities.
-          status: full
-          symbols:
-            - file: internal/custom/golang/bun.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/golang/bun_test.go
           issues_implemented: ["3214"]
           verified_at: "2026-05-30"
 

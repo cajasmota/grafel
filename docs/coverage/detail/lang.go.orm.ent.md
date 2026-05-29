@@ -15,29 +15,29 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
-| Schema extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
+| Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/go/orms/ent.yaml` | — |
+| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
-| Foreign key extraction | 🟢 `partial` | `2026-05-29` | 3214 | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
-| Lazy loading recognition | — `not_applicable` | — | — | — | ent loading is query-time via .With<Edge>() eager-load calls; there is no static eager/lazy declaration on the schema to extract. |
-| Relationship extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
+| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
+| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries.go` | — |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
+| Migration parsing | 🔴 `missing` | — | — | — | — |
 
 ## Provenance
 
