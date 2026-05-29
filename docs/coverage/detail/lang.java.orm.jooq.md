@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/jooq.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | jOOQ schema is expressed via generated Table/Record classes from DDL, not annotations. Cannot be extracted via annotation scanning. |
+| Schema extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/jooq.go` | jOOQ schema is expressed via generated Table/Record classes from DDL, not annotations. Cannot be extracted via annotation scanning. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | jOOQ is code-generation first; relationships are expressed via generated FKs in schema classes, not annotations. Static type-safe DSL extraction requires a different paradigm; tracked in issue #3001. |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | jOOQ FK extraction requires parsing generated schema classes or DDL, not annotation scanning. Not currently implemented; tracked in issue #3001. |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | jOOQ relationships are in generated code; no extractor for generated jOOQ schema classes. |
+| Association extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/jooq.go` | jOOQ is code-generation first; relationships are expressed via generated FKs in schema classes, not annotations. Static type-safe DSL extraction requires a different paradigm; tracked in issue #3001. |
+| Foreign key extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/jooq.go` | jOOQ FK extraction requires parsing generated schema classes or DDL, not annotation scanning. Not currently implemented; tracked in issue #3001. |
+| Lazy loading recognition | — `not_applicable` | — | 3098 | `internal/custom/java/jooq.go` | jOOQ is a query DSL with no lazy-loading concept; lazy_loading_recognition is not applicable |
+| Relationship extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/jooq.go` | jOOQ relationships are in generated code; no extractor for generated jOOQ schema classes. |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
+| Migration parsing | — `not_applicable` | — | 3098 | `internal/custom/java/jooq.go` | jOOQ is a query DSL, not schema-migration tooling; migration_parsing is not applicable |
 
 ## Provenance
 

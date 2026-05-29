@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/neo4j.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No Neo4j Java ORM extractor; @Node annotation for node entity extraction not implemented. |
+| Schema extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor; @Node annotation for node entity extraction not implemented. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No Neo4j Java ORM extractor (Spring Data Neo4j @Node/@Relationship annotations not handled). Tracked in issue #3001. |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists. |
+| Association extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor (Spring Data Neo4j @Node/@Relationship annotations not handled). Tracked in issue #3001. |
+| Foreign key extraction | — `not_applicable` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j is a graph database with no foreign key concept; foreign_key_extraction is not applicable |
+| Lazy loading recognition | — `not_applicable` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j Spring Data has no lazy-loading concept equivalent to relational ORMs; not applicable |
+| Relationship extraction | ⚠️ `partial` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists. |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | ❌ `missing` | — | — | — | No Java ORM migration extractor. Flyway/Liquibase migration parsing is tracked separately as its own category; not a responsibility of this ORM record. |
+| Migration parsing | — `not_applicable` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j graph database has no SQL migration files; migration_parsing is not applicable |
 
 ## Provenance
 

@@ -87,14 +87,14 @@ Back to [summary](../summary.md).
 | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 7/8 | |
 | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 7/8 | |
 | [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 5/8 | |
-| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 2/8 | |
+| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ⚠️ 5/5 | |
 | [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 5/8 | |
 | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 3/4 | |
 | [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ 3/4 | |
 | [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ 7/8 | |
 | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ 3/4 | |
 | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ 3/4 | |
-| [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ 2/8 | |
+| [jOOQ](../detail/lang.java.orm.jooq.md) | ⚠️ 6/6 | |
 
 
 ## Other

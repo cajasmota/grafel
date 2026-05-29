@@ -65,14 +65,14 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [java](../by-language/java.md) | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 7/8 | |
 | [java](../by-language/java.md) | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 7/8 | |
 | [java](../by-language/java.md) | [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 5/8 | |
-| [java](../by-language/java.md) | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 2/8 | |
+| [java](../by-language/java.md) | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ⚠️ 5/5 | |
 | [java](../by-language/java.md) | [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 5/8 | |
 | [java](../by-language/java.md) | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 3/4 | |
 | [java](../by-language/java.md) | [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ 3/4 | |
 | [java](../by-language/java.md) | [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ 7/8 | |
 | [java](../by-language/java.md) | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | ❌ 3/4 | |
 | [java](../by-language/java.md) | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | ❌ 3/4 | |
-| [java](../by-language/java.md) | [jOOQ](../detail/lang.java.orm.jooq.md) | ❌ 2/8 | |
+| [java](../by-language/java.md) | [jOOQ](../detail/lang.java.orm.jooq.md) | ⚠️ 6/6 | |
 | [JS/TS](../by-language/jsts.md) | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ❌ 3/8 | |
