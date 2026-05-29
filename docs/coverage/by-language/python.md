@@ -42,7 +42,7 @@ Back to [summary](../summary.md).
 
 | Name | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ❌ 0/1 | ❌ 5/21 | ❌ 4/6 | |
+| [Celery (task queue)](../detail/lang.python.framework.celery.md) | ⚠️ 0/1 | ❌ 5/21 | ❌ 4/6 | |
 | [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | ❌ 0/1 | ❌ 5/21 | ❌ 0/6 | |
 | [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | ❌ 0/1 | ❌ 0/21 | ❌ 0/6 | |
 

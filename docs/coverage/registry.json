@@ -31628,11 +31628,13 @@
         "Broker": {
           "broker_binding": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "#2982-B-build",
+            "notes": "No broker-URL extraction implemented yet; requires parsing CELERY_BROKER_URL / broker= constructor arg"
           },
           "result_backend_binding": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "#2982-B-build",
+            "notes": "No result-backend extraction implemented yet; requires parsing CELERY_RESULT_BACKEND / backend= constructor arg"
           }
         },
         "Reliability": {
@@ -31645,8 +31647,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/pytest.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "pytest.go extracts test functions and fixtures; coverage is partial because Celery-task test helpers are not directly linked",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -31660,16 +31665,22 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_python.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-wide Python effect sniffer detects Django ORM / SQLAlchemy db writes and reads; partial because Celery-specific task context is not disambiguated",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_python.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-wide Python def-use sniffer captures variable defs/uses; partial for Celery task argument flows",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -31702,8 +31713,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_python.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-wide Python entry-point sniffer detects module-level test/main/lifecycle entry points; partial for Celery worker entry wiring",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -31725,16 +31739,25 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_python.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-wide Python effect sniffer recognises SQL/command-injection sink shapes; partial for Celery task context",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_python.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-wide Python taint sniffer recognises request/env sources; partial for Celery task context",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_python.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-wide Python template-pattern sniffer covers i18n/log/SQL patterns; partial for Celery-specific message formatting",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
             "status": "missing",

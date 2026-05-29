@@ -28,8 +28,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Broker binding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Result backend binding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Broker binding | ❌ `missing` | — | #2982-B-build | — | No broker-URL extraction implemented yet; requires parsing CELERY_BROKER_URL / broker= constructor arg |
+| Result backend binding | ❌ `missing` | — | #2982-B-build | — | No result-backend extraction implemented yet; requires parsing CELERY_RESULT_BACKEND / backend= constructor arg |
 
 ### Reliability
 
@@ -41,7 +41,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | pytest.go extracts test functions and fixtures; coverage is partial because Celery-task test helpers are not directly linked |
 
 ### Substrate
 
@@ -49,9 +49,9 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
-| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DB effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | language-wide Python effect sniffer detects Django ORM / SQLAlchemy db writes and reads; partial because Celery-specific task context is not disambiguated |
 | Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/def_use_python.go` | language-wide Python def-use sniffer captures variable defs/uses; partial for Celery task argument flows |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
 | Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
@@ -59,14 +59,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/entry_points_python.go` | language-wide Python entry-point sniffer detects module-level test/main/lifecycle entry points; partial for Celery worker entry wiring |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
 | Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_python.go` | — |
-| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/effect_sinks_python.go` | language-wide Python effect sniffer recognises SQL/command-injection sink shapes; partial for Celery task context |
+| Taint source detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | language-wide Python taint sniffer recognises request/env sources; partial for Celery task context |
+| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/template_pattern_python.go` | language-wide Python template-pattern sniffer covers i18n/log/SQL patterns; partial for Celery-specific message formatting |
 | Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance

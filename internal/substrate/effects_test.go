@@ -658,6 +658,39 @@ public:
 	mustHave(t, byEffect, EffectMutation, "set_count")
 }
 
+// TestSniffEffectsPython_CeleryTaskBody is the proving fixture for
+// #2982 (Celery substrate A-win cells). It verifies that the language-wide
+// Python effect sniffer detects db_write, db_read, http_out, and env_read
+// inside a @shared_task function body — confirming that the substrate
+// db_effect, taint_source_detection, and taint_sink_detection cells are
+// legitimately partial for lang.python.framework.celery.
+func TestSniffEffectsPython_CeleryTaskBody(t *testing.T) {
+	const src = `
+from celery import shared_task
+import os, boto3, psycopg2
+
+@shared_task(bind=True, max_retries=3)
+def process_invoice(self, invoice_id):
+    conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM invoices WHERE id = %s", (invoice_id,))
+    row = cur.fetchone()
+    s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION"))
+    s3.upload_file("/tmp/invoice.pdf", "bucket", "key")
+    cur.execute("UPDATE invoices SET processed = true WHERE id = %s", (invoice_id,))
+    conn.commit()
+`
+	got := sniffEffectsPython(src)
+	if len(got) == 0 {
+		t.Fatal("#2982 proof: expected effect matches inside @shared_task body; got none")
+	}
+	by := groupByEffect(got)
+	mustHave(t, by, EffectDBRead, "process_invoice")
+	mustHave(t, by, EffectDBWrite, "process_invoice")
+	mustHave(t, by, EffectHTTPOut, "process_invoice")
+	mustHave(t, by, EffectEnvRead, "process_invoice")
+}
+
 func groupByEffect(ms []EffectMatch) map[Effect]map[string]bool {
 	out := map[Effect]map[string]bool{}
 	for _, m := range ms {
