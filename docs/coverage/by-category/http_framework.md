@@ -124,9 +124,9 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 |---|---|---|---|---|---|---|---|---|
 | [java](../by-language/java.md) | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [Apache Struts](../detail/lang.java.framework.struts.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [java](../by-language/java.md) | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ❌ 2/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
+| [java](../by-language/java.md) | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | ⚠️ 2/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | ⚠️ 0/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
-| [java](../by-language/java.md) | [Helidon](../detail/lang.java.framework.helidon.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
+| [java](../by-language/java.md) | [Helidon](../detail/lang.java.framework.helidon.md) | ⚠️ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | ⚠️ 2/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | ⚠️ 0/3 | ⚠️ 0/1 | ✅ 3/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/16 | |
 | [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | ❌ 0/3 | ❌ 0/1 | ✅ 3/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/16 | |

@@ -89,7 +89,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DB effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
 
 ### Substrate
 
@@ -97,24 +97,24 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |
+| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use.go`<br>`internal/substrate/def_use_java.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
+| HTTP effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
 | Import resolution quality | ⚠️ `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
-| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/module_cycle_pass.go` | — |
+| Mutation effect | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
+| Pure function tagging | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go` | — |
+| Reachability analysis | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | — |
-| Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Sanitizer recognition | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_java.go` | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | — |
-| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_java.go` | — |
+| Taint source detection | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_java.go` | — |
+| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern.go`<br>`internal/substrate/template_pattern_java.go` | — |
+| Vulnerability finding | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_java.go` | — |
 
 ## Provenance
 
