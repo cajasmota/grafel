@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/mongoengine.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | MongoEngine Document field definitions (StringField, IntField etc.) are not extracted at the ORM schema level; the MongoDB custom extractor handles aggregations/change streams but not model field schema. |
 
 ### Relationships
 
@@ -24,7 +24,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 | Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | MongoEngine uses ReferenceField with lazy loading but no extractor tracks lazy_loading strategy properties. |
 | Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Queries

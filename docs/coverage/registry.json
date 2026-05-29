@@ -35588,8 +35588,9 @@
         "Migrations": {
           "migration_parsing": {
             "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/alembic.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/rules/python/orms/alembic.yaml","internal/enrichers/migration_sequence_enricher.go"],
+            "notes": "YAML rule detects alembic.ini and versions/*.py files; migration_sequence_enricher.go parses Alembic filename convention ([A-Za-z0-9]{12}_\u003cname\u003e.py). upgrade()/downgrade() operation content is not yet parsed (full would require a dedicated alembic migration extractor analogous to django_migration.go).",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -35609,7 +35610,9 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Beanie Document field definitions (via Pydantic annotations) are not extracted at the ORM level; the schema_detector.go detects Pydantic usage generally but does not emit per-field ORM schema entities.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35623,7 +35626,9 @@
           },
           "lazy_loading_recognition": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Beanie (Motor-based async ODM) does not have a lazy-loading mechanism; all queries are explicit async calls.",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "missing",
@@ -35720,7 +35725,9 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "MongoEngine Document field definitions (StringField, IntField etc.) are not extracted at the ORM schema level; the MongoDB custom extractor handles aggregations/change streams but not model field schema.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35734,7 +35741,9 @@
           },
           "lazy_loading_recognition": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "MongoEngine uses ReferenceField with lazy loading but no extractor tracks lazy_loading strategy properties.",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "missing",
@@ -35770,7 +35779,9 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Peewee field definitions (CharField, IntegerField etc.) are not extracted; only model class detection and query attribution are handled.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35784,7 +35795,9 @@
           },
           "lazy_loading_recognition": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Peewee does not support lazy loading; all queries are explicit. DeferredForeignKey is a different concept not tracked here.",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "missing",
@@ -35820,7 +35833,9 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Pony ORM entity field definitions (Required, Optional etc.) are not extracted; only model class detection and query attribution are handled.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35834,7 +35849,9 @@
           },
           "lazy_loading_recognition": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Pony ORM lazy loading is implicit via @db_session but not tracked structurally; no extractor emits lazy-load relationship entities.",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "missing",
@@ -35930,8 +35947,11 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/extractors_test.go","internal/custom/python/sqlalchemy.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "SQLModel table=True class detection added to python_sqlalchemy extractor (issue #2990). Only classes with both SQLModel base and table=True kwarg are emitted; schema-only classes are excluded.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35945,7 +35965,9 @@
           },
           "lazy_loading_recognition": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "SQLModel delegates to SQLAlchemy relationship() for lazy loading, but the sqlalchemy extractor's lazy_strategy detection (issue #2986) applies only when the SQLAlchemy extractor fires on a SQLModel file. SQLModel-specific lazy loading is not yet explicitly tracked.",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "missing",
@@ -35981,7 +36003,9 @@
           },
           "schema_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Tortoise ORM field definitions (fields.CharField etc.) are not parsed by any Go extractor; only model class detection (model_extraction) is handled via YAML rules.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
@@ -35995,7 +36019,9 @@
           },
           "lazy_loading_recognition": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Tortoise ORM does not have a lazy-loading concept comparable to SQLAlchemy; prefetch_related is async-explicit and tracked under query_attribution only.",
+            "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
             "status": "missing",
