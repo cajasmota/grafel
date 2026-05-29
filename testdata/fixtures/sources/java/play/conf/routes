@@ -1,0 +1,21 @@
+# Play Framework conf/routes fixture — issue #3090
+# Format: VERB  /path  controllers.ClassName.methodName
+
+# Home
+GET     /                           controllers.HomeController.index()
+GET     /about                      controllers.HomeController.about()
+
+# Users
+GET     /users                      controllers.UserController.list()
+POST    /users                      controllers.UserController.create()
+GET     /users/:id                  controllers.UserController.show(id: Long)
+PUT     /users/:id                  controllers.UserController.update(id: Long)
+DELETE  /users/:id                  controllers.UserController.delete(id: Long)
+
+# Orders with regex-constrained param
+GET     /orders/$orderId<[0-9]+>    controllers.OrderController.show(orderId: Long)
+POST    /orders                     controllers.OrderController.create()
+GET     /orders/:orderId/items      controllers.OrderController.listItems(orderId: Long)
+
+# Assets (static)
+GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)

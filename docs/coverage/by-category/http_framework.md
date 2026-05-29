@@ -174,7 +174,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [elixir](../by-language/elixir.md) | [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 14/21 | ❌ 0/7 | |
-| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 15/21 | ❌ 0/7 | |
+| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | ❌ 1/2 | ❌ 0/3 | ⚠️ 1/1 | ❌ 16/21 | ❌ 4/8 | |
 | [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 20/21 | ✅ 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ⚠️ 21/21 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | ❌ 17/21 | ✅ 11/11 | |

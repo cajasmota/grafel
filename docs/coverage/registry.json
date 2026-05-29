@@ -16789,15 +16789,21 @@
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3090",
+            "notes": "Play Framework Java is a server-side MVC framework with no SPA hydration or frontend rendering concepts."
           },
           "server_components": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3090",
+            "notes": "Play Framework Java has no React Server Components or similar server-component model."
           }
         },
         "Routing": {
           "route_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/play_routes.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3090"
           },
           "router_pattern": {
             "status": "missing"
@@ -16805,7 +16811,9 @@
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "not_applicable",
+            "issue": "3090",
+            "notes": "Play Framework Java is a request-driven MVC framework; static site generation is not applicable."
           }
         },
         "Type System": {
@@ -16826,7 +16834,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/play_routes.go"],
+            "issue": "3090"
           }
         },
         "Substrate": {
@@ -16895,8 +16905,9 @@
             "issue": "3154"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/play_routes.go"],
+            "issue": "3090"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -16930,6 +16941,28 @@
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
             "issue": "3154"
+          }
+        },
+        "Uncategorized": {
+          "auth_coverage": {
+            "status": "partial",
+            "cites": ["internal/custom/java/play_routes.go"],
+            "issue": "3090"
+          },
+          "endpoint_synthesis": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3090"
+          },
+          "handler_attribution": {
+            "status": "partial",
+            "cites": ["internal/custom/java/play_routes.go"],
+            "issue": "3090"
+          },
+          "middleware_coverage": {
+            "status": "partial",
+            "cites": ["internal/custom/java/play_routes.go"],
+            "issue": "3090"
           }
         }
       }

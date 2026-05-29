@@ -41,7 +41,7 @@ Back to [summary](../summary.md).
 
 | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [Play Framework](../detail/lang.java.framework.play.md) | ❌ 0/2 | ❌ 0/3 | ❌ 0/1 | ❌ 15/21 | ❌ 0/7 | |
+| [Play Framework](../detail/lang.java.framework.play.md) | ❌ 1/2 | ❌ 0/3 | ⚠️ 1/1 | ❌ 16/21 | ❌ 4/8 | |
 
 
 ### Mobile

@@ -336,6 +336,8 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeVertx(string(content), emit)
 		// Struts (#3089): @Action annotation + struts.xml <action> routing.
 		synthesizeStruts(string(content), emit)
+		// Play Framework (#3090): conf/routes DSL `GET /path controllers.Foo.bar` routing.
+		synthesizePlay(string(content), path, emit)
 		// Consumer side (#721): HttpClient / RestTemplate /
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
@@ -933,6 +935,79 @@ func synthesizeStruts(content string, emit emitFn) {
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, fullPath)
 		emit("ANY", canonical, "struts", "Route", "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Play Framework (Java) — conf/routes DSL routing (#3090)
+// ---------------------------------------------------------------------------
+
+// playRoutesLineSynthRe captures Play conf/routes lines of the form:
+//
+//	GET   /path                   controllers.Foo.bar
+//	POST  /path/:id               controllers.Foo.create(id: Long)
+//	GET   /path/$id<[0-9]+>       controllers.Foo.show(id: Long)
+//
+// Capture groups: 1=verb, 2=path, 3=controller.action (with optional param list).
+var playRoutesLineSynthRe = regexp.MustCompile(
+	`(?m)^[ \t]*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+(/\S*)\s+([\w.]+(?:\([^)]*\))?)`)
+
+// playDollarParamSynthRe converts Play $param<regex> to {param} form.
+var playDollarParamSynthRe = regexp.MustCompile(`\$(\w+)<[^>]*>`)
+
+// playColonParamSynthRe converts Play :param to {param} form.
+var playColonParamSynthRe = regexp.MustCompile(`:(\w+)`)
+
+// canonicalizePlayPath normalises a Play path string (colon and dollar params)
+// to the {param} canonical form. No httproutes.Canonicalize call is needed
+// because this function handles both Play-specific forms directly.
+func canonicalizePlayPath(raw string) string {
+	// Strip query string if any.
+	if q := strings.Index(raw, "?"); q >= 0 {
+		raw = raw[:q]
+	}
+	// $param<regex> → {param}
+	out := playDollarParamSynthRe.ReplaceAllString(raw, "{$1}")
+	// :param → {param}
+	out = playColonParamSynthRe.ReplaceAllString(out, "{$1}")
+	return out
+}
+
+// isPlayRoutesFilePath returns true if the file path looks like a Play routes
+// file (conf/routes or a named routes variant like conf/routes.GET).
+func isPlayRoutesFilePath(path string) bool {
+	base := path
+	if idx := strings.LastIndex(path, "/"); idx >= 0 {
+		base = path[idx+1:]
+	}
+	if base == "routes" || strings.HasPrefix(base, "routes.") || strings.HasSuffix(base, ".routes") {
+		return true
+	}
+	return strings.Contains(path, "conf/routes")
+}
+
+// synthesizePlay scans a Play Framework conf/routes file and emits one
+// http_endpoint_definition per (verb, canonical-path) pair. Play uses two
+// path-parameter styles — colon (:id) and dollar+regex ($id<regex>) — both
+// normalised to {id} by canonicalizePlayPath.
+//
+// The synthesizer is a no-op on Java source files (controllers); those are
+// wired via the conf/routes file. The file-path gate ensures we only emit
+// synthetics from the actual routes file.
+func synthesizePlay(content, filePath string, emit emitFn) {
+	// Only emit from Play routes files, not from Java controller source.
+	if !isPlayRoutesFilePath(filePath) {
+		return
+	}
+
+	for _, m := range playRoutesLineSynthRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		verb := m[1]
+		rawPath := m[2]
+		canonical := canonicalizePlayPath(rawPath)
+		emit(verb, canonical, "play", "Route", "")
 	}
 }
 
