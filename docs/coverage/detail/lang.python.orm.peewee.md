@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py`<br>`internal/custom/python/testdata/mongoengine_relationships.py`<br>`internal/custom/python/testdata/peewee_relationships.py`<br>`internal/custom/python/testdata/pony_relationships.py`<br>`internal/custom/python/testdata/tortoise_relationships.py` | — |
+| Foreign key extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py`<br>`internal/custom/python/testdata/mongoengine_relationships.py`<br>`internal/custom/python/testdata/peewee_relationships.py`<br>`internal/custom/python/testdata/pony_relationships.py`<br>`internal/custom/python/testdata/tortoise_relationships.py` | — |
 | Lazy loading recognition | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Peewee does not support lazy loading; all queries are explicit. DeferredForeignKey is a different concept not tracked here. |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/beanie_relationships.py`<br>`internal/custom/python/testdata/mongoengine_relationships.py`<br>`internal/custom/python/testdata/peewee_relationships.py`<br>`internal/custom/python/testdata/pony_relationships.py`<br>`internal/custom/python/testdata/tortoise_relationships.py` | — |
 
 ### Queries
 

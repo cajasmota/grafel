@@ -3150,3 +3150,452 @@ func TestObservability_FixtureTracing(t *testing.T) {
 		t.Error("fixture: expected trace_span entities")
 	}
 }
+
+// ============================================================================
+// ORM relationship extractor tests — issue #3070
+// ============================================================================
+
+// ---- Peewee ----------------------------------------------------------------
+
+func TestPeeweeRel_ForeignKeyField(t *testing.T) {
+	src := `import peewee
+from peewee import Model, ForeignKeyField, CharField
+
+class Author(Model):
+    name = CharField()
+
+class Book(Model):
+    title = CharField()
+    author = ForeignKeyField(Author, backref="books")
+`
+	ents := extract(t, "python_peewee_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Book.author" && e.Props["pattern_type"] == "foreign_key" && e.Props["target_model"] == "Author" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Book.author foreign_key entity with target_model=Author")
+	}
+}
+
+func TestPeeweeRel_ManyToManyField(t *testing.T) {
+	src := `import peewee
+from peewee import Model, ManyToManyField, CharField
+
+class Tag(Model):
+    name = CharField()
+
+class Article(Model):
+    title = CharField()
+    tags = ManyToManyField(Tag, backref="articles")
+`
+	ents := extract(t, "python_peewee_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Article.tags" && e.Props["pattern_type"] == "many_to_many" && e.Props["target_model"] == "Tag" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Article.tags many_to_many entity with target_model=Tag")
+	}
+}
+
+func TestPeeweeRel_NoFalsePositive(t *testing.T) {
+	src := `class SomethingElse:
+    name = "test"
+`
+	ents := extract(t, "python_peewee_rel", src)
+	if len(ents) != 0 {
+		t.Fatalf("expected 0 entities from non-peewee file, got %d", len(ents))
+	}
+}
+
+func TestPeeweeRel_Fixture(t *testing.T) {
+	src, err := os.ReadFile("testdata/peewee_relationships.py")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ents := extract(t, "python_peewee_rel", string(src))
+
+	fkCount := 0
+	mtmCount := 0
+	for _, e := range ents {
+		switch e.Props["pattern_type"] {
+		case "foreign_key":
+			fkCount++
+		case "many_to_many":
+			mtmCount++
+		}
+	}
+	if fkCount < 3 {
+		t.Errorf("expected >=3 foreign_key entities, got %d", fkCount)
+	}
+	if mtmCount < 1 {
+		t.Errorf("expected >=1 many_to_many entity, got %d", mtmCount)
+	}
+}
+
+// ---- Pony ORM --------------------------------------------------------------
+
+func TestPonyRel_Required(t *testing.T) {
+	src := `from pony.orm import Database, Required, Set
+
+db = Database()
+
+class Department(db.Entity):
+    name = Required(str)
+    employees = Set("Employee")
+
+class Employee(db.Entity):
+    name = Required(str)
+    department = Required(Department)
+`
+	ents := extract(t, "python_pony_rel", src)
+	foundDept := false
+	foundSet := false
+	for _, e := range ents {
+		if e.Name == "Employee.department" && e.Props["pattern_type"] == "relationship" && e.Props["target_model"] == "Department" {
+			foundDept = true
+		}
+		if e.Name == "Department.employees" && e.Props["pattern_type"] == "many_to_many" && e.Props["target_model"] == "Employee" {
+			foundSet = true
+		}
+	}
+	if !foundDept {
+		t.Fatal("expected Employee.department relationship entity")
+	}
+	if !foundSet {
+		t.Fatal("expected Department.employees many_to_many entity")
+	}
+}
+
+func TestPonyRel_Optional(t *testing.T) {
+	src := `from pony.orm import Database, Required, Optional
+
+db = Database()
+
+class Employee(db.Entity):
+    name = Required(str)
+    manager = Optional("Employee")
+`
+	ents := extract(t, "python_pony_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Employee.manager" && e.Props["pattern_type"] == "relationship" && e.Props["rel_kind"] == "Optional" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Employee.manager Optional relationship entity")
+	}
+}
+
+func TestPonyRel_Fixture(t *testing.T) {
+	src, err := os.ReadFile("testdata/pony_relationships.py")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ents := extract(t, "python_pony_rel", string(src))
+
+	relCount := 0
+	for _, e := range ents {
+		if e.Props["framework"] == "pony" {
+			relCount++
+		}
+	}
+	if relCount < 4 {
+		t.Errorf("expected >=4 pony relationship entities, got %d", relCount)
+	}
+}
+
+// ---- Beanie ----------------------------------------------------------------
+
+func TestBeanieRel_LinkField(t *testing.T) {
+	src := `from beanie import Document, Link
+
+class Category(Document):
+    name: str
+
+class Product(Document):
+    title: str
+    category: Link[Category]
+`
+	ents := extract(t, "python_beanie_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Product.category" && e.Props["pattern_type"] == "link" && e.Props["target_model"] == "Category" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Product.category link entity with target_model=Category")
+	}
+}
+
+func TestBeanieRel_FetchLinks(t *testing.T) {
+	src := `from beanie import Document, Link
+from typing import List
+
+class Category(Document):
+    name: str
+
+class Product(Document):
+    category: Link[Category]
+
+async def get(id):
+    return await Product.get(id, fetch_links=True)
+`
+	ents := extract(t, "python_beanie_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Product.category" && e.Props["lazy_loading"] == "fetch_links" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected fetch_links lazy_loading annotation on Link field")
+	}
+}
+
+func TestBeanieRel_Fixture(t *testing.T) {
+	src, err := os.ReadFile("testdata/beanie_relationships.py")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ents := extract(t, "python_beanie_rel", string(src))
+
+	linkCount := 0
+	for _, e := range ents {
+		if e.Props["framework"] == "beanie" && (e.Props["pattern_type"] == "link" || e.Props["pattern_type"] == "back_link") {
+			linkCount++
+		}
+	}
+	if linkCount < 3 {
+		t.Errorf("expected >=3 beanie link entities, got %d", linkCount)
+	}
+}
+
+// ---- MongoEngine -----------------------------------------------------------
+
+func TestMongoEngineRel_ReferenceField(t *testing.T) {
+	src := `import mongoengine
+from mongoengine import Document, ReferenceField, StringField
+
+class Author(Document):
+    name = StringField()
+
+class Book(Document):
+    title = StringField()
+    author = ReferenceField(Author)
+`
+	ents := extract(t, "python_mongoengine_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Book.author" && e.Props["pattern_type"] == "reference" && e.Props["target_model"] == "Author" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Book.author reference entity with target_model=Author")
+	}
+}
+
+func TestMongoEngineRel_EmbeddedDocumentField(t *testing.T) {
+	src := `from mongoengine import Document, EmbeddedDocument, EmbeddedDocumentField, StringField
+
+class Address(EmbeddedDocument):
+    street = StringField()
+
+class Person(Document):
+    name = StringField()
+    address = EmbeddedDocumentField(Address)
+`
+	ents := extract(t, "python_mongoengine_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Person.address" && e.Props["pattern_type"] == "embedded" && e.Props["target_model"] == "Address" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Person.address embedded entity with target_model=Address")
+	}
+}
+
+func TestMongoEngineRel_LazyReferenceField(t *testing.T) {
+	src := `from mongoengine import Document, LazyReferenceField, StringField
+
+class Category(Document):
+    name = StringField()
+
+class Post(Document):
+    title = StringField()
+    category = LazyReferenceField(Category)
+`
+	ents := extract(t, "python_mongoengine_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Post.category" && e.Props["pattern_type"] == "lazy_reference" && e.Props["lazy_loading"] == "lazy_reference" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Post.category lazy_reference entity with lazy_loading annotation")
+	}
+}
+
+func TestMongoEngineRel_Fixture(t *testing.T) {
+	src, err := os.ReadFile("testdata/mongoengine_relationships.py")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ents := extract(t, "python_mongoengine_rel", string(src))
+
+	refCount := 0
+	embCount := 0
+	for _, e := range ents {
+		switch e.Props["pattern_type"] {
+		case "reference", "lazy_reference":
+			refCount++
+		case "embedded", "embedded_list":
+			embCount++
+		}
+	}
+	if refCount < 2 {
+		t.Errorf("expected >=2 reference entities, got %d", refCount)
+	}
+	if embCount < 2 {
+		t.Errorf("expected >=2 embedded entities, got %d", embCount)
+	}
+}
+
+// ---- Tortoise ORM ----------------------------------------------------------
+
+func TestTortoiseRel_ForeignKeyField(t *testing.T) {
+	src := `from tortoise import fields
+from tortoise.models import Model
+
+class Tournament(Model):
+    name = fields.CharField(max_length=255)
+
+class Event(Model):
+    name = fields.CharField(max_length=255)
+    tournament = fields.ForeignKeyField("models.Tournament", related_name="events")
+`
+	ents := extract(t, "python_tortoise_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Event.tournament" && e.Props["pattern_type"] == "foreign_key" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Event.tournament foreign_key entity")
+	}
+}
+
+func TestTortoiseRel_ManyToManyField(t *testing.T) {
+	src := `from tortoise import fields
+from tortoise.models import Model
+
+class Team(Model):
+    name = fields.CharField(max_length=255)
+
+class Event(Model):
+    name = fields.CharField(max_length=255)
+    participants = fields.ManyToManyField("models.Team", related_name="events")
+`
+	ents := extract(t, "python_tortoise_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Event.participants" && e.Props["pattern_type"] == "many_to_many" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Event.participants many_to_many entity")
+	}
+}
+
+func TestTortoiseRel_OneToOneField(t *testing.T) {
+	src := `from tortoise import fields
+from tortoise.models import Model
+
+class Profile(Model):
+    bio = fields.TextField()
+
+class Player(Model):
+    name = fields.CharField(max_length=255)
+    profile = fields.OneToOneField("models.Profile", related_name="player")
+`
+	ents := extract(t, "python_tortoise_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Player.profile" && e.Props["pattern_type"] == "one_to_one" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Player.profile one_to_one entity")
+	}
+}
+
+func TestTortoiseRel_ReverseRelation(t *testing.T) {
+	src := `from tortoise import fields
+from tortoise.models import Model
+
+class Tournament(Model):
+    name = fields.CharField(max_length=255)
+    events: fields.ReverseRelation["Event"]
+`
+	ents := extract(t, "python_tortoise_rel", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "Tournament.events" && e.Props["pattern_type"] == "reverse_relation" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Tournament.events reverse_relation entity")
+	}
+}
+
+func TestTortoiseRel_Fixture(t *testing.T) {
+	src, err := os.ReadFile("testdata/tortoise_relationships.py")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ents := extract(t, "python_tortoise_rel", string(src))
+
+	fkCount := 0
+	mtmCount := 0
+	o2oCount := 0
+	revCount := 0
+	for _, e := range ents {
+		switch e.Props["pattern_type"] {
+		case "foreign_key":
+			fkCount++
+		case "many_to_many":
+			mtmCount++
+		case "one_to_one":
+			o2oCount++
+		case "reverse_relation":
+			revCount++
+		}
+	}
+	if fkCount < 2 {
+		t.Errorf("expected >=2 foreign_key entities, got %d", fkCount)
+	}
+	if mtmCount < 1 {
+		t.Errorf("expected >=1 many_to_many entity, got %d", mtmCount)
+	}
+	if o2oCount < 1 {
+		t.Errorf("expected >=1 one_to_one entity, got %d", o2oCount)
+	}
+	if revCount < 1 {
+		t.Errorf("expected >=1 reverse_relation entity, got %d", revCount)
+	}
+}

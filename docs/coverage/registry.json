@@ -37704,22 +37704,26 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/beanie_relationships.py"],
+            "issue": "3070"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/beanie_relationships.py"],
+            "issue": "3070"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/beanie_relationships.py"],
+            "issue": "3070",
             "notes": "Beanie (Motor-based async ODM) does not have a lazy-loading mechanism; all queries are explicit async calls.",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/beanie_relationships.py"],
+            "issue": "3070"
           }
         },
         "Queries": {
@@ -37819,22 +37823,26 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/mongoengine_relationships.py"],
+            "issue": "3070"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/mongoengine_relationships.py"],
+            "issue": "3070"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/mongoengine_relationships.py"],
+            "issue": "3070",
             "notes": "MongoEngine uses ReferenceField with lazy loading but no extractor tracks lazy_loading strategy properties.",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/mongoengine_relationships.py"],
+            "issue": "3070"
           }
         },
         "Queries": {
@@ -37873,12 +37881,14 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/beanie_relationships.py","internal/custom/python/testdata/mongoengine_relationships.py","internal/custom/python/testdata/peewee_relationships.py","internal/custom/python/testdata/pony_relationships.py","internal/custom/python/testdata/tortoise_relationships.py"],
+            "issue": "3070"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/beanie_relationships.py","internal/custom/python/testdata/mongoengine_relationships.py","internal/custom/python/testdata/peewee_relationships.py","internal/custom/python/testdata/pony_relationships.py","internal/custom/python/testdata/tortoise_relationships.py"],
+            "issue": "3070"
           },
           "lazy_loading_recognition": {
             "status": "missing",
@@ -37887,8 +37897,9 @@
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/beanie_relationships.py","internal/custom/python/testdata/mongoengine_relationships.py","internal/custom/python/testdata/peewee_relationships.py","internal/custom/python/testdata/pony_relationships.py","internal/custom/python/testdata/tortoise_relationships.py"],
+            "issue": "3070"
           }
         },
         "Queries": {
@@ -37927,12 +37938,14 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/pony_relationships.py"],
+            "issue": "3070"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/pony_relationships.py"],
+            "issue": "3070"
           },
           "lazy_loading_recognition": {
             "status": "missing",
@@ -37941,8 +37954,9 @@
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/pony_relationships.py"],
+            "issue": "3070"
           }
         },
         "Queries": {
@@ -38108,22 +38122,26 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/tortoise_relationships.py"],
+            "issue": "3070"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/tortoise_relationships.py"],
+            "issue": "3070"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/tortoise_relationships.py"],
+            "issue": "3070",
             "notes": "Tortoise ORM does not have a lazy-loading concept comparable to SQLAlchemy; prefetch_related is async-explicit and tracked under query_attribution only.",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/orm_relationships.go","internal/custom/python/testdata/tortoise_relationships.py"],
+            "issue": "3070"
           }
         },
         "Queries": {

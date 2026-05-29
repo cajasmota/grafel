@@ -77,15 +77,15 @@ Back to [summary](../summary.md).
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | ❌ 1/6 | |
-| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | ❌ 2/7 | |
+| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | ❌ 5/6 | |
 | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
-| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | ❌ 2/7 | |
+| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | ❌ 5/6 | |
 | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | ❌ 1/2 | |
-| [Peewee](../detail/lang.python.orm.peewee.md) | ❌ 2/8 | |
-| [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ 2/8 | |
+| [Peewee](../detail/lang.python.orm.peewee.md) | ❌ 5/8 | |
+| [Pony ORM](../detail/lang.python.orm.pony.md) | ❌ 5/8 | |
 | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
 | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ⚠️ 8/8 | |
-| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 2/8 | |
+| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 6/8 | |
 | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ⚠️ 1/1 | |
 | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ⚠️ 1/1 | |
 | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ⚠️ 1/1 | |

@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | `2026-05-29` | backfill:dictionary-completeness | — | Tortoise ORM does not have a lazy-loading concept comparable to SQLAlchemy; prefetch_related is async-explicit and tracked under query_attribution only. |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/tortoise_relationships.py` | — |
+| Foreign key extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/tortoise_relationships.py` | — |
+| Lazy loading recognition | ⚠️ `partial` | `2026-05-29` | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/tortoise_relationships.py` | Tortoise ORM does not have a lazy-loading concept comparable to SQLAlchemy; prefetch_related is async-explicit and tracked under query_attribution only. |
+| Relationship extraction | ⚠️ `partial` | — | 3070 | `internal/custom/python/orm_relationships.go`<br>`internal/custom/python/testdata/tortoise_relationships.py` | — |
 
 ### Queries
 
