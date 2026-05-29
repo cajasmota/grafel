@@ -26517,26 +26517,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/drizzle.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/drizzle.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/drizzle.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/drizzle.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
@@ -26620,26 +26628,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/mikroorm.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/mikroorm.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/mikroorm.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "notes": "FK columns inferred from @ManyToOne decorator; no explicit FK column extraction (FK column not separately defined in MikroORM decorator-first pattern)"
           },
           "lazy_loading_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/mikroorm.go","internal/custom/javascript/orm_build_3067_test.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
@@ -26795,26 +26811,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/prisma.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/prisma.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/prisma.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/prisma.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {
@@ -26847,26 +26871,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/sequelize.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/sequelize.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/sequelize.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/sequelize.go"],
+            "issue": "3067",
+            "verified_at": "2026-05-29"
           }
         },
         "Queries": {

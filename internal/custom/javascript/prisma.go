@@ -32,6 +32,22 @@ var (
 	rePrismaEnum = regexp.MustCompile(
 		`(?m)^enum\s+([A-Z][A-Za-z0-9_]*)\s*\{`,
 	)
+	// Prisma model field: lines like `  fieldName  FieldType  @directives`
+	// inside a model block. Matches fields with a type (scalar or relation type).
+	// Captures: field name (group 1), type (group 2).
+	rePrismaModelField = regexp.MustCompile(
+		`(?m)^\s{1,4}([a-z][A-Za-z0-9_]*)\s+([A-Za-z][A-Za-z0-9_?[\]]*)\s`,
+	)
+	// @relation directive — matches @relation(fields: [...], references: [...])
+	// with an optional name string as first argument.
+	// Group 1 = optional relation name, group 2 = fields list, group 3 = references list.
+	rePrismaRelation = regexp.MustCompile(
+		`@relation\s*\(\s*(?:"([^"]*?)"\s*,\s*)?fields:\s*\[([^\]]*)\]\s*,\s*references:\s*\[([^\]]*)\]`,
+	)
+	// @relation without fields/references (back-reference side): @relation("name")
+	rePrismaRelationRef = regexp.MustCompile(
+		`@relation\s*\(\s*"([^"]*?)"\s*\)`,
+	)
 	// Prisma Client usage: prisma.model.operation()
 	rePrismaClientCall = regexp.MustCompile(
 		`(?:prisma|db)\s*\.\s*([a-z][A-Za-z0-9_]*)\s*\.\s*(findUnique|findFirst|findMany|create|createMany|update|updateMany|upsert|delete|deleteMany|count|aggregate|groupBy|findUniqueOrThrow|findFirstOrThrow)\s*\(`,
@@ -138,6 +154,51 @@ func (e *prismaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		ent := makeEntity(name, "SCOPE.Schema", "enum", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "prisma", "provenance", "INFERRED_FROM_PRISMA_ENUM")
 		addEntity(ent)
+	}
+
+	// Prisma model field definitions — emit SCOPE.Component "field" entities for
+	// schema_extraction. Only inside .prisma files.
+	if isPrismaSchema {
+		for _, m := range rePrismaModelField.FindAllStringSubmatchIndex(src, -1) {
+			fieldName := src[m[2]:m[3]]
+			fieldType := src[m[4]:m[5]]
+			ent := makeEntity(fieldName, "SCOPE.Component", "field", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "prisma", "field_type", fieldType,
+				"provenance", "INFERRED_FROM_PRISMA_FIELD")
+			addEntity(ent)
+		}
+
+		// @relation(fields: [...], references: [...]) — emit relation + foreign_key entities.
+		for _, m := range rePrismaRelation.FindAllStringSubmatchIndex(src, -1) {
+			relName := ""
+			if m[2] >= 0 {
+				relName = src[m[2]:m[3]]
+			}
+			fields := strings.TrimSpace(src[m[4]:m[5]])
+			references := strings.TrimSpace(src[m[6]:m[7]])
+			name := "relation"
+			if relName != "" {
+				name = "relation:" + relName
+			}
+			ent := makeEntity(name, "SCOPE.Pattern", "relation", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "prisma", "fields", fields, "references", references,
+				"provenance", "INFERRED_FROM_PRISMA_RELATION")
+			addEntity(ent)
+			// Also emit a foreign_key entity for the FK column side.
+			fkEnt := makeEntity("fk:"+fields, "SCOPE.Component", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&fkEnt, "framework", "prisma", "fk_fields", fields, "ref_fields", references,
+				"provenance", "INFERRED_FROM_PRISMA_RELATION_FK")
+			addEntity(fkEnt)
+		}
+
+		// Back-reference side of a named @relation (no fields/references).
+		for _, m := range rePrismaRelationRef.FindAllStringSubmatchIndex(src, -1) {
+			relName := src[m[2]:m[3]]
+			ent := makeEntity("relation:"+relName, "SCOPE.Pattern", "relation", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "prisma", "relation_name", relName,
+				"provenance", "INFERRED_FROM_PRISMA_RELATION_REF")
+			addEntity(ent)
+		}
 	}
 
 	// PrismaClient instantiation

@@ -51,6 +51,22 @@ var (
 	reSequelizeHook = regexp.MustCompile(
 		`([A-Z][A-Za-z0-9_]*)\s*\.\s*(addHook|beforeCreate|afterCreate|beforeUpdate|afterUpdate|beforeDestroy|afterDestroy|beforeFind|afterFind|beforeBulkCreate|afterBulkCreate)\s*\(`,
 	)
+	// Column definition key inside define({}) or Model.init({}) schema object.
+	// Matches `  fieldName: {` patterns that introduce a column definition block.
+	// Group 1 = field name.
+	reSequelizeColumnDef = regexp.MustCompile(
+		`(?m)^\s{2,8}([a-z][A-Za-z0-9_]*)\s*:\s*\{`,
+	)
+	// DataTypes.XXX inside a column-definition block — confirms the object is
+	// a Sequelize column spec (not just any nested object literal).
+	reSequelizeDataType = regexp.MustCompile(
+		`DataTypes\s*\.\s*([A-Z][A-Za-z0-9_]*)`,
+	)
+	// references: { model: 'X', key: 'y' } — FK column definition.
+	// Group 1 = referenced model name.
+	reSequelizeColumnRef = regexp.MustCompile(
+		`references\s*:\s*\{\s*model\s*:\s*['"]([A-Za-z0-9_]+)['"]`,
+	)
 	// Migration schema-change ops via the queryInterface inside up()/down().
 	// First captured group = method, second = the table name string literal.
 	reSequelizeMigrationOp = regexp.MustCompile(
@@ -169,6 +185,34 @@ func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput)
 		ent := makeEntity(name, "SCOPE.Operation", "query", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "sequelize", "model", modelName, "operation", operation,
 			"provenance", "INFERRED_FROM_SEQUELIZE_QUERY")
+		addEntity(ent)
+	}
+
+	// Column definitions: emit SCOPE.Component "column" entities for schema_extraction.
+	// We require that the file contains at least one DataTypes reference to confirm
+	// this is a schema file, then emit each column-def block entry as a field entity.
+	if reSequelizeDataType.MatchString(src) {
+		for _, m := range reSequelizeColumnDef.FindAllStringSubmatchIndex(src, -1) {
+			fieldName := src[m[2]:m[3]]
+			// Skip internal Sequelize option keys that are not column names.
+			switch fieldName {
+			case "type", "allowNull", "defaultValue", "unique", "primaryKey",
+				"autoIncrement", "validate", "get", "set", "references",
+				"onDelete", "onUpdate", "comment", "field", "model", "key":
+				continue
+			}
+			ent := makeEntity(fieldName, "SCOPE.Component", "column", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "sequelize", "provenance", "INFERRED_FROM_SEQUELIZE_COLUMN_DEF")
+			addEntity(ent)
+		}
+	}
+
+	// Foreign-key columns: references: { model: 'X' } inside a column def.
+	for _, m := range reSequelizeColumnRef.FindAllStringSubmatchIndex(src, -1) {
+		refModel := src[m[2]:m[3]]
+		ent := makeEntity("fk:"+refModel, "SCOPE.Component", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "sequelize", "referenced_model", refModel,
+			"provenance", "INFERRED_FROM_SEQUELIZE_COLUMN_REFERENCE")
 		addEntity(ent)
 	}
 

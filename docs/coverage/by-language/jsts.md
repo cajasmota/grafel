@@ -117,14 +117,14 @@ Back to [summary](../summary.md).
 |---|---|---|
 | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ✅ 1/1 | |
 | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ✅ 1/1 | |
-| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ❌ 3/8 | |
+| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ❌ 7/8 | |
 | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ❌ 2/7 | |
-| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ❌ 3/8 | |
+| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ❌ 7/8 | |
 | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ✅ 1/1 | |
 | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | ⚠️ 5/5 | |
 | [Objection.js](../detail/lang.jsts.orm.objection.md) | ❌ 8/9 | |
-| [Prisma](../detail/lang.jsts.orm.prisma.md) | ❌ 3/8 | |
-| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ❌ 3/8 | |
+| [Prisma](../detail/lang.jsts.orm.prisma.md) | ❌ 7/8 | |
+| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ❌ 7/8 | |
 | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ❌ 6/8 | |
 | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | ✅ 1/1 | |
 | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ✅ 1/1 | |

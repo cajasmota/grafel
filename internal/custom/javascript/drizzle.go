@@ -41,6 +41,17 @@ var (
 	reDrizzleClient = regexp.MustCompile(
 		`\bdrizzle\s*\(`,
 	)
+	// .references(() => table.column) — FK column modifier.
+	// Group 1 = referenced table binding, group 2 = referenced column name.
+	reDrizzleReferences = regexp.MustCompile(
+		`\.references\s*\(\s*\(\s*\)\s*=>\s*([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)`,
+	)
+	// Column definition inside pgTable/mysqlTable/sqliteTable body.
+	// Matches `  colName: type('colSqlName')` or `  colName: serial(...)`.
+	// Group 1 = JS binding name, group 2 = SQL column name.
+	reDrizzleColumnDef = regexp.MustCompile(
+		`(?m)^\s{2,4}([a-z][A-Za-z0-9_]*)\s*:\s*(?:serial|integer|int|bigint|text|varchar|char|boolean|bool|real|doublePrecision|decimal|numeric|uuid|json|jsonb|timestamp|date|time|pgEnum|mysqlEnum)\s*\(\s*['"]([A-Za-z0-9_]+)['"]`,
+	)
 )
 
 func (e *drizzleExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
@@ -107,6 +118,27 @@ func (e *drizzleExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 			ent := makeEntity("relations:"+model, "SCOPE.Pattern", "relation", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "drizzle", "model", model,
 				"provenance", "INFERRED_FROM_DRIZZLE_RELATIONS")
+			addEntity(ent)
+		}
+
+		// Column definitions: emit SCOPE.Component "column" entities for schema_extraction.
+		for _, m := range reDrizzleColumnDef.FindAllStringSubmatchIndex(src, -1) {
+			binding := src[m[2]:m[3]]
+			sqlName := src[m[4]:m[5]]
+			ent := makeEntity(sqlName, "SCOPE.Component", "column", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "drizzle", "binding", binding,
+				"provenance", "INFERRED_FROM_DRIZZLE_COLUMN_DEF")
+			addEntity(ent)
+		}
+
+		// .references(() => table.col) — emit foreign_key entities.
+		for _, m := range reDrizzleReferences.FindAllStringSubmatchIndex(src, -1) {
+			refTable := src[m[2]:m[3]]
+			refCol := src[m[4]:m[5]]
+			name := fmt.Sprintf("fk:%s.%s", refTable, refCol)
+			ent := makeEntity(name, "SCOPE.Component", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "drizzle", "ref_table", refTable, "ref_column", refCol,
+				"provenance", "INFERRED_FROM_DRIZZLE_REFERENCES")
 			addEntity(ent)
 		}
 
