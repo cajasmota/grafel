@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | 3051 | `internal/custom/python/pytest.go`<br>`internal/engine/tests_edges.go`<br>`internal/engine/tests_edges_test.go` | tornado uses self.fetch('/path') which is not matched by testClientHTTPCallRe; pytest extractor finds test functions but HTTP multi-hop TESTS edges do not fire for tornado-style test clients |
 
 ### Observability
 

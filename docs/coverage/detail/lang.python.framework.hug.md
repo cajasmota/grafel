@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | 3051 | `internal/custom/python/pytest.go`<br>`internal/engine/tests_edges.go`<br>`internal/engine/tests_edges_test.go` | pytest extractor is framework-agnostic and extracts test functions; hug uses hug.test module (hug.test.get/post) not covered by testClientHTTPCallRe; no framework-specific test fixture |
 
 ### Observability
 

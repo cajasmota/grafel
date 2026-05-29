@@ -32698,9 +32698,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
             "notes": "Multi-hop TESTS pass (#2987) links test-client calls (client/session/test_client.\u003cverb\u003e('/path')) through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -32916,8 +32916,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
+            "notes": "pytest extractor is framework-agnostic and extracts test functions; bottle tests using requests.get/client.get are covered by testClientHTTPCallRe but no bottle-specific test-client fixture in tests_edges_test.go",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -33319,8 +33322,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
+            "notes": "pytest extractor is framework-agnostic and extracts test functions; cherrypy uses cherrypy.test.test_session helpers not covered by testClientHTTPCallRe; no framework-specific test fixture",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -33543,9 +33549,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "3051",
             "notes": "pytest.go extracts test funcs; multi-hop TESTS pass (#2987) links test-client calls through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -33771,9 +33777,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "3051",
             "notes": "pytest.go extracts test funcs; multi-hop TESTS pass (#2987) links test-client calls through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -34170,8 +34176,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
+            "notes": "pytest extractor is framework-agnostic and extracts test functions; falcon uses falcon.testing.TestClient (client.simulate_get/simulate_post) not covered by testClientHTTPCallRe; no framework-specific test fixture",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -34393,9 +34402,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "3051",
             "notes": "pytest.go extracts test funcs; multi-hop TESTS pass (#2987) links test-client calls through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -34619,9 +34628,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "3051",
             "notes": "pytest.go extracts test funcs; multi-hop TESTS pass (#2987) links test-client calls through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -34832,8 +34841,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
+            "notes": "pytest extractor is framework-agnostic and extracts test functions; hug uses hug.test module (hug.test.get/post) not covered by testClientHTTPCallRe; no framework-specific test fixture",
+            "verified_at": "2026-05-29"
           }
         },
         "Observability": {
@@ -35069,9 +35081,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
             "notes": "Multi-hop TESTS pass (#2987) links test-client calls (client/session/test_client.\u003cverb\u003e('/path')) through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -35288,8 +35300,9 @@
         "Testing": {
           "tests_linkage": {
             "status": "partial",
-            "cites": ["internal/custom/python/pytest.go"],
-            "issue": "backfill:dictionary-completeness",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
+            "notes": "pyramid uses webtest TestApp (self.testapp.\u003cverb\u003e) which is not in testClientHTTPCallRe; pytest extractor finds test functions but HTTP multi-hop TESTS edges do not fire for pyramid-style test clients",
             "verified_at": "2026-05-29"
           }
         },
@@ -35498,9 +35511,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
             "notes": "Multi-hop TESTS pass (#2987) links test-client calls (client/session/test_client.\u003cverb\u003e('/path')) through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -35715,9 +35728,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
             "notes": "Multi-hop TESTS pass (#2987) links test-client calls (client/session/test_client.\u003cverb\u003e('/path')) through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -36114,9 +36127,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
             "notes": "Multi-hop TESTS pass (#2987) links test-client calls (client/session/test_client.\u003cverb\u003e('/path')) through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -36331,9 +36344,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "3051",
             "notes": "pytest.go extracts test funcs; multi-hop TESTS pass (#2987) links test-client calls through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -36547,9 +36560,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
             "notes": "Multi-hop TESTS pass (#2987) links test-client calls (client/session/test_client.\u003cverb\u003e('/path')) through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go",
             "verified_at": "2026-05-29"
           }
@@ -36765,8 +36778,9 @@
         "Testing": {
           "tests_linkage": {
             "status": "partial",
-            "cites": ["internal/custom/python/pytest.go"],
-            "issue": "backfill:dictionary-completeness",
+            "cites": ["internal/custom/python/pytest.go","internal/engine/tests_edges.go","internal/engine/tests_edges_test.go"],
+            "issue": "3051",
+            "notes": "tornado uses self.fetch('/path') which is not matched by testClientHTTPCallRe; pytest extractor finds test functions but HTTP multi-hop TESTS edges do not fire for tornado-style test clients",
             "verified_at": "2026-05-29"
           }
         },
