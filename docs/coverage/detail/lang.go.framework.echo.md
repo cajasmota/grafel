@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/golang/observability.go`<br>`internal/custom/golang/observability_test.go` | — |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/golang/observability.go`<br>`internal/custom/golang/observability_test.go` | — |
+| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/observability.go`<br>`internal/custom/golang/observability_test.go` | — |
 
 ### Data
 
