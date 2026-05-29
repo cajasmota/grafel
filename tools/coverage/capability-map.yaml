@@ -1547,6 +1547,28 @@ records:
 
   lang.java.framework.jakarta-ee:
     capabilities:
+      Transactions:
+        transaction_boundary_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, txParseAttributes, classRefList]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-29"
+        transaction_propagation:
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-29"
+        transaction_rollback_rules:
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-29"
       Auth:
         auth_coverage:
           status: partial
@@ -1694,6 +1716,28 @@ records:
 
   lang.java.framework.spring-boot:
     capabilities:
+      Transactions:
+        transaction_boundary_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, txParseAttributes, classRefList]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-29"
+        transaction_propagation:
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-29"
+        transaction_rollback_rules:
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full

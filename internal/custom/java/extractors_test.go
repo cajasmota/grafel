@@ -2974,3 +2974,204 @@ public class InvoiceResourceTest {
 			len(testMethods), entityNames(r.Entities))
 	}
 }
+
+// ============================================================================
+// @Transactional tests (#3003 — Transactions lane, JVM frameworks)
+// ============================================================================
+
+// txProp returns the named property of the first SCOPE.Pattern transaction
+// boundary entity matching name, or "" if not found.
+func txEntityByName(r PatternResult, name string) (SecondaryEntity, bool) {
+	for _, e := range r.Entities {
+		if e.Subtype == "transaction_boundary" && e.Name == name {
+			return e, true
+		}
+	}
+	return SecondaryEntity{}, false
+}
+
+// TestTransactional_Boundary_Propagation_Rollback_Issue3003 is the proving
+// fixture from the issue: a Spring service with a class-level @Transactional
+// and a method-level @Transactional(propagation=REQUIRES_NEW,
+// rollbackFor=RuntimeException.class). Proves all three Transactions-lane
+// cells: transaction_boundary_extraction, transaction_propagation,
+// transaction_rollback_rules.
+// Registry target: lang.java.framework.spring-boot Transactions/* = partial.
+// Cite: internal/custom/java/transactional.go.
+func TestTransactional_Boundary_Propagation_Rollback_Issue3003(t *testing.T) {
+	source := `
+package com.example.order;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Isolation;
+
+@Service
+@Transactional(readOnly = true)
+public class OrderService {
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = RuntimeException.class)
+    public void placeOrder(Order order) {
+        repository.save(order);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY, isolation = Isolation.SERIALIZABLE,
+                   rollbackFor = {IllegalStateException.class, java.io.IOException.class},
+                   noRollbackFor = ValidationException.class)
+    public Order updateOrder(Long id) {
+        return null;
+    }
+
+    @Transactional
+    public void plainTx() {
+    }
+}
+`
+	r := ExtractTransactional(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_boot",
+		FilePath:  "OrderService.java",
+	})
+
+	// transaction_boundary_extraction: class-level boundary entity.
+	cls, ok := txEntityByName(r, "OrderService")
+	if !ok {
+		t.Fatalf("[#3003 boundary] expected class-level transaction_boundary entity for OrderService; got %v", entityNames(r.Entities))
+	}
+	if cls.Kind != "SCOPE.Pattern" {
+		t.Errorf("[#3003 boundary] class boundary Kind = %q, want SCOPE.Pattern", cls.Kind)
+	}
+	if cls.Properties["transaction_boundary"] != "class" {
+		t.Errorf("[#3003 boundary] class boundary transaction_boundary = %v, want class", cls.Properties["transaction_boundary"])
+	}
+	if cls.Properties["read_only"] != "true" {
+		t.Errorf("[#3003 boundary] class boundary read_only = %v, want true", cls.Properties["read_only"])
+	}
+
+	// transaction_boundary_extraction: method-level boundary entities.
+	place, ok := txEntityByName(r, "OrderService.placeOrder")
+	if !ok {
+		t.Fatalf("[#3003 boundary] expected method boundary OrderService.placeOrder; got %v", entityNames(r.Entities))
+	}
+	if place.Properties["transaction_boundary"] != "method" {
+		t.Errorf("[#3003 boundary] placeOrder transaction_boundary = %v, want method", place.Properties["transaction_boundary"])
+	}
+	if place.Properties["declaring_class"] != "OrderService" {
+		t.Errorf("[#3003 boundary] placeOrder declaring_class = %v, want OrderService", place.Properties["declaring_class"])
+	}
+
+	// transaction_propagation.
+	if place.Properties["propagation"] != "REQUIRES_NEW" {
+		t.Errorf("[#3003 propagation] placeOrder propagation = %v, want REQUIRES_NEW", place.Properties["propagation"])
+	}
+	upd, _ := txEntityByName(r, "OrderService.updateOrder")
+	if upd.Properties["propagation"] != "MANDATORY" {
+		t.Errorf("[#3003 propagation] updateOrder propagation = %v, want MANDATORY", upd.Properties["propagation"])
+	}
+	if upd.Properties["isolation"] != "SERIALIZABLE" {
+		t.Errorf("[#3003 propagation] updateOrder isolation = %v, want SERIALIZABLE", upd.Properties["isolation"])
+	}
+
+	// transaction_rollback_rules: single class.
+	if place.Properties["rollback_for"] != "RuntimeException" {
+		t.Errorf("[#3003 rollback] placeOrder rollback_for = %v, want RuntimeException", place.Properties["rollback_for"])
+	}
+	// transaction_rollback_rules: list form + noRollbackFor.
+	rb, _ := upd.Properties["rollback_for"].(string)
+	if !strings.Contains(rb, "IllegalStateException") || !strings.Contains(rb, "IOException") {
+		t.Errorf("[#3003 rollback] updateOrder rollback_for = %q, want IllegalStateException + IOException", rb)
+	}
+	if upd.Properties["no_rollback_for"] != "ValidationException" {
+		t.Errorf("[#3003 rollback] updateOrder no_rollback_for = %v, want ValidationException", upd.Properties["no_rollback_for"])
+	}
+
+	// OWNS edge from class boundary to each method boundary.
+	wantOwns := "scope:pattern:transaction_boundary:OrderService.java:OrderService"
+	var ownsCount int
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "OWNS" && rel.SourceRef == wantOwns {
+			ownsCount++
+		}
+	}
+	if ownsCount != 3 {
+		t.Errorf("[#3003 boundary] expected 3 OWNS edges from class boundary, got %d", ownsCount)
+	}
+
+	// plainTx: boundary with no attributes.
+	plain, ok := txEntityByName(r, "OrderService.plainTx")
+	if !ok {
+		t.Fatalf("[#3003 boundary] expected method boundary OrderService.plainTx")
+	}
+	if _, has := plain.Properties["propagation"]; has {
+		t.Errorf("[#3003 propagation] plainTx should have no propagation property, got %v", plain.Properties["propagation"])
+	}
+}
+
+// TestTransactional_JakartaJTA_Issue3003 proves the Jakarta/JTA @Transactional
+// surface (jakarta.transaction.Transactional with positional TxType) extracts a
+// boundary + propagation for the jakarta-ee framework.
+// Registry target: lang.java.framework.jakarta-ee Transactions/* = partial.
+func TestTransactional_JakartaJTA_Issue3003(t *testing.T) {
+	source := `
+package com.example.billing;
+
+import jakarta.transaction.Transactional;
+
+public class PaymentBean {
+
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    public void charge(long amount) {
+    }
+
+    @Transactional(rollbackFor = PaymentException.class)
+    public void refund(long amount) {
+    }
+}
+`
+	r := ExtractTransactional(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "PaymentBean.java",
+	})
+
+	charge, ok := txEntityByName(r, "PaymentBean.charge")
+	if !ok {
+		t.Fatalf("[#3003 jakarta boundary] expected PaymentBean.charge boundary; got %v", entityNames(r.Entities))
+	}
+	if charge.Properties["framework"] != "jakarta_ee" {
+		t.Errorf("[#3003 jakarta] framework = %v, want jakarta_ee", charge.Properties["framework"])
+	}
+	if charge.Properties["propagation"] != "REQUIRES_NEW" {
+		t.Errorf("[#3003 jakarta propagation] charge propagation = %v, want REQUIRES_NEW (JTA TxType)", charge.Properties["propagation"])
+	}
+	refund, _ := txEntityByName(r, "PaymentBean.refund")
+	if refund.Properties["rollback_for"] != "PaymentException" {
+		t.Errorf("[#3003 jakarta rollback] refund rollback_for = %v, want PaymentException", refund.Properties["rollback_for"])
+	}
+}
+
+// TestTransactional_FrameworkGating_Issue3003 proves the extractor runs for the
+// registered JVM frameworks and no-ops for unrelated ones / non-java.
+func TestTransactional_FrameworkGating_Issue3003(t *testing.T) {
+	source := `
+@Transactional(propagation = Propagation.REQUIRED)
+public void doWork() {}
+`
+	for _, fw := range []string{"spring_boot", "spring_webflux", "quarkus", "micronaut", "jakarta_ee", "jaxrs"} {
+		r := ExtractTransactional(PatternContext{Source: source, Language: "java", Framework: fw, FilePath: "X.java"})
+		if len(r.Entities) == 0 {
+			t.Errorf("[#3003 gating] framework %q expected a boundary entity, got none", fw)
+		}
+	}
+	// Unrelated framework: no-op.
+	if r := ExtractTransactional(PatternContext{Source: source, Language: "java", Framework: "django", FilePath: "X.java"}); len(r.Entities) != 0 {
+		t.Errorf("[#3003 gating] framework django should no-op, got %d entities", len(r.Entities))
+	}
+	// Non-java language: no-op.
+	if r := ExtractTransactional(PatternContext{Source: source, Language: "python", Framework: "spring_boot", FilePath: "X.py"}); len(r.Entities) != 0 {
+		t.Errorf("[#3003 gating] non-java should no-op, got %d entities", len(r.Entities))
+	}
+}

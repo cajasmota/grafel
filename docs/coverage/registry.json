@@ -15238,16 +15238,25 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
+            "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
+            "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
+            "verified_at": "2026-05-29"
           }
         },
         "AOP": {
@@ -15744,16 +15753,25 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
+            "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
+            "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
+            "verified_at": "2026-05-29"
           }
         },
         "AOP": {
@@ -16041,16 +16059,25 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
+            "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
+            "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
+            "verified_at": "2026-05-29"
           }
         },
         "AOP": {
@@ -16723,16 +16750,25 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
+            "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
+            "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
+            "verified_at": "2026-05-29"
           }
         },
         "AOP": {
@@ -16993,16 +17029,25 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
+            "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
+            "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
+            "verified_at": "2026-05-29"
           }
         },
         "AOP": {
@@ -17264,16 +17309,25 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
+            "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
+            "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
+            "verified_at": "2026-05-29"
           }
         },
         "AOP": {
