@@ -198,8 +198,8 @@ func TestStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
-	if !strings.Contains(out, "total records:    6") {
-		t.Errorf("expected 6 total records, got:\n%s", out)
+	if !strings.Contains(out, "total records:    7") {
+		t.Errorf("expected 7 total records, got:\n%s", out)
 	}
 }
 
@@ -208,8 +208,8 @@ func TestStatsJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stats json: %v", err)
 	}
-	if !strings.Contains(out, "\"total\": 6") {
-		t.Errorf("expected total=6 in JSON, got:\n%s", out)
+	if !strings.Contains(out, "\"total\": 7") {
+		t.Errorf("expected total=7 in JSON, got:\n%s", out)
 	}
 }
 

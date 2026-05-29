@@ -132,6 +132,47 @@
           "issue": "backfill:dictionary-completeness"
         }
       }
+    },
+    {
+      "id": "lang.python.validation.pydantic",
+      "category": "validation",
+      "subcategory": "validation_lib",
+      "language": "python",
+      "label": "Pydantic",
+      "capabilities": {
+        "Schema": {
+          "nested_model_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractors/python/extractor.go"]
+          }
+        },
+        "Constraints": {
+          "constraint_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "custom_validator_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Coercion": {
+          "type_coercion_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
     }
   ]
 }

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # python
 
-**Frameworks**: 21 · **Tools**: 15 · **ORMs**: 17 · **Other**: 3
+**Frameworks**: 21 · **Tools**: 15 · **ORMs**: 17 · **Other**: 6
 
 Back to [summary](../summary.md).
 
@@ -96,3 +96,11 @@ Back to [summary](../summary.md).
 | [Celery (Python task queue)](../detail/msg.celery.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | [message_broker](../by-category/message_broker.md) | ⚠️ | |
 | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | [message_broker](../by-category/message_broker.md) | ❌ | |
+
+### Validation
+
+| Name | Testing | Other capabilities | Notes |
+|---|---|---|---|
+| [Pydantic](../detail/lang.python.validation.pydantic.md) | ❌ 0/1 | ❌ 0/5 | |
+| [attrs](../detail/lang.python.validation.attrs.md) | ❌ 0/1 | ❌ 0/5 | |
+| [marshmallow](../detail/lang.python.validation.marshmallow.md) | ❌ 0/1 | ❌ 0/5 | |

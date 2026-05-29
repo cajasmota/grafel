@@ -12196,6 +12196,51 @@
       }
     },
     {
+      "id": "lang.java.validation.bean-validation",
+      "category": "validation",
+      "subcategory": "validation_lib",
+      "language": "java",
+      "label": "Bean Validation (Jakarta/javax)",
+      "capabilities": {
+        "Schema": {
+          "nested_model_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/java_annotation_params.go","internal/engine/java_annotation_params_test.go"],
+            "notes": "@Valid (cascade/nested validation marker) is recognized and lifts the annotated parameter to required; no recursion into the nested type's own fields.",
+            "verified_at": "2026-05-29"
+          },
+          "schema_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Constraints": {
+          "constraint_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/java_annotation_params.go","internal/engine/java_annotation_params_test.go"],
+            "notes": "Bean-Validation annotations (@NotNull/@NotBlank/@NotEmpty/@Size/@Min/@Max/@Pattern/@Email) are collected on each handler parameter and drive the Required flag; captured as annotation strings, not structured constraint records (no value bounds parsed).",
+            "verified_at": "2026-05-29"
+          },
+          "custom_validator_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Coercion": {
+          "type_coercion_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.jcl.runtime.zos",
       "category": "language",
       "language": "jcl",
@@ -22056,6 +22101,137 @@
           "status": "partial",
           "cites": ["internal/engine/orm_queries_python.go"],
           "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "lang.python.validation.attrs",
+      "category": "validation",
+      "subcategory": "validation_lib",
+      "language": "python",
+      "label": "attrs",
+      "capabilities": {
+        "Schema": {
+          "nested_model_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractors/python/extractor.go","internal/extractors/python/extractor_test.go"],
+            "notes": "@attr.s/@define classes surface only as generic Python classes: PEP 526 annotated attributes are emitted as SCOPE.Schema/field by extractClassFields. No attrs-specific validator=/converter= recognition.",
+            "verified_at": "2026-05-29"
+          }
+        },
+        "Constraints": {
+          "constraint_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "custom_validator_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Coercion": {
+          "type_coercion_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.python.validation.marshmallow",
+      "category": "validation",
+      "subcategory": "validation_lib",
+      "language": "python",
+      "label": "marshmallow",
+      "capabilities": {
+        "Schema": {
+          "nested_model_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractors/python/extractor.go","internal/extractors/python/extractor_test.go"],
+            "notes": "marshmallow Schemas surface only as generic Python classes: class + class-attribute fields (e.g. name = fields.Str()) are emitted as SCOPE.Schema/field by extractClassFields. No marshmallow-specific field-type or validate= recognition.",
+            "verified_at": "2026-05-29"
+          }
+        },
+        "Constraints": {
+          "constraint_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "custom_validator_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Coercion": {
+          "type_coercion_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.python.validation.pydantic",
+      "category": "validation",
+      "subcategory": "validation_lib",
+      "language": "python",
+      "label": "Pydantic",
+      "capabilities": {
+        "Schema": {
+          "nested_model_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractors/python/discriminator.go","internal/extractors/python/nested_ctor_refs.go"],
+            "notes": "Discriminated-union tags captured via DISCRIMINATES_ON (discriminator.go); nested model construction referenced via nested_ctor_refs. No structured nested-schema tree.",
+            "verified_at": "2026-05-29"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractors/python/extractor.go","internal/extractors/python/extractor_test.go"],
+            "notes": "Base Python extractor emits the model class (SCOPE.Component) and its annotated fields (SCOPE.Schema/field) via extractClassFields; no Pydantic-specific Field()/constraint parsing.",
+            "verified_at": "2026-05-29"
+          }
+        },
+        "Constraints": {
+          "constraint_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "custom_validator_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Coercion": {
+          "type_coercion_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
         }
       }
     },

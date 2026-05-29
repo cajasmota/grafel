@@ -71,6 +71,9 @@ categories:
     capabilities: [service_extraction, method_attribution, cross_repo_linkage]
   ci_cd:
     capabilities: [file_parsing, env_resolution]
+  validation:
+    capabilities: [schema_extraction, nested_model_extraction, constraint_extraction, custom_validator_extraction, type_coercion_recognition, tests_linkage]
+    subcategory_order: [validation_lib]
 
 # Subcategories carve a broad category into honest narrower lanes (e.g.
 # http_framework → ui_frontend, mobile, ...). Each subcategory declares:
@@ -522,3 +525,23 @@ subcategories:
         keys: [tests_linkage]
       - name: Substrate
         keys: [constant_propagation, env_fallback_recognition, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, template_pattern_catalog]
+
+  validation_lib:
+    display: "Validation"
+    parent_category: validation
+    capabilities:
+      - schema_extraction
+      - nested_model_extraction
+      - constraint_extraction
+      - custom_validator_extraction
+      - type_coercion_recognition
+      - tests_linkage
+    groups:
+      - name: Schema
+        keys: [schema_extraction, nested_model_extraction]
+      - name: Constraints
+        keys: [constraint_extraction, custom_validator_extraction]
+      - name: Coercion
+        keys: [type_coercion_recognition]
+      - name: Testing
+        keys: [tests_linkage]

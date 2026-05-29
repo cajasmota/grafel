@@ -7,10 +7,33 @@ Back to [summary](../summary.md).
 {{range .Sections}}
 ## {{.Name}}
 {{if eq .Name "Other"}}
+{{- if .Records}}
 | Name | Category | Status | Notes |
 |---|---|---|---|
 {{- range .Records}}
 | [{{.Label}}](../detail/{{.ID}}.md) | [{{.Category}}](../by-category/{{.Category}}.md) | {{glyph .Digest}} | |
+{{- end}}
+{{- end}}
+{{- range .Subsections}}
+
+### {{.Heading}}
+{{if .GroupNames}}
+| Name |{{range .GroupNames}} {{.}} |{{end}} Notes |
+|---|{{range .GroupNames}}---|{{end}}---|
+{{- $groups := .GroupNames}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{.Label}}](../detail/{{.ID}}.md) |{{range $groups}} {{groupCell $rec.GroupDigestByName .}} |{{end}} |
+{{- end}}
+{{else}}
+| Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Notes |
+|---|{{range .CapabilityKeys}}---|{{end}}---|
+{{- $caps := .CapabilityKeys}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} |
+{{- end}}
+{{end}}
 {{- end}}
 {{else}}
 {{- if .Subsections}}
