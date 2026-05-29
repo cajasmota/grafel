@@ -19847,8 +19847,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -19856,16 +19859,25 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -19873,12 +19885,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -19886,48 +19904,81 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go","internal/substrate/payload_shapes_test.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts payload sniffer fires on Angular .ts files; req.body field extraction + axios/fetch consumer shapes proved by jsts-generic tests but no Angular-specific proving fixture/test exists.",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_jsts.go","internal/substrate/payload_shapes_test.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts payload sniffer fires on Angular .ts files; res.json inline response shapes proved by jsts-generic tests but no Angular-specific proving fixture/test exists.",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/reachability.go","internal/links/taint_flow.go","internal/substrate/def_use_jsts.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/entry_points_jsts.go","internal/substrate/taint_sites_jsts.go","internal/substrate/template_pattern_jsts.go"],
+            "issue": "3053",
+            "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
             "status": "missing",
@@ -23629,12 +23680,14 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/payload_shapes_jsts.go","internal/substrate/payload_shapes_test.go"],
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/payload_shapes_jsts.go","internal/substrate/payload_shapes_test.go"],
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "full",
@@ -23642,8 +23695,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes_jsts.go"],
+            "issue": "3053",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "full",
@@ -24695,8 +24750,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -24704,16 +24762,23 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3053",
+            "notes": "Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on \u003cscript\u003e but no Svelte-specific fixture tests this cap.",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_t3_test.go"],
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -24721,12 +24786,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3053",
+            "notes": "Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on \u003cscript\u003e but no Svelte-specific fixture tests this cap.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_markup_script.go","internal/substrate/effect_sinks_t3_test.go"],
+            "issue": "3053",
+            "notes": "TestSniffEffectsMarkupScript_Svelte proves http_effect fires on Svelte \u003cscript\u003e; db/fs/mutation effects not Svelte-specifically tested.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -24734,28 +24805,42 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3053",
+            "notes": "Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on \u003cscript\u003e but no Svelte-specific fixture tests this cap.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/payload_shapes_t3.go","internal/substrate/payload_shapes_t3_test.go"],
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/payload_shapes_t3.go","internal/substrate/payload_shapes_t3_test.go"],
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "full",
@@ -24763,8 +24848,11 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "full",
@@ -24777,8 +24865,9 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/def_use_t3_test.go","internal/substrate/template_pattern_markup_script.go"],
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
             "status": "full",
@@ -25252,8 +25341,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Vue .vue files are processed via markup-script dispatcher but no Vue-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -25261,16 +25353,23 @@
             "verified_at": "2026-05-28"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3053",
+            "notes": "Vue SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on \u003cscript setup\u003e but no Vue-specific fixture tests this cap.",
+            "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Vue .vue files are processed via markup-script dispatcher but no Vue-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_t3_test.go"],
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -25278,12 +25377,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3053",
+            "notes": "Vue SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on \u003cscript setup\u003e but no Vue-specific fixture tests this cap.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_markup_script.go","internal/substrate/effect_sinks_t3_test.go"],
+            "issue": "3053",
+            "notes": "TestSniffEffectsMarkupScript_Vue proves http_effect fires on Vue \u003cscript setup\u003e; db/fs/mutation effects not Vue-specifically tested.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -25291,28 +25396,42 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Vue .vue files are processed via markup-script dispatcher but no Vue-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effect_sinks_markup_script.go"],
+            "issue": "3053",
+            "notes": "Vue SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on \u003cscript setup\u003e but no Vue-specific fixture tests this cap.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Vue .vue files are processed via markup-script dispatcher but no Vue-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Vue .vue files are processed via markup-script dispatcher but no Vue-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/payload_shapes_t3.go","internal/substrate/payload_shapes_t3_test.go"],
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/payload_shapes_t3.go","internal/substrate/payload_shapes_t3_test.go"],
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "full",
@@ -25320,8 +25439,11 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/links/payload_drift.go","internal/links/reachability.go","internal/links/taint_flow.go"],
+            "issue": "3053",
+            "notes": "Language-agnostic pass operates over extracted graph; Vue .vue files are processed via markup-script dispatcher but no Vue-specific integration test exists for this cap.",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "full",
@@ -25334,8 +25456,9 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/def_use_t3_test.go","internal/substrate/template_pattern_markup_script.go"],
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
             "status": "full",

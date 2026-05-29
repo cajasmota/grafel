@@ -164,9 +164,9 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | ❌ 0/3 | ❌ 0/1 | ❌ 2/21 | ❌ 0/8 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 17/17 | |
-| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ❌ 18/21 | ✅ 21/23 | |
-| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 16/17 | |
-| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 18/20 | |
+| [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/21 | ✅ 21/23 | |
+| [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 11/21 | ⚠️ 16/17 | |
+| [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 11/21 | ⚠️ 18/20 | |
 
 
 ## Meta Framework

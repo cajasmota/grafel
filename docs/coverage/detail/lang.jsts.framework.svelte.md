@@ -57,26 +57,26 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Confidence overlay | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| DB effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DB effect | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_markup_script.go` | Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on <script> but no Svelte-specific fixture tests this cap. |
+| Dead code detection | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
+| Def use chain extraction | ✅ `full` | `2026-05-29` | — | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_t3_test.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_markup_script.go` | Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on <script> but no Svelte-specific fixture tests this cap. |
+| HTTP effect | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/substrate/effect_sinks_markup_script.go`<br>`internal/substrate/effect_sinks_t3_test.go` | TestSniffEffectsMarkupScript_Svelte proves http_effect fires on Svelte <script>; db/fs/mutation effects not Svelte-specifically tested. |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go`<br>`internal/substrate/substrate.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_svelte/UserCard.svelte` | — |
-| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Response shape extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
+| Mutation effect | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_markup_script.go` | Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on <script> but no Svelte-specific fixture tests this cap. |
+| Pure function tagging | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
+| Reachability analysis | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
+| Request shape extraction | ✅ `full` | `2026-05-29` | — | `internal/substrate/payload_shapes_t3.go`<br>`internal/substrate/payload_shapes_t3_test.go` | — |
+| Response shape extraction | ✅ `full` | `2026-05-29` | — | `internal/substrate/payload_shapes_t3.go`<br>`internal/substrate/payload_shapes_t3_test.go` | — |
 | Sanitizer recognition | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_svelte/UserCard.svelte` | — |
-| Schema drift detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | ⚠️ `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
 | Taint sink detection | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_svelte/UserCard.svelte` | — |
 | Taint source detection | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_svelte/UserCard.svelte` | — |
-| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | ✅ `full` | `2026-05-29` | — | `internal/substrate/def_use_t3_test.go`<br>`internal/substrate/template_pattern_markup_script.go` | — |
 | Vulnerability finding | ✅ `full` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_markup_script.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_svelte/UserCard.svelte` | — |
 
 ## Framework-specific

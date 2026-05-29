@@ -31,9 +31,9 @@ Back to [summary](../summary.md).
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
 | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | ❌ 3/21 | ✅ 17/17 | |
-| [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ❌ 18/21 | ✅ 21/23 | |
-| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 16/17 | |
-| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ❌ 7/21 | ⚠️ 18/20 | |
+| [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 20/21 | ✅ 21/23 | |
+| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 11/21 | ⚠️ 16/17 | |
+| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | ⚠️ 11/21 | ⚠️ 18/20 | |
 
 
 ### Meta Framework
