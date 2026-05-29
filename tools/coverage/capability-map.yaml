@@ -796,6 +796,54 @@ records:
             - file: internal/engine/rules/python/frameworks/flask.yaml
           issues_implemented: ["2681"]
           verified_at: "2026-05-28"
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeFlask, parseFlaskMethods]
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_test.go
+          issues_implemented: ["2977"]
+          verified_at: "2026-05-29"
+      Auth:
+        auth_coverage:
+          status: partial
+          symbols:
+            - file: internal/custom/python/flask.go
+              functions: [Extract]
+          issues_implemented: ["2977"]
+          verified_at: "2026-05-29"
+      Middleware:
+        middleware_coverage:
+          status: partial
+          symbols:
+            - file: internal/custom/python/flask.go
+              functions: [Extract]
+          issues_implemented: ["2977"]
+          verified_at: "2026-05-29"
+      Validation:
+        dto_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/python/flask_reqresp.go
+              functions: [Extract]
+          issues_implemented: ["2977"]
+          verified_at: "2026-05-29"
+        request_validation:
+          status: partial
+          symbols:
+            - file: internal/custom/python/flask.go
+              functions: [Extract]
+          issues_implemented: ["2977"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/custom/python/pytest.go
+              functions: [Extract]
+          issues_implemented: ["2977"]
+          verified_at: "2026-05-29"
 
   lang.python.framework.fastapi:
     capabilities:
