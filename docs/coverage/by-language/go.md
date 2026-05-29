@@ -87,10 +87,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟡 1/6 | |
 | [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟡 1/6 | |
 | [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟡 1/6 | |
-| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟡 1/6 | |
+| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟢 4/4 | |
 | [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟡 1/6 | |
 | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 1/6 | |
-| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟡 1/6 | |
+| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟢 4/4 | |
 | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 3/8 | |
-| [sqlx](../detail/lang.go.orm.sqlx.md) | 🟡 2/8 | |
+| [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 5/5 | |
 | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🔴 0/8 | |
