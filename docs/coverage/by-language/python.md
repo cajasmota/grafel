@@ -84,12 +84,12 @@ Back to [summary](../summary.md).
 | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ⚠️ 5/8 | |
 | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | ❌ 2/8 | |
 | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | ❌ 1/8 | |
-| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ❌ 0/8 | |
-| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ❌ 0/8 | |
-| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ❌ 0/8 | |
-| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | ❌ 0/8 | |
+| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ⚠️ 0/8 | |
+| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ⚠️ 0/8 | |
+| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ⚠️ 0/8 | |
+| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | ⚠️ 0/8 | |
 | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | ❌ 0/8 | |
-| [redis-py](../detail/lang.python.driver.redis.md) | ❌ 0/8 | |
+| [redis-py](../detail/lang.python.driver.redis.md) | ⚠️ 0/8 | |
 | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | ❌ 0/8 | |
 
 

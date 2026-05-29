@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
+| Foreign key extraction | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
+| Lazy loading recognition | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
+| Relationship extraction | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
 
 ### Queries
 
