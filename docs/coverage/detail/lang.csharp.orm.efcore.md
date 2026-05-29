@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/csharp/frameworks/entity_framework_core.yaml`<br>`internal/engine/rules/csharp/orms/entity_framework_core.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | ✅ `full` | `2026-05-29` | 3262 | — | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | ✅ `full` | `2026-05-29` | 3262 | — | — |
+| Foreign key extraction | ✅ `full` | `2026-05-29` | 3262 | — | — |
+| Lazy loading recognition | ✅ `full` | `2026-05-29` | 3262 | — | — |
+| Relationship extraction | ✅ `full` | `2026-05-29` | 3262 | — | — |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | ✅ `full` | `2026-05-29` | 3262 | — | — |
 
 ## Provenance
 

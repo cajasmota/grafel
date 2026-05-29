@@ -26,7 +26,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🟡 1/6 | |
+| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 1/6 | |
 | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [Carter](../detail/lang.csharp.framework.carter.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
@@ -89,7 +89,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/6 | |
 | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/6 | |
 | [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 2/8 | |
-| [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | 🟡 2/8 | |
+| [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ✅ 8/8 | |
 | [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟡 2/8 | |
 | [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🔴 0/8 | |
 | [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🟡 1/6 | |

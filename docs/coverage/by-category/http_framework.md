@@ -25,7 +25,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C/C++](../by-language/c-cpp.md) | [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [C/C++](../by-language/c-cpp.md) | [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [C/C++](../by-language/c-cpp.md) | [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [C#](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🟡 1/6 | |
+| [C#](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 1/6 | |
 | [C#](../by-language/csharp.md) | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [C#](../by-language/csharp.md) | [Carter](../detail/lang.csharp.framework.carter.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [C#](../by-language/csharp.md) | [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
