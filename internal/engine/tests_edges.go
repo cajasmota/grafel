@@ -58,19 +58,32 @@ import (
 // Regex patterns
 // ---------------------------------------------------------------------------
 
-// testClientHTTPCallRe matches Django REST / requests-style HTTP client calls
-// inside test function bodies.  Patterns covered:
+// testClientHTTPCallRe matches HTTP test-client calls inside test function
+// bodies across the supported Python web frameworks.  Patterns covered:
 //
-//	self.client.post('/path', ...)
-//	self.client.get('/path')
-//	client.post('/path', ...)
-//	requests.get('/path', ...)
-//	self.client.patch('/path', ...)
+//	Django:    self.client.post('/path', ...) / client.get('/path')
+//	FastAPI:   client.get('/path')            # fastapi.testclient.TestClient
+//	Starlette: client.get('/path')            # starlette.testclient.TestClient
+//	Flask:     client.get('/path')            # app.test_client()
+//	Quart:     await client.get('/path')      # async test client
+//	Sanic:     app.test_client.get('/path')   # app.test_client.<verb>
+//	aiohttp:   await session.get('/path') / async with session.get('/path')
+//	httpx:     await ac.get('/path')          # AsyncClient aliased `ac`
+//	requests:  requests.get('/path', ...)
 //
-// Group 1 = HTTP verb (get|post|put|patch|delete).
-// Group 2 = URL path literal (single or double quoted).
+// The optional `self.` / `app.` / `cls.` prefix is consumed so that both bare
+// (`client.get`) and attribute (`self.client.get`, `app.test_client.get`)
+// receivers match.  An optional `await` is tolerated by the leading-boundary
+// match.  The receiver token must be one of the recognised test-client names
+// (client, test_client, session, ac, async_client) or an HTTP library module
+// (requests, httpx) — this keeps unrelated `.get(...)` calls such as
+// `cache.get('key')` or `logger.get('config')` from producing phantom edges.
+//
+// Group 1 = HTTP verb (get|post|put|patch|delete|head|options).
+// Group 2 = URL literal (single or double quoted).  Absolute URLs
+// (http://host/path) are normalised to their path by normaliseHTTPPath.
 var testClientHTTPCallRe = regexp.MustCompile(
-	`\b(?:self\.client|client|requests|httpx)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["']`,
+	`(?:\b(?:self|app|cls)\s*\.\s*)?\b(?:client|test_client|session|ac|async_client|requests|httpx)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["']`,
 )
 
 // pyTestFuncRe re-matches test function headers to locate the enclosing test
@@ -108,6 +121,23 @@ func isTestFilePath(p string) bool {
 // ROUTES_TO entry.
 func normaliseHTTPPath(raw string) string {
 	p := strings.ToLower(raw)
+	// aiohttp / httpx tests often issue absolute URLs against a test server
+	// (e.g. session.get('http://localhost/api/x') or client.get(f'{base}/api/x')
+	// rendered as 'http://testserver/api/x'). Strip the scheme + authority so
+	// the remaining path lines up with the ROUTES_TO index, which is keyed by
+	// path only.
+	if i := strings.Index(p, "://"); i >= 0 {
+		rest := p[i+3:]
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			p = rest[slash:]
+		} else {
+			p = "/"
+		}
+	}
+	// Drop a query string / fragment — routes are matched on path alone.
+	if q := strings.IndexAny(p, "?#"); q >= 0 {
+		p = p[:q]
+	}
 	// Collapse repeated slashes.
 	for strings.Contains(p, "//") {
 		p = strings.ReplaceAll(p, "//", "/")
@@ -210,9 +240,14 @@ func ApplyTestsMultiHopViaHTTP(
 		}
 		src := string(content)
 
-		// Quick bail-out: file must contain an HTTP client call pattern.
-		if !strings.Contains(src, ".client.") && !strings.Contains(src, "requests.") &&
-			!strings.Contains(src, "httpx.") {
+		// Quick bail-out: file must contain a recognised HTTP test-client
+		// receiver token followed by a dotted call.  Covers Django/FastAPI/
+		// Flask/Starlette (.client.), Quart, Sanic (.test_client.), aiohttp
+		// (session.), httpx AsyncClient (ac. / async_client.), and the
+		// requests/httpx libraries.  Cheap substring gate before the regex.
+		if !strings.Contains(src, "client.") && !strings.Contains(src, "session.") &&
+			!strings.Contains(src, "requests.") && !strings.Contains(src, "httpx.") &&
+			!strings.Contains(src, "ac.") {
 			continue
 		}
 

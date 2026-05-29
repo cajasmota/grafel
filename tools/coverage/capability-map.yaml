@@ -813,6 +813,19 @@ records:
             - file: internal/substrate/template_pattern_python.go
           issues_implemented: ["2774"]
           verified_at: "2026-05-28"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/custom/python/pytest.go
+              functions: [Extract]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex, normaliseHTTPPath]
+          tests:
+            - file: internal/engine/tests_edges_test.go
+              functions: [TestTestsEdges_MultiHopViaHttpClient, TestMultiHop_UpvatePattern]
+          issues_implemented: ["2987"]
+          verified_at: "2026-05-29"
 
   lang.python.framework.flask:
     capabilities:
@@ -916,7 +929,12 @@ records:
           symbols:
             - file: internal/custom/python/pytest.go
               functions: [Extract]
-          issues_implemented: ["2977"]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex, normaliseHTTPPath]
+          tests:
+            - file: internal/engine/tests_edges_test.go
+              functions: [TestTestsEdges_FlaskTestClient]
+          issues_implemented: ["2977", "2987"]
           verified_at: "2026-05-29"
 
   lang.python.framework.sanic:
@@ -988,6 +1006,17 @@ records:
             - file: internal/engine/http_endpoint_synthesis_asgi_test.go
           issues_implemented: ["2980"]
           verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex, normaliseHTTPPath]
+          tests:
+            - file: internal/engine/tests_edges_test.go
+              functions: [TestTestsEdges_SanicTestClient]
+          issues_implemented: ["2987"]
+          verified_at: "2026-05-29"
 
   lang.python.framework.litestar:
     capabilities:
@@ -1057,6 +1086,17 @@ records:
           tests:
             - file: internal/engine/http_endpoint_synthesis_asgi_test.go
           issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex, normaliseHTTPPath]
+          tests:
+            - file: internal/engine/tests_edges_test.go
+              functions: [TestTestsEdges_FastAPITestClient]
+          issues_implemented: ["2987"]
           verified_at: "2026-05-29"
 
   lang.python.framework.robyn:
@@ -1128,6 +1168,17 @@ records:
             - file: internal/engine/http_endpoint_synthesis_asgi_test.go
           issues_implemented: ["2980"]
           verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex, normaliseHTTPPath]
+          tests:
+            - file: internal/engine/tests_edges_test.go
+              functions: [TestTestsEdges_FastAPITestClient]
+          issues_implemented: ["2987"]
+          verified_at: "2026-05-29"
 
   lang.python.framework.aiohttp:
     capabilities:
@@ -1197,6 +1248,17 @@ records:
           tests:
             - file: internal/engine/http_endpoint_synthesis_aiohttp_bottle_test.go
           issues_implemented: ["2979"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex, normaliseHTTPPath]
+          tests:
+            - file: internal/engine/tests_edges_test.go
+              functions: [TestTestsEdges_AiohttpClientSession]
+          issues_implemented: ["2987"]
           verified_at: "2026-05-29"
 
   lang.python.framework.bottle:
@@ -1363,7 +1425,12 @@ records:
           symbols:
             - file: internal/custom/python/pytest.go
               functions: [Extract]
-          issues_implemented: ["2976"]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex, normaliseHTTPPath]
+          tests:
+            - file: internal/engine/tests_edges_test.go
+              functions: [TestTestsEdges_FastAPITestClient, TestTestsEdges_HttpxAsyncClient]
+          issues_implemented: ["2976", "2987"]
           verified_at: "2026-05-29"
       Auth:
         auth_coverage:

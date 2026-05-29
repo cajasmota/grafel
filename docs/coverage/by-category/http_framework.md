@@ -88,15 +88,15 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ⚠️ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ⚠️ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [python](../by-language/python.md) | [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [python](../by-language/python.md) | [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [python](../by-language/python.md) | [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Robyn](../detail/lang.python.framework.robyn.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Sanic](../detail/lang.python.framework.sanic.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [python](../by-language/python.md) | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ❌ 0/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [python](../by-language/python.md) | [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [python](../by-language/python.md) | [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [python](../by-language/python.md) | [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 3/3 | ❌ 0/1 | ⚠️ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
 | [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |
 | [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 8/21 | ❌ 0/6 | |

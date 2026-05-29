@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/tests_edges.go`<br>`internal/engine/tests_edges_test.go` | Multi-hop TESTS pass (#2987) links test-client calls (client/session/test_client.<verb>('/path')) through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go |
 
 ### Observability
 

@@ -158,6 +158,138 @@ func TestTestsEdges_NoHopWhenRouteAbsent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Framework test-client fixtures (#2987)
+//
+// The multi-hop pass is framework-agnostic at the regex layer: every supported
+// Python web framework's test client funnels through `<receiver>.<verb>(<path>)`.
+// These fixture tests assert that the FastAPI TestClient, Flask test_client,
+// Sanic app.test_client, aiohttp ClientSession, and httpx AsyncClient patterns
+// each synthesise a TESTS edge to the routed handler, using a per-framework
+// ROUTES_TO record.
+// ---------------------------------------------------------------------------
+
+// runFrameworkTestClientCase drives ApplyTestsMultiHopViaHTTP for a single
+// framework's test-client source against a ROUTES_TO record for /api/items,
+// and asserts a TESTS edge reaches the expected handler from the expected test
+// function.
+func runFrameworkTestClientCase(t *testing.T, name, testFile, src, wantToID, wantFunc string) {
+	t.Helper()
+	routes := []types.RelationshipRecord{
+		{
+			FromID:     "Route:/api/items",
+			ToID:       wantToID,
+			Kind:       "ROUTES_TO",
+			Properties: map[string]string{"pattern_type": "ast_driven"},
+		},
+	}
+	reader := func(p string) []byte {
+		if p == testFile {
+			return []byte(src)
+		}
+		return nil
+	}
+	edges := ApplyTestsMultiHopViaHTTP([]string{testFile}, reader, routes)
+	for _, e := range edges {
+		if e.Kind == "TESTS" && e.ToID == wantToID &&
+			e.Properties["test_function"] == wantFunc &&
+			e.Properties["via"] == "http_router" {
+			return
+		}
+	}
+	t.Errorf("%s: expected TESTS edge %s -> %s via http_router; got %+v", name, wantFunc, wantToID, edges)
+}
+
+func TestTestsEdges_FastAPITestClient(t *testing.T) {
+	src := `from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
+
+def test_read_items():
+    response = client.get('/api/items')
+    assert response.status_code == 200
+`
+	runFrameworkTestClientCase(t, "fastapi", "tests/test_fastapi_client.py", src,
+		"View:ItemsEndpoint", "test_read_items")
+}
+
+func TestTestsEdges_FlaskTestClient(t *testing.T) {
+	// Acceptance criterion: test_flask_client.py asserting a TESTS edge.
+	src := `import pytest
+from app import create_app
+
+@pytest.fixture
+def client():
+    app = create_app()
+    return app.test_client()
+
+def test_get_items(client):
+    rv = client.get('/api/items')
+    assert rv.status_code == 200
+`
+	runFrameworkTestClientCase(t, "flask", "tests/test_flask_client.py", src,
+		"View:items_view", "test_get_items")
+}
+
+func TestTestsEdges_SanicTestClient(t *testing.T) {
+	src := `from app.server import app
+
+def test_items_endpoint():
+    request, response = app.test_client.get('/api/items')
+    assert response.status == 200
+`
+	runFrameworkTestClientCase(t, "sanic", "tests/test_sanic_client.py", src,
+		"View:items_handler", "test_items_endpoint")
+}
+
+func TestTestsEdges_AiohttpClientSession(t *testing.T) {
+	// aiohttp tests issue absolute URLs through an async ClientSession; the
+	// scheme+authority must be stripped so the path matches the route index.
+	src := `import aiohttp
+
+async def test_items_via_session(aiohttp_client):
+    async with aiohttp.ClientSession() as session:
+        resp = await session.get('http://localhost:8080/api/items')
+        assert resp.status == 200
+`
+	runFrameworkTestClientCase(t, "aiohttp", "tests/test_aiohttp_client.py", src,
+		"View:ItemsView", "test_items_via_session")
+}
+
+func TestTestsEdges_HttpxAsyncClient(t *testing.T) {
+	src := `import pytest
+import httpx
+
+@pytest.mark.asyncio
+async def test_items_httpx():
+    async with httpx.AsyncClient(base_url='http://test') as ac:
+        resp = await ac.get('/api/items')
+        assert resp.status_code == 200
+`
+	runFrameworkTestClientCase(t, "httpx", "tests/test_httpx_client.py", src,
+		"View:items_async", "test_items_httpx")
+}
+
+// TestTestsEdges_NonClientReceiverIgnored guards against phantom edges from
+// unrelated `.get(...)` calls (cache.get, logger.get) that share an HTTP-verb
+// method name but are not test clients.
+func TestTestsEdges_NonClientReceiverIgnored(t *testing.T) {
+	src := `def test_cache_lookup():
+    value = cache.get('/api/items')
+    config = logger.get('/api/items')
+    assert value is None
+`
+	routes := []types.RelationshipRecord{
+		{FromID: "Route:/api/items", ToID: "View:ItemsView", Kind: "ROUTES_TO"},
+	}
+	reader := func(p string) []byte { return []byte(src) }
+	edges := ApplyTestsMultiHopViaHTTP([]string{"tests/test_cache.py"}, reader, routes)
+	if len(edges) != 0 {
+		t.Errorf("expected 0 edges from non-client receivers (cache/logger), got %d: %+v", len(edges), edges)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Additional unit tests for helpers
 // ---------------------------------------------------------------------------
 
@@ -172,6 +304,14 @@ func TestNormaliseHTTPPath(t *testing.T) {
 		{"/", "/"},
 		{"", "/"},
 		{"/API/V1/Foo", "/api/v1/foo"},
+		// Absolute URLs (aiohttp/httpx) → path only.
+		{"http://localhost:8080/api/items", "/api/items"},
+		{"https://testserver/api/v1/foo/", "/api/v1/foo"},
+		{"http://host", "/"},
+		// Query string / fragment dropped.
+		{"/api/items?page=2", "/api/items"},
+		{"/api/items#frag", "/api/items"},
+		{"http://host/api/x?q=1", "/api/x"},
 	}
 	for _, tc := range cases {
 		got := normaliseHTTPPath(tc.in)
