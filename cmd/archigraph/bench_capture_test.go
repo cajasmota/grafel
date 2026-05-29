@@ -38,9 +38,9 @@ func TestParseBenchCapture_EmptyBytes(t *testing.T) {
 	}
 }
 
-// TestParseBenchCapture_SingleLine verifies a single well-formed log line.
+// TestParseBenchCapture_SingleLine verifies a single well-formed slog log line.
 func TestParseBenchCapture_SingleLine(t *testing.T) {
-	line := "archigraph-daemon: 2026/05/26 22:40:38.695982 [mcp-rpc] tool=archigraph_search elapsed=8095ms repo=/path/to/repo\n"
+	line := "time=2026-05-26T22:40:38.695+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=8095 repo=/path/to/repo ts=2026-05-26T17:10:38Z\n"
 	out := parseBenchCapture([]byte(line))
 
 	if out.McpRPCCount != 1 {
@@ -67,12 +67,12 @@ func TestParseBenchCapture_SingleLine(t *testing.T) {
 	}
 }
 
-// TestParseBenchCapture_ReceivedLinesIgnored verifies that "received" companion
-// lines (no elapsed= field) are not counted.
+// TestParseBenchCapture_ReceivedLinesIgnored verifies that phase=received
+// companion lines (no elapsed_ms field) are not counted.
 func TestParseBenchCapture_ReceivedLinesIgnored(t *testing.T) {
 	data := strings.Join([]string{
-		"archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search received repo=/path",
-		"archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=500ms repo=/path",
+		"time=2026-05-26T22:40:38.000+05:45 level=INFO msg=mcp_rpc phase=received tool=archigraph_search repo=/path ts=2026-05-26T17:10:38Z",
+		"time=2026-05-26T22:40:38.500+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=500 repo=/path ts=2026-05-26T17:10:38Z",
 		"",
 	}, "\n")
 	out := parseBenchCapture([]byte(data))
@@ -85,9 +85,9 @@ func TestParseBenchCapture_ReceivedLinesIgnored(t *testing.T) {
 func TestParseBenchCapture_MultipleTools(t *testing.T) {
 	// 3 calls: search×2 (100ms, 200ms) + describe×1 (300ms)
 	lines := []string{
-		"archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=100ms repo=/r",
-		"archigraph-daemon: 2026/05/26 22:40:39 [mcp-rpc] tool=archigraph_search elapsed=200ms repo=/r",
-		"archigraph-daemon: 2026/05/26 22:40:40 [mcp-rpc] tool=archigraph_describe elapsed=300ms repo=/r",
+		"time=2026-05-26T22:40:38.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=100 repo=/r ts=2026-05-26T17:10:38Z",
+		"time=2026-05-26T22:40:39.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=200 repo=/r ts=2026-05-26T17:10:39Z",
+		"time=2026-05-26T22:40:40.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_describe elapsed_ms=300 repo=/r ts=2026-05-26T17:10:40Z",
 		"",
 	}
 	out := parseBenchCapture([]byte(strings.Join(lines, "\n")))
@@ -141,10 +141,10 @@ func TestParseBenchCapture_PercentileEven(t *testing.T) {
 	// p50 = average(sorted[1], sorted[2]) = average(20, 30) = 25.
 	// p99 = sorted[ceil(4*0.99)-1] = sorted[ceil(3.96)-1] = sorted[4-1] = sorted[3] = 40.
 	lines := []string{
-		"x [mcp-rpc] tool=t elapsed=10ms repo=/r",
-		"x [mcp-rpc] tool=t elapsed=30ms repo=/r",
-		"x [mcp-rpc] tool=t elapsed=20ms repo=/r",
-		"x [mcp-rpc] tool=t elapsed=40ms repo=/r",
+		"time=2026-05-26T22:40:38.000+05:45 level=INFO msg=mcp_rpc phase=done tool=t elapsed_ms=10 repo=/r ts=2026-05-26T17:10:38Z",
+		"time=2026-05-26T22:40:38.001+05:45 level=INFO msg=mcp_rpc phase=done tool=t elapsed_ms=30 repo=/r ts=2026-05-26T17:10:38Z",
+		"time=2026-05-26T22:40:38.002+05:45 level=INFO msg=mcp_rpc phase=done tool=t elapsed_ms=20 repo=/r ts=2026-05-26T17:10:38Z",
+		"time=2026-05-26T22:40:38.003+05:45 level=INFO msg=mcp_rpc phase=done tool=t elapsed_ms=40 repo=/r ts=2026-05-26T17:10:38Z",
 		"",
 	}
 	out := parseBenchCapture([]byte(strings.Join(lines, "\n")))
@@ -168,7 +168,7 @@ func TestParseBenchCapture_PercentileKnownFixture(t *testing.T) {
 	// p99 = sorted[ceil(10*0.99)-1] = sorted[ceil(9.9)-1] = sorted[10-1] = sorted[9] = 10.
 	var lines []string
 	for i := 1; i <= 10; i++ {
-		lines = append(lines, "x [mcp-rpc] tool=t elapsed="+strconv.Itoa(i)+"ms repo=/r")
+		lines = append(lines, "time=2026-05-26T22:40:38."+strconv.Itoa(i)+"00+05:45 level=INFO msg=mcp_rpc phase=done tool=t elapsed_ms="+strconv.Itoa(i)+" repo=/r ts=2026-05-26T17:10:38Z")
 	}
 	lines = append(lines, "")
 	out := parseBenchCapture([]byte(strings.Join(lines, "\n")))
@@ -193,7 +193,7 @@ func TestParseBenchCapture_PercentileKnownFixture(t *testing.T) {
 // This is the cross-validation between the CLI output and the JSON Schema SSOT
 // (skills/archigraph-graph-quality/schema/with-mcp-artifact.schema.json).
 func TestBenchCaptureOutputMatchesSchema(t *testing.T) {
-	line := "archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=1000ms repo=/r\n"
+	line := "time=2026-05-26T22:40:38.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=1000 repo=/r ts=2026-05-26T17:10:38Z\n"
 	out := parseBenchCapture([]byte(line))
 
 	raw, err := json.Marshal(out)
@@ -247,8 +247,8 @@ func TestRunBenchCapture_LogFile(t *testing.T) {
 
 	// Write a log with a prefix that should be skipped (before startOff).
 	prefix := "noise line before window\n"
-	window := "archigraph-daemon: 2026/05/26 [mcp-rpc] tool=archigraph_trace elapsed=250ms repo=/r\n"
-	suffix := "archigraph-daemon: 2026/05/26 [mcp-rpc] tool=archigraph_trace elapsed=999ms repo=/r\n"
+	window := "time=2026-05-26T22:40:38.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_trace elapsed_ms=250 repo=/r ts=2026-05-26T17:10:38Z\n"
+	suffix := "time=2026-05-26T22:40:39.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_trace elapsed_ms=999 repo=/r ts=2026-05-26T17:10:39Z\n"
 
 	content := prefix + window + suffix
 	if err := os.WriteFile(logPath, []byte(content), 0o644); err != nil {
@@ -310,9 +310,9 @@ func TestBenchCaptureRPCHelp(t *testing.T) {
 // top level and per-tool.
 func TestParseBenchCapture_WithByteFields(t *testing.T) {
 	lines := strings.Join([]string{
-		"archigraph-daemon: 2026/05/29 10:00:00 [mcp-rpc] tool=archigraph_search elapsed=100ms wire_bytes=4000 payload_token_estimate=1000 repo=/r",
-		"archigraph-daemon: 2026/05/29 10:00:01 [mcp-rpc] tool=archigraph_search elapsed=200ms wire_bytes=800 payload_token_estimate=200 repo=/r",
-		"archigraph-daemon: 2026/05/29 10:00:02 [mcp-rpc] tool=archigraph_describe elapsed=50ms wire_bytes=1200 payload_token_estimate=300 repo=/r",
+		"time=2026-05-29T10:00:00.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=100 wire_bytes=4000 payload_token_estimate=1000 repo=/r ts=2026-05-29T04:15:00Z",
+		"time=2026-05-29T10:00:01.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=200 wire_bytes=800 payload_token_estimate=200 repo=/r ts=2026-05-29T04:15:01Z",
+		"time=2026-05-29T10:00:02.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_describe elapsed_ms=50 wire_bytes=1200 payload_token_estimate=300 repo=/r ts=2026-05-29T04:15:02Z",
 	}, "\n") + "\n"
 
 	out := parseBenchCapture([]byte(lines))
@@ -341,16 +341,16 @@ func TestParseBenchCapture_WithByteFields(t *testing.T) {
 	}
 }
 
-// TestParseBenchCapture_BackwardCompatOldFormat verifies that a legacy log
-// line WITHOUT the #2828 byte/token fields still parses for ms, and that its
-// byte/token sums stay 0 (proving backward compatibility). It also mixes a
-// new-format line to confirm the two coexist in one slice.
+// TestParseBenchCapture_BackwardCompatOldFormat verifies that a slog line
+// WITHOUT the #2828 byte/token fields still parses for ms, and that its
+// byte/token sums stay 0.  It also mixes a new-format line to confirm the
+// two coexist in one slice.
 func TestParseBenchCapture_BackwardCompatOldFormat(t *testing.T) {
 	lines := strings.Join([]string{
-		// Old format — no wire_bytes / payload_token_estimate.
-		"archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=8095ms repo=/path",
-		// New format — with the #2828 fields.
-		"archigraph-daemon: 2026/05/29 10:00:00 [mcp-rpc] tool=archigraph_search elapsed=100ms wire_bytes=2000 payload_token_estimate=500 repo=/path",
+		// Slog format without wire_bytes / payload_token_estimate.
+		"time=2026-05-26T22:40:38.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=8095 repo=/path ts=2026-05-26T17:10:38Z",
+		// Slog format with the #2828 fields.
+		"time=2026-05-29T10:00:00.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=100 wire_bytes=2000 payload_token_estimate=500 repo=/path ts=2026-05-29T04:15:00Z",
 	}, "\n") + "\n"
 
 	out := parseBenchCapture([]byte(lines))
@@ -370,15 +370,63 @@ func TestParseBenchCapture_BackwardCompatOldFormat(t *testing.T) {
 	}
 }
 
-// TestParseBenchCapture_AllLegacyZeroBytes verifies that a slice of only
-// legacy lines yields count>0 but byte/token sums of exactly 0 (not garbage).
+// TestParseBenchCapture_AllLegacyZeroBytes verifies that a slog line without
+// byte/token fields yields count>0 but byte/token sums of exactly 0.
 func TestParseBenchCapture_AllLegacyZeroBytes(t *testing.T) {
-	line := "archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=42ms repo=/p\n"
+	line := "time=2026-05-26T22:40:38.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=42 repo=/p ts=2026-05-26T17:10:38Z\n"
 	out := parseBenchCapture([]byte(line))
 	if out.McpRPCCount != 1 {
 		t.Fatalf("count: got %d, want 1", out.McpRPCCount)
 	}
 	if out.McpRPCWireBytesSum != 0 || out.McpRPCTokenEstSum != 0 {
 		t.Errorf("legacy byte/token sums: got %d/%d, want 0/0", out.McpRPCWireBytesSum, out.McpRPCTokenEstSum)
+	}
+}
+
+// TestParseBenchCapture_DedupConsecutive verifies that consecutive identical
+// lines (the daemon's double-log behaviour) are collapsed to a single count.
+func TestParseBenchCapture_DedupConsecutive(t *testing.T) {
+	// Daemon emits each mcp_rpc done line twice in a row.  We should count 2
+	// distinct calls (one archigraph_find, one archigraph_inspect), not 4.
+	dupLine1 := "time=2026-05-27T06:11:28.456+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_find elapsed_ms=462 repo=/r ts=2026-05-27T00:26:28Z"
+	dupLine2 := "time=2026-05-27T06:11:35.386+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_inspect elapsed_ms=268 repo=/r ts=2026-05-27T00:26:35Z"
+	data := strings.Join([]string{
+		dupLine1, // first emit
+		dupLine1, // daemon double-log
+		dupLine2, // first emit
+		dupLine2, // daemon double-log
+		"",
+	}, "\n")
+
+	out := parseBenchCapture([]byte(data))
+	if out.McpRPCCount != 2 {
+		t.Errorf("count: got %d, want 2 (consecutive duplicates must be collapsed)", out.McpRPCCount)
+	}
+	if out.McpRPCHandlerMsSum != 730 { // 462 + 268
+		t.Errorf("sum_ms: got %d, want 730", out.McpRPCHandlerMsSum)
+	}
+	if out.McpRPCPerTool["archigraph_find"] == nil || out.McpRPCPerTool["archigraph_find"].Count != 1 {
+		t.Errorf("archigraph_find count: want 1")
+	}
+	if out.McpRPCPerTool["archigraph_inspect"] == nil || out.McpRPCPerTool["archigraph_inspect"].Count != 1 {
+		t.Errorf("archigraph_inspect count: want 1")
+	}
+}
+
+// TestParseBenchCapture_DedupWithByteFields verifies dedup works correctly
+// when phase=done lines include wire_bytes and payload_token_estimate.
+func TestParseBenchCapture_DedupWithByteFields(t *testing.T) {
+	dupLine := "time=2026-05-29T10:00:00.000+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_search elapsed_ms=100 wire_bytes=4000 payload_token_estimate=1000 repo=/r ts=2026-05-29T04:15:00Z"
+	data := strings.Join([]string{dupLine, dupLine, ""}, "\n") // double-logged
+
+	out := parseBenchCapture([]byte(data))
+	if out.McpRPCCount != 1 {
+		t.Errorf("count: got %d, want 1 (dedup)", out.McpRPCCount)
+	}
+	if out.McpRPCWireBytesSum != 4000 {
+		t.Errorf("wire_bytes_sum: got %d, want 4000 (should not double)", out.McpRPCWireBytesSum)
+	}
+	if out.McpRPCTokenEstSum != 1000 {
+		t.Errorf("token_est_sum: got %d, want 1000 (should not double)", out.McpRPCTokenEstSum)
 	}
 }
