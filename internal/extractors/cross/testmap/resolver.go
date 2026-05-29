@@ -120,6 +120,22 @@ func isStopword(id string) bool {
 	if strings.HasPrefix(low, "cy.") {
 		return true
 	}
+	// Django / FastAPI / Starlette / Flask / aiohttp / httpx test clients.
+	// self.client.post('/api/...') is an HTTP test call, not a production
+	// call — the test client is a test infrastructure object. Without this
+	// filter the resolver emits a high-confidence TESTS edge targeting the
+	// HTTP verb ("post", "get", …) rather than the actual ViewSet handler.
+	// We cover: Django (self.client.*), generic test clients (client.*),
+	// async clients (async_client.*, ac.*), and aiohttp sessions (session.*).
+	// (#3173)
+	for _, prefix := range []string{
+		"self.client.", "client.", "self.async_client.", "async_client.", "ac.", "session.",
+		"self.app.", "app.test_client.", "requests.",
+	} {
+		if strings.HasPrefix(low, prefix) {
+			return true
+		}
+	}
 	// Anything that looks like an assertion on a method (`.should`, `.toBe`,
 	// `.toEqual`, `.toHaveBeenCalledWith`, etc.).
 	for _, suf := range []string{
