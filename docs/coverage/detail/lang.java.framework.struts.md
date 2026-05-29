@@ -50,7 +50,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/java/java.go` | — |
 | Interface extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/java/java.go` | — |
-| Type alias extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | — `not_applicable` | — | — | — | Java has no type alias syntax |
 | Type extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/java/java.go` | — |
 
 ### DI

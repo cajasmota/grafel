@@ -14015,8 +14015,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -14543,8 +14543,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -14907,8 +14907,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -15129,8 +15129,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -15351,8 +15351,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -15575,8 +15575,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -15821,8 +15821,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -16049,8 +16049,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -16423,8 +16423,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -16649,8 +16649,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -16905,8 +16905,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -17127,8 +17127,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
@@ -17495,8 +17495,8 @@
             "verified_at": "2026-05-28"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Java has no type alias syntax"
           },
           "type_extraction": {
             "status": "full",
