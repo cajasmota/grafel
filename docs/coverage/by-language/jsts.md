@@ -115,24 +115,24 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ❌ 1/6 | |
-| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ❌ 1/6 | |
+| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ✅ 1/1 | |
+| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ✅ 1/1 | |
 | [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ❌ 3/8 | |
 | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ❌ 2/7 | |
 | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | ❌ 3/8 | |
-| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ❌ 1/6 | |
+| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ✅ 1/1 | |
 | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | ❌ 2/7 | |
 | [Objection.js](../detail/lang.jsts.orm.objection.md) | ❌ 4/9 | |
 | [Prisma](../detail/lang.jsts.orm.prisma.md) | ❌ 3/8 | |
 | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | ❌ 3/8 | |
 | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | ❌ 4/8 | |
-| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | ❌ 1/6 | |
-| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ❌ 1/6 | |
-| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ❌ 1/6 | |
-| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | ❌ 1/6 | |
-| [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | ❌ 1/6 | |
-| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | ❌ 1/6 | |
-| [supabase-js](../detail/lang.jsts.driver.supabase.md) | ❌ 1/6 | |
+| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | ✅ 1/1 | |
+| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ✅ 1/1 | |
+| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ✅ 1/1 | |
+| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | ✅ 1/1 | |
+| [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | ✅ 1/1 | |
+| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | ✅ 1/1 | |
+| [supabase-js](../detail/lang.jsts.driver.supabase.md) | ✅ 1/1 | |
 
 
 ## Other
