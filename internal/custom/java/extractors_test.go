@@ -4493,3 +4493,366 @@ public class ApplicationScopedBean {
 >>>>>>> c810d1fe5 (feat(java/spring-boot): add actuator, autoconfig, profile, di_scope extractors (#3081))
 	}
 }
+
+// ============================================================================
+// CDI interceptor / AOP tests (#3082)
+// ============================================================================
+
+// cdiEntityBySubtypeName returns the first SCOPE.Pattern entity whose Subtype
+// matches subtype and whose Name ends with name (or equals name).
+func cdiEntityBySubtypeName(r PatternResult, subtype, name string) (SecondaryEntity, bool) {
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Pattern" && e.Subtype == subtype && e.Name == name {
+			return e, true
+		}
+	}
+	return SecondaryEntity{}, false
+}
+
+// cdiHasRel returns true if result contains a relationship (src, tgt, kind).
+func cdiHasRel(r PatternResult, src, tgt, kind string) bool {
+	for _, rel := range r.Relationships {
+		if rel.SourceRef == src && rel.TargetRef == tgt && rel.RelationshipType == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// TestCDIInterceptors_AspectExtraction_Issue3082 is the proving fixture for
+// aspect_extraction: @Interceptor class detection for jakarta-ee.
+// Registry target: lang.java.framework.jakarta-ee aspect_extraction = partial.
+func TestCDIInterceptors_AspectExtraction_Issue3082(t *testing.T) {
+	source := `
+package com.example;
+
+import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.InvocationContext;
+
+@Logging
+@Interceptor
+public class LoggingInterceptor {
+
+    @AroundInvoke
+    public Object logCall(InvocationContext ctx) throws Exception {
+        System.out.println("before");
+        Object result = ctx.proceed();
+        System.out.println("after");
+        return result;
+    }
+}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta-ee",
+		FilePath:  "LoggingInterceptor.java",
+	})
+
+	// aspect_extraction.
+	asp, ok := cdiEntityBySubtypeName(r, "aspect", "LoggingInterceptor")
+	if !ok {
+		t.Fatalf("[#3082 aspect] expected aspect entity LoggingInterceptor; got %v", entityNames(r.Entities))
+	}
+	if asp.Kind != "SCOPE.Pattern" {
+		t.Errorf("[#3082 aspect] Kind = %q, want SCOPE.Pattern", asp.Kind)
+	}
+	if asp.Properties["kind"] != "interceptor" {
+		t.Errorf("[#3082 aspect] kind property = %v, want interceptor", asp.Properties["kind"])
+	}
+	if asp.Properties["framework"] != "jakarta_ee" {
+		t.Errorf("[#3082 aspect] framework = %v, want jakarta_ee", asp.Properties["framework"])
+	}
+
+	// advice_attribution: @AroundInvoke.
+	adv, ok := cdiEntityBySubtypeName(r, "advice", "LoggingInterceptor.logCall")
+	if !ok {
+		t.Fatalf("[#3082 advice] expected advice LoggingInterceptor.logCall; got %v", entityNames(r.Entities))
+	}
+	if adv.Properties["advice_type"] != "around_invoke" {
+		t.Errorf("[#3082 advice] logCall advice_type = %v, want around_invoke", adv.Properties["advice_type"])
+	}
+	if adv.Properties["interceptor"] != "LoggingInterceptor" {
+		t.Errorf("[#3082 advice] logCall interceptor = %v, want LoggingInterceptor", adv.Properties["interceptor"])
+	}
+
+	// OWNS edge: interceptor owns its advice.
+	if !cdiHasRel(r, asp.Ref, adv.Ref, "OWNS") {
+		t.Errorf("[#3082] expected OWNS edge interceptor -> advice")
+	}
+}
+
+// TestCDIInterceptors_PointcutResolution_Issue3082 is the proving fixture for
+// pointcut_resolution: @InterceptorBinding annotation detection for jakarta-ee.
+// Registry target: lang.java.framework.jakarta-ee pointcut_resolution = partial.
+func TestCDIInterceptors_PointcutResolution_Issue3082(t *testing.T) {
+	source := `
+package com.example;
+
+import jakarta.interceptor.InterceptorBinding;
+import java.lang.annotation.*;
+
+@Inherited
+@InterceptorBinding
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
+public @interface Logging {}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "Logging.java",
+	})
+
+	pc, ok := cdiEntityBySubtypeName(r, "pointcut", "Logging")
+	if !ok {
+		t.Fatalf("[#3082 pointcut] expected pointcut entity Logging; got %v", entityNames(r.Entities))
+	}
+	if pc.Properties["kind"] != "interceptor_binding" {
+		t.Errorf("[#3082 pointcut] kind = %v, want interceptor_binding", pc.Properties["kind"])
+	}
+	if pc.Properties["framework"] != "jakarta_ee" {
+		t.Errorf("[#3082 pointcut] framework = %v, want jakarta_ee", pc.Properties["framework"])
+	}
+}
+
+// TestCDIInterceptors_AroundConstruct_Issue3082 proves @AroundConstruct is
+// detected and emitted as advice with kind=around_construct.
+func TestCDIInterceptors_AroundConstruct_Issue3082(t *testing.T) {
+	source := `
+import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.AroundConstruct;
+import jakarta.interceptor.InvocationContext;
+
+@Interceptor
+public class AuditInterceptor {
+
+    @AroundConstruct
+    public void auditConstruct(InvocationContext ctx) throws Exception {
+        ctx.proceed();
+    }
+}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "AuditInterceptor.java",
+	})
+
+	asp, ok := cdiEntityBySubtypeName(r, "aspect", "AuditInterceptor")
+	if !ok {
+		t.Fatalf("[#3082 aspect] expected AuditInterceptor aspect entity")
+	}
+
+	adv, ok := cdiEntityBySubtypeName(r, "advice", "AuditInterceptor.auditConstruct")
+	if !ok {
+		t.Fatalf("[#3082 advice] expected advice AuditInterceptor.auditConstruct; got %v", entityNames(r.Entities))
+	}
+	if adv.Properties["advice_type"] != "around_construct" {
+		t.Errorf("[#3082 advice] auditConstruct advice_type = %v, want around_construct", adv.Properties["advice_type"])
+	}
+	if !cdiHasRel(r, asp.Ref, adv.Ref, "OWNS") {
+		t.Errorf("[#3082] expected OWNS edge interceptor -> around_construct advice")
+	}
+}
+
+// TestCDIInterceptors_QuarkusFramework_Issue3082 proves the extractor runs for
+// the quarkus framework (advice_attribution, aspect_extraction for quarkus).
+// Registry target: lang.java.framework.quarkus advice_attribution/aspect_extraction = partial.
+func TestCDIInterceptors_QuarkusFramework_Issue3082(t *testing.T) {
+	source := `
+import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.InvocationContext;
+
+@Transactional
+@Interceptor
+public class TransactionInterceptor {
+
+    @AroundInvoke
+    public Object manageTransaction(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "quarkus",
+		FilePath:  "TransactionInterceptor.java",
+	})
+
+	asp, ok := cdiEntityBySubtypeName(r, "aspect", "TransactionInterceptor")
+	if !ok {
+		t.Fatalf("[#3082 quarkus] expected aspect entity TransactionInterceptor")
+	}
+	if asp.Properties["framework"] != "quarkus" {
+		t.Errorf("[#3082 quarkus] framework = %v, want quarkus", asp.Properties["framework"])
+	}
+
+	adv, ok := cdiEntityBySubtypeName(r, "advice", "TransactionInterceptor.manageTransaction")
+	if !ok {
+		t.Fatalf("[#3082 quarkus] expected advice TransactionInterceptor.manageTransaction; got %v", entityNames(r.Entities))
+	}
+	if adv.Properties["advice_type"] != "around_invoke" {
+		t.Errorf("[#3082 quarkus] manageTransaction advice_type = %v, want around_invoke", adv.Properties["advice_type"])
+	}
+}
+
+// TestCDIInterceptors_JAXRSFramework_Issue3082 proves the extractor runs for
+// the jaxrs framework.
+// Registry target: lang.java.framework.jaxrs advice_attribution/aspect_extraction = partial.
+func TestCDIInterceptors_JAXRSFramework_Issue3082(t *testing.T) {
+	source := `
+import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.InvocationContext;
+
+@Metered
+@Interceptor
+public class MetricsInterceptor {
+
+    @AroundInvoke
+    public Object recordMetrics(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jaxrs",
+		FilePath:  "MetricsInterceptor.java",
+	})
+
+	asp, ok := cdiEntityBySubtypeName(r, "aspect", "MetricsInterceptor")
+	if !ok {
+		t.Fatalf("[#3082 jaxrs] expected aspect entity MetricsInterceptor")
+	}
+	if asp.Properties["framework"] != "jaxrs" {
+		t.Errorf("[#3082 jaxrs] framework = %v, want jaxrs", asp.Properties["framework"])
+	}
+	_, ok = cdiEntityBySubtypeName(r, "advice", "MetricsInterceptor.recordMetrics")
+	if !ok {
+		t.Fatalf("[#3082 jaxrs] expected advice MetricsInterceptor.recordMetrics")
+	}
+}
+
+// TestCDIInterceptors_QuarkusInterceptorBinding_Issue3082 proves
+// pointcut_resolution fires for quarkus with @InterceptorBinding.
+// Registry target: lang.java.framework.quarkus pointcut_resolution = partial.
+func TestCDIInterceptors_QuarkusInterceptorBinding_Issue3082(t *testing.T) {
+	source := `
+import jakarta.interceptor.InterceptorBinding;
+import java.lang.annotation.*;
+
+@InterceptorBinding
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
+public @interface Transactional {}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "quarkus",
+		FilePath:  "Transactional.java",
+	})
+
+	pc, ok := cdiEntityBySubtypeName(r, "pointcut", "Transactional")
+	if !ok {
+		t.Fatalf("[#3082 quarkus pointcut] expected pointcut Transactional; got %v", entityNames(r.Entities))
+	}
+	if pc.Properties["kind"] != "interceptor_binding" {
+		t.Errorf("[#3082 quarkus pointcut] kind = %v, want interceptor_binding", pc.Properties["kind"])
+	}
+}
+
+// TestCDIInterceptors_JAXRSInterceptorBinding_Issue3082 proves
+// pointcut_resolution fires for jaxrs.
+// Registry target: lang.java.framework.jaxrs pointcut_resolution = partial.
+func TestCDIInterceptors_JAXRSInterceptorBinding_Issue3082(t *testing.T) {
+	source := `
+import jakarta.interceptor.InterceptorBinding;
+import java.lang.annotation.*;
+
+@InterceptorBinding
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
+public @interface Metered {}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jax-rs",
+		FilePath:  "Metered.java",
+	})
+
+	pc, ok := cdiEntityBySubtypeName(r, "pointcut", "Metered")
+	if !ok {
+		t.Fatalf("[#3082 jaxrs pointcut] expected pointcut Metered; got %v", entityNames(r.Entities))
+	}
+	if pc.Properties["framework"] != "jaxrs" {
+		t.Errorf("[#3082 jaxrs pointcut] framework = %v, want jaxrs", pc.Properties["framework"])
+	}
+}
+
+// TestCDIInterceptors_FrameworkGating_Issue3082 proves the extractor no-ops for
+// non-CDI frameworks (Spring, Micronaut) and non-java languages.
+func TestCDIInterceptors_FrameworkGating_Issue3082(t *testing.T) {
+	source := `
+import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.AroundInvoke;
+
+@Interceptor
+public class X {
+    @AroundInvoke
+    public Object go(InvocationContext c) throws Exception { return c.proceed(); }
+}
+`
+	for _, fw := range []string{"jakarta_ee", "jakarta-ee", "jakartaee", "jaxrs", "jax-rs", "quarkus"} {
+		r := ExtractCDIInterceptors(PatternContext{Source: source, Language: "java", Framework: fw, FilePath: "X.java"})
+		if len(r.Entities) == 0 {
+			t.Errorf("[#3082 gating] framework %q expected CDI entities, got none", fw)
+		}
+	}
+	for _, fw := range []string{"spring_boot", "spring-boot", "spring_webflux", "micronaut", "django"} {
+		r := ExtractCDIInterceptors(PatternContext{Source: source, Language: "java", Framework: fw, FilePath: "X.java"})
+		if len(r.Entities) != 0 {
+			t.Errorf("[#3082 gating] framework %q should no-op, got %d entities", fw, len(r.Entities))
+		}
+	}
+	r := ExtractCDIInterceptors(PatternContext{Source: source, Language: "python", Framework: "jakarta_ee", FilePath: "X.py"})
+	if len(r.Entities) != 0 {
+		t.Errorf("[#3082 gating] non-java should no-op, got %d entities", len(r.Entities))
+	}
+}
+
+// TestCDIInterceptors_NoAdviceOutsideInterceptor_Issue3082 proves @AroundInvoke
+// outside an @Interceptor class emits no advice entity.
+func TestCDIInterceptors_NoAdviceOutsideInterceptor_Issue3082(t *testing.T) {
+	source := `
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.InvocationContext;
+
+public class PlainBean {
+    @AroundInvoke
+    public Object notReallyAdvice(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+`
+	r := ExtractCDIInterceptors(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "jakarta_ee",
+		FilePath:  "PlainBean.java",
+	})
+	for _, e := range r.Entities {
+		if e.Subtype == "advice" {
+			t.Errorf("[#3082] no advice should be emitted outside @Interceptor class; got %s", e.Name)
+		}
+	}
+}

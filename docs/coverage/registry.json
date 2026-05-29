@@ -15312,16 +15312,19 @@
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           }
         },
         "Observability": {
@@ -15839,16 +15842,19 @@
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           }
         },
         "Observability": {
@@ -16860,16 +16866,19 @@
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go"],
+            "issue": "3082"
           }
         },
         "Observability": {

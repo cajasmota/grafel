@@ -73,9 +73,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | ⚠️ `partial` | — | 3082 | `internal/custom/java/cdi_interceptors.go` | — |
+| Aspect extraction | ⚠️ `partial` | — | 3082 | `internal/custom/java/cdi_interceptors.go` | — |
+| Pointcut resolution | ⚠️ `partial` | — | 3082 | `internal/custom/java/cdi_interceptors.go` | — |
 
 ### Observability
 
