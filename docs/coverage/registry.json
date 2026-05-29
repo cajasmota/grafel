@@ -18282,41 +18282,49 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/dynamodb_java.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/java/dynamodb_java.go","internal/engine/rules/java/orms/dynamodb_java.yaml"],
+            "issue": "3099",
+            "notes": "custom_java_dynamodb extractor emits SCOPE.Schema/model for @DynamoDbBean classes; YAML rule gates on Enhanced Client imports.",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No DynamoDB Java extractor for @DynamoDbBean table schema. Tracked in issue #3001."
+            "status": "partial",
+            "cites": ["internal/custom/java/dynamodb_java.go"],
+            "issue": "3099",
+            "notes": "Detects @DynamoDbBean/@DynamoDbPartitionKey/@DynamoDbSortKey/@DynamoDbAttribute for schema attributes; model and query covered by existing YAML rule.",
+            "verified_at": "2026-05-29"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "No DynamoDB Java ORM extractor. AWS SDK DynamoDB Java uses @DynamoDbBean/@DynamoDbPartitionKey from software.amazon.awssdk; no extractor for these annotations."
+            "status": "not_applicable",
+            "issue": "3099",
+            "notes": "DynamoDB is a key-value/document store with no relational ORM associations; this concept does not apply."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3099",
+            "notes": "DynamoDB has no foreign keys; relational FK concepts are not applicable to a key-value store."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "3099",
+            "notes": "DynamoDB Enhanced Client has no lazy-loading concept; items are fetched by key, not via ORM proxies."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "DynamoDB is a key-value/document store; relationships are not expressed at the ORM annotation level."
+            "status": "not_applicable",
+            "issue": "3099",
+            "notes": "DynamoDB uses single-table design or application-level denormalization; no ORM relationship annotations exist."
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/engine/rules/java/orms/dynamodb_java.yaml"],
-            "verified_at": "2026-05-28"
+            "issue": "3099",
+            "notes": "YAML rule covers DynamoDbEnhancedClient scan/query operations; query_attribution fully covered by existing rule.",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {

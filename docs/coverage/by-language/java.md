@@ -81,7 +81,7 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ❌ 2/7 | |
+| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ⚠️ 3/3 | |
 | [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 7/8 | |
 | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 7/8 | |
 | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 7/8 | |

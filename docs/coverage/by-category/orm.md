@@ -59,7 +59,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | ❌ 3/8 | |
 | [go](../by-language/go.md) | [sqlx](../detail/lang.go.orm.sqlx.md) | ❌ 2/8 | |
 | [go](../by-language/go.md) | [xo (codegen)](../detail/lang.go.orm.xo.md) | ❌ 0/8 | |
-| [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ❌ 2/7 | |
+| [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | ⚠️ 3/3 | |
 | [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | ❌ 7/8 | |
 | [java](../by-language/java.md) | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | ❌ 7/8 | |
 | [java](../by-language/java.md) | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | ❌ 7/8 | |

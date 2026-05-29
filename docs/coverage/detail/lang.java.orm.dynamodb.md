@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/dynamodb_java.yaml` | — |
-| Schema extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No DynamoDB Java extractor for @DynamoDbBean table schema. Tracked in issue #3001. |
+| Model extraction | ✅ `full` | `2026-05-29` | 3099 | `internal/custom/java/dynamodb_java.go`<br>`internal/engine/rules/java/orms/dynamodb_java.yaml` | custom_java_dynamodb extractor emits SCOPE.Schema/model for @DynamoDbBean classes; YAML rule gates on Enhanced Client imports. |
+| Schema extraction | ⚠️ `partial` | `2026-05-29` | 3099 | `internal/custom/java/dynamodb_java.go` | Detects @DynamoDbBean/@DynamoDbPartitionKey/@DynamoDbSortKey/@DynamoDbAttribute for schema attributes; model and query covered by existing YAML rule. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | No DynamoDB Java ORM extractor. AWS SDK DynamoDB Java uses @DynamoDbBean/@DynamoDbPartitionKey from software.amazon.awssdk; no extractor for these annotations. |
-| Foreign key extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | DynamoDB is a key-value/document store; relationships are not expressed at the ORM annotation level. |
+| Association extraction | — `not_applicable` | — | 3099 | — | DynamoDB is a key-value/document store with no relational ORM associations; this concept does not apply. |
+| Foreign key extraction | — `not_applicable` | — | 3099 | — | DynamoDB has no foreign keys; relational FK concepts are not applicable to a key-value store. |
+| Lazy loading recognition | — `not_applicable` | — | 3099 | — | DynamoDB Enhanced Client has no lazy-loading concept; items are fetched by key, not via ORM proxies. |
+| Relationship extraction | — `not_applicable` | — | 3099 | — | DynamoDB uses single-table design or application-level denormalization; no ORM relationship annotations exist. |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/dynamodb_java.yaml` | — |
+| Query attribution | ✅ `full` | `2026-05-29` | 3099 | `internal/engine/rules/java/orms/dynamodb_java.yaml` | YAML rule covers DynamoDbEnhancedClient scan/query operations; query_attribution fully covered by existing rule. |
 
 ### Migrations
 
