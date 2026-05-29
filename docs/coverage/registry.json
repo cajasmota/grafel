@@ -12482,7 +12482,10 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/golang/gomobile.go","internal/custom/golang/gomobile_branch_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3255",
+            "verified_at": "2026-05-29"
           },
           "state_management": {
             "status": "not_applicable"

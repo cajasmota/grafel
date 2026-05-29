@@ -3,6 +3,7 @@ package golang
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/otel"
@@ -42,6 +43,14 @@ import (
 //   - bound_func  : exported funcs in a package that imports a gomobile/bind
 //                    surface — the FFI boundary crossed by the generated
 //                    Java/ObjC bindings → SCOPE.External (subtype native_bridge).
+//   - branch      : a control-flow site (`if`/`switch`) whose controlling
+//                    expression discriminates on the runtime platform —
+//                    `runtime.GOOS == "android"`, `switch runtime.GOOS { ... }`
+//                    — i.e. a platform branch in mobile-bound code → a
+//                    SCOPE.Operation/branch entity carrying the normalised
+//                    condition + a BRANCHES_ON edge (the Data Flow.branch_
+//                    conditions surface; mirrors the JS/TS branchconditions
+//                    pass, ported to Go's runtime.GOOS idiom). #3255.
 //
 // Honesty (registry coverage status, lang.go.framework.gomobile):
 //
@@ -52,6 +61,10 @@ import (
 //                                             (no build-tag constraint solving).
 //   - Native Bridge.native_module_imports  → partial: gomobile native package
 //                                             imports detected by import match.
+//   - Data Flow.branch_conditions          → partial: runtime.GOOS `if`/`switch`
+//                                             platform branches detected by regex
+//                                             (no AST control-flow graph; nested/
+//                                             aliased GOOS values not resolved).
 //   - Navigation.* (navigation/screen/deep_link) → not_applicable: gomobile bind
 //                                             has no Go-side navigation framework;
 //                                             screens/navigation live in the host
@@ -99,6 +112,24 @@ var (
 	// surface of a `gomobile bind` package). Methods (with a receiver) are
 	// excluded — they are not part of the generated top-level binding.
 	reExportedFunc = regexp.MustCompile(`(?m)^func\s+([A-Z]\w*)\s*\(`)
+
+	// reGOOSSwitch matches a `switch runtime.GOOS {` platform-discriminant
+	// switch. The whole switch is one platform branch site; the individual
+	// `case "android":` arms are captured separately by reGOOSCase.
+	reGOOSSwitch = regexp.MustCompile(`(?m)\bswitch\s+runtime\.GOOS\s*\{`)
+
+	// reGOOSCase matches a `case "<goos>":` arm inside a runtime.GOOS switch.
+	// Used to enumerate the platform arms of a switch into per-platform
+	// branch conditions.
+	reGOOSCase = regexp.MustCompile(`(?m)^\s*case\s+("(?:\w+)"(?:\s*,\s*"\w+")*)\s*:`)
+
+	// reGOOSIf matches an `if`/`else if` controlling expression that compares
+	// runtime.GOOS against a string literal — the canonical Go platform
+	// branch idiom (`if runtime.GOOS == "android" { ... }`). The captured
+	// group is the operator + quoted platform so the condition can be
+	// normalised. Logical compositions (`&& runtime.GOOS == "ios"`) are also
+	// caught because the match floats to the GOOS sub-expression.
+	reGOOSIf = regexp.MustCompile(`runtime\.GOOS\s*(==|!=)\s*"(\w+)"`)
 )
 
 // mobilePlatformTokens are the GOOS/build tags that name a mobile platform; a
@@ -185,6 +216,67 @@ func (e *gomobileExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		addPlatformBranch("goos_guard", submatch(src, m, 2), lineOf(src, m[0]))
 	}
 
+	// 2b. branch conditions — runtime.GOOS `if`/`switch` control-flow sites that
+	//     discriminate on the platform (Data Flow.branch_conditions, #3255).
+	//     Distinct from §2: §2 records the platform constraint as a SCOPE.Pattern
+	//     (the Platform capability); here we record the control-flow *branch* as a
+	//     SCOPE.Operation/branch with a BRANCHES_ON edge, mirroring the JS/TS
+	//     branchconditions pass. Conditions are deduplicated by normalised text.
+	branchSeen := make(map[string]bool)
+	addBranch := func(expr, kind, operator, platform string, line int) {
+		expr = normalizeGoBranchExpr(expr)
+		if expr == "" || branchSeen[expr] {
+			return
+		}
+		branchSeen[expr] = true
+		ent := makeEntity("gomobile:branch:"+expr, "SCOPE.Operation", "branch", file.Path, file.Language, line)
+		setProps(&ent, "framework", "gomobile", "provenance", "INFERRED_FROM_GOMOBILE_BRANCH",
+			"branch_kind", kind, "condition", expr, "discriminant", "runtime.GOOS")
+		if operator != "" {
+			setProps(&ent, "operator", operator)
+		}
+		if platform != "" {
+			setProps(&ent, "platform", platform)
+		}
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "branch:" + expr,
+			Kind: string(types.RelationshipKindBranchesOn),
+			Properties: map[string]string{
+				"line":     strconv.Itoa(line),
+				"operator": operator,
+				"kind":     kind,
+			},
+		})
+		add(ent)
+	}
+	// if / else-if: runtime.GOOS ==/!= "<goos>"
+	for _, m := range reGOOSIf.FindAllStringSubmatchIndex(src, -1) {
+		op := submatch(src, m, 2)
+		plat := submatch(src, m, 4)
+		addBranch("runtime.GOOS"+op+"\""+plat+"\"", "if", op, plat, lineOf(src, m[0]))
+	}
+	// switch runtime.GOOS { case "<goos>": ... } — one branch per case arm so a
+	// multi-platform switch yields a distinct condition per platform.
+	for _, sm := range reGOOSSwitch.FindAllStringIndex(src, -1) {
+		switchLine := lineOf(src, sm[0])
+		body, bodyStart := goosSwitchBody(src, sm[1]-1)
+		if body == "" {
+			continue
+		}
+		for _, cm := range reGOOSCase.FindAllStringSubmatchIndex(body, -1) {
+			labels := submatch(body, cm, 2) // e.g. `"android"` or `"ios", "android"`
+			line := lineOf(src, bodyStart+cm[0])
+			for _, lit := range splitTopLevelArgs(labels) {
+				plat := strings.Trim(lit, `"`)
+				if plat == "" {
+					continue
+				}
+				addBranch("switch runtime.GOOS case \""+plat+"\"", "switch", "case", plat, line)
+			}
+		}
+		_ = switchLine
+	}
+
 	// 3. native bridge package imports (Native Bridge.native_module_imports).
 	boundPkg := false
 	for _, m := range reGomobileNativeImport.FindAllStringSubmatchIndex(src, -1) {
@@ -214,4 +306,46 @@ func (e *gomobileExtractor) Extract(ctx context.Context, file extractor.FileInpu
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
+}
+
+// normalizeGoBranchExpr collapses internal whitespace so equivalent platform
+// conditions deduplicate cleanly (mirrors the JS/TS normalizeBranchExpr, but
+// preserves single spaces inside `switch runtime.GOOS case "x"` labels for
+// readability — only runs of whitespace are folded to one space).
+func normalizeGoBranchExpr(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// goosSwitchBody returns the brace-balanced body text of a `switch runtime.GOOS
+// { ... }` statement and the absolute source offset at which the body begins,
+// given the offset of the opening `{`. Quoted strings are skipped so braces
+// inside string literals do not unbalance the scan. Returns ("", 0) when the
+// body is unbalanced/truncated.
+func goosSwitchBody(src string, openBrace int) (string, int) {
+	if openBrace < 0 || openBrace >= len(src) || src[openBrace] != '{' {
+		return "", 0
+	}
+	depth := 0
+	var quote rune
+	for i := openBrace; i < len(src); i++ {
+		r := rune(src[i])
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch r {
+		case '"', '\'', '`':
+			quote = r
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[openBrace+1 : i], openBrace + 1
+			}
+		}
+	}
+	return "", 0
 }

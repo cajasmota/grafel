@@ -41,7 +41,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🔴 `missing` | — | — | — | — |
+| Branch conditions | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3255) | `internal/custom/golang/gomobile.go`<br>`internal/custom/golang/gomobile_branch_test.go` | — |
 | State management | — `not_applicable` | — | — | — | — |
 
 ### Type System
