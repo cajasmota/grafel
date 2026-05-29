@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | [link](#2991) | `internal/custom/java/junit5.go` | Spring Boot test classes use JUnit 5 (@SpringBootTest/@WebMvcTest); @Test/@ParameterizedTest/@RepeatedTest methods extracted as SCOPE.Operation entities with test_annotation property and OWNS edges from test class. TESTS multi-hop via HTTP layer requires separate work. |
 
 ### Type System
 

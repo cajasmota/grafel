@@ -16685,8 +16685,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "issue": "#2991",
+            "notes": "Spring Boot test classes use JUnit 5 (@SpringBootTest/@WebMvcTest); @Test/@ParameterizedTest/@RepeatedTest methods extracted as SCOPE.Operation entities with test_annotation property and OWNS edges from test class. TESTS multi-hop via HTTP layer requires separate work.",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -16947,8 +16950,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "issue": "#2991",
+            "notes": "Spring WebFlux test classes use JUnit 5 (@WebFluxTest); @Test/@ParameterizedTest/@RepeatedTest methods extracted as SCOPE.Operation entities with test_annotation property and OWNS edges. TESTS multi-hop via reactive router not yet implemented.",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -16974,12 +16980,18 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/spring_boot.go"],
+            "issue": "#2991",
+            "notes": "spring_webflux shares same DI model as spring_boot; @Autowired field/setter/constructor injection and @Bean method extraction handled by ExtractSpringBoot. No @Qualifier resolution.",
+            "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/spring_boot.go"],
+            "issue": "#2991",
+            "notes": "spring_webflux uses same @Autowired/@Bean extractor as spring_boot; field, setter, and constructor injection detected. No @Qualifier or @Primary resolution.",
+            "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
             "status": "missing",

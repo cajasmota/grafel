@@ -19,6 +19,10 @@ var junit5Frameworks = map[string]bool{
 	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
 	"microprofile": true, "eclipse-microprofile": true,
 	"open_liberty": true, "payara": true, "helidon": true,
+	// Spring Boot and Spring WebFlux projects use JUnit 5 (via @SpringBootTest /
+	// @WebFluxTest) for tests_linkage (#2991).
+	"spring_boot": true, "spring-boot": true, "springboot": true,
+	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
 }
 
 var (

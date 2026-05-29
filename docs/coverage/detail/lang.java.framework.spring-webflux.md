@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | [link](#2991) | `internal/custom/java/junit5.go` | Spring WebFlux test classes use JUnit 5 (@WebFluxTest); @Test/@ParameterizedTest/@RepeatedTest methods extracted as SCOPE.Operation entities with test_annotation property and OWNS edges. TESTS multi-hop via reactive router not yet implemented. |
 
 ### Type System
 
@@ -57,8 +57,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | ⚠️ `partial` | `2026-05-29` | [link](#2991) | `internal/custom/java/spring_boot.go` | spring_webflux shares same DI model as spring_boot; @Autowired field/setter/constructor injection and @Bean method extraction handled by ExtractSpringBoot. No @Qualifier resolution. |
+| DI injection point | ⚠️ `partial` | `2026-05-29` | [link](#2991) | `internal/custom/java/spring_boot.go` | spring_webflux uses same @Autowired/@Bean extractor as spring_boot; field, setter, and constructor injection detected. No @Qualifier or @Primary resolution. |
 | DI scope resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Transactions

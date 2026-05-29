@@ -7,6 +7,10 @@ import "regexp"
 
 var springBootFrameworks = map[string]bool{
 	"spring_boot": true, "spring-boot": true, "springboot": true,
+	// Spring WebFlux shares the same DI model (@Autowired, @Bean, @Component) as
+	// Spring Boot — the same extractor handles di_binding_extraction and
+	// di_injection_point for both frameworks (#2991).
+	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
 }
 
 var (

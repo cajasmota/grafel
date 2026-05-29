@@ -2090,6 +2090,178 @@ class ProductResourceTest {
 }
 
 // ============================================================================
+// Spring Boot tests_linkage (#2991)
+// ============================================================================
+
+// TestSpringBoot_TestsLinkage_Issue2991 proves that ExtractJUnit5 runs for
+// the "spring_boot" framework (tests_linkage cell).
+// Registry target: lang.java.framework.spring-boot tests_linkage=partial.
+// Cite: internal/custom/java/junit5.go.
+func TestSpringBoot_TestsLinkage_Issue2991(t *testing.T) {
+	source := `
+package com.example;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import static org.junit.jupiter.api.Assertions.*;
+
+@SpringBootTest
+class UserServiceTest {
+    @Test
+    void createUser_shouldReturnDto() {
+        assertEquals(1, 1);
+    }
+
+    @Test
+    void deleteUser_shouldRemoveRecord() {
+        assertTrue(true);
+    }
+}
+`
+	r := ExtractJUnit5(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_boot",
+		FilePath:  "UserServiceTest.java",
+	})
+
+	hasTestMethod := false
+	for _, e := range r.Entities {
+		if e.Properties["test_annotation"] == "Test" {
+			hasTestMethod = true
+			break
+		}
+	}
+	if !hasTestMethod {
+		t.Errorf("[#2991 spring-boot tests_linkage] expected @Test entity from JUnit5 extractor for spring_boot framework")
+	}
+
+	// Verify OWNS edge from class → test method
+	hasOwns := false
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "OWNS" {
+			hasOwns = true
+			break
+		}
+	}
+	if !hasOwns {
+		t.Errorf("[#2991 spring-boot tests_linkage] expected OWNS relationship from test class to test method")
+	}
+}
+
+// ============================================================================
+// Spring WebFlux DI + tests_linkage (#2991)
+// ============================================================================
+
+// TestSpringWebFlux_DIBinding_Issue2991 proves that ExtractSpringBoot emits
+// DI DEPENDS_ON edges for spring_webflux (di_binding_extraction cell).
+// Registry target: lang.java.framework.spring-webflux di_binding_extraction=partial.
+// Cite: internal/custom/java/spring_boot.go.
+func TestSpringWebFlux_DIBinding_Issue2991(t *testing.T) {
+	source := `
+package com.example.webflux;
+
+import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Service
+public class OrderHandler {
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
+    private RouterConfig routerConfig;
+}
+
+@Configuration
+public class RouterConfig {
+    @Bean
+    public RouterFunction<ServerResponse> routes(OrderHandler handler) {
+        return RouterFunctions.route()
+            .GET("/orders", handler::listOrders)
+            .build();
+    }
+}
+`
+	r := ExtractSpringBoot(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_webflux",
+		FilePath:  "OrderHandler.java",
+	})
+
+	// di_binding_extraction: @Bean method (name stored as "OwnerClass.methodName")
+	hasBean := false
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Operation" && e.Subtype == "function" && e.Provenance == "INFERRED_FROM_SPRING_BOOT_BEAN" {
+			hasBean = true
+			break
+		}
+	}
+	if !hasBean {
+		t.Errorf("[#2991 spring-webflux di_binding_extraction] expected @Bean entity from spring_webflux extractor")
+	}
+
+	// di_injection_point: @Autowired field injection emits DEPENDS_ON
+	hasDep := false
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "DEPENDS_ON" && rel.Properties["injection_kind"] == "field" {
+			hasDep = true
+			break
+		}
+	}
+	if !hasDep {
+		t.Errorf("[#2991 spring-webflux di_injection_point] expected DEPENDS_ON(injection_kind=field) from spring_webflux extractor")
+	}
+}
+
+// TestSpringWebFlux_TestsLinkage_Issue2991 proves that ExtractJUnit5 runs for
+// the "spring_webflux" framework (tests_linkage cell).
+// Registry target: lang.java.framework.spring-webflux tests_linkage=partial.
+// Cite: internal/custom/java/junit5.go.
+func TestSpringWebFlux_TestsLinkage_Issue2991(t *testing.T) {
+	source := `
+package com.example.webflux;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
+import static org.junit.jupiter.api.Assertions.*;
+
+@WebFluxTest
+class OrderHandlerTest {
+    @Test
+    void listOrders_returnsOk() {
+        assertTrue(true);
+    }
+
+    @Test
+    void createOrder_returnsCreated() {
+        assertTrue(true);
+    }
+}
+`
+	r := ExtractJUnit5(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_webflux",
+		FilePath:  "OrderHandlerTest.java",
+	})
+
+	hasTestMethod := false
+	for _, e := range r.Entities {
+		if e.Properties["test_annotation"] == "Test" {
+			hasTestMethod = true
+			break
+		}
+	}
+	if !hasTestMethod {
+		t.Errorf("[#2991 spring-webflux tests_linkage] expected @Test entity from JUnit5 extractor for spring_webflux framework")
+	}
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
