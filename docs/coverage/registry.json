@@ -18164,34 +18164,48 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/vertx_routes.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "verified_at": "2026-05-29"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/vertx_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "verified_at": "2026-05-29"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/vertx_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/vertx_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/vertx_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go","internal/custom/java/vertx_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "verified_at": "2026-05-29"
           }
         },
         "Type System": {
@@ -18217,44 +18231,53 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "notes": "Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed."
           }
         },
         "Observability": {

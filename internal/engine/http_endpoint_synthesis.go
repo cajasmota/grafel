@@ -332,6 +332,8 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeJAXRS(string(content), emit)
 		// Javalin (#3085): lambda DSL `app.get("/path", handler)` routing.
 		synthesizeJavalin(string(content), emit)
+		// Vert.x (#3086): lambda DSL `router.get("/path").handler(...)` routing.
+		synthesizeVertx(string(content), emit)
 		// Consumer side (#721): HttpClient / RestTemplate /
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
@@ -831,6 +833,45 @@ func synthesizeJavalin(content string, emit emitFn) {
 		rawPath := m[2]
 		canonical := httproutes.Canonicalize(httproutes.FrameworkJavalin, rawPath)
 		emit(verb, canonical, "javalin", "Route", "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Vert.x (Java) — lambda DSL routing (#3086)
+// ---------------------------------------------------------------------------
+
+// vertxRouteRe captures Vert.x Web router lambda-DSL route registrations of the form:
+//
+//	router.get("/path").handler(handler)
+//	router.post("/path").handler(ctx -> { ... })
+//	router.route("/path").handler(...)  — path-scoped handler chain
+//
+// The verb list excludes "route" which is matched separately.
+var vertxRouteRe = regexp.MustCompile(
+	`\brouter\s*\.\s*(get|post|put|delete|patch|head|options)\s*\(\s*"([^"]+)"`)
+
+// synthesizeVertx scans a Java file for Vert.x Web router lambda-DSL route
+// registrations and emits one http_endpoint_definition per (verb, path) pair.
+// Vert.x Web uses `{param}` curly-brace path parameters (JAX-RS style), so
+// FrameworkVertx is passed to Canonicalize.
+func synthesizeVertx(content string, emit emitFn) {
+	// File-signal gate: require a Vert.x-specific import or API reference.
+	if !strings.Contains(content, "vertx") && !strings.Contains(content, "Vertx") &&
+		!strings.Contains(content, "AbstractVerticle") && !strings.Contains(content, "Router") {
+		return
+	}
+	// Secondary gate: require router.get/post/... pattern.
+	if !strings.Contains(content, "router.") && !strings.Contains(content, "router ") {
+		return
+	}
+	for _, m := range vertxRouteRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		verb := strings.ToUpper(m[1])
+		rawPath := m[2]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkVertx, rawPath)
+		emit(verb, canonical, "vertx", "Route", "")
 	}
 }
 

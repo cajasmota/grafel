@@ -26,7 +26,7 @@ Back to [summary](../summary.md).
 | [Quarkus](../detail/lang.java.framework.quarkus.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ❌ 15/16 | |
 | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | ⚠️ 3/3 | ✅ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 21/21 | ⚠️ 18/18 | |
 | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | ❌ 2/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ❌ 14/16 | |
-| [Vert.x](../detail/lang.java.framework.vertx.md) | ❌ 2/3 | ❌ 0/1 | ✅ 3/3 | ❌ 0/1 | ⚠️ 20/20 | ❌ 4/16 | |
+| [Vert.x](../detail/lang.java.framework.vertx.md) | ⚠️ 3/3 | ⚠️ 1/1 | ✅ 3/3 | ⚠️ 1/1 | ⚠️ 20/20 | ⚠️ 7/7 | |
 
 
 ### UI Frontend

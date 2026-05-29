@@ -27,6 +27,8 @@ var junit5Frameworks = map[string]bool{
 	"dropwizard": true,
 	// Javalin uses JUnit 5 with JavalinTest.create / TestUtil.test for tests_linkage (#3085).
 	"javalin": true,
+	// Vert.x uses JUnit 5 with VertxExtension / VertxTestContext for tests_linkage (#3086).
+	"vertx": true, "vert.x": true, "vert_x": true, "vertx_web": true, "vertx-web": true,
 }
 
 var (

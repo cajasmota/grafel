@@ -124,6 +124,10 @@ const (
 	// `{name}` curly-brace path parameters identical to JAX-RS / Spring.
 	// Canonicalisation reuses canonicalizeCurlyBraces.
 	FrameworkJavalin = "javalin"
+	// FrameworkVertx (#3086) — Vert.x Web `router.get("/users/:id", ...)` uses
+	// `{name}` curly-brace path parameters identical to JAX-RS / Spring.
+	// Canonicalisation reuses canonicalizeCurlyBraces.
+	FrameworkVertx = "vertx"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -162,7 +166,7 @@ func Canonicalize(framework, raw string) string {
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
 		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi,
 		FrameworkLitestar, FrameworkAiohttp, FrameworkFalcon, FrameworkHug,
-		FrameworkJavalin:
+		FrameworkJavalin, FrameworkVertx:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkTornado:
 		// Tornado paths arrive already pre-processed by the synthesizer

@@ -17,32 +17,32 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/vert_x.yaml` | — |
 | Handler attribution | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/vert_x.yaml` | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go`<br>`internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ❌ `missing` | — | — | — | — |
+| Auth coverage | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
+| Request validation | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/junit5.go`<br>`internal/custom/java/vertx_routes.go` | — |
 
 ### Type System
 
@@ -57,25 +57,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
+| DI injection point | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
+| DI scope resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
+| Transaction propagation | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
+| Transaction rollback rules | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
+| Aspect extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
+| Pointcut resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
 
 ### Observability
 
