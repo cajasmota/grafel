@@ -26,11 +26,11 @@ func TestIsDjangoMigrationFile(t *testing.T) {
 
 		// Non-migration paths.
 		{"core/views.py", false},
-		{"core/migrations.py", false},                // file named migrations.py (not in a migrations/ dir)
-		{"core/migrations/__init__.py", true},        // technically a migration package file — pruned
-		{"core/migrations/0001_initial.txt", false},  // not Python
-		{"core/migrations_helper/0001.py", false},    // dir is migrations_helper, not migrations
-		{"core/migration/0001.py", false},            // singular "migration"
+		{"core/migrations.py", false},               // file named migrations.py (not in a migrations/ dir)
+		{"core/migrations/__init__.py", true},       // technically a migration package file — pruned
+		{"core/migrations/0001_initial.txt", false}, // not Python
+		{"core/migrations_helper/0001.py", false},   // dir is migrations_helper, not migrations
+		{"core/migration/0001.py", false},           // singular "migration"
 		{"", false},
 	}
 	for _, c := range cases {
