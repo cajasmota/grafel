@@ -18,6 +18,8 @@ var jakartaEEAdvFrameworks = map[string]bool{
 	"open_liberty": true, "payara": true, "helidon": true,
 	// JAX-RS: CDI di_binding_extraction, di_injection_point, di_scope_resolution (#3083).
 	"jaxrs": true, "jax-rs": true,
+	// Dropwizard uses HK2/Guice for DI and inherits CDI-style scopes (#3087).
+	"dropwizard": true,
 }
 
 var (

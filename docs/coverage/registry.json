@@ -14522,28 +14522,35 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/jakarta_jaxrs_dto.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/jakarta_jaxrs_dto.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           }
         },
         "Type System": {
@@ -14569,44 +14576,53 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "notes": "Dropwizard has no AOP support; no AspectJ/Spring AOP integration"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "notes": "Dropwizard has no AOP support; no AspectJ/Spring AOP integration"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/dropwizard.go"],
+            "notes": "Dropwizard has no AOP support; no AspectJ/Spring AOP integration"
           }
         },
         "Observability": {

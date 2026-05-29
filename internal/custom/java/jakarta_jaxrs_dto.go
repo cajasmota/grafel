@@ -26,6 +26,8 @@ var jaxrsDTOFrameworks = map[string]bool{
 	"microprofile": true, "eclipse-microprofile": true,
 	// Runtime MicroProfile implementations.
 	"open_liberty": true, "payara": true, "helidon": true,
+	// Dropwizard uses Jersey (JAX-RS) and @Valid for request validation (#3087).
+	"dropwizard": true,
 }
 
 var (
