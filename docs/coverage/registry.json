@@ -23944,9 +23944,9 @@
             "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "partial",
-            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
-            "issue": "3160",
+            "status": "full",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_nestjs_test.go"],
+            "issue": "3163",
             "notes": "Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). NestJS @Body()/@Query()/@Param() decorator-injected values are not matched by the current regex; coverage is best-effort for req.* access patterns.",
             "verified_at": "2026-05-29"
           },
@@ -23959,9 +23959,9 @@
           },
           "vulnerability_finding": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go"],
-            "issue": "3160",
-            "notes": "Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; NestJS decorator-injected sources are underdetected.",
+            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go","internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_jsts_nestjs_test.go"],
+            "issue": "3163",
+            "notes": "Framework-blind taint_flow.go propagates source-to-sink paths. Decorator-injected sources (@Body/@Query/@Param/@Headers/@Req) now detected (full, #3163); sink detection covers SQL/command/path/XSS/ReDoS but NestJS @Res() response sink not in set. Chain is now source-complete for NestJS; partial on sinks.",
             "verified_at": "2026-05-29"
           }
         }

@@ -12,6 +12,8 @@
 //   - ctx.request.body (Koa)
 //   - process.env.<NAME>
 //   - JSON.parse(<non-literal>)
+//   - NestJS @Body()/@Query()/@Param()/@Headers()/@Req()/@Request()
+//     decorator-injected controller-method parameters (#3163)
 //
 // Sinks (security-sensitive operations):
 //   - SQL injection: db.query / pool.query / connection.execute /
@@ -62,6 +64,24 @@ var jstsSourceReqRe = regexp.MustCompile(
 // `useParams` (the `p` there is preceded by a word char, so no boundary).
 var jstsSourceLoaderParamsRe = regexp.MustCompile(
 	`\bparams\s*(?:\.\s*[A-Za-z_$][\w$]*|\[\s*['"][^'"]+['"]\s*\])`,
+)
+
+// jstsSourceNestJSDecoratorRe matches NestJS controller-method parameters
+// annotated with @Body, @Query, @Param, @Headers, @Req, or @Request (#3163).
+// These decorators inject untrusted HTTP input directly as a typed parameter
+// binding — the bound identifier is a taint source in exactly the same way
+// as `req.body` in Express.  The pattern anchors on the decorator token
+// (possibly with an optional string-literal key inside the parens) followed
+// by an optional TypeScript type annotation and then the parameter name.
+// Examples matched:
+//   @Body() dto                       → "dto" is tainted
+//   @Query('q') q: string             → "q" is tainted
+//   @Param('id') id: string           → "id" is tainted
+//   @Headers() headers: Record<…>     → "headers" is tainted
+//   @Req() req: Request               → "req" is tainted
+//   @Request() request: any           → "request" is tainted
+var jstsSourceNestJSDecoratorRe = regexp.MustCompile(
+	`@(?:Body|Query|Param|Headers|Req|Request)\s*\([^)]*\)\s*[A-Za-z_$][\w$]*`,
 )
 
 // jstsSourceEnvRe matches process.env access. The fallback-literal
@@ -155,6 +175,7 @@ func sniffTaintJSTS(content string) []TaintMatch {
 	var out []TaintMatch
 	out = appendTaintMatches(out, content, headers, jstsSourceReqRe, TaintKindSource, TaintCategoryGeneric, "req.body/query/headers", 1.0)
 	out = appendTaintMatches(out, content, headers, jstsSourceLoaderParamsRe, TaintKindSource, TaintCategoryGeneric, "loader params.*", 0.8)
+	out = appendTaintMatches(out, content, headers, jstsSourceNestJSDecoratorRe, TaintKindSource, TaintCategoryGeneric, "@Body/@Query/@Param/@Headers/@Req", 1.0)
 	out = appendTaintMatches(out, content, headers, jstsSourceEnvRe, TaintKindSource, TaintCategoryGeneric, "process.env", 0.85)
 	out = appendTaintMatches(out, content, headers, jstsSourceJSONParseRe, TaintKindSource, TaintCategoryDeserialization, "JSON.parse(ident)", 0.7)
 	// Sanitizers MUST be appended before sinks of the same category so
