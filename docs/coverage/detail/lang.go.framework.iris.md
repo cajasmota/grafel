@@ -42,10 +42,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | — `not_applicable` | `2026-05-29` | — | — | Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable. |
+| Interface extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/golang/extractor.go`<br>`internal/extractors/golang/extractor_test.go` | — |
+| Type alias extraction | 🟢 `partial` | `2026-05-29` | — | `internal/extractors/golang/extractor.go` | — |
+| Type extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/golang/extractor.go`<br>`internal/extractors/golang/extractor_test.go` | — |
 
 ### Testing
 

@@ -10732,20 +10732,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -10934,20 +10938,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -11136,20 +11144,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -11336,20 +11348,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -11533,20 +11549,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -11735,20 +11755,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -12002,20 +12026,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -12194,20 +12222,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -12553,20 +12585,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -12757,20 +12793,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -12955,20 +12995,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -13152,20 +13196,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -13348,20 +13396,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -13543,20 +13595,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {
@@ -13744,20 +13800,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
+            "verified_at": "2026-05-29"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go"],
+            "verified_at": "2026-05-29"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Testing": {

@@ -39,21 +39,21 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [elixir](../by-language/elixir.md) | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟡 1/2 | — | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/5 | |
 | [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 20/21 | 🟡 5/6 | |
-| [go](../by-language/go.md) | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [Huma](../detail/lang.go.framework.huma.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 1/7 | |
-| [go](../by-language/go.md) | [Iris](../detail/lang.go.framework.iris.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 1/7 | |
-| [go](../by-language/go.md) | [Revel](../detail/lang.go.framework.revel.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 5/6 | |
-| [go](../by-language/go.md) | [chi](../detail/lang.go.framework.chi.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
-| [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟡 2/3 | — | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 4/5 | |
-| [go](../by-language/go.md) | [go-zero](../detail/lang.go.framework.go-zero.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 1/7 | |
-| [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 2/3 | — | 🔴 0/4 | 🔴 0/1 | 🟡 19/20 | 🟡 5/6 | |
+| [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 20/21 | 🟡 5/6 | |
+| [go](../by-language/go.md) | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [Huma](../detail/lang.go.framework.huma.md) | 🟡 2/3 | 🔴 0/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 1/7 | |
+| [go](../by-language/go.md) | [Iris](../detail/lang.go.framework.iris.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟡 2/3 | 🔴 0/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 1/7 | |
+| [go](../by-language/go.md) | [Revel](../detail/lang.go.framework.revel.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 5/6 | |
+| [go](../by-language/go.md) | [chi](../detail/lang.go.framework.chi.md) | 🟡 2/3 | 🟢 1/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 6/7 | |
+| [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟡 2/3 | — | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 4/5 | |
+| [go](../by-language/go.md) | [go-zero](../detail/lang.go.framework.go-zero.md) | 🟡 2/3 | 🔴 0/1 | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 1/7 | |
+| [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 2/3 | — | 🟢 3/3 | 🔴 0/1 | 🟡 19/20 | 🟡 5/6 | |
 | [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 6/6 | |
 | [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |

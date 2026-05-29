@@ -2581,6 +2581,50 @@ records:
 
   lang.go.framework.gin:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           status: full
@@ -2808,6 +2852,50 @@ records:
 
   lang.go.framework.echo:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # echo.go custom extractor: reEchoRoute captures e.GET/POST/… with
@@ -2940,6 +3028,50 @@ records:
 
   lang.go.framework.fiber:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # fiber.go custom extractor: reFiberRoute captures app.Get/Post/…
@@ -3073,6 +3205,50 @@ records:
 
   lang.go.framework.chi:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # chi.go custom extractor: reChiRoute captures r.Get/Post/… (Title-case
@@ -3162,6 +3338,50 @@ records:
 
   lang.go.framework.gorilla-mux:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # gorilla_mux.go custom extractor: reGorillaRoute captures
@@ -3292,6 +3512,50 @@ records:
 
   lang.go.framework.buffalo:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Middleware:
         middleware_coverage:
           # buffalo.go already records app.Use / app.Middleware.Use middleware;
@@ -3386,6 +3650,50 @@ records:
 
   lang.go.framework.revel:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Middleware:
         middleware_coverage:
           # middleware_auth_extend.go (custom_go_middleware_auth) scans
@@ -4513,6 +4821,50 @@ records:
           issues_implemented: ["3214"]
   lang.go.framework.fasthttp:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Observability:
         log_extraction:
           # observability.go (custom_go_observability) scans fasthttp-attributed
@@ -4562,6 +4914,50 @@ records:
 
   lang.go.framework.net-http:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # nethttp.go custom extractor: reNetHTTPRoute captures
@@ -4658,6 +5054,50 @@ records:
 
   lang.go.framework.beego:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # beego.go custom extractor: reBeegoRouter captures the method-style
@@ -4782,6 +5222,50 @@ records:
 
   lang.go.framework.iris:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # iris.go custom extractor: reIrisRoute captures app.Get/Post/… verb
@@ -4904,6 +5388,50 @@ records:
 
   lang.go.framework.hertz:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # hertz.go custom extractor (CloudWeGo): reHertzEngine seeds the
@@ -5029,6 +5557,50 @@ records:
 
   lang.go.framework.huma:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # huma is OpenAPI-first: routes are declared via huma.Register(api,
@@ -5063,6 +5635,50 @@ records:
 
   lang.go.framework.kratos:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # kratos is proto/codegen-driven: the protoc-gen-go-http plugin
@@ -5104,6 +5720,50 @@ records:
 
   lang.go.framework.go-zero:
     capabilities:
+      Type System:
+        type_extraction:
+          # extractTypes walks every type_declaration/type_spec and emits a
+          # SCOPE.Component (subtype=struct) per struct type, recording fields
+          # and intra-file DEPENDS_ON edges. Fixture-proven by TestExtractStruct.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, collectDeclaredTypeNames, extractStructFieldDependencies]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        interface_extraction:
+          # extractTypes emits a SCOPE.Component (subtype=interface) per
+          # interface_type, recording its method set for IMPLEMENTS resolution.
+          # Fixture-proven by TestExtractInterface.
+          status: full
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes, interfaceMethodName]
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        type_alias_extraction:
+          # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
+          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
+          # pointer/array/map/slice/channel/function-type definitions). Implemented
+          # deterministically but no dedicated fixture asserts the alias path → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/golang/extractor.go
+              functions: [extractTypes]
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
+        enum_extraction:
+          # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
+          # The Go extractor detects no const/iota enum construct, so this
+          # language-level capability is not applicable to Go. Honest NA, applied
+          # uniformly across all Go framework records.
+          status: not_applicable
+          issues_implemented: ["3210"]
+          verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
           # go-zero is codegen-driven: goctl generates
