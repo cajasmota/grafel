@@ -845,6 +845,105 @@ records:
           issues_implemented: ["2977"]
           verified_at: "2026-05-29"
 
+  lang.python.framework.sanic:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeSanic]
+            - file: internal/engine/rules/python/frameworks/sanic.yaml
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_asgi_test.go
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeSanic]
+            - file: internal/engine/rules/python/frameworks/sanic.yaml
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeSanic]
+            - file: internal/engine/httproutes/canonicalize.go
+              functions: [Canonicalize]
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_asgi_test.go
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+
+  lang.python.framework.litestar:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeLitestar]
+            - file: internal/engine/rules/python/frameworks/litestar.yaml
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_asgi_test.go
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeLitestar]
+            - file: internal/engine/rules/python/frameworks/litestar.yaml
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeLitestar]
+            - file: internal/engine/httproutes/canonicalize.go
+              functions: [Canonicalize]
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_asgi_test.go
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+
+  lang.python.framework.robyn:
+    capabilities:
+      Routing:
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeRobyn]
+            - file: internal/engine/rules/python/frameworks/robyn.yaml
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_asgi_test.go
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeRobyn]
+            - file: internal/engine/rules/python/frameworks/robyn.yaml
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeRobyn]
+            - file: internal/engine/httproutes/canonicalize.go
+              functions: [Canonicalize]
+          tests:
+            - file: internal/engine/http_endpoint_synthesis_asgi_test.go
+          issues_implemented: ["2980"]
+          verified_at: "2026-05-29"
+
   lang.python.framework.fastapi:
     capabilities:
       Routing:

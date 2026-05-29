@@ -334,6 +334,18 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
 	case "python":
+		// #2980 — ASGI frameworks (Sanic / Litestar / Robyn) run BEFORE
+		// Flask / FastAPI. Sanic's `@app.route` / `@app.get` shape overlaps
+		// Flask's, and Robyn's `@app.get` shape overlaps FastAPI's, so the
+		// file-signal-gated ASGI synthesizers must claim each (verb, path) ID
+		// first to stamp the correct `framework` label. The side-scoped dedup
+		// in makeEmit then prevents Flask/FastAPI from re-emitting the same ID.
+		// Each ASGI synthesizer is gated on a framework-specific marker
+		// (Sanic / Robyn / litestar|Controller) so it no-ops on plain
+		// Flask/FastAPI files.
+		synthesizeSanic(string(content), emitDef)
+		synthesizeLitestar(string(content), emitDef)
+		synthesizeRobyn(string(content), emitDef)
 		// Producer side: Flask + FastAPI run FIRST so their synthetics —
 		// which carry a real handler function name as source_handler —
 		// claim each ID before the Django composed-route pass walks the
@@ -1545,6 +1557,315 @@ func parsePyramidMethods(kwargs string) []string {
 		out = append(out, strings.ToUpper(tok))
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// Sanic (Python) — #2980
+// ---------------------------------------------------------------------------
+//
+// Sanic is an ASGI-native framework whose routing idioms mirror Flask:
+//
+//	app = Sanic("app")
+//	@app.get("/users/<int:user_id>")
+//	@app.route("/items", methods=["GET", "POST"])
+//	async def handler(request): ...
+//
+//	bp = Blueprint("v1", url_prefix="/v1")
+//	@bp.get("/resource")
+//	async def handler(request): ...
+//
+// Path parameters use the Flask-style `<converter:name>` / `<name>` angle-bracket
+// convention, so canonicalisation reuses the Flask/Django angle-bracket walker
+// (FrameworkSanic is grouped with them in Canonicalize).
+//
+// Blueprint prefix composition is handled the same way Flask blueprints are
+// conceptually handled, but Sanic encodes the prefix on the Blueprint
+// constructor (`url_prefix="/v1"`) rather than on the registration site. We
+// build a same-file map of {blueprint receiver → url_prefix} and prepend the
+// prefix to every route decorated on that receiver. The dominant convention
+// (blueprint + its routes in one module) is covered; cross-module blueprints
+// fall back to the unprefixed path, which the byPath linker normalises.
+
+// sanicBlueprintRe captures `bp = Blueprint("name", url_prefix="/v1")`. The
+// url_prefix kwarg may appear before or after other kwargs; we capture the
+// receiver and then scan the tail for url_prefix separately so ordering does
+// not matter.
+//
+// Capture groups: 1 = receiver variable, 2 = constructor argument tail.
+var sanicBlueprintRe = regexp.MustCompile(
+	`(?m)^[ \t]*([A-Za-z_]\w*)\s*=\s*Blueprint\s*\(([^)]*)\)`,
+)
+
+// sanicURLPrefixKwargRe extracts `url_prefix="/v1"` from a Blueprint
+// constructor tail.
+var sanicURLPrefixKwargRe = regexp.MustCompile(`url_prefix\s*=\s*["']([^"'\n\r]*)["']`)
+
+// sanicVerbDecoratorRe captures @<recv>.<verb>("/path") shorthand decorators.
+// Sanic exposes get/post/put/patch/delete/head/options/websocket; we cover the
+// standard HTTP verbs. The handler def follows on the next def/async def line,
+// tolerating stacked decorators.
+//
+// Capture groups: 1 = receiver, 2 = verb, 3 = path, 4 = handler name.
+var sanicVerbDecoratorRe = regexp.MustCompile(
+	`@(\w+)\.(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["'][^)]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+// sanicRouteRe captures the generic @<recv>.route("/path", methods=[...]) form.
+//
+// Capture groups: 1 = receiver, 2 = path, 3 = kwargs tail, 4 = handler name.
+var sanicRouteRe = regexp.MustCompile(
+	`@(\w+)\.route\s*\(\s*["']([^"'\n\r]+)["']([^\n\r]*)\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+func synthesizeSanic(content string, emit emitDefFn) {
+	// File-signal gate: require a Sanic-specific marker so this pass no-ops on
+	// Flask files (which share the @<recv>.route / @<recv>.get decorator shape).
+	if !strings.Contains(content, "Sanic") {
+		return
+	}
+
+	// Build the same-file blueprint receiver → url_prefix map so blueprint
+	// routes compose the prefix (Sanic Blueprint mirrors Flask Blueprint).
+	prefixes := map[string]string{}
+	for _, m := range sanicBlueprintRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		recv := m[1]
+		if pm := sanicURLPrefixKwargRe.FindStringSubmatch(m[2]); len(pm) >= 2 {
+			prefixes[recv] = strings.TrimRight(pm[1], "/")
+		} else {
+			// Blueprint with no url_prefix: record an empty prefix so the
+			// receiver is still recognised as a blueprint (no-op composition).
+			prefixes[recv] = ""
+		}
+	}
+
+	compose := func(recv, raw string) string {
+		if pfx, ok := prefixes[recv]; ok && pfx != "" {
+			return joinPathFragments(pfx, raw)
+		}
+		return raw
+	}
+
+	// Shorthand verbs first — unambiguous verb.
+	for _, idx := range sanicVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 10 {
+			continue
+		}
+		recv := content[idx[2]:idx[3]]
+		verb := strings.ToUpper(content[idx[4]:idx[5]])
+		raw := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkSanic, compose(recv, raw))
+		defLine := lineOfOffset(content, idx[8])
+		emit(verb, canonical, "sanic", "Controller", handler, defLine)
+	}
+
+	// Generic .route(...) form with optional methods=[...].
+	for _, idx := range sanicRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 10 {
+			continue
+		}
+		recv := content[idx[2]:idx[3]]
+		raw := content[idx[4]:idx[5]]
+		extras := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkSanic, compose(recv, raw))
+		defLine := lineOfOffset(content, idx[8])
+		methods := parseFlaskMethods(extras) // identical methods=[...] shape
+		if len(methods) == 0 {
+			// Sanic's default for app.route without methods is GET.
+			methods = []string{"GET"}
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "sanic", "Controller", handler, defLine)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Litestar (Python) — #2980
+// ---------------------------------------------------------------------------
+//
+// Litestar (formerly Starlite) differs from FastAPI: route decorators are bare
+// (`@get`, `@post`, ...) rather than receiver-bound (`@app.get`), and handlers
+// are commonly grouped under a `Controller` subclass with a class-level
+// `path = "/base"` attribute, then mounted under a `Router(path="/api",
+// route_handlers=[...])`.
+//
+//	class UserController(Controller):
+//	    path = "/users"
+//	    @get("/{user_id:int}")
+//	    async def get_user(self, user_id: int) -> ...: ...
+//
+//	@post("/items")
+//	async def create_item(data: Item) -> ...: ...
+//
+// Path parameters use the FastAPI-style `{name:type}` curly-brace convention
+// (FrameworkLitestar is grouped with FastAPI in Canonicalize, which strips the
+// `:type` suffix).
+//
+// Prefix composition: a handler's full path is
+// joinPathFragments(routerPath, controllerPath, decoratorPath). The same-file
+// Controller `path` attribute is recovered by scanning each Controller class
+// body. A same-file `Router(path=...)` prefix (dominant single-router
+// convention) is prepended to every handler; multi-router files fall back to no
+// router prefix, which the byPath linker normalises.
+
+// litestarRouterPathRe captures a same-file `Router(path="/api", ...)` prefix.
+var litestarRouterPathRe = regexp.MustCompile(`\bRouter\s*\(\s*path\s*=\s*["']([^"'\n\r]+)["']`)
+
+// litestarControllerClassRe matches a `class X(Controller):` declaration.
+//
+// Capture groups: 1 = class name.
+var litestarControllerClassRe = regexp.MustCompile(
+	`(?m)^class\s+([A-Za-z_]\w*)\s*\([^)]*\bController\b[^)]*\)\s*:`,
+)
+
+// litestarControllerPathRe captures a class-level `path = "/base"` attribute.
+var litestarControllerPathRe = regexp.MustCompile(`(?m)^[ \t]+path\s*=\s*["']([^"'\n\r]+)["']`)
+
+// litestarVerbDecoratorRe captures a bare `@get("/path")` / `@post(...)` route
+// handler decorator and the following handler def. The decorator may be
+// followed by stacked decorators (e.g. `@get(...)` plus a guard decorator).
+//
+// Capture groups: 1 = verb, 2 = path, 3 = handler name.
+var litestarVerbDecoratorRe = regexp.MustCompile(
+	`(?m)^[ \t]*@(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]*)["'][^)]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+// litestarBareVerbDecoratorRe captures the no-argument decorator form
+// `@get()` / `@post()` (Litestar allows omitting the path, defaulting to the
+// Controller / Router base path). Captured separately so the path-required
+// regex above stays strict.
+//
+// Capture groups: 1 = verb, 2 = handler name.
+var litestarBareVerbDecoratorRe = regexp.MustCompile(
+	`(?m)^[ \t]*@(get|post|put|patch|delete|head|options)\s*\(\s*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+func synthesizeLitestar(content string, emit emitDefFn) {
+	// File-signal gate: require a Litestar marker. The bare `@get(...)`
+	// decorator shape is generic enough that we must avoid firing on unrelated
+	// Python files (e.g. a project-local `get` decorator).
+	if !strings.Contains(content, "litestar") && !strings.Contains(content, "Litestar") &&
+		!strings.Contains(content, "Controller") {
+		return
+	}
+
+	// Single-router prefix (dominant convention).
+	routerPrefix := ""
+	if rm := litestarRouterPathRe.FindStringSubmatch(content); len(rm) >= 2 {
+		routerPrefix = strings.TrimRight(rm[1], "/")
+	}
+
+	// Map each handler-def offset to the enclosing Controller's path prefix by
+	// recording each Controller class body span + its `path` attribute.
+	type ctrlSpan struct {
+		start, end int
+		prefix     string
+	}
+	var ctrls []ctrlSpan
+	for _, cm := range litestarControllerClassRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(cm) < 4 {
+			continue
+		}
+		bodyStart := cm[1]
+		bodyEnd := findPyClassBodyEnd(content, bodyStart)
+		prefix := ""
+		if pm := litestarControllerPathRe.FindStringSubmatch(content[bodyStart:bodyEnd]); len(pm) >= 2 {
+			prefix = strings.TrimRight(pm[1], "/")
+		}
+		ctrls = append(ctrls, ctrlSpan{start: bodyStart, end: bodyEnd, prefix: prefix})
+	}
+	controllerPrefixAt := func(off int) string {
+		for _, c := range ctrls {
+			if off >= c.start && off < c.end {
+				return c.prefix
+			}
+		}
+		return ""
+	}
+
+	compose := func(handlerOff int, raw string) string {
+		full := joinPathFragments(controllerPrefixAt(handlerOff), raw)
+		if routerPrefix != "" {
+			full = joinPathFragments(routerPrefix, full)
+		}
+		return full
+	}
+
+	emitOne := func(verb, raw, handler string, defOff int) {
+		canonical := httproutes.Canonicalize(httproutes.FrameworkLitestar, compose(defOff, raw))
+		defLine := lineOfOffset(content, defOff)
+		emit(strings.ToUpper(verb), canonical, "litestar", "SCOPE.Operation", handler, defLine)
+	}
+
+	// Path-bearing decorators.
+	for _, idx := range litestarVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		verb := content[idx[2]:idx[3]]
+		raw := content[idx[4]:idx[5]]
+		handler := content[idx[6]:idx[7]]
+		emitOne(verb, raw, handler, idx[6])
+	}
+	// Bare decorators (path defaults to the Controller / Router base path).
+	for _, idx := range litestarBareVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
+			continue
+		}
+		verb := content[idx[2]:idx[3]]
+		handler := content[idx[4]:idx[5]]
+		emitOne(verb, "", handler, idx[4])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Robyn (Python) — #2980
+// ---------------------------------------------------------------------------
+//
+// Robyn is a Rust-backed Python web framework with a FastAPI-like decorator
+// surface bound to a `Robyn(__file__)` app instance:
+//
+//	app = Robyn(__file__)
+//	@app.get("/users/:id")
+//	async def handler(request): ...
+//
+// Path parameters use the Express-style `:name` colon convention
+// (FrameworkRobyn is grouped with Express et al. in Canonicalize). Robyn has no
+// blueprint/router prefix concept in its core API, so no prefix composition is
+// needed.
+
+// robynVerbDecoratorRe captures @<recv>.<verb>("/path") decorators bound to a
+// Robyn app instance. The handler def follows on the next def/async def line.
+//
+// Capture groups: 1 = receiver, 2 = verb, 3 = path, 4 = handler name.
+var robynVerbDecoratorRe = regexp.MustCompile(
+	`@(\w+)\.(get|post|put|patch|delete|head|options)\s*\(\s*["']([^"'\n\r]+)["'][^)]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`,
+)
+
+func synthesizeRobyn(content string, emit emitDefFn) {
+	// File-signal gate: require the Robyn marker. The decorator shape overlaps
+	// with FastAPI / Sanic, so without this gate we would double-claim those
+	// frameworks' endpoints (the side-scoped dedup tolerates it, but the
+	// framework label would be wrong).
+	if !strings.Contains(content, "Robyn") {
+		return
+	}
+	for _, idx := range robynVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 10 {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[4]:idx[5]])
+		raw := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkRobyn, raw)
+		defLine := lineOfOffset(content, idx[8])
+		emit(verb, canonical, "robyn", "Controller", handler, defLine)
+	}
 }
 
 // ---------------------------------------------------------------------------
