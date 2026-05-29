@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | `2026-05-30` | 3192 | `internal/custom/python/alembic_schema.go`<br>`internal/custom/python/alembic_schema_test.go`<br>`internal/custom/python/testdata/alembic_schema.py` | alembic_schema.go scans Alembic migrations (gated on `from alembic import op`) for op.create_table / op.add_column / op.create_index and emits SCOPE.Schema table, column, and index entities. Heuristic regex over migration source (not a full Python parse), distinct from and non-overlapping with driver_schema.go (#3189); partial because dropped/altered columns, server_default/constraint metadata, and op.alter_column type changes are not modeled. |
 
 ### Relationships
 

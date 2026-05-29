@@ -4002,6 +4002,24 @@ records:
           issues_implemented: ["2986"]
           verified_at: "2026-05-29"
 
+  lang.python.orm.alembic:
+    capabilities:
+      Models:
+        schema_extraction:
+          # op.create_table / op.add_column / op.create_index in Alembic
+          # migrations emitted as SCOPE.Schema table/column/index entities;
+          # gated on `from alembic import op`. Heuristic regex, distinct from
+          # driver_schema.go (#3189). Issue #3192.
+          status: partial
+          symbols:
+            - file: internal/custom/python/alembic_schema.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/alembic_schema_test.go
+            - file: internal/custom/python/testdata/alembic_schema.py
+          issues_implemented: ["3192"]
+          verified_at: "2026-05-30"
+
   lang.python.orm.sqlalchemy:
     capabilities:
       Relationships:

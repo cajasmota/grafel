@@ -88,7 +88,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 1/2 | |
+| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟢 2/2 | |
 | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟢 6/6 | |
 | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
 | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟢 6/6 | |

@@ -112,7 +112,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [php](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🟡 1/6 | |
 | [php](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟡 1/6 | |
 | [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/6 | |
-| [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 1/2 | |
+| [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟢 6/6 | |
 | [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
 | [python](../by-language/python.md) | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟢 6/6 | |
