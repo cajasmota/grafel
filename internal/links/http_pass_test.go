@@ -2637,8 +2637,8 @@ func TestHTTPPass_ResolveStrategy_TelemetryCounters(t *testing.T) {
 // in snake_case or kebab-case. Per-segment normalization (lowercase, strip
 // hyphens AND underscores) collapses all four casing conventions to the same
 // canonical id. The emitted link must carry
-// Properties["resolve_strategy"] = "case_normalized" and the hit must be
-// bucketed in CrossRepoResolveHitsByStrategy["case_normalized"]. (#2703)
+// Properties["resolve_strategy"] = "case_style_normalized" and the hit must be
+// bucketed in CrossRepoResolveHitsByStrategy["case_style_normalized"]. (#2703)
 func TestHTTPPass_CrossRepo_CaseNormalization(t *testing.T) {
 	root := fixtureRoot(t)
 
@@ -2725,14 +2725,14 @@ func TestHTTPPass_CrossRepo_CaseNormalization(t *testing.T) {
 		}
 		if l.Source == "frontend::fn1" && l.Target == "backend::h1" {
 			found1 = true
-			if l.Properties["resolve_strategy"] != "case_normalized" {
-				t.Errorf("fn1 link: resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "case_normalized")
+			if l.Properties["resolve_strategy"] != "case_style_normalized" {
+				t.Errorf("fn1 link: resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "case_style_normalized")
 			}
 		}
 		if l.Source == "frontend::fn2" && l.Target == "backend::h1" {
 			found2 = true
-			if l.Properties["resolve_strategy"] != "case_normalized" {
-				t.Errorf("fn2 link: resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "case_normalized")
+			if l.Properties["resolve_strategy"] != "case_style_normalized" {
+				t.Errorf("fn2 link: resolve_strategy=%q want %q", l.Properties["resolve_strategy"], "case_style_normalized")
 			}
 		}
 	}
@@ -2805,6 +2805,142 @@ func TestHTTPPass_CrossRepo_CaseNormalization_NoReorderMatch(t *testing.T) {
 		if l.Source == "frontend::fn1" && l.Target == "backend::h1" {
 			t.Errorf("#2703 acceptance #4: case_normalize MUST NOT match across reordered segments (/searchBuildings vs /buildings/search); got link %+v", l)
 		}
+	}
+}
+
+// TestHTTPPass_CrossRepo_CaseStyleNormalization_Upvate3169 reproduces the
+// genuine upvate cross-repo misses called out in #3169 (after the React-Query
+// queryKey phantoms were removed in #3171). The frontend emits camelCase
+// route segments while the backend DRF @action exposes the snake_case
+// method-name default url_path:
+//
+//	frontend  /jurisdictions/inspectionTypes  ↔  backend  /api/v1/jurisdictions/inspection_types
+//	frontend  /dashboard/submitElv3           ↔  backend  /api/v1/dashboard/submit_elv3
+//
+// Both must resolve via the case_style_normalized strategy. A THIRD consumer
+// (`assignedAndAvailableDevices`) is the false-match guard: it has extra words
+// versus the real backend `assigned_devices` route, so it MUST NOT cross-link
+// — proving the per-segment canonicaliser preserves the full alphanumeric run
+// and never collapses a longer name onto a shorter one.
+func TestHTTPPass_CrossRepo_CaseStyleNormalization_Upvate3169(t *testing.T) {
+	root := fixtureRoot(t)
+
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "hInsp", "name": "JurisdictionViewSet.get_inspection_types", "kind": "Controller", "source_file": "core/views/jurisdiction_viewset.py"},
+			{
+				"id": "epInsp", "name": "http:GET:/api/v1/jurisdictions/inspection_types", "kind": "http_endpoint",
+				"source_file": "core/views/jurisdiction_viewset.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/jurisdictions/inspection_types",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+			{"id": "hElv3", "name": "Elv3ViewSet.submit_elv3", "kind": "Controller", "source_file": "core/views/elv3_viewset.py"},
+			{
+				"id": "epElv3", "name": "http:POST:/api/v1/dashboard/submit_elv3", "kind": "http_endpoint",
+				"source_file": "core/views/elv3_viewset.py",
+				"properties": map[string]any{
+					"verb": "POST", "path": "/api/v1/dashboard/submit_elv3",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+			// Real backend route for the false-match guard.
+			{"id": "hDev", "name": "ContractViewSet.assigned_devices", "kind": "Controller", "source_file": "core/views/contract_viewset.py"},
+			{
+				"id": "epDev", "name": "http:GET:/api/v1/contracts/{pk}/assigned_devices", "kind": "http_endpoint",
+				"source_file": "core/views/contract_viewset.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/contracts/{pk}/assigned_devices",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "hInsp", "to_id": "epInsp", "kind": "IMPLEMENTS"},
+			{"from_id": "hElv3", "to_id": "epElv3", "kind": "IMPLEMENTS"},
+			{"from_id": "hDev", "to_id": "epDev", "kind": "IMPLEMENTS"},
+		},
+	})
+
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fnInsp", "name": "getInspectionTypes", "kind": "Function", "source_file": "src/stores/jurisdiction/jurisdictionServiceV2.js"},
+			{
+				"id": "fInsp", "name": "http:GET:/jurisdictions/inspectionTypes", "kind": "http_endpoint",
+				"source_file": "src/stores/jurisdiction/jurisdictionServiceV2.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/jurisdictions/inspectionTypes",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:getInspectionTypes",
+				},
+			},
+			{"id": "fnElv3", "name": "submitElv3", "kind": "Function", "source_file": "src/stores/dashboard/dashboardServiceV2.js"},
+			{
+				"id": "fElv3", "name": "http:POST:/dashboard/submitElv3", "kind": "http_endpoint",
+				"source_file": "src/stores/dashboard/dashboardServiceV2.js",
+				"properties": map[string]any{
+					"verb": "POST", "path": "/dashboard/submitElv3",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:submitElv3",
+				},
+			},
+			// False-match guard: extra words ("AndAvailable") versus the real
+			// backend `assigned_devices` route. Must remain an orphan.
+			{"id": "fnDev", "name": "useAssignedAndAvailableDevices", "kind": "Function", "source_file": "src/network/hooks/devicesV2.js"},
+			{
+				"id": "fDev", "name": "http:GET:/contracts/{contractId}/assignedAndAvailableDevices", "kind": "http_endpoint",
+				"source_file": "src/network/hooks/devicesV2.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/contracts/{contractId}/assignedAndAvailableDevices",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:useAssignedAndAvailableDevices",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g3169", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g3169-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var inspOK, elv3OK, devFalse bool
+	for _, l := range doc.Links {
+		if l.Method != MethodHTTP {
+			continue
+		}
+		if l.Source == "frontend::fnInsp" && l.Target == "backend::hInsp" {
+			inspOK = true
+			if got := l.Properties["resolve_strategy"]; got != "case_style_normalized" {
+				t.Errorf("inspectionTypes link: resolve_strategy=%q want %q", got, "case_style_normalized")
+			}
+		}
+		if l.Source == "frontend::fnElv3" && l.Target == "backend::hElv3" {
+			elv3OK = true
+			if got := l.Properties["resolve_strategy"]; got != "case_style_normalized" {
+				t.Errorf("submitElv3 link: resolve_strategy=%q want %q", got, "case_style_normalized")
+			}
+		}
+		if l.Source == "frontend::fnDev" && l.Target == "backend::hDev" {
+			devFalse = true
+		}
+	}
+	if !inspOK {
+		t.Errorf("#3169: expected frontend::fnInsp → backend::hInsp (inspectionTypes ↔ inspection_types)")
+	}
+	if !elv3OK {
+		t.Errorf("#3169: expected frontend::fnElv3 → backend::hElv3 (submitElv3 ↔ submit_elv3)")
+	}
+	if devFalse {
+		t.Errorf("#3169 false-match guard: assignedAndAvailableDevices MUST NOT link to assigned_devices (extra words, distinct canonical id)")
 	}
 }
 
@@ -3312,6 +3448,18 @@ func TestCaseNormalizePathSegments(t *testing.T) {
 		{"/api/v1/contracts/{*}/assigned_contacts", "/api/v1/contracts/{*}/assignedcontacts"},
 		{"/api/v1/contracts/{*}/assignedContacts", "/api/v1/contracts/{*}/assignedcontacts"},
 		{"/equipment-types", "/equipmenttypes"},
+		// #3169 — the exact upvate misses: frontend camelCase ↔ backend
+		// snake_case (DRF default url_path = method name).
+		{"/jurisdictions/inspectionTypes", "/jurisdictions/inspectiontypes"},
+		{"/jurisdictions/inspection_types", "/jurisdictions/inspectiontypes"},
+		{"/dashboard/submitElv3", "/dashboard/submitelv3"},
+		{"/dashboard/submit_elv3", "/dashboard/submitelv3"},
+		// #3169 false-match guard: a name with EXTRA words must NOT collapse
+		// onto the shorter name. assigned_and_available_devices (a queryKey,
+		// not a real route) stays distinct from the real assigned_devices
+		// route, so the resolver can never cross-link them.
+		{"/contracts/{*}/assigned_devices", "/contracts/{*}/assigneddevices"},
+		{"/contracts/{*}/assignedAndAvailableDevices", "/contracts/{*}/assignedandavailabledevices"},
 		// Segment count must be preserved.
 		{"/searchBuildings", "/searchbuildings"},
 		{"/buildings/search", "/buildings/search"},
@@ -3351,10 +3499,10 @@ func TestClassifyOrphanReason(t *testing.T) {
 // exists, and refuse (ok=false) param-led or prefix-free paths.
 func TestDynamicSuffixTemplate(t *testing.T) {
 	cases := []struct {
-		path          string
-		wantSuffix    string
-		wantStatic    int
-		wantOK        bool
+		path       string
+		wantSuffix string
+		wantStatic int
+		wantOK     bool
 	}{
 		// Clean env/prop-drilled base + 2-static suffix → resolvable.
 		{"/{apiUrl}/schedule/import", "/schedule/import", 2, true},

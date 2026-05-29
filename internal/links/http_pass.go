@@ -225,11 +225,12 @@ const urlPatternNormConfidence = 0.95
 // `/api/v1` is preferred over `/api` when both would match.
 var crossRepoPrefixCandidates = []string{"/api/v1", "/api/v2", "/api", "/v1"}
 
-// caseNormalizePathSegments produces a canonical form of a path for
-// case-normalized cross-repo matching (#2703). Each segment is lower-cased
-// and stripped of `-` and `_` characters; path-parameter placeholders
-// (already collapsed to `{*}` by normalizePathForIndex) are passed through
-// unchanged.
+// caseNormalizePathSegments produces a canonical form of a path for the
+// case_style_normalized cross-repo matching strategy (#2703, broadened in
+// #3169). Each segment is reduced to a case-style-agnostic canonical id via
+// canonicalCaseSegment (lower-case + split on `_`/`-`/case-boundaries, joined);
+// path-parameter placeholders (already collapsed to `{*}` by
+// normalizePathForIndex) are passed through unchanged.
 //
 // Examples:
 //
@@ -258,19 +259,62 @@ func caseNormalizePathSegments(path string) string {
 		if seg == "" || seg == "{*}" {
 			continue
 		}
-		// Lower-case + strip `-` and `_` so camelCase, snake_case, kebab-case
-		// and PascalCase all collapse to the same canonical id.
-		var b strings.Builder
-		b.Grow(len(seg))
-		for _, r := range strings.ToLower(seg) {
-			if r == '-' || r == '_' {
-				continue
-			}
-			b.WriteRune(r)
-		}
-		segs[i] = b.String()
+		segs[i] = canonicalCaseSegment(seg)
 	}
 	return strings.Join(segs, "/")
+}
+
+// canonicalCaseSegment reduces a single path segment to a case-style-agnostic
+// canonical id by (a) splitting on explicit separators (`_`, `-`) AND implicit
+// case boundaries (lower→upper, letter→digit, digit→letter, and the
+// ACRONYM→Word boundary inside runs like `HTTPServer`), and (b) lower-casing
+// and concatenating the resulting word list. The split-then-join is what makes
+// the form robust beyond a naive strip-separators pass: it guarantees that
+// `submitElv3` (camelCase, no separator) and `submit_elv3` (snake_case) and
+// `submit-elv3` (kebab-case) all reduce to the SAME canonical id `submitelv3`,
+// regardless of how the digit/letter boundary is spelled on either side.
+//
+// Examples (single segment):
+//
+//	submitElv3   → submitelv3   (split: submit|Elv|3   → submit elv 3)
+//	submit_elv3  → submitelv3   (split: submit|elv3    → submit elv3)
+//	inspectionTypes → inspectiontypes
+//	inspection_types → inspectiontypes
+//	assigned-contacts → assignedcontacts
+//	HTTPServer   → httpserver   (split: HTTP|Server)
+//
+// Because the output is the concatenation of the lower-cased words, two
+// segments are equal IFF they decompose to the same ordered run of
+// alphanumeric characters. This is intentionally identity-preserving: it does
+// NOT merge segments (`assigned_devices` stays one segment) and it does NOT
+// drop characters, so two semantically-distinct names such as
+// `assigned_devices` and `assigned_and_available_devices` canonicalize to
+// DIFFERENT ids and will never be cross-linked by this strategy.
+func canonicalCaseSegment(seg string) string {
+	var b strings.Builder
+	b.Grow(len(seg))
+	for _, r := range seg {
+		// Explicit separators (`_`, `-`) are word boundaries that contribute no
+		// character to the canonical id. Case boundaries (lower→upper, etc.)
+		// need no explicit handling: lower-casing every retained rune and
+		// concatenating yields the same canonical id as a split-on-boundary +
+		// lower + join would, while preserving the full alphanumeric run so
+		// distinct names never collapse together.
+		if r == '-' || r == '_' {
+			continue
+		}
+		b.WriteRune(toLowerRune(r))
+	}
+	return b.String()
+}
+
+// toLowerRune lower-cases ASCII without an allocation; non-ASCII passes through
+// unchanged (path segments in practice are ASCII identifiers).
+func toLowerRune(r rune) rune {
+	if r >= 'A' && r <= 'Z' {
+		return r + ('a' - 'A')
+	}
+	return r
 }
 
 // rawParamRe captures the *name* inside any path-parameter placeholder so the
@@ -1302,7 +1346,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// prefix-stripped alias that byCaseNorm registers above.
 					//
 					// First match wins; edge is stamped with
-					// Properties["resolve_strategy"] = "case_normalized".
+					// Properties["resolve_strategy"] = "case_style_normalized".
 					var caseNormalized bool
 					if p == nil {
 						consumerPath := c.canonicalPath
@@ -1343,7 +1387,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 									p, quality = picked, q
 									caseNormalized = true
 									// Reset prefixNormalized — the matched
-									// strategy is case_normalized, not
+									// strategy is case_style_normalized, not
 									// prefix_stripped, even if the probe
 									// key happened to carry a prefix.
 									prefixNormalized = ""
@@ -1474,7 +1518,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// (consumer `/clients/{clientId}` ↔ producer
 					// `/api/v1/clients/{pk}`), reclassify it so the resolution is
 					// traceable instead of vanishing into the generic `exact` /
-					// `mount_prefix_added` bucket. The url_pattern + case_normalized
+					// `mount_prefix_added` bucket. The url_pattern + case_style_normalized
 					// retries already collapse param/segment shape, so they are
 					// excluded here to avoid double-attribution.
 					paramNormalized := false
@@ -1506,7 +1550,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						case urlPatternNormAnnotation != "":
 							hitsByStrategy["url_pattern"]++
 						case caseNormalized:
-							hitsByStrategy["case_normalized"]++
+							hitsByStrategy["case_style_normalized"]++
 						case literalParamFilled:
 							hitsByStrategy["literal_param_fill"]++
 						case paramNormalized:
@@ -1561,11 +1605,11 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						if link.Properties == nil {
 							link.Properties = map[string]string{}
 						}
-						link.Properties["resolve_strategy"] = "case_normalized"
+						link.Properties["resolve_strategy"] = "case_style_normalized"
 					}
 					// #2808 — stamp param-name normalization. Only set when the
 					// link is not already attributed to a more-specific strategy
-					// (case_normalized / url_pattern) so the resolve_strategy
+					// (case_style_normalized / url_pattern) so the resolve_strategy
 					// property and the telemetry bucket stay consistent. When a
 					// mount prefix also bridged the match, applied_mount_prefix is
 					// retained alongside so both signals survive. The producer's
@@ -1613,7 +1657,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 	// `/buildings/search` remain orphans (out of scope per #2703 #4).
 	//
 	// Runs BEFORE the url_pattern sweep so the more-specific
-	// case_normalized strategy is preferred when both would match.
+	// case_style_normalized strategy is preferred when both would match.
 	for _, byRepo := range hits {
 		for _, perRepo := range byRepo {
 			for _, c := range perRepo {
@@ -1706,7 +1750,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					}
 					emitted[id] = true
 					matchedConsumers[cKey] = true
-					hitsByStrategy["case_normalized"]++
+					hitsByStrategy["case_style_normalized"]++
 					ident := canonicalIdentifier(c, p)
 					ch := httpChannel
 					link := Link{
@@ -1724,7 +1768,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 							{p.sourceFile},
 						},
 						MatchQuality: quality,
-						Properties:   map[string]string{"resolve_strategy": "case_normalized"},
+						Properties:   map[string]string{"resolve_strategy": "case_style_normalized"},
 					}
 					fresh = append(fresh, link)
 				}
