@@ -145,39 +145,66 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 		cfg.GroupDocs = opts.GroupDocs
 	}
 
-	// Step 5 — save config + register group.
+	// Steps 5-7 — persist + register + manifests + install. Shared with the
+	// non-interactive `group add` command via applyGroupConfig.
+	_, err = applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall})
+	return err
+}
+
+// groupApplyOptions controls the side-effecting half of group registration
+// (the part after a GroupConfig has been assembled, whether interactively by
+// the wizard or from flags by `group add`).
+type groupApplyOptions struct {
+	RunInstall   bool
+	SkipHooks    bool
+	SkipWatchers bool
+	SkipMCP      bool
+	SkipRules    bool
+}
+
+// applyGroupConfig persists the group config, registers it in the global
+// registry, writes the per-repo committed manifests, and — unless RunInstall
+// is false — runs the install transaction (git hooks, IDE rules files, MCP
+// settings, watchers, gated by the Skip* toggles and the config's Features).
+// It returns the install result (nil when RunInstall is false) so callers can
+// report or serialize what was written. Idempotent: re-running updates the
+// registry entry in place and overwrites the config atomically.
+func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOptions) (*install.Result, error) {
 	cfgPath, err := registry.ConfigPathFor(cfg.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
-		return err
+		return nil, err
 	}
 	if err := registry.AddGroup(cfg.Name, cfgPath); err != nil {
-		return err
+		return nil, err
 	}
 	fmt.Fprintf(out, "saved %s\n", cfgPath)
 
-	// Step 6 — write committed manifest in each repo.
 	if err := writeManifests(cfg); err != nil {
 		fmt.Fprintf(out, "warning: writing manifest: %v\n", err)
 	}
 
-	// Step 7 — install.
-	if opts.RunInstall {
-		bin, _ := os.Executable()
-		res, err := install.Apply(install.Options{
-			Group:   cfg.Name,
-			Config:  cfg,
-			BinPath: bin,
-		})
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "installed %d hooks, %d watchers, %d MCP entries\n",
-			len(res.HooksInstalled), len(res.WatcherUnits), len(res.MCPSettings))
+	if !ga.RunInstall {
+		return nil, nil
 	}
-	return nil
+	bin, _ := os.Executable()
+	res, err := install.Apply(install.Options{
+		Group:          cfg.Name,
+		Config:         cfg,
+		BinPath:        bin,
+		SkipHooks:      ga.SkipHooks,
+		SkipWatchers:   ga.SkipWatchers,
+		SkipMCP:        ga.SkipMCP,
+		SkipRulesFiles: ga.SkipRules,
+	})
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(out, "installed %d hooks, %d watchers, %d MCP entries\n",
+		len(res.HooksInstalled), len(res.WatcherUnits), len(res.MCPSettings))
+	return res, nil
 }
 
 // discoverCandidates returns absolute paths to repos selected for this

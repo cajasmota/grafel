@@ -64,6 +64,7 @@ func newRoot() *cobra.Command {
 		newCleanupCmd(),
 		newDocgenCmd(),
 		newRegisterCmd(),
+		newGroupCmd(),
 		newRemoveCmd(),
 		newDeleteCmd(),
 		newBranchesCmd(),
@@ -133,6 +134,8 @@ Daemon modes (S7):
                                   Switch operational mode + restart daemon
 
 Lifecycle:
+  group add <group> --repo slug=path [--index] [--json]
+                                       Register a group non-interactively (scriptable wizard; for agents/CI)
   remove <group> <slug> [--ref <ref>]  Remove a single repo from a group
   delete <group>                       Delete an entire group and all its repos
   branches [group]                     List per-ref graph tiers + lifecycle management
