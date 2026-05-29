@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # java
 
-**Frameworks**: 19 · **Tools**: 10 · **ORMs**: 13 · **Other**: 3
+**Frameworks**: 19 · **Tools**: 10 · **ORMs**: 14 · **Other**: 3
 
 Back to [summary](../summary.md).
 
@@ -86,6 +86,7 @@ Back to [summary](../summary.md).
 | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 1/8 | |
 | [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 0/8 | |
 | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 0/8 | |
+| [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 1/8 | |
 | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 0/8 | |
 | [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ 0/8 | |
 | [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ 2/8 | |

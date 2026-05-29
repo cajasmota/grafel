@@ -18082,6 +18082,68 @@
       }
     },
     {
+      "id": "lang.java.orm.panache",
+      "category": "orm",
+      "subcategory": "orm_mapper",
+      "language": "java",
+      "label": "Quarkus Panache (SQL + Reactive + MongoDB)",
+      "capabilities": {
+        "Models": {
+          "model_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "verified_at": "2026-05-29"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Panache entities use standard JPA @Entity/@Table/@Column annotations parsed by the Hibernate extractor; panache.go synthesizes entity records but does not independently parse field schemas",
+            "verified_at": "2026-05-29"
+          }
+        },
+        "Relationships": {
+          "association_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Panache entity classes use JPA @OneToMany/@ManyToOne/@OneToOne/@ManyToMany annotations parsed by the Hibernate extractor; panache.go synthesizes operation entities for CRUD but does not itself parse association annotations",
+            "verified_at": "2026-05-29"
+          },
+          "foreign_key_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "lazy_loading_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "relationship_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Relationships inferred via JPA annotation parsing in hibernate.go; panache.go synthesizes repository binding edges but no direct FK/join column resolution",
+            "verified_at": "2026-05-29"
+          }
+        },
+        "Queries": {
+          "query_attribution": {
+            "status": "partial",
+            "cites": ["internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Synthesizes full static-method and DSL-builder operation entities (findById, count, list, page, stream, etc.) and named query entities; does not parse inline JPQL/HQL string content",
+            "verified_at": "2026-05-29"
+          }
+        },
+        "Migrations": {
+          "migration_parsing": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.java.orm.spring-data-cassandra",
       "category": "orm",
       "subcategory": "orm_mapper",

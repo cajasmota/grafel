@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 150 records · **C/C++**: 7 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 13 · **JS/TS**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 14 · **scala**: 6
+**Total**: 151 records · **C/C++**: 7 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 14 · **JS/TS**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 14 · **scala**: 6
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -66,6 +66,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [java](../by-language/java.md) | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | ❌ 1/8 | |
 | [java](../by-language/java.md) | [MyBatis](../detail/lang.java.orm.mybatis.md) | ❌ 0/8 | |
 | [java](../by-language/java.md) | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | ❌ 0/8 | |
+| [java](../by-language/java.md) | [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | ❌ 1/8 | |
 | [java](../by-language/java.md) | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | ❌ 0/8 | |
 | [java](../by-language/java.md) | [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | ❌ 0/8 | |
 | [java](../by-language/java.md) | [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | ❌ 2/8 | |
