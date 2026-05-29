@@ -10667,13 +10667,13 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/rules/go/frameworks/beego.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/beego.go","internal/engine/rules/go/frameworks/beego.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/rules/go/frameworks/beego.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/beego.go","internal/engine/rules/go/frameworks/beego.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
             "status": "missing",
@@ -12858,14 +12858,14 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/iris.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/iris.go","internal/engine/rules/go/frameworks/iris.yaml"],
+            "verified_at": "2026-05-29"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/frameworks/iris.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/golang/iris.go","internal/engine/rules/go/frameworks/iris.yaml"],
+            "verified_at": "2026-05-29"
           },
           "route_extraction": {
             "status": "missing",

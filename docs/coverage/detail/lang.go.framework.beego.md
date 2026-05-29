@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/beego.yaml` | — |
-| Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/beego.yaml` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/beego.go`<br>`internal/engine/rules/go/frameworks/beego.yaml` | — |
+| Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/beego.go`<br>`internal/engine/rules/go/frameworks/beego.yaml` | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Auth
