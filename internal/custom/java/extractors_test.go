@@ -3418,3 +3418,238 @@ public class A {
 		t.Errorf("[#3004 gating] non-java should no-op, got %d entities", len(r.Entities))
 	}
 }
+
+// ============================================================================
+// Observability tests (#3006)
+// ============================================================================
+
+// findObsEntity returns the first SCOPE.Pattern entity with the given subtype
+// whose properties include kvWant (all keys must match), or nil.
+func findObsEntity(r PatternResult, subtype string, kvWant map[string]string) *SecondaryEntity {
+	for i := range r.Entities {
+		e := &r.Entities[i]
+		if e.Kind != "SCOPE.Pattern" || e.Subtype != subtype {
+			continue
+		}
+		ok := true
+		for k, v := range kvWant {
+			if got, _ := e.Properties[k].(string); got != v {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return e
+		}
+	}
+	return nil
+}
+
+func countObsSubtype(r PatternResult, subtype string) int {
+	n := 0
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Pattern" && e.Subtype == subtype {
+			n++
+		}
+	}
+	return n
+}
+
+// TestObservability_Slf4jLogging proves log_extraction detects @Slf4j loggers
+// and the log.<level>(...) statement call surface.
+func TestObservability_Slf4jLogging_Issue3006(t *testing.T) {
+	source := `
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Service
+public class OrderService {
+    public void place(Order o) {
+        log.info("placing order {}", o.getId());
+        if (o.isInvalid()) {
+            log.error("invalid order");
+        }
+        log.debug("done");
+    }
+}
+`
+	r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: "spring_boot", FilePath: "OrderService.java"})
+
+	logger := findObsEntity(r, "logger", map[string]string{"library": "slf4j", "holder": "OrderService"})
+	if logger == nil {
+		t.Fatalf("[#3006 log] expected @Slf4j logger entity, got %v", entityNames(r.Entities))
+	}
+	if logger.Properties["framework"] != "spring_boot" {
+		t.Errorf("[#3006 log] logger framework = %v, want spring_boot", logger.Properties["framework"])
+	}
+
+	if n := countObsSubtype(r, "log_statement"); n != 3 {
+		t.Errorf("[#3006 log] expected 3 log statements, got %d", n)
+	}
+	if findObsEntity(r, "log_statement", map[string]string{"log_level": "info"}) == nil {
+		t.Errorf("[#3006 log] missing info statement")
+	}
+	if findObsEntity(r, "log_statement", map[string]string{"log_level": "error"}) == nil {
+		t.Errorf("[#3006 log] missing error statement")
+	}
+}
+
+// TestObservability_LoggerFactoryVariants proves SLF4J / Log4j2 / JUL logger
+// factories are recognised with the right backing library.
+func TestObservability_LoggerFactoryVariants_Issue3006(t *testing.T) {
+	cases := []struct {
+		decl    string
+		library string
+	}{
+		{`private static final Logger slf = LoggerFactory.getLogger(Foo.class);`, "slf4j"},
+		{`private static final Logger l4j = LogManager.getLogger(Foo.class);`, "log4j"},
+		{`private static final java.util.logging.Logger jul = Logger.getLogger("Foo");`, "jul"},
+	}
+	for _, c := range cases {
+		source := "@Service\npublic class Foo {\n  " + c.decl + "\n}\n"
+		r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: "quarkus", FilePath: "Foo.java"})
+		if findObsEntity(r, "logger", map[string]string{"library": c.library}) == nil {
+			t.Errorf("[#3006 log] decl %q expected library %q, got %v", c.decl, c.library, r.Entities)
+		}
+	}
+}
+
+// TestObservability_MicrometerMetrics proves metric_extraction detects
+// Micrometer builders, MeterRegistry, and @Timed.
+func TestObservability_MicrometerMetrics_Issue3006(t *testing.T) {
+	source := `
+import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+
+@Service
+public class CheckoutService {
+    private final MeterRegistry registry;
+    private final Counter orders = Counter.builder("orders.count").register(registry);
+
+    @Timed(value = "checkout.latency")
+    public void checkout() { orders.increment(); }
+}
+`
+	r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: "spring_boot", FilePath: "CheckoutService.java"})
+
+	if e := findObsEntity(r, "metric", map[string]string{"metric_name": "orders.count", "metric_type": "counter"}); e == nil {
+		t.Errorf("[#3006 metric] expected Counter.builder metric, got %v", r.Entities)
+	}
+	if findObsEntity(r, "metric", map[string]string{"metric_type": "registry"}) == nil {
+		t.Errorf("[#3006 metric] expected MeterRegistry signal")
+	}
+	if e := findObsEntity(r, "metric", map[string]string{"metric_type": "timer", "method": "checkout"}); e == nil {
+		t.Errorf("[#3006 metric] expected @Timed metric, got %v", r.Entities)
+	} else if e.Properties["metric_name"] != "checkout.latency" {
+		t.Errorf("[#3006 metric] @Timed metric_name = %v, want checkout.latency", e.Properties["metric_name"])
+	}
+}
+
+// TestObservability_MicroProfileMetrics proves @Counted / @Metered / @Gauge are
+// mapped to metric_type values.
+func TestObservability_MicroProfileMetrics_Issue3006(t *testing.T) {
+	source := `
+@ApplicationScoped
+public class Metrics {
+    @Counted(value = "calls.total")
+    public void counted() {}
+
+    @Metered
+    public void metered() {}
+
+    @Gauge(unit = "none")
+    public long gauged() { return 1; }
+}
+`
+	r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: "quarkus", FilePath: "Metrics.java"})
+	for _, want := range []struct{ mtype, method string }{
+		{"counter", "counted"}, {"meter", "metered"}, {"gauge", "gauged"},
+	} {
+		if findObsEntity(r, "metric", map[string]string{"metric_type": want.mtype, "method": want.method}) == nil {
+			t.Errorf("[#3006 metric] expected %s metric on %s, got %v", want.mtype, want.method, r.Entities)
+		}
+	}
+}
+
+// TestObservability_OtelTracing proves trace_extraction detects @WithSpan and
+// programmatic tracer.spanBuilder spans.
+func TestObservability_OtelTracing_Issue3006(t *testing.T) {
+	source := `
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.api.trace.Tracer;
+
+@Service
+public class PaymentService {
+    private final Tracer tracer;
+
+    @WithSpan("charge-card")
+    public void charge() {
+        var span = tracer.spanBuilder("downstream-call").startSpan();
+        span.setAttribute("amount", 10);
+    }
+}
+`
+	r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: "spring_boot", FilePath: "PaymentService.java"})
+
+	if e := findObsEntity(r, "trace_span", map[string]string{"span_kind": "annotation", "method": "charge", "library": "otel"}); e == nil {
+		t.Errorf("[#3006 trace] expected @WithSpan span, got %v", r.Entities)
+	} else if e.Properties["span_name"] != "charge-card" {
+		t.Errorf("[#3006 trace] @WithSpan span_name = %v, want charge-card", e.Properties["span_name"])
+	}
+	if findObsEntity(r, "trace_span", map[string]string{"span_kind": "programmatic", "span_name": "downstream-call"}) == nil {
+		t.Errorf("[#3006 trace] expected programmatic spanBuilder span")
+	}
+}
+
+// TestObservability_MicrometerTracing proves @Observed and tracer.nextSpan are
+// detected as Micrometer Tracing spans.
+func TestObservability_MicrometerTracing_Issue3006(t *testing.T) {
+	source := `
+import io.micrometer.observation.annotation.Observed;
+
+@Service
+public class InventoryService {
+    @Observed(name = "inventory.check")
+    public boolean check() {
+        var span = tracer.nextSpan().name("reserve");
+        return true;
+    }
+}
+`
+	r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: "spring_boot", FilePath: "InventoryService.java"})
+
+	if e := findObsEntity(r, "trace_span", map[string]string{"span_kind": "annotation", "library": "micrometer", "method": "check"}); e == nil {
+		t.Errorf("[#3006 trace] expected @Observed span, got %v", r.Entities)
+	} else if e.Properties["span_name"] != "inventory.check" {
+		t.Errorf("[#3006 trace] @Observed span_name = %v, want inventory.check", e.Properties["span_name"])
+	}
+	if findObsEntity(r, "trace_span", map[string]string{"span_kind": "programmatic", "library": "micrometer"}) == nil {
+		t.Errorf("[#3006 trace] expected nextSpan() span")
+	}
+}
+
+// TestObservability_FrameworkGating proves the extractor runs for JVM backend
+// frameworks and no-ops for non-JVM-backend frameworks and non-java languages.
+func TestObservability_FrameworkGating_Issue3006(t *testing.T) {
+	source := `
+@Slf4j
+public class S {
+    public void m() { log.info("hi"); }
+}
+`
+	for _, fw := range []string{"spring_boot", "spring-boot", "quarkus", "micronaut", "microprofile", "jakarta_ee", "jaxrs", "dropwizard", "helidon", "javalin", "vertx"} {
+		r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: fw, FilePath: "S.java"})
+		if len(r.Entities) == 0 {
+			t.Errorf("[#3006 gating] framework %q expected observability entities, got none", fw)
+		}
+	}
+	for _, fw := range []string{"django", "rails", "express"} {
+		if r := ExtractObservability(PatternContext{Source: source, Language: "java", Framework: fw, FilePath: "S.java"}); len(r.Entities) != 0 {
+			t.Errorf("[#3006 gating] framework %q should no-op, got %d entities", fw, len(r.Entities))
+		}
+	}
+	if r := ExtractObservability(PatternContext{Source: source, Language: "python", Framework: "spring_boot", FilePath: "S.py"}); len(r.Entities) != 0 {
+		t.Errorf("[#3006 gating] non-java should no-op, got %d entities", len(r.Entities))
+	}
+}

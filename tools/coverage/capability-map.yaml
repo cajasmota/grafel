@@ -1976,6 +1976,34 @@ records:
 
   lang.java.framework.jakarta-ee:
     capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
       Transactions:
         transaction_boundary_extraction:
           status: partial
@@ -2063,6 +2091,34 @@ records:
 
   lang.java.framework.microprofile:
     capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
       Auth:
         auth_coverage:
           status: partial
@@ -2145,6 +2201,34 @@ records:
 
   lang.java.framework.spring-boot:
     capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
       AOP:
         aspect_extraction:
           status: partial
@@ -2543,6 +2627,34 @@ records:
 
   lang.java.framework.spring-webflux:
     capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
       AOP:
         aspect_extraction:
           status: partial
@@ -3794,6 +3906,7 @@ records:
           issues_implemented: ["2985"]
           verified_at: "2026-05-29"
 
+<<<<<<< HEAD
   lang.java.orm.eclipselink:
     capabilities:
       Models:
@@ -3936,6 +4049,277 @@ records:
           tests:
             - file: internal/custom/java/orm_extractors_test.go
           issues_implemented: ["3007"]
+=======
+  lang.java.framework.akka-http:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.dropwizard:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.helidon:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.javalin:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.jaxrs:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.micronaut:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.quarkus:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.struts:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+  lang.java.framework.vertx:
+    capabilities:
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+          verified_at: "2026-05-29"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/java/observability.go
+              functions: [ExtractObservability, extractTracing, canonicalObsFramework]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+          issues_implemented: ["3006"]
+>>>>>>> 9473df6e0 (feat(java): observability extraction (SLF4J, Micrometer, OTel) (#3006))
           verified_at: "2026-05-29"
   lang.python.framework.cherrypy:
     capabilities:

@@ -14068,16 +14068,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -14599,16 +14605,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -15000,16 +15012,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -15275,16 +15293,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -15521,16 +15545,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -15790,16 +15820,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -16096,16 +16132,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -16362,16 +16404,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -16787,16 +16835,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -17075,16 +17129,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Substrate": {
@@ -17364,16 +17424,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -17614,16 +17680,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -17982,16 +18054,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
