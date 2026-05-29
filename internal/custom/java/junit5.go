@@ -25,6 +25,8 @@ var junit5Frameworks = map[string]bool{
 	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
 	// Dropwizard uses JUnit 5 with DropwizardExtensionsSupport for tests_linkage (#3087).
 	"dropwizard": true,
+	// Javalin uses JUnit 5 with JavalinTest.create / TestUtil.test for tests_linkage (#3085).
+	"javalin": true,
 }
 
 var (

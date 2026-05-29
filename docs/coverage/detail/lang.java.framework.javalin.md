@@ -15,34 +15,34 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | ❌ `missing` | — | — | — | — |
-| Handler attribution | ❌ `missing` | — | — | — | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go`<br>`internal/engine/http_endpoint_synthesis.go` | — |
+| Handler attribution | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go` | — |
+| Route extraction | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`testdata/fixtures/sources/java/javalin/App.java` | — |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ❌ `missing` | — | — | — | — |
+| Auth coverage | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go` | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go` | — |
+| Request validation | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | — | 3085 | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/junit5.go` | — |
 
 ### Type System
 
@@ -57,25 +57,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | — `not_applicable` | — | 3085 | — | Javalin is a micro-framework with no built-in DI container; dependency injection is not part of the framework and must be provided externally (e.g. Guice, Koin). DI binding is therefore not_applicable for lang.java.framework.javalin. |
+| DI injection point | — `not_applicable` | — | 3085 | — | Javalin has no built-in DI container; @Inject is not a Javalin concept. DI injection points are not_applicable. |
+| DI scope resolution | — `not_applicable` | — | 3085 | — | Javalin has no DI scopes (@Singleton, @RequestScoped, etc.); scope resolution is not_applicable. |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | — `not_applicable` | — | 3085 | — | Javalin is a micro HTTP framework with no built-in transaction management. @Transactional is a Spring/JTA concept; transaction boundary extraction is not_applicable for Javalin. |
+| Transaction propagation | — `not_applicable` | — | 3085 | — | Javalin has no transaction propagation model; not_applicable. |
+| Transaction rollback rules | — `not_applicable` | — | 3085 | — | Javalin has no transaction rollback rules; not_applicable. |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | — `not_applicable` | — | 3085 | — | Javalin has no AOP support; @Aspect / @Before / @Around are Spring/AspectJ concepts not present in Javalin. Advice attribution is not_applicable. |
+| Aspect extraction | — `not_applicable` | — | 3085 | — | Javalin has no AOP aspect system; aspect extraction is not_applicable. |
+| Pointcut resolution | — `not_applicable` | — | 3085 | — | Javalin has no AOP pointcut system; pointcut resolution is not_applicable. |
 
 ### Observability
 

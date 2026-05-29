@@ -120,6 +120,10 @@ const (
 	// `@app.route('/path')` / `@app.get('/path')` with Flask-style `<converter:name>`
 	// angle-bracket path parameters. Canonicalisation reuses the angle-bracket walker.
 	FrameworkQuart = "quart"
+	// FrameworkJavalin (#3085) — Javalin `app.get("/users/{id}", handler)` uses
+	// `{name}` curly-brace path parameters identical to JAX-RS / Spring.
+	// Canonicalisation reuses canonicalizeCurlyBraces.
+	FrameworkJavalin = "javalin"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -157,7 +161,8 @@ func Canonicalize(framework, raw string) string {
 		out = canonicalizeAngleBrackets(out)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
 		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi,
-		FrameworkLitestar, FrameworkAiohttp, FrameworkFalcon, FrameworkHug:
+		FrameworkLitestar, FrameworkAiohttp, FrameworkFalcon, FrameworkHug,
+		FrameworkJavalin:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkTornado:
 		// Tornado paths arrive already pre-processed by the synthesizer
