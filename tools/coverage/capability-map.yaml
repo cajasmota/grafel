@@ -5468,6 +5468,86 @@ records:
         issues_implemented: ["3211"]
         verified_at: "2026-05-30"
 
+  test.testify:
+    capabilities:
+      target_extraction:
+        # custom_go_testify emits SCOPE.Pattern nodes for: suite structs that
+        # embed suite.Suite (test_suite), suite.Run(t, new(X)) registration
+        # (suite_run), suite receiver-method test cases gated on the suite embed
+        # (test_case), and assert.*/require.* assertion calls (assertion).
+        status: full
+        symbols:
+          - file: internal/custom/golang/test_frameworks.go
+            functions: [Extract]
+        tests:
+          - file: internal/custom/golang/test_frameworks_test.go
+        issues_implemented: ["3216"]
+        verified_at: "2026-05-30"
+      dependency_graph:
+        # testify suite case/assertion patterns carry the owning suite name in
+        # properties, and tests_edges.go propagates TESTS edges from testify
+        # suite receiver-method tests to the production entities they exercise.
+        status: full
+        symbols:
+          - file: internal/custom/golang/test_frameworks.go
+            functions: [Extract]
+          - file: internal/engine/tests_edges.go
+            functions: [ApplyTestsMultiHopViaHTTP]
+        tests:
+          - file: internal/custom/golang/test_frameworks_test.go
+        issues_implemented: ["3216"]
+        verified_at: "2026-05-30"
+
+  test.ginkgo:
+    capabilities:
+      target_extraction:
+        # custom_go_ginkgo parses the BDD DSL: Describe/Context/When containers
+        # (test_suite), It/Specify specs including focus/pending F-/P-/X-
+        # variants (test_case), and Before/AfterEach setup hooks (test_hook).
+        status: full
+        symbols:
+          - file: internal/custom/golang/test_frameworks.go
+            functions: [Extract]
+        tests:
+          - file: internal/custom/golang/test_frameworks_test.go
+        issues_implemented: ["3216"]
+        verified_at: "2026-05-30"
+      dependency_graph:
+        # Spec/container/hook patterns are emitted flat with description +
+        # focus_state properties; spec->container nesting and spec->production
+        # call edges are not yet resolved, so coverage is partial.
+        status: partial
+        symbols:
+          - file: internal/custom/golang/test_frameworks.go
+            functions: [Extract]
+        issues_implemented: ["3216"]
+        verified_at: "2026-05-30"
+
+  test.gomega:
+    capabilities:
+      target_extraction:
+        # custom_go_gomega extracts Expect/Ω/Eventually/Consistently assertions
+        # with polarity (To/ToNot/NotTo/Should/ShouldNot) and the matcher
+        # constructor name (Equal, HaveOccurred, BeNil, ...).
+        status: full
+        symbols:
+          - file: internal/custom/golang/test_frameworks.go
+            functions: [Extract]
+        tests:
+          - file: internal/custom/golang/test_frameworks_test.go
+        issues_implemented: ["3216"]
+        verified_at: "2026-05-30"
+      dependency_graph:
+        # Assertion patterns capture matcher + polarity but the asserted subject
+        # expression is not resolved to a production entity, so no TESTS edge is
+        # synthesised from a gomega matcher alone; coverage is partial.
+        status: partial
+        symbols:
+          - file: internal/custom/golang/test_frameworks.go
+            functions: [Extract]
+        issues_implemented: ["3216"]
+        verified_at: "2026-05-30"
+
   pkg.go-mod:
     capabilities:
       manifest_parsing:

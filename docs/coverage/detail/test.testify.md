@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency graph | 🟢 `partial` | `2026-05-28` | — | `internal/engine/tests_edges.go` | — |
-| Target extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/test_patterns.yaml` | — |
+| Dependency graph | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/test_frameworks.go`<br>`internal/engine/tests_edges.go` | suite/case/assertion patterns carry suite linkage props; combined with tests_edges.go TESTS-edge propagation for testify suite methods |
+| Target extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/test_frameworks.go` | testify Suite struct + suite.Run registration + receiver-method test cases + assert/require assertion extraction (custom_go_testify); proving fixture testdata/testify_suite.go |
 
 ## Provenance
 

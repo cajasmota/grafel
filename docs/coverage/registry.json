@@ -47867,10 +47867,17 @@
       "label": "Ginkgo",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/custom/golang/test_frameworks.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3216",
+          "notes": "spec/container/hook patterns are emitted flat with description+focus_state props; nesting (spec-\u003econtainer) and spec-\u003eproduction-call edges are not yet resolved",
+          "verified_at": "2026-05-29"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/golang/test_frameworks.go"],
+          "notes": "ginkgo Describe/Context/When containers, It/Specify specs (incl. focus/pending F-/P-/X- variants), and Before/AfterEach hooks (custom_go_ginkgo); proving fixture testdata/ginkgo_specs.go",
+          "verified_at": "2026-05-29"
         }
       }
     },
@@ -47899,10 +47906,17 @@
       "label": "Gomega",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/custom/golang/test_frameworks.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3216",
+          "notes": "assertion patterns capture matcher + polarity but the asserted subject expression is not resolved to a production entity, so no TESTS/REFERENCES edge is synthesised yet",
+          "verified_at": "2026-05-29"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/custom/golang/test_frameworks.go"],
+          "notes": "gomega Expect/Ω/Eventually/Consistently assertions with polarity (To/ToNot/Should/ShouldNot) and matcher-constructor name extraction (custom_go_gomega); proving fixture testdata/gomega_matchers.go",
+          "verified_at": "2026-05-29"
         }
       }
     },
@@ -48302,14 +48316,16 @@
       "label": "testify",
       "capabilities": {
         "dependency_graph": {
-          "status": "partial",
-          "cites": ["internal/engine/tests_edges.go"],
-          "verified_at": "2026-05-28"
+          "status": "full",
+          "cites": ["internal/custom/golang/test_frameworks.go","internal/engine/tests_edges.go"],
+          "notes": "suite/case/assertion patterns carry suite linkage props; combined with tests_edges.go TESTS-edge propagation for testify suite methods",
+          "verified_at": "2026-05-29"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/rules/go/test_patterns.yaml"],
-          "verified_at": "2026-05-28"
+          "status": "full",
+          "cites": ["internal/custom/golang/test_frameworks.go"],
+          "notes": "testify Suite struct + suite.Run registration + receiver-method test cases + assert/require assertion extraction (custom_go_testify); proving fixture testdata/testify_suite.go",
+          "verified_at": "2026-05-29"
         }
       }
     },
