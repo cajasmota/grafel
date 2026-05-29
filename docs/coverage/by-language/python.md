@@ -21,13 +21,13 @@ Back to [summary](../summary.md).
 | [Flask](../detail/lang.python.framework.flask.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Litestar](../detail/lang.python.framework.litestar.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Pyramid](../detail/lang.python.framework.pyramid.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 3/3 | ❌ 0/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Quart](../detail/lang.python.framework.quart.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Robyn](../detail/lang.python.framework.robyn.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Sanic](../detail/lang.python.framework.sanic.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Starlette](../detail/lang.python.framework.starlette.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Starlette](../detail/lang.python.framework.starlette.md) | ✅ 3/3 | ❌ 0/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [Tornado](../detail/lang.python.framework.tornado.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 3/3 | ❌ 0/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [aiohttp](../detail/lang.python.framework.aiohttp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 
 
