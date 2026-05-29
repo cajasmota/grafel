@@ -11047,8 +11047,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -11231,8 +11233,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -11592,8 +11596,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -11840,8 +11846,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
