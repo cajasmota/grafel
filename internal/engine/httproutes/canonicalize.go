@@ -128,6 +128,11 @@ const (
 	// `{name}` curly-brace path parameters identical to JAX-RS / Spring.
 	// Canonicalisation reuses canonicalizeCurlyBraces.
 	FrameworkVertx = "vertx"
+	// FrameworkAkkaHTTP (#3092) — Akka-HTTP Java DSL `path("users")` / `pathPrefix("api")`
+	// directives use plain string segments; there are no in-string path parameter markers
+	// (dynamic segments come from Scala PathMatcher / segment() calls, not embedded `{name}`).
+	// Canonicalisation is identity + slash normalisation (default case).
+	FrameworkAkkaHTTP = "akka-http"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical

@@ -13977,40 +13977,52 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","internal/engine/http_endpoint_synthesis.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","internal/engine/http_endpoint_synthesis.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "issue": "3092"
           }
         },
         "Type System": {
@@ -14036,44 +14048,53 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "issue": "3092"
           }
         },
         "Observability": {

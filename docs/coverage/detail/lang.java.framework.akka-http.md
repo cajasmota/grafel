@@ -15,34 +15,34 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | ❌ `missing` | — | — | — | — |
-| Handler attribution | ❌ `missing` | — | — | — | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Handler attribution | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Route extraction | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ❌ `missing` | — | — | — | — |
+| Auth coverage | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Request validation | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Type System
 
@@ -57,25 +57,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| DI injection point | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| DI scope resolution | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| Transaction propagation | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| Transaction rollback rules | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| Aspect extraction | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| Pointcut resolution | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
 
 ### Observability
 

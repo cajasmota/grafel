@@ -338,6 +338,8 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeStruts(string(content), emit)
 		// Play Framework (#3090): conf/routes DSL `GET /path controllers.Foo.bar` routing.
 		synthesizePlay(string(content), path, emit)
+		// Akka-HTTP (#3092): directive DSL `path("foo", () -> get(() -> ...))` routing.
+		synthesizeAkkaHTTP(string(content), emit)
 		// Consumer side (#721): HttpClient / RestTemplate /
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
@@ -1008,6 +1010,83 @@ func synthesizePlay(content, filePath string, emit emitFn) {
 		rawPath := m[2]
 		canonical := canonicalizePlayPath(rawPath)
 		emit(verb, canonical, "play", "Route", "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Akka-HTTP (Java) — directive DSL routing (#3092)
+// ---------------------------------------------------------------------------
+
+// akkaHTTPPathSynthRe captures Akka-HTTP Java DSL path("segment") directives.
+//
+//	path("users", () -> get(() -> complete(...)))
+//	path("orders", () -> post(() -> entity(...)))
+//
+// Capture group 1: path segment string literal.
+var akkaHTTPPathSynthRe = regexp.MustCompile(
+	`\bpath\s*\(\s*"([^"]+)"`)
+
+// akkaHTTPMethodSynthRe captures HTTP method directives in Akka-HTTP Java DSL.
+// Capture group 1: lowercase HTTP verb.
+var akkaHTTPMethodSynthRe = regexp.MustCompile(
+	`\b(get|post|put|delete|patch|head|options)\s*\(\s*(?:\(\s*\)|[a-z_]\w*\s*->|\(\s*\)\s*->)`)
+
+// synthesizeAkkaHTTP scans a Java file for Akka-HTTP Java DSL route
+// registrations and emits one http_endpoint_definition per (verb, path) pair.
+// Akka-HTTP path strings are plain segments without parameter syntax markers;
+// dynamic segments come from PathMatcher / segment() which are not string
+// literals, so canonicalisation is identity + slash normalisation (default case).
+func synthesizeAkkaHTTP(content string, emit emitFn) {
+	// File-signal gate: require an Akka-HTTP-specific import or API reference.
+	if !strings.Contains(content, "akka.http") && !strings.Contains(content, "AllDirectives") &&
+		!strings.Contains(content, "akka-http") {
+		return
+	}
+	// Secondary gate: require path() or pathPrefix() directive.
+	if !strings.Contains(content, "path(") && !strings.Contains(content, "pathPrefix(") {
+		return
+	}
+
+	for _, idx := range akkaHTTPPathSynthRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 4 {
+			continue
+		}
+		rawPath := content[idx[2]:idx[3]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkAkkaHTTP, rawPath)
+
+		// Scan up to 10 lines ahead and 5 lines before for an HTTP method directive.
+		lineStart := idx[0]
+		blockEnd := lineStart
+		newlinesFound := 0
+		for blockEnd < len(content) && newlinesFound < 10 {
+			if content[blockEnd] == '\n' {
+				newlinesFound++
+			}
+			blockEnd++
+		}
+		if blockEnd > len(content) {
+			blockEnd = len(content)
+		}
+		blockStart := lineStart
+		newlinesBefore := 0
+		for blockStart > 0 && newlinesBefore < 5 {
+			blockStart--
+			if content[blockStart] == '\n' {
+				newlinesBefore++
+			}
+		}
+
+		snippet := content[blockStart:blockEnd]
+		methods := akkaHTTPMethodSynthRe.FindAllStringSubmatch(snippet, -1)
+		if len(methods) == 0 {
+			// No verb detected in the surrounding block — emit with ANY.
+			emit("ANY", canonical, "akka-http", "Route", "")
+		} else {
+			for _, mm := range methods {
+				verb := strings.ToUpper(mm[1])
+				emit(verb, canonical, "akka-http", "Route", "")
+			}
+		}
 	}
 }
 
