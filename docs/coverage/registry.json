@@ -13688,38 +13688,46 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
+            "issue": "3214",
+            "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
           "query_attribution": {
             "status": "full",
-            "cites": ["internal/engine/orm_queries.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/golang/gorm.go","internal/engine/orm_queries.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
+            "verified_at": "2026-05-30"
           }
         }
       }

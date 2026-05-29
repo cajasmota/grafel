@@ -2997,6 +2997,97 @@ records:
             - file: internal/custom/golang/extractors_test.go
             - file: internal/engine/go_routes_test.go
           issues_implemented: ["3212"]
+  lang.go.orm.gorm:
+    capabilities:
+      Models:
+        model_extraction:
+          # reGORMModel detects gorm.Model embeds; reGORMStructWithTag +
+          # reGORMFieldTag promote plain structs carrying gorm:"..." tags.
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        schema_extraction:
+          # Field-level columns (column:/type: tags) emit SCOPE.Component
+          # field entities with column_name + sql_type properties.
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Relationships:
+        association_extraction:
+          # has_one/has_many/belongs_to/many2many classified from field
+          # type + association tags by relationshipKind.
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract, relationshipKind, relationshipTarget, isStructRefType]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        relationship_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract, relationshipKind, relationshipTarget]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        foreign_key_extraction:
+          # foreignKey:/references: tags captured into relation properties.
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract, relationshipKind]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+        lazy_loading_recognition:
+          # GORM lazy loading is query-time via Preload chainers; recognised
+          # heuristically (no static eager/lazy declaration to bind), partial.
+          status: partial
+          symbols:
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # db.Model/Table/Create/Find bind to a model (full); free-floating
+          # chainers (Where/Joins/Preload/...) are tracked but unbound.
+          status: full
+          symbols:
+            - file: internal/engine/orm_queries.go
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
+          verified_at: "2026-05-30"
+      Migrations:
+        migration_parsing:
+          # AutoMigrate args + Migrator() ops (CreateTable/AddColumn/...) +
+          # file-based NNN_slug.up/down.sql migrations.
+          status: full
+          symbols:
+            - file: internal/custom/golang/gorm.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/golang/gorm_test.go
+          issues_implemented: ["3214"]
           verified_at: "2026-05-30"
 
   lang.java.framework.spring-webflux:
