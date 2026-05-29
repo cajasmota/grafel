@@ -59,6 +59,20 @@ func (e *validationExtractor) Language() string { return "custom_go_validation" 
 // valFrameworkMarkers attributes a file to a framework via its canonical engine
 // constructor / request-context type. Same surface observability.go uses, kept
 // file-local to avoid editing shared helpers (contention avoidance).
+//
+// The first four (gin/echo/fiber/chi) are the original well-templated set; the
+// remaining six (beego/iris/hertz/buffalo/gorilla-mux/net-http) extend struct-
+// tag / binding-call validation detection to the rest of the Go HTTP framework
+// family (issue #3213). All ten support go-playground/validator `validate:`
+// struct tags and a request-binding call surface.
+//
+// fasthttp and revel are intentionally absent: neither offers struct-tag
+// request binding (fasthttp's RequestCtx exposes raw byte accessors only;
+// Revel binds params positionally via controller-method signatures, not tags),
+// so there is no validation surface to attribute and their request_validation
+// cell is honestly marked not_applicable rather than fabricated.
+//
+// net-http is placed last because its `http.*` markers are the broadest.
 var valFrameworkMarkers = []struct {
 	name string
 	re   *regexp.Regexp
@@ -67,10 +81,17 @@ var valFrameworkMarkers = []struct {
 	{"echo", regexp.MustCompile(`\becho\.(?:New|Echo|Context|HandlerFunc|MiddlewareFunc)\b`)},
 	{"fiber", regexp.MustCompile(`\bfiber\.(?:New|App|Ctx|Handler)\b`)},
 	{"chi", regexp.MustCompile(`\bchi\.(?:NewRouter|Router|Mux)\b`)},
+	{"beego", regexp.MustCompile(`\b(?:beego|web)\.(?:Router|NewNamespace|Run|InsertFilter|AutoRouter)\b`)},
+	{"iris", regexp.MustCompile(`\biris\.(?:New|Default|Application|Context|Party)\b`)},
+	{"hertz", regexp.MustCompile(`\bserver\.(?:Default|New|Hertz)\b|\bapp\.RequestContext\b`)},
+	{"buffalo", regexp.MustCompile(`\bbuffalo\.(?:New|App|Options|Context)\b`)},
+	{"gorilla-mux", regexp.MustCompile(`\bmux\.(?:NewRouter|Router|Vars)\b`)},
+	{"net-http", regexp.MustCompile(`\bhttp\.(?:NewServeMux|HandleFunc|ListenAndServe|ListenAndServeTLS)\b`)},
 }
 
 // detectValFramework returns the framework a file belongs to, or "" when no
-// recognised marker is present. First match wins (gin→echo→fiber→chi).
+// recognised marker is present. First match wins (gin→echo→fiber→chi→beego→
+// iris→hertz→buffalo→gorilla-mux→net-http).
 func detectValFramework(src string) string {
 	for _, m := range valFrameworkMarkers {
 		if m.re.MatchString(src) {
@@ -178,10 +199,25 @@ var valSignals = []valSignal{
 	{regexp.MustCompile(`\b\w+\.RegisterValidation\s*\(\s*"([^"]+)"`), "validator", "register_validation", 1},
 
 	// binding / parse call sites that trigger validation, per framework.
+	//
+	// gin/echo/fiber/chi (original set):
 	{regexp.MustCompile(`\bc\.(?:ShouldBind\w*|Bind\w*|MustBindWith)\s*\(`), "binding", "bind_call", 0},
 	{regexp.MustCompile(`\bc\.Validate\s*\(`), "binding", "validate_call", 0},
 	{regexp.MustCompile(`\bc\.(?:BodyParser|QueryParser|ParamsParser|ReqHeaderParser)\s*\(`), "binding", "parse_call", 0},
 	{regexp.MustCompile(`\brender\.(?:Bind|DecodeJSON)\s*\(`), "binding", "bind_call", 0},
+
+	// extended frameworks (issue #3213):
+	//   hertz   c.BindAndValidate / c.BindJSON / c.Bind     (covered by c.Bind\w* above; explicit validate form here)
+	//   iris    ctx.ReadJSON / ctx.ReadBody / ctx.ReadForm / ctx.ReadQuery
+	//   beego   this.ParseForm(&dto) controller binding
+	//   buffalo c.Bind(&dto)                                (covered by c.Bind\w* above)
+	//   gorilla-mux / net-http  json.NewDecoder(r.Body).Decode(&dto) — the
+	//           idiomatic std-lib request decode that feeds a validator.New()
+	//           struct-tag check.
+	{regexp.MustCompile(`\b\w+\.BindAndValidate\s*\(`), "binding", "validate_call", 0},
+	{regexp.MustCompile(`\bctx\.Read(?:JSON|Body|Form|Query|XML|MsgPack|YAML|Protobuf)\s*\(`), "binding", "parse_call", 0},
+	{regexp.MustCompile(`\bthis\.ParseForm\s*\(`), "binding", "parse_call", 0},
+	{regexp.MustCompile(`\bjson\.NewDecoder\s*\([^)]*\)\s*\.Decode\s*\(`), "binding", "decode_call", 0},
 }
 
 func (e *validationExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {

@@ -186,6 +186,14 @@ func TestValidationFixtures(t *testing.T) {
 		{"echo_validation.go", "echo", "LoginReq", "Password", "validate_call"},
 		{"fiber_validation.go", "fiber", "SignupReq", "Email", "parse_call"},
 		{"chi_validation.go", "chi", "OrderReq", "SKU", "bind_call"},
+		// extended frameworks (issue #3213); fasthttp + revel are
+		// honesty-NA (no struct-tag binding) and intentionally absent.
+		{"beego_validation.go", "beego", "BeegoCreateUserReq", "Email", "parse_call"},
+		{"iris_validation.go", "iris", "IrisLoginReq", "Password", "parse_call"},
+		{"hertz_validation.go", "hertz", "HertzSignupReq", "Email", "validate_call"},
+		{"buffalo_validation.go", "buffalo", "BuffaloOrderReq", "SKU", "bind_call"},
+		{"gorilla_mux_validation.go", "gorilla-mux", "MuxCreateUserReq", "Email", "decode_call"},
+		{"nethttp_validation.go", "net-http", "NetHTTPSignupReq", "Username", "decode_call"},
 	}
 	for _, c := range cases {
 		t.Run(c.framework, func(t *testing.T) {
