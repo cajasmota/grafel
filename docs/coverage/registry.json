@@ -17116,8 +17116,10 @@
             "verified_at": "2026-05-28"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_boot.go"],
+            "issue": "3081",
+            "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
@@ -17300,16 +17302,22 @@
       "framework_specific": {
         "Spring Boot Internals": {
           "actuator_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_boot.go"],
+            "issue": "3081",
+            "verified_at": "2026-05-29"
           },
           "autoconfiguration_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "3081",
+            "verified_at": "2026-05-29"
           },
           "profile_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "partial",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
+            "issue": "3081",
+            "verified_at": "2026-05-29"
           }
         }
       }

@@ -14,6 +14,24 @@ var springBootFrameworks = map[string]bool{
 }
 
 var (
+	// actuator_detection: @Endpoint/@ReadOperation/@WriteOperation/@DeleteOperation
+	sbActuatorEndpointRE = regexp.MustCompile(
+		`(?s)@Endpoint\s*\(\s*id\s*=\s*"([^"]+)"\s*\)[^{]*?(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+	sbActuatorOperationRE = regexp.MustCompile(
+		`(?s)(@(?:ReadOperation|WriteOperation|DeleteOperation))\b[^{]*?` +
+			`(?:public|protected|private|)\s+(?:static\s+)?(?:<[^>]*>\s*)?(?:\w+(?:\s*<[^>]*>)?\s+)(\w+)\s*\(`)
+
+	// di_scope_resolution: Spring @Scope / @RequestScope / @SessionScope / @ApplicationScope
+	sbScopeAnnotationRE = regexp.MustCompile(
+		`(?s)@Scope\s*\(\s*(?:value\s*=\s*)?(?:ConfigurableBeanFactory\.SCOPE_(\w+)|"([^"]+)")\s*\)` +
+			`\s*(?:@\w+[^{]*?)*(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+	sbRequestScopeRE = regexp.MustCompile(
+		`(?s)@RequestScope\b[^{]*?(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+	sbSessionScopeRE = regexp.MustCompile(
+		`(?s)@SessionScope\b[^{]*?(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+	sbApplicationScopeRE = regexp.MustCompile(
+		`(?s)@ApplicationScope\b[^{]*?(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+
 	sbRestControllerRE = regexp.MustCompile(
 		`(?s)@(?:Rest)?Controller\b[^{]*?(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
 	sbClassRequestMappingRE = regexp.MustCompile(
@@ -320,6 +338,111 @@ func ExtractSpringBoot(ctx PatternContext) PatternResult {
 				SourceRef: ownerRef, TargetRef: targetRef,
 				RelationshipType: "DEPENDS_ON",
 				Properties:       map[string]string{"injected_type": injectedType, "injection_kind": "constructor"},
+			})
+		}
+	}
+
+	// 5. Actuator: @Endpoint classes + @ReadOperation/@WriteOperation/@DeleteOperation methods
+	type actuatorEndpointInfo struct {
+		endpointID string
+		offset     int
+		ref        string
+	}
+	actuatorEndpoints := make(map[string]actuatorEndpointInfo)
+	for _, m := range sbActuatorEndpointRE.FindAllStringSubmatchIndex(source, -1) {
+		endpointID := source[m[2]:m[3]]
+		className := source[m[4]:m[5]]
+		ref := "scope:component:spring_actuator_endpoint:" + fp + ":" + className
+		if addEntity(&result, seenRefs, SecondaryEntity{
+			Name: className, Kind: "SCOPE.Component", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_ACTUATOR", Ref: ref,
+			Properties: map[string]any{
+				"endpoint_id": endpointID, "framework": "spring_actuator",
+			},
+		}) {
+			actuatorEndpoints[className] = actuatorEndpointInfo{endpointID, m[0], ref}
+		}
+	}
+
+	findOwningActuator := func(offset int) (string, string) {
+		var bestName, bestRef string
+		for name, info := range actuatorEndpoints {
+			if info.offset <= offset {
+				if bestName == "" || actuatorEndpoints[bestName].offset < info.offset {
+					bestName = name
+					bestRef = info.ref
+				}
+			}
+		}
+		return bestName, bestRef
+	}
+
+	for _, m := range sbActuatorOperationRE.FindAllStringSubmatchIndex(source, -1) {
+		annText := source[m[2]:m[3]]
+		methodName := source[m[4]:m[5]]
+		ownerName, ownerRef := findOwningActuator(m[0])
+		if ownerName == "" {
+			continue
+		}
+		opKind := "read"
+		switch annText {
+		case "@WriteOperation":
+			opKind = "write"
+		case "@DeleteOperation":
+			opKind = "delete"
+		}
+		opRef := "scope:operation:spring_actuator_op:" + fp + ":" + ownerName + "." + methodName
+		if addEntity(&result, seenRefs, SecondaryEntity{
+			Name: ownerName + "." + methodName, Kind: "SCOPE.Operation",
+			Subtype: "function", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_ACTUATOR", Ref: opRef,
+			Properties: map[string]any{
+				"operation_kind": opKind, "endpoint_class": ownerName,
+				"framework": "spring_actuator",
+			},
+		}) {
+			addRel(&result, seenRels, Relationship{
+				SourceRef: ownerRef, TargetRef: opRef,
+				RelationshipType: "OWNS",
+			})
+		}
+	}
+
+	// 6. DI scope resolution: Spring @Scope / @RequestScope / @SessionScope / @ApplicationScope
+	for _, m := range sbScopeAnnotationRE.FindAllStringSubmatchIndex(source, -1) {
+		scopeName := ""
+		if m[2] >= 0 {
+			scopeName = source[m[2]:m[3]] // ConfigurableBeanFactory.SCOPE_<X>
+		} else if m[4] >= 0 {
+			scopeName = source[m[4]:m[5]] // string literal
+		}
+		className := source[m[6]:m[7]]
+		ref := "scope:component:spring_scoped_bean:" + fp + ":" + className
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: className, Kind: "SCOPE.Component", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_DI_SCOPE", Ref: ref,
+			Properties: map[string]any{"spring_scope": scopeName, "framework": "spring_boot"},
+		})
+	}
+	for _, pair := range []struct {
+		re    *regexp.Regexp
+		scope string
+	}{
+		{sbRequestScopeRE, "request"},
+		{sbSessionScopeRE, "session"},
+		{sbApplicationScopeRE, "application"},
+	} {
+		for _, m := range pair.re.FindAllStringSubmatchIndex(source, -1) {
+			className := source[m[2]:m[3]]
+			ref := "scope:component:spring_scoped_bean:" + fp + ":" + className
+			addEntity(&result, seenRefs, SecondaryEntity{
+				Name: className, Kind: "SCOPE.Component", SourceFile: fp,
+				LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+				Provenance: "INFERRED_FROM_SPRING_DI_SCOPE", Ref: ref,
+				Properties: map[string]any{"spring_scope": pair.scope, "framework": "spring_boot"},
 			})
 		}
 	}

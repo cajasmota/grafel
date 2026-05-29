@@ -3749,6 +3749,7 @@ public class S {
 }
 
 // ============================================================================
+<<<<<<< HEAD
 // Helidon MP — transactions + CDI DI + middleware + auth + tests (#3088)
 // ============================================================================
 
@@ -4240,5 +4241,255 @@ class FooTest {
 	r := ExtractJUnit5(PatternContext{Source: source, Language: "java", Framework: "helidon", FilePath: "FooTest.java"})
 	if len(r.Entities) == 0 {
 		t.Error("[#3088 tests-gating] expected test entity for framework=helidon, got none")
+=======
+// Issue #3081: Spring Boot missing cells
+// actuator_detection, autoconfiguration_detection, profile_detection, di_scope_resolution
+// ============================================================================
+
+// TestSpringBoot_ActuatorDetection_Issue3081 proves actuator_detection:
+// @Endpoint classes and @ReadOperation/@WriteOperation/@DeleteOperation methods
+// are extracted with correct provenance and operation_kind property.
+// Registry target: lang.java.framework.spring-boot actuator_detection=partial.
+func TestSpringBoot_ActuatorDetection_Issue3081(t *testing.T) {
+	source := `
+package com.example.actuator;
+
+import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
+import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
+import org.springframework.boot.actuate.endpoint.annotation.WriteOperation;
+import org.springframework.boot.actuate.endpoint.annotation.DeleteOperation;
+
+@Endpoint(id = "health-info")
+public class HealthInfoEndpoint {
+    @ReadOperation
+    public HealthInfo health() {
+        return new HealthInfo("UP");
+    }
+
+    @WriteOperation
+    public void reset(String key) {
+        // reset
+    }
+
+    @DeleteOperation
+    public void clear(String key) {
+        // clear
+    }
+}
+`
+	r := ExtractSpringBoot(PatternContext{
+		Source: source, Language: "java", Framework: "spring_boot",
+		FilePath: "HealthInfoEndpoint.java",
+	})
+
+	// Should have: 1 endpoint class + 3 operations
+	var endpointClass *SecondaryEntity
+	opKinds := make(map[string]bool)
+	for i := range r.Entities {
+		e := &r.Entities[i]
+		if e.Provenance == "INFERRED_FROM_SPRING_ACTUATOR" {
+			if e.Kind == "SCOPE.Component" {
+				endpointClass = e
+			}
+			if e.Kind == "SCOPE.Operation" {
+				if k, ok := e.Properties["operation_kind"].(string); ok {
+					opKinds[k] = true
+				}
+			}
+		}
+	}
+	if endpointClass == nil {
+		t.Fatal("[#3081 actuator_detection] expected SCOPE.Component for @Endpoint class, got none")
+	}
+	if endpointClass.Properties["endpoint_id"] != "health-info" {
+		t.Errorf("[#3081 actuator_detection] endpoint_id=%q, want health-info", endpointClass.Properties["endpoint_id"])
+	}
+	for _, wantKind := range []string{"read", "write", "delete"} {
+		if !opKinds[wantKind] {
+			t.Errorf("[#3081 actuator_detection] missing operation_kind=%q, got %v", wantKind, opKinds)
+		}
+	}
+	// Should have OWNS relationships from endpoint class to each operation
+	ownsCount := 0
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "OWNS" && rel.SourceRef == endpointClass.Ref {
+			ownsCount++
+		}
+	}
+	if ownsCount < 3 {
+		t.Errorf("[#3081 actuator_detection] expected >=3 OWNS relationships from endpoint class, got %d", ownsCount)
+	}
+}
+
+// TestSpringBoot_AutoconfigurationDetection_Issue3081 proves autoconfiguration_detection:
+// @EnableAutoConfiguration, @SpringBootApplication, @AutoConfiguration classes
+// and @ConditionalOn* classes are extracted.
+// Registry target: lang.java.framework.spring-boot autoconfiguration_detection=partial.
+func TestSpringBoot_AutoconfigurationDetection_Issue3081(t *testing.T) {
+	source := `
+package com.example;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@SpringBootApplication
+public class MyApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(MyApplication.class, args);
+    }
+}
+
+@Configuration
+@ConditionalOnMissingBean(DataSource.class)
+public class DataSourceAutoConfig {
+    @Bean
+    public DataSource defaultDataSource() {
+        return new EmbeddedDataSource();
+    }
+}
+`
+	r := ExtractSpringEcosystem(PatternContext{
+		Source: source, Language: "java", Framework: "spring_boot",
+		FilePath: "MyApplication.java",
+	})
+
+	autoConfigNames := make(map[string]string) // name -> autoconfig_annotation
+	conditionalNames := make(map[string]string) // name -> conditional_annotation
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_SPRING_AUTOCONFIG" {
+			if ann, ok := e.Properties["autoconfig_annotation"].(string); ok {
+				autoConfigNames[e.Name] = ann
+			}
+			if cond, ok := e.Properties["conditional_annotation"].(string); ok {
+				conditionalNames[e.Name] = cond
+			}
+		}
+	}
+
+	if ann := autoConfigNames["MyApplication"]; ann != "@SpringBootApplication" {
+		t.Errorf("[#3081 autoconfiguration_detection] MyApplication autoconfig_annotation=%q, want @SpringBootApplication", ann)
+	}
+	if cond := conditionalNames["DataSourceAutoConfig"]; cond != "@ConditionalOnMissingBean" {
+		t.Errorf("[#3081 autoconfiguration_detection] DataSourceAutoConfig conditional_annotation=%q, want @ConditionalOnMissingBean", cond)
+	}
+}
+
+// TestSpringBoot_ProfileDetection_Issue3081 proves profile_detection:
+// @Profile("name") on classes is extracted with the profile value captured.
+// Registry target: lang.java.framework.spring-boot profile_detection=partial.
+func TestSpringBoot_ProfileDetection_Issue3081(t *testing.T) {
+	source := `
+package com.example;
+
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Service;
+
+@Profile("production")
+@Service
+public class ProductionMailService implements MailService {
+    public void send(String msg) { /* send via SMTP */ }
+}
+
+@Profile("development")
+@Service
+public class MockMailService implements MailService {
+    public void send(String msg) { /* no-op */ }
+}
+`
+	r := ExtractSpringEcosystem(PatternContext{
+		Source: source, Language: "java", Framework: "spring_boot",
+		FilePath: "MailService.java",
+	})
+
+	profileMap := make(map[string]string) // class name -> profile
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_SPRING_PROFILE" {
+			if p, ok := e.Properties["profile"].(string); ok {
+				profileMap[e.Name] = p
+			}
+		}
+	}
+
+	if profileMap["ProductionMailService"] != "production" {
+		t.Errorf("[#3081 profile_detection] ProductionMailService profile=%q, want production; map=%v",
+			profileMap["ProductionMailService"], profileMap)
+	}
+	if profileMap["MockMailService"] != "development" {
+		t.Errorf("[#3081 profile_detection] MockMailService profile=%q, want development; map=%v",
+			profileMap["MockMailService"], profileMap)
+	}
+}
+
+// TestSpringBoot_DIScopeResolution_Issue3081 proves di_scope_resolution:
+// Spring @Scope / @RequestScope / @SessionScope / @ApplicationScope
+// are extracted with the scope captured in spring_scope property.
+// Registry target: lang.java.framework.spring-boot di_scope_resolution=partial.
+func TestSpringBoot_DIScopeResolution_Issue3081(t *testing.T) {
+	source := `
+package com.example;
+
+import org.springframework.context.annotation.Scope;
+import org.springframework.web.context.annotation.RequestScope;
+import org.springframework.web.context.annotation.SessionScope;
+import org.springframework.web.context.annotation.ApplicationScope;
+import org.springframework.stereotype.Component;
+
+@Component
+@Scope("prototype")
+public class PrototypeBean {
+    // new instance per injection
+}
+
+@Component
+@RequestScope
+public class RequestScopedBean {
+    // one per HTTP request
+}
+
+@Component
+@SessionScope
+public class SessionScopedBean {
+    // one per HTTP session
+}
+
+@Component
+@ApplicationScope
+public class ApplicationScopedBean {
+    // singleton within application context
+}
+`
+	r := ExtractSpringBoot(PatternContext{
+		Source: source, Language: "java", Framework: "spring_boot",
+		FilePath: "ScopedBeans.java",
+	})
+
+	scopeMap := make(map[string]string) // class name -> spring_scope
+	for _, e := range r.Entities {
+		if e.Provenance == "INFERRED_FROM_SPRING_DI_SCOPE" {
+			if s, ok := e.Properties["spring_scope"].(string); ok {
+				scopeMap[e.Name] = s
+			}
+		}
+	}
+
+	if scopeMap["PrototypeBean"] != "prototype" {
+		t.Errorf("[#3081 di_scope_resolution] PrototypeBean scope=%q, want prototype; map=%v",
+			scopeMap["PrototypeBean"], scopeMap)
+	}
+	if scopeMap["RequestScopedBean"] != "request" {
+		t.Errorf("[#3081 di_scope_resolution] RequestScopedBean scope=%q, want request; map=%v",
+			scopeMap["RequestScopedBean"], scopeMap)
+	}
+	if scopeMap["SessionScopedBean"] != "session" {
+		t.Errorf("[#3081 di_scope_resolution] SessionScopedBean scope=%q, want session; map=%v",
+			scopeMap["SessionScopedBean"], scopeMap)
+	}
+	if scopeMap["ApplicationScopedBean"] != "application" {
+		t.Errorf("[#3081 di_scope_resolution] ApplicationScopedBean scope=%q, want application; map=%v",
+			scopeMap["ApplicationScopedBean"], scopeMap)
+>>>>>>> c810d1fe5 (feat(java/spring-boot): add actuator, autoconfig, profile, di_scope extractors (#3081))
 	}
 }

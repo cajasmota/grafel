@@ -59,7 +59,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | DI binding extraction | ⚠️ `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/spring_boot.go` | — |
 | DI injection point | ⚠️ `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/spring_boot.go` | — |
-| DI scope resolution | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DI scope resolution | ⚠️ `partial` | `2026-05-29` | 3081 | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_boot.go` | — |
 
 ### Transactions
 
@@ -122,9 +122,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Actuator detection | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
-| Autoconfiguration detection | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
-| Profile detection | ❌ `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/2739) | — | — |
+| Actuator detection | ⚠️ `partial` | `2026-05-29` | 3081 | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_boot.go` | — |
+| Autoconfiguration detection | ⚠️ `partial` | `2026-05-29` | 3081 | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_ecosystem.go` | — |
+| Profile detection | ⚠️ `partial` | `2026-05-29` | 3081 | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_ecosystem.go` | — |
 
 ## Provenance
 

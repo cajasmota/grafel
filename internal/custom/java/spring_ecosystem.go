@@ -65,6 +65,22 @@ var (
 	seQueryMethodRE = regexp.MustCompile(
 		`(?s)@Query\s*\(\s*(?:value\s*=\s*)?"([^"]+)"\s*\)\s*(?:\w+(?:\s*<[^>]*>)?\s+)(\w+)\s*\(`)
 
+	// AutoConfiguration
+	// Matches @EnableAutoConfiguration, @SpringBootApplication, @AutoConfiguration on a class.
+	seAutoConfigClassRE = regexp.MustCompile(
+		`(?s)(@(?:EnableAutoConfiguration|SpringBootApplication|AutoConfiguration))\b[^{]*?` +
+			`(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+	// Matches @ConditionalOn* followed by a class declaration.
+	seConditionalOnClassRE = regexp.MustCompile(
+		`(?s)(@ConditionalOn\w+)(?:\([^)]*\))?\s*(?:@\w+(?:\([^)]*\))?\s*)*` +
+			`(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+
+	// Profile detection: @Profile("expr") on a class.
+	seProfileAnnotationRE = regexp.MustCompile(
+		`(?s)@Profile\s*\(\s*(?:\{[^}]*\}|"([^"]+)")\s*\)\s*` +
+			`(?:@\w+(?:\([^)]*\))?\s*)*` +
+			`(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+
 	// Integration
 	seServiceActivatorRE = regexp.MustCompile(
 		`(?s)@ServiceActivator\s*\([^)]*inputChannel\s*=\s*"([^"]+)"[^)]*\)\s*` +
@@ -299,6 +315,49 @@ func ExtractSpringEcosystem(ctx PatternContext) PatternResult {
 			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 			Provenance: "INFERRED_FROM_SPRING_DATA", Ref: ref,
 			Properties: map[string]any{"query": query, "framework": "spring_data"},
+		})
+	}
+
+	// AutoConfiguration: @EnableAutoConfiguration / @SpringBootApplication / @AutoConfiguration / @ConditionalOn*
+	for _, m := range seAutoConfigClassRE.FindAllStringSubmatchIndex(source, -1) {
+		annName := source[m[2]:m[3]]
+		className := source[m[4]:m[5]]
+		ref := "scope:pattern:spring_autoconfig_class:" + fp + ":" + className
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: className, Kind: "SCOPE.Pattern", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_AUTOCONFIG", Ref: ref,
+			Properties: map[string]any{"autoconfig_annotation": annName, "framework": "spring_boot"},
+		})
+	}
+	for _, m := range seConditionalOnClassRE.FindAllStringSubmatchIndex(source, -1) {
+		annText := source[m[2]:m[3]]
+		className := source[m[4]:m[5]]
+		ref := "scope:pattern:spring_conditional:" + fp + ":" + className
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: className, Kind: "SCOPE.Pattern", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_AUTOCONFIG", Ref: ref,
+			Properties: map[string]any{"conditional_annotation": annText, "framework": "spring_boot"},
+		})
+	}
+
+	// Profile detection: @Profile("name") on classes
+	for _, m := range seProfileAnnotationRE.FindAllStringSubmatchIndex(source, -1) {
+		profileExpr := ""
+		if m[2] >= 0 {
+			profileExpr = source[m[2]:m[3]]
+		}
+		if m[4] < 0 {
+			continue // no class name captured
+		}
+		targetName := source[m[4]:m[5]]
+		ref := "scope:pattern:spring_profile:" + fp + ":" + targetName
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: targetName, Kind: "SCOPE.Pattern", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_PROFILE", Ref: ref,
+			Properties: map[string]any{"profile": profileExpr, "framework": "spring_boot"},
 		})
 	}
 
