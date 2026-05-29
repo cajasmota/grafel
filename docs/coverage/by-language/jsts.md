@@ -79,7 +79,7 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ✅ 3/3 | |
+| [LangChain.js](../detail/lang.jsts.framework.langchain.md) | ⚠️ 4/4 | |
 
 
 ## Tools

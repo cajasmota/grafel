@@ -14100,8 +14100,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -14252,8 +14255,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -14405,8 +14411,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -14655,8 +14664,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -14826,8 +14838,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -15089,8 +15104,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -15373,8 +15391,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -15625,8 +15646,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -15912,8 +15936,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -16052,6 +16079,15 @@
             "status": "partial",
             "cites": ["internal/custom/java/langchain4j.go"],
             "notes": "@Tool annotation extraction: lc4jToolMethodRE extracts @Tool-annotated methods, emitting SCOPE.Operation entities with tool_method property. Dynamic tool registration not captured.",
+            "verified_at": "2026-05-29"
+          }
+        },
+        "Tracking": {
+          "confidence_overlay": {
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           }
         }
@@ -16233,8 +16269,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -16514,8 +16553,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -16692,8 +16734,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "missing",
@@ -16948,8 +16993,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -17545,8 +17593,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -17799,8 +17850,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -17944,8 +17998,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -18175,8 +18232,11 @@
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_java.go","internal/substrate/java.go","internal/substrate/taint_sites_java.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
+            "verified_at": "2026-05-29"
           },
           "constant_propagation": {
             "status": "full",
@@ -22912,6 +22972,15 @@
             "status": "full",
             "cites": ["internal/engine/langchain_detect_test.go","internal/engine/rules/javascript_typescript/frameworks/langchain.yaml","testdata/fixtures/typescript/langchain_chain.ts"],
             "issue": "2865"
+          }
+        },
+        "Tracking": {
+          "confidence_overlay": {
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/jsts.go","internal/substrate/taint_sites_jsts.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on JS/TS entities via jsts.go sniffers. Partial: top-level EntityRecord.Confidence not yet written by the extractor directly.",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -35724,6 +35793,15 @@
           },
           "tool_use_detection": {
             "status": "missing"
+          }
+        },
+        "Tracking": {
+          "confidence_overlay": {
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/effect_sinks_python.go","internal/substrate/python.go","internal/substrate/taint_sites_python.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3093",
+            "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Python entities via python.go sniffers. Partial: top-level EntityRecord.Confidence not yet written by the extractor directly.",
+            "verified_at": "2026-05-29"
           }
         }
       }

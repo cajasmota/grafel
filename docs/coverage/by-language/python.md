@@ -37,7 +37,7 @@ Back to [summary](../summary.md).
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 0/3 | |
+| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | ❌ 1/4 | |
 
 
 ### Task Queue

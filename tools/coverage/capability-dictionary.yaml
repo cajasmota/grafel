@@ -473,13 +473,14 @@ subcategories:
       - prompt_template_extraction
       - chain_composition
       - tool_use_detection
+      - confidence_overlay
     groups:
       - name: Prompts
         keys: [prompt_template_extraction]
       - name: Composition
         keys: [chain_composition, tool_use_detection]
       - name: Tracking
-        keys: []
+        keys: [confidence_overlay]
 
   task_queue:
     display: "Task Queue"
