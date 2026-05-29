@@ -54,13 +54,13 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [go](../by-language/go.md) | [go-zero](../detail/lang.go.framework.go-zero.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
-| [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
-| [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ⚠️ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ⚠️ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ⚠️ 7/20 | ❌ 4/7 | |
 | [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
-| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
-| [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
-| [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ⚠️ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ⚠️ 7/20 | ❌ 4/7 | |
+| [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ⚠️ 7/20 | ❌ 4/7 | |
 | [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
 | [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |
 | [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/20 | ❌ 4/7 | |

@@ -73,24 +73,24 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | ✅ `full` | `2026-05-28` | 2932 | `internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/jsts.go` | — |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Dead code detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/links/reachability.go`<br>`internal/links/reachability_test.go`<br>`internal/substrate/entry_points_jsts.go` | Framework-blind BFS reachability seeded from entry_points_jsts.go (exports, main, test entries, lifecycle names). Framework-specific entrypoints (Fastify plugin.register, Hono app.get) rely on graph HTTP endpoint entities as supplementary BFS seeds. |
+| Def use chain extraction | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_test.go` | Framework-blind heuristic: sniffDefUseJSTS fires on all JS/TS. Nearest-preceding-header attribution is imprecise for nested closures; common module/class-method case is correct. |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Fs effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effects_test.go` | Framework-blind: jstsFSReadRe/jstsFSWriteRe fire on all JS/TS covering Node fs/fs.promises primitives. Syntactic line-based attribution; framework-specific file helpers not covered. |
+| HTTP effect | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effects_test.go` | Framework-blind: jstsHTTPRe detects outbound HTTP clients (fetch/axios/got/ky/superagent/XHR). Inbound route-handler effects not captured; confidence 1.0 for matched call sites. |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/testdata/substrate_import_resolution/app.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/config.ts`<br>`internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts`<br>`internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
-| Module cycle detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/links/module_cycle_pass.go` | Language-agnostic Tarjan SCC over IMPORTS edges; applies equally to all JS/TS including these frameworks. Accuracy depends on import resolution quality of the JS/TS extractor. |
+| Mutation effect | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effects_test.go` | Framework-blind: jstsMutationRe detects this.field= receiver assignments (confidence 0.7). Plain variable mutations and array mutations not covered. |
+| Pure function tagging | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/links/pure_function_pass.go`<br>`internal/substrate/effect_sinks_jsts.go` | Derives from effect propagation: functions without detected effects are tagged pure (confidence 0.30). Absence-of-detection is not proof of absence; framework handler closures may be mis-attributed. |
+| Reachability analysis | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/links/reachability.go`<br>`internal/links/reachability_test.go`<br>`internal/substrate/entry_points_jsts.go` | BFS from export/main/test/lifecycle entry points and HTTP endpoint graph entities across CALLS/IMPORTS/REFERENCES edges. Entry-point detection is regex-based heuristic for framework handler functions. |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
-| Sanitizer recognition | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Sanitizer recognition | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_test.go` | Framework-blind: covers DOMPurify.sanitize, validator.escape, lodash.escape, he.encode, parameterised SQL, and zod/joi/yup schema declarations (per hard rule in issue 2772). |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_jsts.go` | — |
-| Taint sink detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Template pattern catalog | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Vulnerability finding | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_test.go` | Framework-blind: covers SQL injection (db.query), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (innerHTML/res.send/dangerouslySetInnerHTML), ReDoS. Hono c.json()/Koa ctx.body response API not in sink set. |
+| Taint source detection | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_test.go` | Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex. |
+| Template pattern catalog | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/substrate/template_pattern_jsts.go`<br>`internal/substrate/template_pattern_test.go` | Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered. |
+| Vulnerability finding | ⚠️ `partial` | `2026-05-29` | 3046 | `internal/links/taint_flow.go`<br>`internal/links/taint_flow_test.go` | Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected. |
 
 ## Provenance
 

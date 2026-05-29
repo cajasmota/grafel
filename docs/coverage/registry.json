@@ -19641,12 +19641,18 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "Framework-blind BFS reachability seeded from entry_points_jsts.go (exports, main, test entries, lifecycle names). Framework-specific entrypoints (Fastify plugin.register, Hono app.get) rely on graph HTTP endpoint entities as supplementary BFS seeds.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind heuristic: sniffDefUseJSTS fires on all JS/TS. Nearest-preceding-header attribution is imprecise for nested closures; common module/class-method case is correct.",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -19654,12 +19660,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsFSReadRe/jstsFSWriteRe fire on all JS/TS covering Node fs/fs.promises primitives. Syntactic line-based attribution; framework-specific file helpers not covered.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsHTTPRe detects outbound HTTP clients (fetch/axios/got/ky/superagent/XHR). Inbound route-handler effects not captured; confidence 1.0 for matched call sites.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -19667,20 +19679,32 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3046",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; applies equally to all JS/TS including these frameworks. Accuracy depends on import resolution quality of the JS/TS extractor.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsMutationRe detects this.field= receiver assignments (confidence 0.7). Plain variable mutations and array mutations not covered.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3046",
+            "notes": "Derives from effect propagation: functions without detected effects are tagged pure (confidence 0.30). Absence-of-detection is not proof of absence; framework handler closures may be mis-attributed.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "BFS from export/main/test/lifecycle entry points and HTTP endpoint graph entities across CALLS/IMPORTS/REFERENCES edges. Entry-point detection is regex-based heuristic for framework handler functions.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -19693,8 +19717,11 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers DOMPurify.sanitize, validator.escape, lodash.escape, he.encode, parameterised SQL, and zod/joi/yup schema declarations (per hard rule in issue 2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -19702,20 +19729,32 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers SQL injection (db.query), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (innerHTML/res.send/dangerouslySetInnerHTML), ReDoS. Hono c.json()/Koa ctx.body response API not in sink set.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go","internal/substrate/template_pattern_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered.",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected.",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -20549,12 +20588,18 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "Framework-blind BFS reachability seeded from entry_points_jsts.go (exports, main, test entries, lifecycle names). Framework-specific entrypoints (Fastify plugin.register, Hono app.get) rely on graph HTTP endpoint entities as supplementary BFS seeds.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind heuristic: sniffDefUseJSTS fires on all JS/TS. Nearest-preceding-header attribution is imprecise for nested closures; common module/class-method case is correct.",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -20562,12 +20607,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsFSReadRe/jstsFSWriteRe fire on all JS/TS covering Node fs/fs.promises primitives. Syntactic line-based attribution; framework-specific file helpers not covered.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsHTTPRe detects outbound HTTP clients (fetch/axios/got/ky/superagent/XHR). Inbound route-handler effects not captured; confidence 1.0 for matched call sites.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -20575,20 +20626,32 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3046",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; applies equally to all JS/TS including these frameworks. Accuracy depends on import resolution quality of the JS/TS extractor.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsMutationRe detects this.field= receiver assignments (confidence 0.7). Plain variable mutations and array mutations not covered.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3046",
+            "notes": "Derives from effect propagation: functions without detected effects are tagged pure (confidence 0.30). Absence-of-detection is not proof of absence; framework handler closures may be mis-attributed.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "BFS from export/main/test/lifecycle entry points and HTTP endpoint graph entities across CALLS/IMPORTS/REFERENCES edges. Entry-point detection is regex-based heuristic for framework handler functions.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -20601,8 +20664,11 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers DOMPurify.sanitize, validator.escape, lodash.escape, he.encode, parameterised SQL, and zod/joi/yup schema declarations (per hard rule in issue 2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -20610,20 +20676,32 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers SQL injection (db.query), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (innerHTML/res.send/dangerouslySetInnerHTML), ReDoS. Hono c.json()/Koa ctx.body response API not in sink set.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go","internal/substrate/template_pattern_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered.",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected.",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -20735,12 +20813,18 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "Framework-blind BFS reachability seeded from entry_points_jsts.go (exports, main, test entries, lifecycle names). Framework-specific entrypoints (Fastify plugin.register, Hono app.get) rely on graph HTTP endpoint entities as supplementary BFS seeds.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind heuristic: sniffDefUseJSTS fires on all JS/TS. Nearest-preceding-header attribution is imprecise for nested closures; common module/class-method case is correct.",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -20748,12 +20832,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsFSReadRe/jstsFSWriteRe fire on all JS/TS covering Node fs/fs.promises primitives. Syntactic line-based attribution; framework-specific file helpers not covered.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsHTTPRe detects outbound HTTP clients (fetch/axios/got/ky/superagent/XHR). Inbound route-handler effects not captured; confidence 1.0 for matched call sites.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -20761,20 +20851,32 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3046",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; applies equally to all JS/TS including these frameworks. Accuracy depends on import resolution quality of the JS/TS extractor.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsMutationRe detects this.field= receiver assignments (confidence 0.7). Plain variable mutations and array mutations not covered.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3046",
+            "notes": "Derives from effect propagation: functions without detected effects are tagged pure (confidence 0.30). Absence-of-detection is not proof of absence; framework handler closures may be mis-attributed.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "BFS from export/main/test/lifecycle entry points and HTTP endpoint graph entities across CALLS/IMPORTS/REFERENCES edges. Entry-point detection is regex-based heuristic for framework handler functions.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -20787,8 +20889,11 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers DOMPurify.sanitize, validator.escape, lodash.escape, he.encode, parameterised SQL, and zod/joi/yup schema declarations (per hard rule in issue 2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -20796,20 +20901,32 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers SQL injection (db.query), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (innerHTML/res.send/dangerouslySetInnerHTML), ReDoS. Hono c.json()/Koa ctx.body response API not in sink set.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go","internal/substrate/template_pattern_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered.",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected.",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -21423,12 +21540,18 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "Framework-blind BFS reachability seeded from entry_points_jsts.go (exports, main, test entries, lifecycle names). Framework-specific entrypoints (Fastify plugin.register, Hono app.get) rely on graph HTTP endpoint entities as supplementary BFS seeds.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind heuristic: sniffDefUseJSTS fires on all JS/TS. Nearest-preceding-header attribution is imprecise for nested closures; common module/class-method case is correct.",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -21436,12 +21559,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsFSReadRe/jstsFSWriteRe fire on all JS/TS covering Node fs/fs.promises primitives. Syntactic line-based attribution; framework-specific file helpers not covered.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsHTTPRe detects outbound HTTP clients (fetch/axios/got/ky/superagent/XHR). Inbound route-handler effects not captured; confidence 1.0 for matched call sites.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -21449,20 +21578,32 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3046",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; applies equally to all JS/TS including these frameworks. Accuracy depends on import resolution quality of the JS/TS extractor.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsMutationRe detects this.field= receiver assignments (confidence 0.7). Plain variable mutations and array mutations not covered.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3046",
+            "notes": "Derives from effect propagation: functions without detected effects are tagged pure (confidence 0.30). Absence-of-detection is not proof of absence; framework handler closures may be mis-attributed.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "BFS from export/main/test/lifecycle entry points and HTTP endpoint graph entities across CALLS/IMPORTS/REFERENCES edges. Entry-point detection is regex-based heuristic for framework handler functions.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -21475,8 +21616,11 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers DOMPurify.sanitize, validator.escape, lodash.escape, he.encode, parameterised SQL, and zod/joi/yup schema declarations (per hard rule in issue 2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -21484,20 +21628,32 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers SQL injection (db.query), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (innerHTML/res.send/dangerouslySetInnerHTML), ReDoS. Hono c.json()/Koa ctx.body response API not in sink set.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go","internal/substrate/template_pattern_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered.",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected.",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -21608,12 +21764,18 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "Framework-blind BFS reachability seeded from entry_points_jsts.go (exports, main, test entries, lifecycle names). Framework-specific entrypoints (Fastify plugin.register, Hono app.get) rely on graph HTTP endpoint entities as supplementary BFS seeds.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind heuristic: sniffDefUseJSTS fires on all JS/TS. Nearest-preceding-header attribution is imprecise for nested closures; common module/class-method case is correct.",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -21621,12 +21783,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsFSReadRe/jstsFSWriteRe fire on all JS/TS covering Node fs/fs.promises primitives. Syntactic line-based attribution; framework-specific file helpers not covered.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsHTTPRe detects outbound HTTP clients (fetch/axios/got/ky/superagent/XHR). Inbound route-handler effects not captured; confidence 1.0 for matched call sites.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -21634,20 +21802,32 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3046",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; applies equally to all JS/TS including these frameworks. Accuracy depends on import resolution quality of the JS/TS extractor.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsMutationRe detects this.field= receiver assignments (confidence 0.7). Plain variable mutations and array mutations not covered.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3046",
+            "notes": "Derives from effect propagation: functions without detected effects are tagged pure (confidence 0.30). Absence-of-detection is not proof of absence; framework handler closures may be mis-attributed.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "BFS from export/main/test/lifecycle entry points and HTTP endpoint graph entities across CALLS/IMPORTS/REFERENCES edges. Entry-point detection is regex-based heuristic for framework handler functions.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -21660,8 +21840,11 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers DOMPurify.sanitize, validator.escape, lodash.escape, he.encode, parameterised SQL, and zod/joi/yup schema declarations (per hard rule in issue 2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -21669,20 +21852,32 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers SQL injection (db.query), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (innerHTML/res.send/dangerouslySetInnerHTML), ReDoS. Hono c.json()/Koa ctx.body response API not in sink set.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go","internal/substrate/template_pattern_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered.",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected.",
+            "verified_at": "2026-05-29"
           }
         }
       }
@@ -21981,12 +22176,18 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "Framework-blind BFS reachability seeded from entry_points_jsts.go (exports, main, test entries, lifecycle names). Framework-specific entrypoints (Fastify plugin.register, Hono app.get) rely on graph HTTP endpoint entities as supplementary BFS seeds.",
+            "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind heuristic: sniffDefUseJSTS fires on all JS/TS. Nearest-preceding-header attribution is imprecise for nested closures; common module/class-method case is correct.",
+            "verified_at": "2026-05-29"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -21994,12 +22195,18 @@
             "verified_at": "2026-05-28"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsFSReadRe/jstsFSWriteRe fire on all JS/TS covering Node fs/fs.promises primitives. Syntactic line-based attribution; framework-specific file helpers not covered.",
+            "verified_at": "2026-05-29"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsHTTPRe detects outbound HTTP clients (fetch/axios/got/ky/superagent/XHR). Inbound route-handler effects not captured; confidence 1.0 for matched call sites.",
+            "verified_at": "2026-05-29"
           },
           "import_resolution_quality": {
             "status": "full",
@@ -22007,20 +22214,32 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "3046",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; applies equally to all JS/TS including these frameworks. Accuracy depends on import resolution quality of the JS/TS extractor.",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: jstsMutationRe detects this.field= receiver assignments (confidence 0.7). Plain variable mutations and array mutations not covered.",
+            "verified_at": "2026-05-29"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_jsts.go"],
+            "issue": "3046",
+            "notes": "Derives from effect propagation: functions without detected effects are tagged pure (confidence 0.30). Absence-of-detection is not proof of absence; framework handler closures may be mis-attributed.",
+            "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/links/reachability_test.go","internal/substrate/entry_points_jsts.go"],
+            "issue": "3046",
+            "notes": "BFS from export/main/test/lifecycle entry points and HTTP endpoint graph entities across CALLS/IMPORTS/REFERENCES edges. Entry-point detection is regex-based heuristic for framework handler functions.",
+            "verified_at": "2026-05-29"
           },
           "request_shape_extraction": {
             "status": "full",
@@ -22033,8 +22252,11 @@
             "verified_at": "2026-05-27"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers DOMPurify.sanitize, validator.escape, lodash.escape, he.encode, parameterised SQL, and zod/joi/yup schema declarations (per hard rule in issue 2772).",
+            "verified_at": "2026-05-29"
           },
           "schema_drift_detection": {
             "status": "full",
@@ -22042,20 +22264,32 @@
             "verified_at": "2026-05-27"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: covers SQL injection (db.query), command injection (exec/eval/new Function), path traversal (fs.* non-literal), XSS (innerHTML/res.send/dangerouslySetInnerHTML), ReDoS. Hono c.json()/Koa ctx.body response API not in sink set.",
+            "verified_at": "2026-05-29"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_jsts.go","internal/substrate/taint_sites_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex.",
+            "verified_at": "2026-05-29"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_jsts.go","internal/substrate/template_pattern_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered.",
+            "verified_at": "2026-05-29"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/links/taint_flow_test.go"],
+            "issue": "3046",
+            "notes": "Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected.",
+            "verified_at": "2026-05-29"
           }
         }
       }
