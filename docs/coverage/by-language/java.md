@@ -45,8 +45,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🔴 0/1 | 🟢 19/19 | 🟡 2/4 | |
-| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🔴 0/1 | 🟢 19/19 | 🟡 3/4 | |
+| [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🟢 1/1 | 🟢 19/19 | 🟡 2/4 | |
+| [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🟢 1/1 | 🟢 19/19 | 🟡 3/4 | |
 
 
 ### Meta Framework
@@ -60,8 +60,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🔴 0/3 | 🔴 0/1 | 🟡 18/19 | 🔴 0/9 | |
-| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🔴 0/3 | 🔴 0/1 | 🟡 18/19 | 🔴 0/9 | |
+| [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🔴 0/3 | 🟢 1/1 | 🟡 18/19 | 🟡 3/9 | |
+| [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🔴 0/3 | 🟢 1/1 | 🟡 18/19 | 🟡 3/9 | |
 
 
 ### AI Integration

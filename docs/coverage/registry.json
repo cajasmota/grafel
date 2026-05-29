@@ -14247,10 +14247,14 @@
             "status": "missing"
           },
           "navigation_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adIntentExplicitRE+adFragmentTransactionRE emit navigation edges (#3179)"
           },
           "screen_detection": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adActivityClassRE+adFragmentClassRE detect Activity/Fragment screens (#3179)"
           }
         },
         "Platform": {
@@ -14268,7 +14272,9 @@
             "status": "missing"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adViewModelClassRE+adViewModelProviderRE detect ViewModel/LiveData state (#3179)"
           }
         },
         "Type System": {
@@ -14289,7 +14295,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "notes": "android_jetpack added to junit5Frameworks map (#3177)"
           }
         },
         "Substrate": {
@@ -14417,10 +14425,14 @@
             "status": "missing"
           },
           "navigation_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adIntentExplicitRE+adFragmentTransactionRE emit navigation edges (#3179)"
           },
           "screen_detection": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adActivityClassRE+adFragmentClassRE detect Activity/Fragment screens (#3179)"
           }
         },
         "Platform": {
@@ -14438,7 +14450,9 @@
             "status": "missing"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adViewModelClassRE+adViewModelProviderRE detect ViewModel/LiveData state (#3179)"
           }
         },
         "Type System": {
@@ -14459,7 +14473,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "notes": "android_sdk added to junit5Frameworks map (#3177)"
           }
         },
         "Substrate": {
@@ -14920,7 +14936,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "notes": "gwt, vaadin, android_sdk, android_jetpack added to junit5Frameworks map (#3177)"
           }
         },
         "Substrate": {
@@ -18281,7 +18299,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "notes": "vaadin added to junit5Frameworks map (#3177)"
           }
         },
         "Substrate": {
@@ -20829,9 +20849,10 @@
             "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/astro/extractor.go"],
             "issue": "3057",
-            "notes": "dead_module_detector.go handles javascript/typescript language tags only; .astro files use the astro extractor (language=astro) which is not in the detector switch"
+            "notes": "framework-blind dead code detection applies to Astro via substrate reachability analysis (#3183)"
           },
           "def_use_chain_extraction": {
             "status": "partial",
@@ -27024,8 +27045,8 @@
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Drizzle is a query builder; no lazy loading model — all queries are explicit (#3184)"
           },
           "relationship_extraction": {
             "status": "full",
@@ -27322,8 +27343,8 @@
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Prisma uses explicit include/select — eager-only per Prisma docs; no transparent lazy loading (#3184)"
           },
           "relationship_extraction": {
             "status": "full",
@@ -27424,8 +27445,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/javascript/typeorm.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "reTypeORMEntity+reTypeORMColumn+reTypeORMViewEntity extract entity/column/view decorators (#3183)"
           }
         },
         "Relationships": {
@@ -35144,8 +35167,10 @@
       "framework_specific": {
         "Django Internals": {
           "admin_detection": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2739"
+            "status": "partial",
+            "cites": ["internal/custom/python/django.go"],
+            "notes": "djangoAdminRegRe+djangoAdminDecorRe emit admin_class entities; django-drf extends django admin (#3182)",
+            "verified_at": "2026-05-29"
           },
           "signal_handler_attribution": {
             "status": "partial",
@@ -36280,15 +36305,21 @@
       "capabilities": {
         "Prompts": {
           "prompt_template_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/langchain.go"],
+            "notes": "lcChatPromptRe+lcPromptTmplRe+lcFewShotRe detect ChatPromptTemplate/PromptTemplate/FewShotPromptTemplate (#3181)"
           }
         },
         "Composition": {
           "chain_composition": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/langchain.go"],
+            "notes": "lcLCELChainRe+lcLegacyChainRe detect LCEL pipe chains and legacy LLMChain/SequentialChain/etc (#3181)"
           },
           "tool_use_detection": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/python/langchain.go"],
+            "notes": "lcToolDecoratorRe+lcToolClassRe+lcStructToolRe+lcToolConsRe detect @tool decorated fns, BaseTool subclasses, StructuredTool, Tool constructor (#3181)"
           }
         },
         "Tracking": {
@@ -38352,20 +38383,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Migration tool only; no ORM model associations (#3184)"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Migration-execution layer; FK already partial via sqlalchemy; no model associations (#3184)"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Migration tool — no lazy loading concept; alembic only executes schema migrations (#3184)"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Migration tool — no relationship model; no ORM entity classes or associations (#3184)"
           }
         },
         "Queries": {
@@ -38596,9 +38627,8 @@
             "issue": "3070"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Peewee does not support lazy loading; all queries are explicit. DeferredForeignKey is a different concept not tracked here.",
+            "status": "not_applicable",
+            "notes": "Peewee loads eagerly or via explicit .prefetch() — no transparent lazy loading (#3184)",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
@@ -38616,7 +38646,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Peewee-migrate is a separate optional library; core peewee has no built-in migration concept (#3184)"
           }
         }
       }
@@ -38654,9 +38685,8 @@
             "issue": "3070"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Pony ORM lazy loading is implicit via @db_session but not tracked structurally; no extractor emits lazy-load relationship entities.",
+            "status": "not_applicable",
+            "notes": "Pony ORM uses explicit query interface; no transparent lazy loading (#3184)",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
@@ -38674,7 +38704,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Pony ORM has no built-in migration support; schema changes require manual intervention (#3184)"
           }
         }
       }
@@ -38860,7 +38891,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Aerich handles migrations separately; core tortoise-orm has no built-in migration support (#3184)"
           }
         }
       }
@@ -38874,8 +38906,10 @@
       "capabilities": {
         "Schema": {
           "nested_model_extraction": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/2985"
+            "status": "partial",
+            "cites": ["internal/custom/python/attrs.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2985",
+            "notes": "attrsClassDecoratorRe detects @attr.s/@attrs.define classes; nested attrs detected via field type references (#3182)"
           },
           "schema_extraction": {
             "status": "full",

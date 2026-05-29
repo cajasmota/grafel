@@ -22,8 +22,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Deep link extraction | 🔴 `missing` | — | — | — | — |
-| Navigation extraction | 🔴 `missing` | — | — | — | — |
-| Screen detection | 🔴 `missing` | — | — | — | — |
+| Navigation extraction | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adIntentExplicitRE+adFragmentTransactionRE emit navigation edges (#3179) |
+| Screen detection | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adActivityClassRE+adFragmentClassRE detect Activity/Fragment screens (#3179) |
 
 ### Platform
 
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | 🔴 `missing` | — | — | — | — |
-| State management | 🔴 `missing` | — | — | — | — |
+| State management | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adViewModelClassRE+adViewModelProviderRE detect ViewModel/LiveData state (#3179) |
 
 ### Type System
 
@@ -62,7 +62,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | — | — | — | — |
+| Tests linkage | 🟢 `partial` | — | — | `internal/custom/java/junit5.go` | android_jetpack added to junit5Frameworks map (#3177) |
 
 ### Substrate
 

@@ -32,6 +32,13 @@ var junit5Frameworks = map[string]bool{
 	// Struts uses JUnit 5 (or JUnit 4 via Struts Test Plugin) for tests_linkage (#3089).
 	"struts": true, "struts2": true, "struts-2": true, "apache_struts": true, "apache-struts": true,
 	"struts_2": true,
+	// GWT uses JUnit 5 via GWTTestCase for tests_linkage (#3177).
+	"gwt": true, "google_web_toolkit": true, "google-web-toolkit": true,
+	// Vaadin uses JUnit 5 via @SpringBootTest or plain JUnit 5 for tests_linkage (#3177).
+	"vaadin": true,
+	// Android SDK and Jetpack use JUnit 5 via @ExtendWith(AndroidJUnit4Runner) for tests_linkage (#3177).
+	"android_sdk": true, "android-sdk": true,
+	"android_jetpack": true, "android-jetpack": true,
 }
 
 var (

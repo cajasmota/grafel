@@ -29,7 +29,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟡 5/7 | |
 | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟡 5/7 | |
 | [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟡 6/7 | |
-| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟡 7/8 | |
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 8/8 | |
 | [Falcon](../detail/lang.python.framework.falcon.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟡 5/7 | |
 | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
@@ -49,7 +49,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | 🟡 1/4 | |
+| [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | 🟢 4/4 | |
 
 
 ### Task Queue
@@ -88,16 +88,16 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 1/6 | |
+| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 1/2 | |
 | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟢 6/6 | |
 | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
 | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟢 6/6 | |
 | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 1/2 | |
-| [Peewee](../detail/lang.python.orm.peewee.md) | 🟡 6/8 | |
-| [Pony ORM](../detail/lang.python.orm.pony.md) | 🟡 6/8 | |
+| [Peewee](../detail/lang.python.orm.peewee.md) | 🟢 6/6 | |
+| [Pony ORM](../detail/lang.python.orm.pony.md) | 🟢 6/6 | |
 | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
 | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟢 8/8 | |
-| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟡 7/8 | |
+| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟢 7/7 | |
 | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟢 1/1 | |
 | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟢 1/1 | |
 | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟢 1/1 | |
@@ -120,5 +120,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Testing | Other capabilities | Notes |
 |---|---|---|---|
 | [Pydantic](../detail/lang.python.validation.pydantic.md) | 🟢 1/1 | 🟢 5/5 | |
-| [attrs](../detail/lang.python.validation.attrs.md) | 🟢 1/1 | 🟡 4/5 | |
+| [attrs](../detail/lang.python.validation.attrs.md) | 🟢 1/1 | 🟢 5/5 | |
 | [marshmallow](../detail/lang.python.validation.marshmallow.md) | 🟢 1/1 | 🟢 5/5 | |

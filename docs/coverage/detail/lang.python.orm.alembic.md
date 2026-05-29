@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | — | Migration tool only; no ORM model associations (#3184) |
+| Foreign key extraction | — `not_applicable` | — | — | — | Migration-execution layer; FK already partial via sqlalchemy; no model associations (#3184) |
+| Lazy loading recognition | — `not_applicable` | — | — | — | Migration tool — no lazy loading concept; alembic only executes schema migrations (#3184) |
+| Relationship extraction | — `not_applicable` | — | — | — | Migration tool — no relationship model; no ORM entity classes or associations (#3184) |
 
 ### Queries
 

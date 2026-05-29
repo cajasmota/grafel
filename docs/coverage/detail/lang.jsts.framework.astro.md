@@ -71,7 +71,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Confidence overlay | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/markup_script.go` | — |
 | Constant propagation | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
 | DB effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
-| Dead code detection | 🔴 `missing` | — | 3057 | — | dead_module_detector.go handles javascript/typescript language tags only; .astro files use the astro extractor (language=astro) which is not in the detector switch |
+| Dead code detection | 🟢 `partial` | — | 3057 | `internal/extractors/astro/extractor.go` | framework-blind dead code detection applies to Astro via substrate reachability analysis (#3183) |
 | Def use chain extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_markup_script.go` | — |
 | Env fallback recognition | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
 | Fs effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
