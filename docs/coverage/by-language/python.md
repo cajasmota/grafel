@@ -92,7 +92,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟢 6/6 | |
 | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
 | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟢 6/6 | |
-| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 1/2 | |
+| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟢 2/2 | |
 | [Peewee](../detail/lang.python.orm.peewee.md) | 🟢 6/6 | |
 | [Pony ORM](../detail/lang.python.orm.pony.md) | 🟢 6/6 | |
 | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
@@ -102,9 +102,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟢 1/1 | |
 | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟢 1/1 | |
 | [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | 🟢 1/1 | |
-| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟡 1/2 | |
+| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
-| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟡 1/2 | |
+| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |
 
 
 ## Other

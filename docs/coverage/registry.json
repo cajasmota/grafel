@@ -33592,8 +33592,11 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/driver_schema.go"],
+            "issue": "3189",
+            "notes": "Heuristic: parses CREATE TABLE DDL embedded in raw-driver cursor.execute(...) string literals into SCOPE.Schema table + column entities. Single-literal SQL only; string-concatenated DDL not stitched.",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -33688,8 +33691,11 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/driver_schema.go"],
+            "issue": "3189",
+            "notes": "Heuristic: parses CREATE TABLE DDL embedded in raw-driver cursor.execute(...) string literals into SCOPE.Schema table + column entities. Single-literal SQL only; string-concatenated DDL not stitched.",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -33786,8 +33792,11 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/python/driver_schema.go"],
+            "issue": "3189",
+            "notes": "Heuristic: parses CREATE TABLE DDL embedded in raw-driver cursor.execute(...) string literals into SCOPE.Schema table + column entities. Single-literal SQL only; executescript multi-statement DDL supported.",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
