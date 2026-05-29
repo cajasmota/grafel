@@ -25,8 +25,10 @@ type feedbackEventRecord struct {
 	Note       string `json:"note,omitempty"`
 }
 
-// outcomeOrder is the canonical column order for rollup tables.
-var outcomeOrder = []string{"helped", "partial", "wrong", "missing_capability"}
+// outcomeOrder is the canonical column order for rollup tables. "milestone" is
+// a neutral narrative beat (#3206) — it renders as a column but buildFixQueue
+// deliberately excludes it (only wrong+missing_capability count as negative).
+var outcomeOrder = []string{"helped", "partial", "wrong", "missing_capability", "milestone"}
 
 // newFeedbackRollupCmd returns `archigraph feedback rollup`, which aggregates
 // the agent-experience feedback JSONL (written by archigraph_feedback_event)

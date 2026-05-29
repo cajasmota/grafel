@@ -18,6 +18,11 @@ var feedbackOutcomes = map[string]bool{
 	"partial":            true, // answered but incomplete
 	"wrong":              true, // fabricated or contradicted the source
 	"missing_capability": true, // the thing asked for isn't extracted at all
+	// milestone is a neutral narrative beat (no quality judgment). Agents use it
+	// to mark planning decisions and parity milestones (e.g. "inspections module
+	// reaches parity"). Excluded from the rollup fix-queue, and it lets the
+	// planning phase be captured before any code exists. See #3206.
+	"milestone": true,
 }
 
 // feedbackEventsFile returns the path for today's feedback-events JSONL file.
@@ -54,7 +59,7 @@ type FeedbackEvent struct {
 	// auth, dto, testing, …) so wrong/missing outcomes map to an extractor
 	// lane. Optional, free-form.
 	Capability string `json:"capability,omitempty"`
-	// Outcome is one of helped|partial|wrong|missing_capability (required).
+	// Outcome is one of helped|partial|wrong|missing_capability|milestone (required).
 	Outcome string `json:"outcome"`
 	// Note is an optional one-line free-form detail.
 	Note string `json:"note,omitempty"`
@@ -105,7 +110,7 @@ func (s *Server) handleFeedbackEvent(ctx context.Context, req mcpapi.CallToolReq
 	}
 	if !feedbackOutcomes[outcome] {
 		return mcpapi.NewToolResultError(
-			fmt.Sprintf("archigraph_feedback_event: outcome must be one of helped|partial|wrong|missing_capability; got %q", outcome),
+			fmt.Sprintf("archigraph_feedback_event: outcome must be one of helped|partial|wrong|missing_capability|milestone; got %q", outcome),
 		), nil
 	}
 

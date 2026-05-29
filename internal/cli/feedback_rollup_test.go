@@ -83,6 +83,42 @@ func TestFeedbackRollup_Aggregates(t *testing.T) {
 	}
 }
 
+// TestFeedbackRollup_MilestoneNotInFixQueue verifies that the neutral
+// "milestone" outcome (#3206) is counted as an outcome but never inflates the
+// fix queue (which only counts wrong+missing_capability).
+func TestFeedbackRollup_MilestoneNotInFixQueue(t *testing.T) {
+	tmp := t.TempDir()
+	eventsDir := filepath.Join(tmp, "events")
+	outDir := filepath.Join(tmp, "out")
+
+	writeEventsFile(t, eventsDir, "feedback-events-2026-05-30.jsonl", []string{
+		`{"ts":"2026-05-30T10:00:00Z","group":"new-backend","capability":"data_access","outcome":"milestone","note":"inspections parity"}`,
+		`{"ts":"2026-05-30T10:05:00Z","group":"new-backend","capability":"routing","outcome":"helped"}`,
+	})
+
+	cmd := &cobra.Command{}
+	out := &bytes.Buffer{}
+	cmd.SetOut(out)
+	if err := runFeedbackRollup(cmd, "", outDir, eventsDir); err != nil {
+		t.Fatalf("rollup: %v", err)
+	}
+
+	jb, err := os.ReadFile(filepath.Join(outDir, "rollup.json"))
+	if err != nil {
+		t.Fatalf("read rollup.json: %v", err)
+	}
+	var r feedbackRollup
+	if err := json.Unmarshal(jb, &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.ByOutcome["milestone"] != 1 {
+		t.Errorf("milestone should be counted as an outcome; by_outcome=%v", r.ByOutcome)
+	}
+	if len(r.FixQueue) != 0 {
+		t.Errorf("milestone (and helped) must not produce fix-queue items; got %v", r.FixQueue)
+	}
+}
+
 func TestFeedbackRollup_NoEvents(t *testing.T) {
 	tmp := t.TempDir()
 	cmd := &cobra.Command{}
