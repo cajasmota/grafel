@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ⚠️ `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/mybatis.yaml` | — |
+| Model extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3096) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go`<br>`internal/engine/rules/java/orms/mybatis.yaml` | Annotation @Results + XML <resultMap> become result_map schema entities (SCOPE.Schema); column DDL not parsed; model class references extracted from resultMap type attribute only |
 | Schema extraction | ⚠️ `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | Annotation @Results + XML <resultMap> become result_map schema entities; column DDL not parsed. |
 
 ### Relationships

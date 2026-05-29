@@ -18528,8 +18528,10 @@
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/orm_queries.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_other.go","internal/engine/orm_queries_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3096",
+            "notes": "Engine pass scanJavaORM handles EntityManager.find/persist/remove/merge and Spring Data repository call patterns (findByX, save, etc.); emits QUERIES edges with orm=jpa or orm=spring_data; inline JPQL string content and @NamedQuery body text not parsed",
+            "verified_at": "2026-05-29"
           }
         },
         "Migrations": {
@@ -18549,8 +18551,10 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/mybatis.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/mybatis.go","internal/custom/java/orm_extractors_test.go","internal/engine/rules/java/orms/mybatis.yaml"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3096",
+            "notes": "Annotation @Results + XML \u003cresultMap\u003e become result_map schema entities (SCOPE.Schema); column DDL not parsed; model class references extracted from resultMap type attribute only",
+            "verified_at": "2026-05-29"
           },
           "schema_extraction": {
             "status": "partial",
@@ -18664,6 +18668,7 @@
           "model_extraction": {
             "status": "full",
             "cites": ["internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "notes": "Panache entity records synthesized from PanacheEntity/PanacheEntityBase subclasses; field schema parsed via Hibernate extractor (hibernate.go) for JPA annotations; panache.go does not independently extract column-level schema",
             "verified_at": "2026-05-29"
           },
           "schema_extraction": {
@@ -18702,7 +18707,7 @@
           "query_attribution": {
             "status": "partial",
             "cites": ["internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3096",
             "notes": "Synthesizes full static-method and DSL-builder operation entities (findById, count, list, page, stream, etc.) and named query entities; does not parse inline JPQL/HQL string content",
             "verified_at": "2026-05-29"
           }
