@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/python/frameworks/fastapi.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/python/frameworks/fastapi.yaml` | — |
-| Route extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | ✅ `full` | `2026-05-29` | — | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
 
@@ -29,14 +29,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/fastapi_reqresp.go` | — |
+| Request validation | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/fastapi.go`<br>`internal/custom/python/fastapi_reqresp.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ❌ `missing` | — | — | — | — |
+| Middleware coverage | ⚠️ `partial` | `2026-05-29` | — | `internal/custom/python/fastapi.go` | — |
 
 ### Type System
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ❌ `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | ⚠️ `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | — |
 
 ### Observability
 

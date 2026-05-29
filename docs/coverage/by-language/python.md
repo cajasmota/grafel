@@ -17,7 +17,7 @@ Back to [summary](../summary.md).
 | [Django](../detail/lang.python.framework.django.md) | ❌ 2/3 | ⚠️ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ❌ 2/3 | ✅ 1/1 | ❌ 0/4 | ❌ 0/1 | ❌ 7/21 | ❌ 0/8 | |
 | [Falcon](../detail/lang.python.framework.falcon.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
-| [FastAPI](../detail/lang.python.framework.fastapi.md) | ❌ 2/3 | ⚠️ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ⚠️ 0/1 | ❌ 0/4 | ⚠️ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Flask](../detail/lang.python.framework.flask.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Hug](../detail/lang.python.framework.hug.md) | ❌ 0/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |
 | [Litestar](../detail/lang.python.framework.litestar.md) | ❌ 2/3 | ❌ 0/1 | ❌ 0/4 | ❌ 0/1 | ❌ 5/20 | ❌ 0/7 | |

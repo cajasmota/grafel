@@ -2,6 +2,7 @@ package python_test
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -1587,6 +1588,137 @@ func TestFastAPIReqResp_NoMatch(t *testing.T) {
 	ents := extract(t, "python_fastapi_reqresp", src)
 	if len(ents) != 0 {
 		t.Fatalf("expected 0 entities, got %d", len(ents))
+	}
+}
+
+// TestFastAPIReqResp_FullFixture exercises fastapi_reqresp.go against the
+// testdata/fastapi_reqresp_fixture.py fixture. It proves that:
+//   - Pydantic body parameters are emitted as dto + accepts_input entities
+//   - response_model= kwarg emits a returns entity (dto + returns)
+//   - Return type annotation emits a returns entity
+//   - Depends() params are NOT emitted as DTO entities (they are skipped)
+//
+// This fixture is the proof for issue #2976 Validation/dto_extraction partial.
+func TestFastAPIReqResp_FullFixture(t *testing.T) {
+	content, err := os.ReadFile("testdata/fastapi_reqresp_fixture.py")
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	ext, ok := extractor.Get("python_fastapi_reqresp")
+	if !ok {
+		t.Fatal("python_fastapi_reqresp extractor not registered")
+	}
+	entities, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "testdata/fastapi_reqresp_fixture.py",
+		Content:  content,
+		Language: "python",
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	// Index by pattern_type for easier assertions.
+	var acceptsInput, returnsEnts []extractResult
+	seenDTOs := map[string]bool{}
+	for _, e := range entities {
+		var rels []relResult
+		for _, r := range e.Relationships {
+			rels = append(rels, relResult{ToID: r.ToID, Kind: r.Kind})
+		}
+		er := extractResult{Name: e.Name, Kind: e.Kind, Subtype: e.Subtype, StartLine: e.StartLine, Props: e.Properties, Rels: rels}
+		switch e.Properties["pattern_type"] {
+		case "accepts_input":
+			acceptsInput = append(acceptsInput, er)
+		case "returns":
+			returnsEnts = append(returnsEnts, er)
+		case "request_response_dto":
+			seenDTOs[e.Name] = true
+		}
+	}
+
+	// create_order accepts CreateOrderRequest
+	foundCreate := false
+	for _, e := range acceptsInput {
+		if e.Props["dto_type"] == "CreateOrderRequest" {
+			foundCreate = true
+		}
+	}
+	if !foundCreate {
+		t.Error("expected accepts_input entity with dto_type=CreateOrderRequest (create_order endpoint)")
+	}
+
+	// update_order accepts UpdateOrderRequest (body param, not Depends)
+	foundUpdate := false
+	for _, e := range acceptsInput {
+		if e.Props["dto_type"] == "UpdateOrderRequest" {
+			foundUpdate = true
+		}
+	}
+	if !foundUpdate {
+		t.Error("expected accepts_input entity with dto_type=UpdateOrderRequest (update_order endpoint)")
+	}
+
+	// create_order returns OrderResponse via response_model=
+	foundResponseModel := false
+	for _, e := range returnsEnts {
+		if e.Props["dto_type"] == "OrderResponse" && e.Props["match_source"] == "response_model_decorator" {
+			foundResponseModel = true
+		}
+	}
+	if !foundResponseModel {
+		t.Error("expected returns entity with dto_type=OrderResponse from response_model= decorator")
+	}
+
+	// update_order returns OrderResponse via -> annotation
+	foundAnnotation := false
+	for _, e := range returnsEnts {
+		if e.Props["dto_type"] == "OrderResponse" && e.Props["match_source"] == "return_type_annotation" {
+			foundAnnotation = true
+		}
+	}
+	if !foundAnnotation {
+		t.Error("expected returns entity with dto_type=OrderResponse from return type annotation")
+	}
+
+	// DTO entities must be de-duplicated: OrderResponse appears many times but only once as dto
+	if !seenDTOs["OrderResponse"] {
+		t.Error("expected request_response_dto entity for OrderResponse")
+	}
+	if !seenDTOs["CreateOrderRequest"] {
+		t.Error("expected request_response_dto entity for CreateOrderRequest")
+	}
+	if !seenDTOs["UpdateOrderRequest"] {
+		t.Error("expected request_response_dto entity for UpdateOrderRequest")
+	}
+}
+
+// TestFastAPI_FullFixture_Middleware proves middleware_coverage partial:
+// the middleware @app.middleware("http") in the fixture is extracted by fastapi.go.
+func TestFastAPI_FullFixture_Middleware(t *testing.T) {
+	content, err := os.ReadFile("testdata/fastapi_reqresp_fixture.py")
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	ext, ok := extractor.Get("python_fastapi")
+	if !ok {
+		t.Fatal("python_fastapi extractor not registered")
+	}
+	entities, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "testdata/fastapi_reqresp_fixture.py",
+		Content:  content,
+		Language: "python",
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	foundMiddleware := false
+	for _, e := range entities {
+		if e.Properties["pattern_type"] == "middleware" && e.Properties["middleware_type"] == "http" {
+			foundMiddleware = true
+		}
+	}
+	if !foundMiddleware {
+		t.Error("expected middleware entity with middleware_type=http from fixture")
 	}
 }
 

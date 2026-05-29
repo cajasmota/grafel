@@ -816,6 +816,46 @@ records:
             - file: internal/engine/rules/python/frameworks/fastapi.yaml
           issues_implemented: ["2681"]
           verified_at: "2026-05-28"
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_synthesis.go
+              functions: [synthesizeFastAPI]
+          issues_implemented: ["2976"]
+          verified_at: "2026-05-29"
+      Middleware:
+        middleware_coverage:
+          status: partial
+          symbols:
+            - file: internal/custom/python/fastapi.go
+              functions: [Extract]
+          issues_implemented: ["2976"]
+          verified_at: "2026-05-29"
+      Validation:
+        dto_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/python/fastapi_reqresp.go
+              functions: [Extract]
+          issues_implemented: ["2976"]
+          verified_at: "2026-05-29"
+        request_validation:
+          status: partial
+          symbols:
+            - file: internal/custom/python/fastapi.go
+              functions: [Extract]
+            - file: internal/custom/python/fastapi_reqresp.go
+              functions: [Extract]
+          issues_implemented: ["2976"]
+          verified_at: "2026-05-29"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/custom/python/pytest.go
+              functions: [Extract]
+          issues_implemented: ["2976"]
+          verified_at: "2026-05-29"
       Auth:
         auth_coverage:
           status: partial
