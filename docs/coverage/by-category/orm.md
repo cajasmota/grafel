@@ -51,7 +51,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [go-redis](../detail/lang.go.driver.redis.md) | 🟢 2/2 | |
 | [go](../by-language/go.md) | [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟢 2/2 | |
 | [go](../by-language/go.md) | [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟢 2/2 | |
-| [go](../by-language/go.md) | [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟡 1/5 | |
+| [go](../by-language/go.md) | [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟢 1/1 | |
 | [go](../by-language/go.md) | [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟢 4/4 | |
 | [go](../by-language/go.md) | [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟢 3/3 | |
 | [go](../by-language/go.md) | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟢 3/3 | |

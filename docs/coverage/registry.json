@@ -14405,18 +14405,18 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "golang-migrate is a SQL migration runner — no Go ORM model/relationship layer (schema in raw .up/.down.sql; migration_parsing covers it)"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "golang-migrate is a SQL migration runner — no Go ORM model/relationship layer (schema in raw .up/.down.sql; migration_parsing covers it)"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "golang-migrate is a SQL migration runner — no Go ORM model/relationship layer (schema in raw .up/.down.sql; migration_parsing covers it)"
           },
           "lazy_loading_recognition": {
             "status": "not_applicable",
@@ -14424,8 +14424,8 @@
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "golang-migrate is a SQL migration runner — no Go ORM model/relationship layer (schema in raw .up/.down.sql; migration_parsing covers it)"
           }
         },
         "Queries": {

@@ -86,7 +86,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [go-redis](../detail/lang.go.driver.redis.md) | 🟢 2/2 | |
 | [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟢 2/2 | |
 | [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟢 2/2 | |
-| [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟡 1/5 | |
+| [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟢 1/1 | |
 | [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟢 4/4 | |
 | [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟢 3/3 | |
 | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟢 3/3 | |
