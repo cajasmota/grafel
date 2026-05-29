@@ -58,6 +58,7 @@ The user decides whether to paste it into a GitHub issue.`,
 	cmd.Flags().StringVar(&outFlag, "out", "", "output path (default: ~/.archigraph/feedback/<group>-<timestamp>.md)")
 	cmd.Flags().BoolVar(&yesFlag, "yes", false, "skip confirmation prompt (for CI / scripting)")
 	cmd.AddCommand(newFeedbackRollupCmd())
+	cmd.AddCommand(newFeedbackTimelineCmd())
 	return cmd
 }
 

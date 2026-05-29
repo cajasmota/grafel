@@ -44,6 +44,27 @@ func TestFeedbackEventValidation(t *testing.T) {
 	}
 }
 
+// TestFeedbackEventMilestoneAccepted verifies the neutral "milestone" outcome
+// (#3206) is accepted by the tool.
+func TestFeedbackEventMilestoneAccepted(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpHome, ".config"))
+
+	srv := newFeedbackTestServer(t)
+	res := callTool(t, srv, "archigraph_feedback_event", map[string]any{
+		"outcome": "milestone",
+		"phase":   "port:inspections",
+		"note":    "inspections module reaches parity",
+	})
+	if res == nil || res.IsError {
+		t.Fatalf("milestone outcome should be accepted; got error: %v", resultText(res))
+	}
+	if !feedbackOutcomes["milestone"] {
+		t.Error("milestone must be in feedbackOutcomes")
+	}
+}
+
 func TestFeedbackEventJSONLAppend(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
