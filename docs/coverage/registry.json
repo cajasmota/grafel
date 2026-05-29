@@ -10717,8 +10717,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -10754,16 +10756,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -10898,8 +10905,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -10935,16 +10944,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -11450,8 +11464,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No struct-tag request binding: fasthttp's RequestCtx exposes raw byte accessors only and Revel binds params positionally via controller-method signatures, so there is no validate:/binding: tag surface to extract.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -11486,16 +11501,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -12420,8 +12440,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -12457,16 +12479,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -12603,8 +12630,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -12640,16 +12669,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -12963,8 +12997,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -13000,16 +13036,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -13320,8 +13361,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/validation.go","internal/custom/golang/validation_test.go"],
+            "issue": "3213",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -13356,16 +13399,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {
@@ -13500,8 +13548,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No struct-tag request binding: fasthttp's RequestCtx exposes raw byte accessors only and Revel binds params positionally via controller-method signatures, so there is no validate:/binding: tag surface to extract.",
+            "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
@@ -13537,16 +13586,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "issue": "3215",
+            "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-29"
           }
         },
         "Data": {

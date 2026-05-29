@@ -68,6 +68,14 @@ func (e *observabilityExtractor) Language() string { return "custom_go_observabi
 // the file source, attributes the file to that framework. Markers are the
 // engine constructor + the canonical request-context type for each framework,
 // which are unambiguous and present in any handler/middleware file.
+//
+// The first four (gin/echo/fiber/chi) are the original well-templated set; the
+// remaining eight (beego/iris/hertz/buffalo/gorilla-mux/revel/net-http/
+// fasthttp) extend the same logging/metrics/tracing detection to the rest of
+// the Go HTTP framework family (issue #3215). The markers are reused verbatim
+// from the middleware/auth extender (middleware_auth_extend.go) so a file is
+// attributed to the same framework across every framework-agnostic pass.
+// net-http is placed last because its `http.*` markers are the broadest.
 var obsFrameworkMarkers = []struct {
 	name string
 	re   *regexp.Regexp
@@ -76,11 +84,20 @@ var obsFrameworkMarkers = []struct {
 	{"echo", regexp.MustCompile(`\becho\.(?:New|Echo|Context|HandlerFunc|MiddlewareFunc)\b`)},
 	{"fiber", regexp.MustCompile(`\bfiber\.(?:New|App|Ctx|Handler)\b`)},
 	{"chi", regexp.MustCompile(`\bchi\.(?:NewRouter|Router|Mux)\b`)},
+	{"beego", regexp.MustCompile(`\b(?:beego|web)\.(?:Router|NewNamespace|Run|InsertFilter|AutoRouter)\b`)},
+	{"iris", regexp.MustCompile(`\biris\.(?:New|Default|Application|Context|Party)\b`)},
+	{"hertz", regexp.MustCompile(`\bserver\.(?:Default|New|Hertz)\b|\bapp\.RequestContext\b`)},
+	{"buffalo", regexp.MustCompile(`\bbuffalo\.(?:New|App|Options|Context)\b`)},
+	{"gorilla-mux", regexp.MustCompile(`\bmux\.(?:NewRouter|Router|Vars)\b`)},
+	{"revel", regexp.MustCompile(`\brevel\.(?:Result|Controller|Intercept(?:Func|Method)|BEFORE|AFTER)\b`)},
+	{"fasthttp", regexp.MustCompile(`\bfasthttp\.(?:RequestCtx|RequestHandler|ListenAndServe)\b`)},
+	{"net-http", regexp.MustCompile(`\bhttp\.(?:NewServeMux|HandleFunc|ListenAndServe|ListenAndServeTLS)\b`)},
 }
 
 // detectObsFramework returns the framework the file belongs to, or "" when no
 // recognised framework marker is present. First match wins in declaration
-// order (gin→echo→fiber→chi).
+// order (gin→echo→fiber→chi→beego→iris→hertz→buffalo→gorilla-mux→revel→
+// fasthttp→net-http).
 func detectObsFramework(src string) string {
 	for _, m := range obsFrameworkMarkers {
 		if m.re.MatchString(src) {

@@ -143,6 +143,15 @@ func TestObservabilityFixtures(t *testing.T) {
 		{"echo_observability.go", "echo", "zap"},
 		{"fiber_observability.go", "fiber", "slog"},
 		{"chi_observability.go", "chi", "logrus"},
+		// extended frameworks (issue #3215)
+		{"beego_observability.go", "beego", "logrus"},
+		{"iris_observability.go", "iris", "zap"},
+		{"hertz_observability.go", "hertz", "zap"},
+		{"buffalo_observability.go", "buffalo", "logrus"},
+		{"gorilla_mux_observability.go", "gorilla-mux", "zap"},
+		{"revel_observability.go", "revel", "logrus"},
+		{"fasthttp_observability.go", "fasthttp", "zap"},
+		{"nethttp_observability.go", "net-http", "logrus"},
 	}
 	for _, c := range cases {
 		t.Run(c.framework, func(t *testing.T) {

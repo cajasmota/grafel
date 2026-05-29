@@ -30,7 +30,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | 🟢 `partial` | `2026-05-29` | 3213 | `internal/custom/golang/validation.go`<br>`internal/custom/golang/validation_test.go` | — |
 
 ### Middleware
 
@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | `2026-05-29` | 3215 | `internal/custom/golang/observability.go`<br>`internal/custom/golang/observability_test.go` | — |
+| Metric extraction | 🟢 `partial` | `2026-05-29` | 3215 | `internal/custom/golang/observability.go`<br>`internal/custom/golang/observability_test.go` | — |
+| Trace extraction | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/observability.go`<br>`internal/custom/golang/observability_test.go` | — |
 
 ### Data
 
