@@ -2766,6 +2766,166 @@ public class ShipmentResource {
 	}
 }
 
+// ============================================================================
+// Issue #3001 — Spring Data ORM schema_extraction proving tests
+// Records: spring-data-mongo, spring-data-cassandra, spring-data-elastic, spring-data-redis
+// ============================================================================
+
+// TestSpringDataMongo_SchemaExtraction_Issue3001 proves that ExtractSpringEcosystem
+// emits SCOPE.Schema entities for @Document-annotated classes, which delivers
+// schema_extraction for lang.java.orm.spring-data-mongo at partial status.
+// Cite: internal/custom/java/spring_ecosystem.go
+func TestSpringDataMongo_SchemaExtraction_Issue3001(t *testing.T) {
+	source := `
+package com.example.mongo;
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.annotation.Id;
+
+@Document(collection = "orders")
+public class Order {
+    @Id
+    private String id;
+    private String customerId;
+    private double total;
+}
+
+@Document
+public class Product {
+    @Id
+    private String id;
+    private String name;
+}
+`
+	r := ExtractSpringEcosystem(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_boot",
+		FilePath:  "Order.java",
+	})
+
+	schemaNames := make(map[string]bool)
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Schema" && e.Provenance == "INFERRED_FROM_SPRING_DATA" {
+			schemaNames[e.Name] = true
+		}
+	}
+	for _, want := range []string{"Order", "Product"} {
+		if !schemaNames[want] {
+			t.Errorf("[#3001 spring-data-mongo schema_extraction] expected SCOPE.Schema for %q, got: %v", want, schemaNames)
+		}
+	}
+}
+
+// TestSpringDataElastic_SchemaExtraction_Issue3001 proves that ExtractSpringEcosystem
+// emits SCOPE.Schema entities for @Document-annotated classes in an Elasticsearch
+// context, delivering schema_extraction for lang.java.orm.spring-data-elastic.
+// Cite: internal/custom/java/spring_ecosystem.go
+func TestSpringDataElastic_SchemaExtraction_Issue3001(t *testing.T) {
+	source := `
+package com.example.elastic;
+import org.springframework.data.elasticsearch.annotations.Document;
+import org.springframework.data.annotation.Id;
+
+@Document(indexName = "products")
+public class ProductDoc {
+    @Id
+    private String id;
+    private String name;
+    private double price;
+}
+`
+	r := ExtractSpringEcosystem(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_boot",
+		FilePath:  "ProductDoc.java",
+	})
+
+	found := false
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Schema" && e.Name == "ProductDoc" && e.Provenance == "INFERRED_FROM_SPRING_DATA" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("[#3001 spring-data-elastic schema_extraction] expected SCOPE.Schema for ProductDoc (@Document)")
+	}
+}
+
+// TestSpringDataRedis_SchemaExtraction_Issue3001 proves that ExtractSpringEcosystem
+// emits SCOPE.Schema entities for @RedisHash-annotated classes, delivering
+// schema_extraction for lang.java.orm.spring-data-redis at partial status.
+// Cite: internal/custom/java/spring_ecosystem.go
+func TestSpringDataRedis_SchemaExtraction_Issue3001(t *testing.T) {
+	source := `
+package com.example.redis;
+import org.springframework.data.redis.core.RedisHash;
+import org.springframework.data.annotation.Id;
+
+@RedisHash("sessions")
+public class UserSession {
+    @Id
+    private String sessionId;
+    private String userId;
+    private long ttl;
+}
+`
+	r := ExtractSpringEcosystem(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_boot",
+		FilePath:  "UserSession.java",
+	})
+
+	found := false
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Schema" && e.Name == "UserSession" && e.Provenance == "INFERRED_FROM_SPRING_DATA" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("[#3001 spring-data-redis schema_extraction] expected SCOPE.Schema for UserSession (@RedisHash)")
+	}
+}
+
+// TestSpringDataCassandra_SchemaExtraction_Issue3001 proves that ExtractSpringEcosystem
+// emits SCOPE.Schema entities for @Table-annotated Cassandra entity classes (disambiguated
+// by @PrimaryKey body presence), delivering schema_extraction for
+// lang.java.orm.spring-data-cassandra at partial status.
+// Cite: internal/custom/java/spring_ecosystem.go
+func TestSpringDataCassandra_SchemaExtraction_Issue3001(t *testing.T) {
+	source := `
+package com.example.cassandra;
+import org.springframework.data.cassandra.core.mapping.Table;
+import org.springframework.data.cassandra.core.mapping.PrimaryKey;
+import org.springframework.data.cassandra.core.mapping.Column;
+
+@Table("user_events")
+public class UserEvent {
+    @PrimaryKey
+    private UserEventKey key;
+    @Column("event_type")
+    private String eventType;
+}
+`
+	r := ExtractSpringEcosystem(PatternContext{
+		Source:    source,
+		Language:  "java",
+		Framework: "spring_boot",
+		FilePath:  "UserEvent.java",
+	})
+
+	found := false
+	for _, e := range r.Entities {
+		if e.Kind == "SCOPE.Schema" && e.Name == "UserEvent" && e.Provenance == "INFERRED_FROM_SPRING_DATA_CASSANDRA" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("[#3001 spring-data-cassandra schema_extraction] expected SCOPE.Schema for UserEvent (@Table + @PrimaryKey)")
+	}
+}
+
 // TestJAXRS_TestsLinkage_Issue2995 proves that JUnit 5 test detection fires for
 // a JAX-RS integration test class (REST-Assured pattern).
 // Cite: internal/custom/java/junit5.go

@@ -54,6 +54,14 @@ var (
 		`(?s)@Document\b[^{]*?(?:public\s+)?class\s+(\w+)`)
 	seRedisHashClassRE = regexp.MustCompile(
 		`(?s)@RedisHash\b[^{]*?(?:public\s+)?class\s+(\w+)`)
+	// Spring Data Cassandra: @Table marks a Cassandra entity (distinct from JPA @Table;
+	// disambiguated by presence of CassandraRepository imports or @PrimaryKey annotation).
+	seCassandraRepoRE = regexp.MustCompile(
+		`(?s)(?:public\s+)?interface\s+(\w+)\s+extends\s+[^{]*\bCassandraRepository\b`)
+	seCassandraTableClassRE = regexp.MustCompile(
+		`(?s)@Table\b[^{]*?(?:public\s+)?class\s+(\w+)[^{]*\{[^}]*@PrimaryKey\b`)
+	seElasticRepoRE = regexp.MustCompile(
+		`(?s)(?:public\s+)?interface\s+(\w+)\s+extends\s+[^{]*\bElasticsearchRepository\b`)
 	seQueryMethodRE = regexp.MustCompile(
 		`(?s)@Query\s*\(\s*(?:value\s*=\s*)?"([^"]+)"\s*\)\s*(?:\w+(?:\s*<[^>]*>)?\s+)(\w+)\s*\(`)
 
@@ -241,6 +249,42 @@ func ExtractSpringEcosystem(ctx PatternContext) PatternResult {
 			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 			Provenance: "INFERRED_FROM_SPRING_DATA", Ref: ref,
 			Properties: map[string]any{"data_type": "redis_hash", "framework": "spring_data"},
+		})
+	}
+
+	// Data: CassandraRepository
+	for _, m := range seCassandraRepoRE.FindAllStringSubmatchIndex(source, -1) {
+		name := source[m[2]:m[3]]
+		ref := "scope:component:spring_data_cassandra_repo:" + fp + ":" + name
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: name, Kind: "SCOPE.Component", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_DATA_CASSANDRA", Ref: ref,
+			Properties: map[string]any{"data_type": "cassandra_repository", "framework": "spring_data_cassandra"},
+		})
+	}
+
+	// Data: @Table (Spring Data Cassandra — disambiguated by @PrimaryKey body presence)
+	for _, m := range seCassandraTableClassRE.FindAllStringSubmatchIndex(source, -1) {
+		name := source[m[2]:m[3]]
+		ref := "scope:schema:spring_data_cassandra_table:" + fp + ":" + name
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: name, Kind: "SCOPE.Schema", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_DATA_CASSANDRA", Ref: ref,
+			Properties: map[string]any{"data_type": "cassandra_table", "framework": "spring_data_cassandra"},
+		})
+	}
+
+	// Data: ElasticsearchRepository
+	for _, m := range seElasticRepoRE.FindAllStringSubmatchIndex(source, -1) {
+		name := source[m[2]:m[3]]
+		ref := "scope:component:spring_data_elastic_repo:" + fp + ":" + name
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: name, Kind: "SCOPE.Component", SourceFile: fp,
+			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_SPRING_DATA_ELASTIC", Ref: ref,
+			Properties: map[string]any{"data_type": "elasticsearch_repository", "framework": "spring_data_elastic"},
 		})
 	}
 
