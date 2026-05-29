@@ -11084,16 +11084,19 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {
@@ -11265,16 +11268,19 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {
@@ -11623,16 +11629,19 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {
@@ -11868,16 +11877,19 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/golang/observability.go","internal/custom/golang/observability_test.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
