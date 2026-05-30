@@ -156,9 +156,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
 | [rust](../by-language/rust.md) | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟢 1/1 | |
-| [scala](../by-language/scala.md) | [Doobie](../detail/lang.scala.orm.doobie.md) | 🟡 2/8 | |
-| [scala](../by-language/scala.md) | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟡 2/7 | |
-| [scala](../by-language/scala.md) | [Quill](../detail/lang.scala.orm.quill.md) | 🟡 2/8 | |
-| [scala](../by-language/scala.md) | [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | 🟡 2/8 | |
-| [scala](../by-language/scala.md) | [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | 🟡 2/7 | |
-| [scala](../by-language/scala.md) | [Slick](../detail/lang.scala.orm.slick.md) | 🟡 2/8 | |
+| [scala](../by-language/scala.md) | [Doobie](../detail/lang.scala.orm.doobie.md) | 🟢 3/3 | |
+| [scala](../by-language/scala.md) | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟢 3/3 | |
+| [scala](../by-language/scala.md) | [Quill](../detail/lang.scala.orm.quill.md) | 🟢 5/5 | |
+| [scala](../by-language/scala.md) | [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | 🟢 6/6 | |
+| [scala](../by-language/scala.md) | [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | 🟢 3/3 | |
+| [scala](../by-language/scala.md) | [Slick](../detail/lang.scala.orm.slick.md) | 🟢 7/7 | |

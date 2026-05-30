@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/slick.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | slickTableClassRe extracts Table[T] class defs; slickColumnRe extracts column[T] defs; slickTableQueryRe extracts TableQuery[T] |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | Slick foreignKey() declarations extracted as relationship entities; no high-level ORM association DSL but FK constraints captured |
+| Foreign key extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | slickForeignKeyRe captures foreignKey(name, col, targetTable)(_.col) declarations → SCOPE.Schema entities with pattern_type=foreign_key |
+| Lazy loading recognition | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Slick uses explicit db.run() with explicit DBIOAction composition; no transparent lazy-loading proxy mechanism exists |
+| Relationship extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | FK declarations and TableQuery join patterns extracted; no higher-level hasMany/belongsTo DSL in Slick |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | 🟢 `partial` | — | — | `internal/custom/scala/orm_extractors.go` | slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway) |
 
 ## Provenance
 

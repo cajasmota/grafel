@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/doobie.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | doobieQueryRe captures .query[T] row type mappings; doobieCaseClassRe captures case class row models; doobieSQLRe captures sql"..." fragments |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Doobie is a functional JDBC wrapper, not an ORM; associations are expressed via raw SQL JOINs with no declarative DSL to extract |
+| Foreign key extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Doobie does not declare foreign keys; FK constraints live in the database schema managed externally (Flyway/Liquibase) |
+| Lazy loading recognition | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Doobie has no lazy-loading; all queries are explicit ConnectionIO values composed via for-comprehensions |
+| Relationship extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | No relationship declarations in doobie; relationships expressed via raw SQL with no extractable DSL |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Doobie does not manage migrations; use Flyway or Liquibase alongside doobie |
 
 ## Provenance
 

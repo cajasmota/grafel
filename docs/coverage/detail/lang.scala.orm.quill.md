@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/quill.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | quillQuerySchemaRe captures querySchema[T]("table") mappings; quillCaseClassRe captures entity case classes; compile-time macro expansion limits runtime introspection |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | quillQuoteQueryRe captures quote {} blocks containing query[T] references; JOIN associations expressed in quoted DSL blocks |
+| Foreign key extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Quill has no FK declaration DSL; FK constraints live in the DB schema, not in Quill entity definitions |
+| Lazy loading recognition | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Quill generates compile-time queries; all queries are explicit and eager — no transparent lazy-loading mechanism |
+| Relationship extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | quote {} blocks with join / nested query patterns captured; no declarative hasMany/belongsTo DSL |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Quill does not manage schema migrations; use Flyway/Liquibase/scala-migrations alongside Quill |
 
 ## Provenance
 

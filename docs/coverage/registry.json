@@ -49025,26 +49025,32 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "doobieQueryRe captures .query[T] row type mappings; doobieCaseClassRe captures case class row models; doobieSQLRe captures sql\"...\" fragments"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Doobie is a functional JDBC wrapper, not an ORM; associations are expressed via raw SQL JOINs with no declarative DSL to extract"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Doobie does not declare foreign keys; FK constraints live in the database schema managed externally (Flyway/Liquibase)"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Doobie has no lazy-loading; all queries are explicit ConnectionIO values composed via for-comprehensions"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "No relationship declarations in doobie; relationships expressed via raw SQL with no extractable DSL"
           }
         },
         "Queries": {
@@ -49056,7 +49062,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Doobie does not manage migrations; use Flyway or Liquibase alongside doobie"
           }
         }
       }
@@ -49075,26 +49083,32 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "elastic4sIndexRe captures createIndex/indexInto index defs; elastic4sHitReaderRe captures HitReader[T]/HitWriter[T] document type mappings; elastic4sCaseClassRe captures document case classes"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Elasticsearch is a distributed document search engine; relational associations are not_applicable — documents are denormalized, parent-child relationships via join fields only"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Elasticsearch has no foreign key concept; elastic4s provides no FK declarations"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "elastic4s uses explicit Future/IO-based query execution; no transparent lazy-loading mechanism"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Elasticsearch NoSQL — no relational relationship declarations; document relationships via nested objects or parent-child join fields"
           }
         },
         "Queries": {
@@ -49125,26 +49139,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "quillQuerySchemaRe captures querySchema[T](\"table\") mappings; quillCaseClassRe captures entity case classes; compile-time macro expansion limits runtime introspection"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "quillQuoteQueryRe captures quote {} blocks containing query[T] references; JOIN associations expressed in quoted DSL blocks"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Quill has no FK declaration DSL; FK constraints live in the DB schema, not in Quill entity definitions"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Quill generates compile-time queries; all queries are explicit and eager — no transparent lazy-loading mechanism"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "quote {} blocks with join / nested query patterns captured; no declarative hasMany/belongsTo DSL"
           }
         },
         "Queries": {
@@ -49156,7 +49178,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Quill does not manage schema migrations; use Flyway/Liquibase/scala-migrations alongside Quill"
           }
         }
       }
@@ -49175,26 +49199,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "scalikejdbcSyntaxSupportRe captures SQLSyntaxSupport[T] companion objects; scalikejdbcCaseClassRe captures row case classes"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "scalikejdbcHasManyRe captures hasMany/hasManyThrough/hasOne/belongsTo relationship declarations → SCOPE.Schema entities"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "ScalikeJDBC has no FK declaration DSL; FKs live in the DB schema and are not declared in ScalikeJDBC model code"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "ScalikeJDBC uses explicit DB session blocks; no transparent lazy-loading proxies — queries are always explicit"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "hasMany/hasManyThrough/hasOne/belongsTo DSL extracted; DB session block patterns captured for join-query sites"
           }
         },
         "Queries": {
@@ -49206,7 +49238,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "scalikejdbcDBMigrationRe captures DB autoCommit/localTx blocks which can contain DDL; scalikejdbc-play-support includes DB evolution integration"
           }
         }
       }
@@ -49225,26 +49259,32 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "scanamoTableRe captures Table[T](\"name\") DynamoDB table defs; scanamoDynamoFormatRe captures DynamoFormat[T] implicit derivations; scanamoCaseClassRe captures item case classes"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "DynamoDB is a NoSQL key-value store; relational associations/joins are not_applicable — item relationships modeled via single-table design or denormalization"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "DynamoDB has no foreign key concept; Scanamo provides no FK declarations"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Scanamo uses explicit IO-based queries (cats-effect / ZIO); no ORM-style lazy-loading proxies"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "DynamoDB NoSQL — no relational relationship declarations in Scanamo; item access patterns are modeled via GSI/LSI index design, not FK relationships"
           }
         },
         "Queries": {
@@ -49275,26 +49315,35 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "slickTableClassRe extracts Table[T] class defs; slickColumnRe extracts column[T] defs; slickTableQueryRe extracts TableQuery[T]"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Slick foreignKey() declarations extracted as relationship entities; no high-level ORM association DSL but FK constraints captured"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "slickForeignKeyRe captures foreignKey(name, col, targetTable)(_.col) declarations → SCOPE.Schema entities with pattern_type=foreign_key"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "Slick uses explicit db.run() with explicit DBIOAction composition; no transparent lazy-loading proxy mechanism exists"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FK declarations and TableQuery join patterns extracted; no higher-level hasMany/belongsTo DSL in Slick"
           }
         },
         "Queries": {
@@ -49306,7 +49355,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/orm_extractors.go"],
+            "notes": "slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway)"
           }
         }
       }

@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/elastic4s.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | elastic4sIndexRe captures createIndex/indexInto index defs; elastic4sHitReaderRe captures HitReader[T]/HitWriter[T] document type mappings; elastic4sCaseClassRe captures document case classes |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Elasticsearch is a distributed document search engine; relational associations are not_applicable — documents are denormalized, parent-child relationships via join fields only |
+| Foreign key extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Elasticsearch has no foreign key concept; elastic4s provides no FK declarations |
+| Lazy loading recognition | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | elastic4s uses explicit Future/IO-based query execution; no transparent lazy-loading mechanism |
+| Relationship extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Elasticsearch NoSQL — no relational relationship declarations; document relationships via nested objects or parent-child join fields |
 
 ### Queries
 
