@@ -138,6 +138,13 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 	switch lang {
 	case "python":
 		scanPythonORM(src, funcs, emit)
+		// Sibling pass: parse the pymongo `.aggregate(<pipeline>)` pipeline
+		// (inline list literal OR a same-function variable binding) into
+		// per-stage entities + $lookup/$graphLookup join edges (#3440).
+		scanPythonMongoAggregation(src, funcs, path, lang,
+			func(ent types.EntityRecord) { entities = append(entities, ent) },
+			func(rel types.RelationshipRecord) { relationships = append(relationships, rel) },
+		)
 	case "javascript", "typescript":
 		scanJSORM(src, funcs, emit)
 		scanJSDrivers(src, funcs, emit)
