@@ -3,23 +3,27 @@
 // Recognises Python sink primitives:
 //
 //   - http_out  : requests.<verb>(), httpx.<verb>(), urllib.request.urlopen,
-//                 aiohttp.ClientSession (.<verb>), urllib3.request,
-//                 boto3.client/resource(...) + AWS client ops (S3 upload/
-//                 download/put/get/copy, SQS send/receive, SNS publish,
-//                 Lambda invoke) — every boto3 call crosses the network
+//     aiohttp.ClientSession (.<verb>), urllib3.request,
+//     boto3.client/resource(...) + AWS client ops (S3 upload/
+//     download/put/get/copy, SQS send/receive, SNS publish,
+//     Lambda invoke) — every boto3 call crosses the network
 //   - db_read   : Django ORM Model.objects.<filter|get|all|...>,
-//                 SQLAlchemy session.query / .execute (SELECT),
-//                 raw cursor.execute("SELECT ..."), cursor.fetchall/fetchone,
-//                 DB-API driver connect/cursor (mysql.connector, psycopg2,
-//                 sqlite3, pymysql, MySQLdb, cx_Oracle, pyodbc, asyncpg)
+//     SQLAlchemy session.query / .execute (SELECT),
+//     raw cursor.execute("SELECT ..."), cursor.fetchall/fetchone,
+//     DB-API driver connect/cursor (mysql.connector, psycopg2,
+//     sqlite3, pymysql, MySQLdb, cx_Oracle, pyodbc, asyncpg),
+//     MongoDB pymongo/motor reads (.aggregate, .find, .find_one,
+//     .count_documents, .distinct, ...)
 //   - db_write  : Django .save() / .create() / .update() / .delete() /
-//                 .bulk_create / .bulk_update,
-//                 SQLAlchemy session.add / .commit / .delete,
-//                 cursor.execute("INSERT|UPDATE|DELETE ...")
+//     .bulk_create / .bulk_update,
+//     SQLAlchemy session.add / .commit / .delete,
+//     cursor.execute("INSERT|UPDATE|DELETE ..."),
+//     MongoDB pymongo/motor writes (.insert_one/.update_many/
+//     .delete_one/.bulk_write/.find_one_and_update/...)
 //   - fs_read   : open(...), pathlib.Path.read_*, os.listdir, os.scandir,
-//                 io.open
+//     io.open
 //   - fs_write  : open(..., "w"|"a"|"x"|"wb"|...), pathlib.Path.write_*,
-//                 os.mkdir, os.remove, os.rename, shutil.copy*
+//     os.mkdir, os.remove, os.rename, shutil.copy*
 //   - mutation  : self.<attr> = ... (assignment to a method receiver)
 //   - env_read  : os.getenv(...), os.environ[...] / os.environ.get(...)
 //
@@ -100,6 +104,29 @@ var pyCursorWriteRe = regexp.MustCompile(
 	`\.\s*execute\s*\(\s*['"](?i:\s*(?:INSERT|UPDATE|DELETE|REPLACE|MERGE|TRUNCATE)\b)`,
 )
 
+// pyMongoReadRe matches MongoDB collection read primitives for the pymongo
+// (sync) and motor (async) drivers (#3440 ask 4). These call-shapes — e.g.
+// `collection.aggregate(pipeline)`, `coll.find_one({...})` — are NOT covered
+// by pyDBReadRe because they lack the Django `.objects.` prefix and the
+// receiver is a plain collection handle. The snake_case `_one`/`_documents`
+// and `aggregate`/`distinct` names are Mongo-specific enough to be safe;
+// bare `.find(` is the canonical Mongo cursor read. find_one_and_* are
+// excluded here (they mutate) and handled by pyMongoWriteRe.
+var pyMongoReadRe = regexp.MustCompile(
+	`\.\s*(?:aggregate|aggregate_raw_batches|find_raw_batches|count_documents|estimated_document_count|distinct|list_indexes|index_information)\s*\(` +
+		`|\.\s*find_one\s*\(` +
+		`|\.\s*find\s*\(`,
+)
+
+// pyMongoWriteRe matches MongoDB collection write primitives for pymongo /
+// motor (#3440 ask 4). Covers the document mutators plus the find-and-modify
+// family (which both read and mutate — classified write, the stronger
+// signal). `insert_one`/`update_many`/`bulk_write`/`find_one_and_update` are
+// distinctive Mongo names with no common false-positive collisions.
+var pyMongoWriteRe = regexp.MustCompile(
+	`\.\s*(?:insert_one|insert_many|update_one|update_many|replace_one|delete_one|delete_many|bulk_write|find_one_and_update|find_one_and_replace|find_one_and_delete|create_index|create_indexes|drop_index|drop_indexes)\s*\(`,
+)
+
 // pyFSReadRe matches read-only filesystem primitives.
 var pyFSReadRe = regexp.MustCompile(
 	`\bopen\s*\(\s*[^,)]+\s*(?:,\s*['"](?:r|rb|rt)['"][\s,)])` +
@@ -148,6 +175,8 @@ func sniffEffectsPython(content string) []EffectMatch {
 	out = appendPyMatches(out, content, headers, pyDBConnectRe, EffectDBRead, "db.connect/cursor", 0.8)
 	out = appendPyMatches(out, content, headers, pyDBWriteRe, EffectDBWrite, "orm.write", 0.85)
 	out = appendPyMatches(out, content, headers, pyCursorWriteRe, EffectDBWrite, "cursor.execute(WRITE)", 1.0)
+	out = appendPyMatches(out, content, headers, pyMongoReadRe, EffectDBRead, "mongo.read", 0.8)
+	out = appendPyMatches(out, content, headers, pyMongoWriteRe, EffectDBWrite, "mongo.write", 0.85)
 	out = appendPyMatches(out, content, headers, pyFSReadRe, EffectFSRead, "open/pathlib", 0.9)
 	out = appendPyMatches(out, content, headers, pyFSWriteRe, EffectFSWrite, "open(w)/shutil", 1.0)
 	out = appendPyMatches(out, content, headers, pyMutationRe, EffectMutation, "self.field=", 0.7)

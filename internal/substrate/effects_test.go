@@ -193,6 +193,111 @@ class Pipeline:
 	mustHave(t, by, EffectDBRead, "read_with_psycopg")
 }
 
+// TestSniffEffectsPython_MongoSinks is the #3440 (ask 4) regression:
+// the rewrite-agent reported core.tasks._get_me_inspections as
+// {effect_source: "pure", 0.3} despite calling inspections_cls.aggregate(
+// pipeline) — a Mongo read. pymongo/motor collection methods lack the
+// Django `.objects.` prefix so they bypassed pyDBReadRe. They must now
+// register db_read (reads) / db_write (mutators), and a genuinely pure
+// helper must stay pure (negative assertion).
+func TestSniffEffectsPython_MongoSinks(t *testing.T) {
+	const src = `
+class InspectionRepo:
+    def _get_me_inspections(self, building_id):
+        pipeline = [{"$match": {"building": building_id}}]
+        return list(inspections_cls.aggregate(pipeline))
+
+    def fetch_one(self, oid):
+        return self.coll.find_one({"_id": oid})
+
+    def fetch_many(self, q):
+        return self.coll.find(q)
+
+    def how_many(self, q):
+        return self.coll.count_documents(q)
+
+    def insert(self, doc):
+        self.coll.insert_one(doc)
+
+    def patch(self, oid, doc):
+        self.coll.update_one({"_id": oid}, {"$set": doc})
+
+    def upsert(self, oid, doc):
+        self.coll.find_one_and_update({"_id": oid}, {"$set": doc}, upsert=True)
+
+    def bulk(self, ops):
+        self.coll.bulk_write(ops)
+
+    def pure_add(self, a, b):
+        total = a + b
+        return total
+`
+	got := sniffEffectsPython(src)
+	if len(got) == 0 {
+		t.Fatal("expected python matches; got none")
+	}
+	by := groupByEffect(got)
+	// The exact bug: .aggregate(pipeline) on a plain collection handle.
+	mustHave(t, by, EffectDBRead, "_get_me_inspections")
+	mustHave(t, by, EffectDBRead, "fetch_one")
+	mustHave(t, by, EffectDBRead, "fetch_many")
+	mustHave(t, by, EffectDBRead, "how_many")
+	// Mutators classify as db_write.
+	mustHave(t, by, EffectDBWrite, "insert")
+	mustHave(t, by, EffectDBWrite, "patch")
+	mustHave(t, by, EffectDBWrite, "upsert")
+	mustHave(t, by, EffectDBWrite, "bulk")
+	// A pure helper stays pure: no db effect of either kind.
+	mustNotHave(t, by, EffectDBRead, "pure_add")
+	mustNotHave(t, by, EffectDBWrite, "pure_add")
+}
+
+// TestSniffEffectsJSTS_MongoSinks covers the Mongoose / native-driver
+// extras added in #3440 ask 4: .findById/.countDocuments/.distinct reads
+// and the find-and-modify / .bulkWrite / .replaceOne write family. A pure
+// helper must stay pure.
+func TestSniffEffectsJSTS_MongoSinks(t *testing.T) {
+	const src = `
+class Repo {
+  async byId(id) {
+    return await this.model.findById(id);
+  }
+  async total() {
+    return await this.model.countDocuments({});
+  }
+  async kinds() {
+    return await this.model.distinct("kind");
+  }
+  async patch(id, doc) {
+    return await this.model.findByIdAndUpdate(id, doc);
+  }
+  async swap(filter, doc) {
+    return await this.model.replaceOne(filter, doc);
+  }
+  async batch(ops) {
+    return await this.model.bulkWrite(ops);
+  }
+  pureAdd(a, b) {
+    const total = a + b;
+    return total;
+  }
+}
+`
+	got := sniffEffectsJSTS(src)
+	if len(got) == 0 {
+		t.Fatal("expected matches; got none")
+	}
+	by := groupByEffect(got)
+	mustHave(t, by, EffectDBRead, "byId")
+	mustHave(t, by, EffectDBRead, "total")
+	mustHave(t, by, EffectDBRead, "kinds")
+	mustHave(t, by, EffectDBWrite, "patch")
+	mustHave(t, by, EffectDBWrite, "swap")
+	mustHave(t, by, EffectDBWrite, "batch")
+	mustNotHave(t, by, EffectDBRead, "pureAdd")
+	mustNotHave(t, by, EffectDBWrite, "pureAdd")
+}
+
 func TestSniffEffectsJava_PrimitiveCoverage(t *testing.T) {
 	const src = `
 package x;
@@ -711,5 +816,15 @@ func mustHave(t *testing.T, by map[Effect]map[string]bool, eff Effect, fn string
 		}
 		sort.Strings(fns)
 		t.Errorf("expected effect %q on function %q; got functions %v", eff, fn, fns)
+	}
+}
+
+// mustNotHave asserts that function fn does NOT carry effect eff — the
+// negative guard for pure-function regressions (a genuinely pure helper
+// must not pick up a spurious db effect from the Mongo sniffers).
+func mustNotHave(t *testing.T, by map[Effect]map[string]bool, eff Effect, fn string) {
+	t.Helper()
+	if by[eff] != nil && by[eff][fn] {
+		t.Errorf("expected function %q to NOT carry effect %q, but it did", fn, eff)
 	}
 }

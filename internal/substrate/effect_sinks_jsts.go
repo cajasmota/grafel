@@ -5,11 +5,15 @@
 //
 //   - http_out  : fetch(...), axios.<method>(...), got/ky/superagent
 //   - db_read   : Sequelize/TypeORM/Prisma `.find*` / `.findOne` / `.query`,
-//                 Mongoose `.find()` / `.aggregate()`, knex `.select`
-//   - db_write  : `.save`/`.create`/`.update`/`.delete`/`.insert`/`.upsert`
+//     Mongoose/native-driver `.find()` / `.findById()` /
+//     `.aggregate()` / `.countDocuments()` / `.distinct()`,
+//     knex `.select`
+//   - db_write  : `.save`/`.create`/`.update`/`.delete`/`.insert`/`.upsert`,
+//     Mongoose/native-driver `.findOneAndUpdate` /
+//     `.findByIdAndDelete` / `.replaceOne` / `.bulkWrite`
 //   - fs_read   : `fs.readFile*`, `fs.readSync`, `fs.createReadStream`
 //   - fs_write  : `fs.writeFile*`, `fs.writeSync`, `fs.createWriteStream`,
-//                 `fs.appendFile*`, `fs.mkdir*`, `fs.unlink*`
+//     `fs.appendFile*`, `fs.mkdir*`, `fs.unlink*`
 //   - mutation  : `this.<field> = ...` assignment inside a method body
 //
 // Function attribution is line-based: each match is assigned to the
@@ -24,13 +28,13 @@ func init() { RegisterEffectSniffer("jsts", sniffEffectsJSTS) }
 
 // jstsFuncHeaderRe matches function-introducing syntax we attribute sinks to:
 //
-//   function foo(             // named function declaration
-//   async function foo(
-//   foo(args) {               // method shorthand in object/class
-//   foo = function(           // function-expression assignment
-//   foo = (args) => {         // arrow function assignment
-//   const foo = (args) =>     // const arrow
-//   async foo(args) {         // async class method shorthand
+//	function foo(             // named function declaration
+//	async function foo(
+//	foo(args) {               // method shorthand in object/class
+//	foo = function(           // function-expression assignment
+//	foo = (args) => {         // arrow function assignment
+//	const foo = (args) =>     // const arrow
+//	async foo(args) {         // async class method shorthand
 //
 // Capture group 1 is the declaring identifier name.
 var jstsFuncHeaderRe = regexp.MustCompile(
@@ -54,13 +58,23 @@ var jstsHTTPRe = regexp.MustCompile(
 )
 
 // jstsDBReadRe matches read-flavoured ORM / query-builder primitives.
+// Includes Mongoose / native MongoDB driver collection reads — `.findById`,
+// `.countDocuments`, `.estimatedDocumentCount`, `.distinct` (#3440 ask 4);
+// `.find`/`.findOne`/`.aggregate`/`.count` were already covered.
 var jstsDBReadRe = regexp.MustCompile(
-	`\.\s*(findOne|findAll|findMany|findUnique|findFirst|find|aggregate|count|exists|query|select|raw|exec)\s*\(`,
+	`\.\s*(findOne|findAll|findMany|findUnique|findFirst|findById|find|aggregate|countDocuments|estimatedDocumentCount|count|distinct|exists|query|select|raw|exec)\s*\(`,
 )
 
 // jstsDBWriteRe matches write-flavoured ORM / query-builder primitives.
+// Includes Mongoose / native MongoDB driver writes — the find-and-modify
+// family (`.findOneAndUpdate`, `.findByIdAndUpdate`, `.findOneAndDelete`,
+// `.findByIdAndDelete`, `.findOneAndReplace`, `.findByIdAndRemove`),
+// `.replaceOne`, `.bulkWrite`, `.remove` (#3440 ask 4); `.save`/`.create`/
+// `.insertOne`/`.deleteMany`/... were already covered.
 var jstsDBWriteRe = regexp.MustCompile(
-	`\.\s*(save|create|createMany|update(?:Many|One)?|upsert|delete(?:Many|One)?|destroy|insert(?:Many|One)?|bulkCreate|bulkUpdate|bulkDelete)\s*\(`,
+	`\.\s*(save|create|createMany|update(?:Many|One)?|upsert|delete(?:Many|One)?|destroy|` +
+		`insert(?:Many|One)?|bulkCreate|bulkUpdate|bulkDelete|bulkWrite|replaceOne|remove|` +
+		`findOneAndUpdate|findByIdAndUpdate|findOneAndDelete|findByIdAndDelete|findOneAndReplace|findByIdAndRemove)\s*\(`,
 )
 
 // jstsFSReadRe matches Node fs / fs/promises read primitives.
@@ -170,4 +184,3 @@ func nearestHeader(headers []funcHeader, line int) string {
 	}
 	return name
 }
-
