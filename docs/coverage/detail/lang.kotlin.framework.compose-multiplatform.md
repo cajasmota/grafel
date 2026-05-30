@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| IPC extraction | 🔴 `missing` | — | — | — | — |
-| Main renderer split | 🔴 `missing` | — | — | — | — |
+| IPC extraction | — `not_applicable` | — | — | — | Compose Multiplatform is a UI framework targeting Android, iOS, Desktop, and Web. It has no IPC tier — there is no message-passing boundary between processes in the CMP architecture. Platform-native IPC (Android Binder, iOS XPC) is outside the CMP scope. N/A is accurate. |
+| Main renderer split | — `not_applicable` | — | — | — | Compose Multiplatform has no Electron/Tauri main/renderer process split. All targets (Android, iOS, Desktop, Web) run the UI in-process. N/A is the accurate classification. |
 
 ### Native
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: kotlinNativeImportsExtractor covers Compose Multiplatform native bridge — cinterop platform.*/cnames.structs.* imports for iOS/native targets, @CName exported symbols, and actual fun delegating to native. Android JNI (System.loadLibrary) also covered. Partial because .def cinterop file parsing is outside scope. |
 
 ### Updates
 

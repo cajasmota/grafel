@@ -1936,7 +1936,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/redis_query.go"],
+            "notes": "redis-plus-plus (sw::redis) GET/SET/HSET/HGET/DEL/etc method calls, redis.command(CMD,...), pipeline.set/get/etc attributed to call sites; regex/partial, key literals captured when string literal"
           }
         },
         "Migrations": {
@@ -4472,29 +4474,43 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "QObject subclass (Q_OBJECT macro) emits SCOPE.UIComponent; regex/partial"
           },
           "context_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "QApplication/QGuiApplication/QQmlApplicationEngine construction detected as context; regex/partial"
           }
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "switch on Qt enums, Q_ASSERT, if(... == Qt::EnumVal) detected; regex/partial"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "QNetworkAccessManager get/post/put calls detected as data fetch; regex/partial"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "Q_PROPERTY(type name READ getter) emits property pattern entity; regex/partial"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "Qt slots sections (state handlers) detected as SCOPE.Operation/function; regex/partial"
           }
         },
         "Navigation": {
           "router_pattern": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "QStackedWidget setCurrentIndex/setCurrentWidget and QML StackView push/pop detected; regex/partial"
           }
         },
         "Type System": {
@@ -4514,7 +4530,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/qt.go"],
+            "notes": "emit \u003csignal\u003e(...) calls detected; signals sections parsed; regex/partial"
           }
         },
         "Testing": {
@@ -4893,7 +4911,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/restinio_middleware.go"],
+            "notes": "non_matched_request_handler, make_chain\u003cH1,H2,...\u003e, request_handler chaining detected; regex/partial"
           }
         },
         "Type System": {
@@ -5066,15 +5086,21 @@
       "capabilities": {
         "Process": {
           "ipc_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/ros_extractor.go"],
+            "notes": "ROS1 advertise/subscribe/advertiseService/serviceClient and ROS2 create_publisher/create_subscription/create_service/create_client topic/service names extracted; regex/partial"
           },
           "main_renderer_split": {
-            "status": "missing"
+            "status": "not_applicable",
+            "cites": ["internal/custom/cpp/ros_extractor.go"],
+            "notes": "ROS is a robotics pub-sub middleware; it has no main-process/renderer-process split concept"
           }
         },
         "Native": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/ros_extractor.go"],
+            "notes": "ROS #include headers (ros/, sensor_msgs/, geometry_msgs/, etc.) and package.xml \u003cdepend\u003e entries extracted as native module imports; regex/partial"
           }
         },
         "Substrate": {
@@ -5138,15 +5164,21 @@
       "capabilities": {
         "Process": {
           "ipc_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/unreal_extractor.go"],
+            "notes": "UFUNCTION(Server/Client/NetMulticast,Reliable) RPC declarations, FMessageEndpoint::Builder message bus, GameplayMessageSubsystem BroadcastMessage/RegisterListener, DECLARE_MULTICAST_DELEGATE extracted; regex/partial"
           },
           "main_renderer_split": {
-            "status": "missing"
+            "status": "not_applicable",
+            "cites": ["internal/custom/cpp/unreal_extractor.go"],
+            "notes": "Unreal Engine is a game engine; the game-thread/render-thread distinction exists but is not the same as a main-process/renderer-process split (e.g. Electron). NA for this architectural concept."
           }
         },
         "Native": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/unreal_extractor.go"],
+            "notes": "PublicDependencyModuleNames/PrivateDependencyModuleNames AddRange/Add in .Build.cs files extracted as native module imports; regex/partial"
           }
         },
         "Substrate": {

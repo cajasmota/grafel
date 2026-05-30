@@ -16,13 +16,13 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/kotlin/orms/hibernate_kotlin.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/java/hibernate.go` | Recording win: hibernate.go ExtractHibernate() accepts ctx.Language=="kotlin" — @Entity/@Table on Kotlin data classes matched identically to Java. Partial because Kotlin-specific JPA idioms (constructor-param columns, data class shorthand) may not all be captured. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go` | Recording win: hibernate.go hibAssociationRE matches @OneToMany/@ManyToOne/@OneToOne/@ManyToMany before Kotlin 'var/val' properties. jpa_fk_lazy.go ExtractJPAFKAndLazy also runs on Kotlin (language gate: java or kotlin). Partial because collection types differ from Java generics. |
 | Foreign key extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 | Lazy loading recognition | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 | Relationship extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: kotlinJPAMigrationExtractor emits migration entities from Flyway versioned/repeatable class declarations (V2__...), BaseJavaMigration extends, Liquibase @ChangeSet annotations, flyway.migrate() calls, and config bean detection. Partial because SQL migration files (V1__init.sql) are handled by internal/extractors/sql/sql.go. |
 
 ## Provenance
 

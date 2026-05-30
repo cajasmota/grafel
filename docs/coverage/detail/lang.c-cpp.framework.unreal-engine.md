@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| IPC extraction | 🔴 `missing` | — | — | — | — |
-| Main renderer split | 🔴 `missing` | — | — | — | — |
+| IPC extraction | 🟢 `partial` | — | — | `internal/custom/cpp/unreal_extractor.go` | UFUNCTION(Server/Client/NetMulticast,Reliable) RPC declarations, FMessageEndpoint::Builder message bus, GameplayMessageSubsystem BroadcastMessage/RegisterListener, DECLARE_MULTICAST_DELEGATE extracted; regex/partial |
+| Main renderer split | — `not_applicable` | — | — | `internal/custom/cpp/unreal_extractor.go` | Unreal Engine is a game engine; the game-thread/render-thread distinction exists but is not the same as a main-process/renderer-process split (e.g. Electron). NA for this architectural concept. |
 
 ### Native
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | — | — | `internal/custom/cpp/unreal_extractor.go` | PublicDependencyModuleNames/PrivateDependencyModuleNames AddRange/Add in .Build.cs files extracted as native module imports; regex/partial |
 
 ### Updates
 

@@ -10420,6 +10420,188 @@ records:
           issues_implemented: ["3280"]
           verified_at: "2026-05-30"
 
+  lang.c-cpp.framework.qt:
+    capabilities:
+      Structure:
+        component_extraction:
+          # QObject subclass (Q_OBJECT macro) → SCOPE.UIComponent; partial (regex).
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+        context_extraction:
+          # QApplication/QGuiApplication/QQmlApplicationEngine construction detected; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+      Data Flow:
+        branch_conditions:
+          # switch on Qt enums, Q_ASSERT, if(... == Qt::Val) detected; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+        data_fetching:
+          # QNetworkAccessManager get/post/put calls detected; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+        prop_extraction:
+          # Q_PROPERTY(type name READ getter) → property pattern entity; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+        state_management:
+          # Qt slots sections detected as SCOPE.Operation/function; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+      Navigation:
+        router_pattern:
+          # QStackedWidget setCurrentIndex/setCurrentWidget and QML StackView push/pop; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+      Lifecycle:
+        state_setter_emission:
+          # emit <signal>(...) calls and signals sections parsed; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/qt.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+
+  lang.c-cpp.framework.restinio:
+    capabilities:
+      Middleware:
+        middleware_coverage:
+          # non_matched_request_handler, make_chain<H1,H2,...>, request_handler chaining; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/restinio_middleware.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+
+  lang.c-cpp.framework.ros:
+    capabilities:
+      Process:
+        ipc_extraction:
+          # ROS1 advertise/subscribe/advertiseService/serviceClient and ROS2
+          # create_publisher/create_subscription/create_service/create_client; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/ros_extractor.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+        main_renderer_split:
+          # ROS has no main-process/renderer-process split concept; not_applicable.
+          status: not_applicable
+          symbols:
+            - file: internal/custom/cpp/ros_extractor.go
+              functions: [Extract]
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+      Native:
+        native_module_imports:
+          # ROS #include headers and package.xml <depend> entries extracted; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/ros_extractor.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+
+  lang.c-cpp.framework.unreal-engine:
+    capabilities:
+      Process:
+        ipc_extraction:
+          # UFUNCTION(Server/Client/NetMulticast) RPCs, FMessageEndpoint, delegates; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/unreal_extractor.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+        main_renderer_split:
+          # Game engine; game-thread/render-thread ≠ main-process/renderer-process; not_applicable.
+          status: not_applicable
+          symbols:
+            - file: internal/custom/cpp/unreal_extractor.go
+              functions: [Extract]
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+      Native:
+        native_module_imports:
+          # PublicDependencyModuleNames/PrivateDependencyModuleNames AddRange/Add in .Build.cs; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/unreal_extractor.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+
+  lang.c-cpp.driver.redis-plus-plus:
+    capabilities:
+      Queries:
+        query_attribution:
+          # redis-plus-plus GET/SET/HSET/etc method calls and pipeline commands attributed; partial.
+          status: partial
+          symbols:
+            - file: internal/custom/cpp/redis_query.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/new_extractors_test.go
+          issues_implemented: ["3280"]
+          verified_at: "2026-05-30"
+
   protocol.c-asm:
     capabilities:
       service_extraction:

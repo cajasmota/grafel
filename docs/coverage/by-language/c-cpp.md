@@ -34,7 +34,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
@@ -46,15 +46,15 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Qt](../detail/lang.c-cpp.framework.qt.md) | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🔴 0/8 | |
+| [Qt](../detail/lang.c-cpp.framework.qt.md) | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟢 10/10 | 🔴 0/3 | |
-| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟢 10/10 | 🔴 0/3 | |
+| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟢 10/10 | 🟢 2/2 | |
+| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟢 10/10 | 🟢 2/2 | |
 
 
 ## Tools
@@ -90,5 +90,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟢 3/3 | |
 | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟢 3/3 | |
 | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟢 3/3 | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/1 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟢 1/1 | |
 | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟢 3/3 | |

@@ -15,13 +15,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | 🔴 `missing` | — | — | — | — |
+| Context extraction | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: composeContextExtractor handles KMP expect/actual context patterns — expect class AppContext, actual class AppContext(val context: android.content.Context), and context factory functions. Partial because iOS-side CoreData/NSManagedObjectContext patterns may not be fully captured. |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Deep link extraction | 🔴 `missing` | — | — | — | — |
+| Deep link extraction | — `not_applicable` | — | — | — | KMP (Kotlin Multiplatform) is a shared code framework, not a navigation host. Deep links are a platform-specific concern handled by Compose Navigation (Android) or native iOS routing — not by the KMP shared module itself. N/A is the honest classification. |
 | Navigation extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 | Screen detection | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
@@ -35,13 +35,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: kotlinNativeImportsExtractor emits native_import entities from cinterop platform.* and cnames.structs.* imports, KMP actual fun delegating to native calls, and @CName exported symbols. These are the primary KMP native bridge patterns. Partial because C struct typedef resolution requires .def file parsing. |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🔴 `missing` | — | — | — | — |
+| Branch conditions | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | Recording win via new extractor: kotlinBranchCondExtractor is the same agnostic Kotlin if/when/filter pass that runs on all Kotlin source including KMP shared modules. Branch conditions in expect/actual code are captured identically. |
 | State management | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Type System

@@ -15,13 +15,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | 🔴 `missing` | — | — | — | — |
+| Context extraction | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: composeContextExtractor emits context_provider/context_consumer entities from CompositionLocal definitions (compositionLocalOf, staticCompositionLocalOf), CompositionLocalProvider usages, and LocalXxx.current access patterns. Partial because complex dynamic provision patterns may not be captured. |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Deep link extraction | 🔴 `missing` | — | — | — | — |
+| Deep link extraction | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: composeDeepLinkExtractor emits deep_link entities from navDeepLink { uriPattern = ... } blocks and standalone uriPattern = ... declarations in Compose Navigation composable() blocks. Partial because activity-level intent-filter deep links in AndroidManifest.xml require separate XML parsing. |
 | Navigation extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 | Screen detection | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
@@ -35,13 +35,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: kotlinNativeImportsExtractor emits native_library and native_function entities from System.loadLibrary(), Runtime.getRuntime().load(), external fun declarations, and companion object JNI init patterns. Partial because ProGuard-renamed JNI entry points may not be resolved. |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🔴 `missing` | — | — | — | — |
+| Branch conditions | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: kotlinBranchCondExtractor emits branch_condition entities from if(), when() (with is/enum branches), inline if ternary, and filter{}/takeIf{} lambdas. Covers Data Flow branch condition extraction for Compose Kotlin code. Partial because deeply nested or lambda-captured conditions may be missed. |
 | State management | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Type System

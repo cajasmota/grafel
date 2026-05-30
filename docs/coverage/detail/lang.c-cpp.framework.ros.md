@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| IPC extraction | 🔴 `missing` | — | — | — | — |
-| Main renderer split | 🔴 `missing` | — | — | — | — |
+| IPC extraction | 🟢 `partial` | — | — | `internal/custom/cpp/ros_extractor.go` | ROS1 advertise/subscribe/advertiseService/serviceClient and ROS2 create_publisher/create_subscription/create_service/create_client topic/service names extracted; regex/partial |
+| Main renderer split | — `not_applicable` | — | — | `internal/custom/cpp/ros_extractor.go` | ROS is a robotics pub-sub middleware; it has no main-process/renderer-process split concept |
 
 ### Native
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | — | — | `internal/custom/cpp/ros_extractor.go` | ROS #include headers (ros/, sensor_msgs/, geometry_msgs/, etc.) and package.xml <depend> entries extracted as native module imports; regex/partial |
 
 ### Updates
 

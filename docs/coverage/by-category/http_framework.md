@@ -19,7 +19,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [C/C++](../by-language/c-cpp.md) | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [C/C++](../by-language/c-cpp.md) | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [C/C++](../by-language/c-cpp.md) | [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
@@ -157,7 +157,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🔴 0/8 | |
+| [C/C++](../by-language/c-cpp.md) | [Qt](../detail/lang.c-cpp.framework.qt.md) | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟡 4/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟡 4/8 | |
 | [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟡 4/8 | |
@@ -197,23 +197,23 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 10/10 | |
 | [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 10/10 | |
 | [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 19/19 | |
-| [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ✅ 3/3 | 🟢 1/1 | 🟢 18/18 | 🟡 5/9 | |
-| [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 5/9 | |
+| [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ✅ 3/3 | 🟢 1/1 | 🟢 18/18 | 🟢 9/9 | |
+| [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 
 
 ## Desktop
 
 | Language | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟢 10/10 | 🔴 0/3 | |
-| [C/C++](../by-language/c-cpp.md) | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟢 10/10 | 🔴 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟢 10/10 | 🟢 2/2 | |
+| [C/C++](../by-language/c-cpp.md) | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟢 10/10 | 🟢 2/2 | |
 | [C#](../by-language/csharp.md) | [Uno Platform](../detail/lang.csharp.framework.uno.md) | 🟢 10/10 | 🔴 0/3 | |
 | [C#](../by-language/csharp.md) | [WPF](../detail/lang.csharp.framework.wpf.md) | 🟢 10/10 | 🔴 0/3 | |
 | [C#](../by-language/csharp.md) | [Windows Forms](../detail/lang.csharp.framework.winforms.md) | 🟢 10/10 | 🔴 0/3 | |
 | [go](../by-language/go.md) | [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🟢 10/10 | 🟢 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | 🟢 10/10 | ✅ 3/3 | |
-| [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | 🟢 10/10 | 🔴 0/3 | |
-| [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | 🟢 10/10 | 🔴 0/3 | |
+| [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | 🟢 10/10 | 🟢 1/1 | |
+| [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | 🟢 10/10 | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | 🟢 10/10 | 🟢 3/3 | |
 
 

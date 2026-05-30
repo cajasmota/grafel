@@ -40,16 +40,16 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ✅ 3/3 | 🟢 1/1 | 🟢 18/18 | 🟡 5/9 | |
-| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 5/9 | |
+| [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ✅ 3/3 | 🟢 1/1 | 🟢 18/18 | 🟢 9/9 | |
+| [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | 🟢 10/10 | 🔴 0/3 | |
-| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | 🟢 10/10 | 🔴 0/3 | |
+| [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | 🟢 10/10 | 🟢 1/1 | |
+| [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | 🟢 10/10 | 🟢 1/1 | |
 
 
 ## ORMs
@@ -60,9 +60,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟢 7/7 | |
-| [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟡 5/8 | |
+| [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟢 8/8 | |
 | [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟢 7/7 | |
-| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟡 2/3 | |
+| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟢 2/2 | |
 | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟢 7/7 | |
 | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟢 7/7 | |
-| [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 5/8 | |
+| [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟢 8/8 | |

@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Component extraction | 🔴 `missing` | — | — | — | — |
-| Context extraction | 🔴 `missing` | — | — | — | — |
+| Component extraction | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | QObject subclass (Q_OBJECT macro) emits SCOPE.UIComponent; regex/partial |
+| Context extraction | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | QApplication/QGuiApplication/QQmlApplicationEngine construction detected as context; regex/partial |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🔴 `missing` | — | — | — | — |
-| Data fetching | 🔴 `missing` | — | — | — | — |
-| Prop extraction | 🔴 `missing` | — | — | — | — |
-| State management | 🔴 `missing` | — | — | — | — |
+| Branch conditions | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | switch on Qt enums, Q_ASSERT, if(... == Qt::EnumVal) detected; regex/partial |
+| Data fetching | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | QNetworkAccessManager get/post/put calls detected as data fetch; regex/partial |
+| Prop extraction | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | Q_PROPERTY(type name READ getter) emits property pattern entity; regex/partial |
+| State management | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | Qt slots sections (state handlers) detected as SCOPE.Operation/function; regex/partial |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Router pattern | 🔴 `missing` | — | — | — | — |
+| Router pattern | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | QStackedWidget setCurrentIndex/setCurrentWidget and QML StackView push/pop detected; regex/partial |
 
 ### Type System
 
@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | 🔴 `missing` | — | — | — | — |
+| State setter emission | 🟢 `partial` | — | — | `internal/custom/cpp/qt.go` | emit <signal>(...) calls detected; signals sections parsed; regex/partial |
 
 ### Testing
 

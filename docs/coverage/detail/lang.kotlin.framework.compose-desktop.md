@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| IPC extraction | 🔴 `missing` | — | — | — | — |
-| Main renderer split | 🔴 `missing` | — | — | — | — |
+| IPC extraction | — `not_applicable` | — | — | — | Compose Desktop runs on the JVM with a single process; it has no Electron-style main/renderer IPC tier. Desktop interprocess communication (if used) would go through JVM sockets or OS pipes — not a Compose Desktop framework concern. N/A is honest. |
+| Main renderer split | — `not_applicable` | — | — | — | Compose Desktop is a JVM UI framework. There is no main-process/renderer-process split as found in Electron or Tauri. The entire application runs in a single JVM process. N/A is the accurate classification. |
 
 ### Native
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: kotlinNativeImportsExtractor covers Desktop JVM native patterns — System.loadLibrary() for SWT/native desktop libs, Runtime.getRuntime().load() for absolute paths, and external fun declarations for JNI. Partial because AWT/Swing JNI entry points via reflection may not be resolved. |
 
 ### Updates
 

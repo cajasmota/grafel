@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | — | — | — |
+| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/cpp/restinio_middleware.go` | non_matched_request_handler, make_chain<H1,H2,...>, request_handler chaining detected; regex/partial |
 
 ### Type System
 

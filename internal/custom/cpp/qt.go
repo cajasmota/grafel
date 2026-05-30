@@ -1,5 +1,21 @@
 package cpp
 
+// qt.go — Qt C++ framework extractor.
+//
+// Covered DSL surfaces (partial — heuristic regex; no AST):
+//
+//  component_extraction:  class Foo : public Q{MainWindow|Widget|Object} { Q_OBJECT }
+//  context_extraction:    QApplication / QGuiApplication / QQmlApplicationEngine construction
+//  prop_extraction:       Q_PROPERTY(type name READ getter ...)
+//  state_management:      public/protected/private slots: <method>()
+//  state_setter_emission: signals: <method>() + emit <signal>(...)
+//  branch_conditions:     switch on Qt enums, Q_ASSERT, if(... == Qt::...)
+//  data_fetching:         QNetworkAccessManager::get/post/put/deleteResource
+//  router_pattern:        QStackedWidget::setCurrentIndex/setCurrentWidget,
+//                         QML StackView / NavigationStack push/pop
+//
+// Status: partial
+
 import (
 	"context"
 	"fmt"
@@ -45,6 +61,52 @@ var (
 	)
 	reQtProperty = regexp.MustCompile(
 		`Q_PROPERTY\s*\([^)]*\b(\w+)\s+READ\s+(\w+)`,
+	)
+
+	// context_extraction: QApplication / QGuiApplication / QQmlApplicationEngine instantiation
+	// Matches: QApplication app(argc, argv);  or  QQmlApplicationEngine engine;
+	reQtAppContext = regexp.MustCompile(
+		`\b(QApplication|QGuiApplication|QCoreApplication|QQmlApplicationEngine)\s+(\w+)\s*[;(]`,
+	)
+	// also: new QApplication(...)
+	reQtAppContextNew = regexp.MustCompile(
+		`new\s+(QApplication|QGuiApplication|QCoreApplication|QQmlApplicationEngine)\s*\(`,
+	)
+
+	// emit signal(...)
+	reQtEmit = regexp.MustCompile(
+		`\bemit\s+(\w+)\s*\(`,
+	)
+
+	// branch_conditions: switch(...) { case Qt::...: and Q_ASSERT(...)
+	reQtSwitchOnEnum = regexp.MustCompile(
+		`\bswitch\s*\(\s*[^)]*\)\s*\{[^}]{0,300}case\s+Qt::`,
+	)
+	reQtAssert = regexp.MustCompile(
+		`\bQ_ASSERT(?:_X)?\s*\(`,
+	)
+	reQtIfEnum = regexp.MustCompile(
+		`\bif\s*\([^)]*==\s*Qt::(\w+)`,
+	)
+
+	// data_fetching: QNetworkAccessManager operations
+	reQtNetworkFetch = regexp.MustCompile(
+		`\b(?:manager|nam|network|http|client|netMgr|m_nam|m_manager)\s*(?:->|\.)\s*(get|post|put|deleteResource|sendCustomRequest)\s*\(`,
+	)
+	reQtNetworkNew = regexp.MustCompile(
+		`new\s+QNetworkAccessManager\s*\(`,
+	)
+	reQtNetworkGet = regexp.MustCompile(
+		`\bQNetworkAccessManager\b`,
+	)
+
+	// router_pattern: QStackedWidget navigation
+	reQtStackedNav = regexp.MustCompile(
+		`\b(?:stack|stacked|pages|ui)\s*(?:->|\.)\s*(setCurrentIndex|setCurrentWidget|addWidget)\s*\(`,
+	)
+	// QML StackView / NavigationStack
+	reQtQmlStack = regexp.MustCompile(
+		`\b(?:stackView|navStack|pageStack|stack)\s*\.\s*(push|pop|replace)\s*\(`,
 	)
 )
 
@@ -172,12 +234,100 @@ func (e *qtExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 		add(ent)
 	}
 
-	// 6. Q_PROPERTY declarations -> SCOPE.Pattern (metadata)
+	// 6. Q_PROPERTY declarations -> SCOPE.Pattern (prop_extraction)
 	for _, m := range reQtProperty.FindAllStringSubmatchIndex(src, -1) {
 		propName := src[m[4]:m[5]]
 		ent := makeEntity("property:"+propName, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_PROPERTY",
 			"property_name", propName)
+		add(ent)
+	}
+
+	// 7. context_extraction: QApplication / QQmlApplicationEngine construction
+	for _, m := range reQtAppContext.FindAllStringSubmatchIndex(src, -1) {
+		ctxClass := src[m[2]:m[3]]
+		varName := src[m[4]:m[5]]
+		name := "context:" + ctxClass + ":" + varName
+		ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_CONTEXT",
+			"context_class", ctxClass, "var_name", varName)
+		add(ent)
+	}
+	for _, m := range reQtAppContextNew.FindAllStringSubmatchIndex(src, -1) {
+		ctxClass := src[m[2]:m[3]]
+		name := "context:new:" + ctxClass
+		ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_CONTEXT",
+			"context_class", ctxClass)
+		add(ent)
+	}
+
+	// 8. state_setter_emission: emit <signal>(...)
+	for _, m := range reQtEmit.FindAllStringSubmatchIndex(src, -1) {
+		sigName := src[m[2]:m[3]]
+		name := "emit:" + sigName
+		ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_EMIT",
+			"signal_name", sigName)
+		add(ent)
+	}
+
+	// 9. branch_conditions: switch on Qt enums, Q_ASSERT, if(... == Qt::EnumVal)
+	if reQtSwitchOnEnum.MatchString(src) {
+		ent := makeEntity("branch:qt_switch_enum", "SCOPE.Pattern", "", file.Path, file.Language, 1)
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_SWITCH_ENUM",
+			"branch_kind", "switch_on_qt_enum")
+		add(ent)
+	}
+	for _, m := range reQtAssert.FindAllStringSubmatchIndex(src, -1) {
+		name := "branch:Q_ASSERT@L" + fmt.Sprintf("%d", lineOf(src, m[0]))
+		ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_ASSERT",
+			"branch_kind", "Q_ASSERT")
+		add(ent)
+	}
+	for _, m := range reQtIfEnum.FindAllStringSubmatchIndex(src, -1) {
+		enumVal := src[m[2]:m[3]]
+		name := "branch:if_qt_enum:" + enumVal
+		ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_IF_ENUM",
+			"branch_kind", "if_qt_enum", "enum_value", enumVal)
+		add(ent)
+	}
+
+	// 10. data_fetching: QNetworkAccessManager usage
+	if reQtNetworkGet.MatchString(src) {
+		for _, m := range reQtNetworkFetch.FindAllStringSubmatchIndex(src, -1) {
+			method := src[m[2]:m[3]]
+			name := "fetch:qnam:" + method
+			ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_NETWORK_FETCH",
+				"fetch_method", method)
+			add(ent)
+		}
+		if reQtNetworkNew.MatchString(src) {
+			ent := makeEntity("fetch:qnam:new_QNetworkAccessManager", "SCOPE.Pattern", "", file.Path, file.Language, 1)
+			setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_NETWORK_NEW",
+				"fetch_method", "QNetworkAccessManager")
+			add(ent)
+		}
+	}
+
+	// 11. router_pattern: QStackedWidget navigation + QML StackView
+	for _, m := range reQtStackedNav.FindAllStringSubmatchIndex(src, -1) {
+		method := src[m[2]:m[3]]
+		name := "router:stacked:" + method
+		ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_STACKED_NAV",
+			"nav_method", method)
+		add(ent)
+	}
+	for _, m := range reQtQmlStack.FindAllStringSubmatchIndex(src, -1) {
+		method := src[m[2]:m[3]]
+		name := "router:qml_stack:" + method
+		ent := makeEntity(name, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "qt", "provenance", "INFERRED_FROM_QT_QML_STACK",
+			"nav_method", method)
 		add(ent)
 	}
 

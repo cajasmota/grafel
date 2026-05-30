@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/kotlin/orms/mongodb_kotlin.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | — `not_applicable` | — | — | — | MongoDB is a schemaless document database. There is no DDL schema to extract — documents have arbitrary fields and there is no enforced schema at the database level. Spring Data MongoDB @Document annotations define class-level hints, not a database schema. N/A is honest. |
 
 ### Relationships
 
