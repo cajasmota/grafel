@@ -26,14 +26,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Cuba](../detail/lang.ruby.framework.cuba.md) | 🟡 1/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
-| [Grape](../detail/lang.ruby.framework.grape.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
-| [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
-| [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
-| [Roda](../detail/lang.ruby.framework.roda.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
-| [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
-| [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
-| [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟢 2/2 | — | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
+| [Cuba](../detail/lang.ruby.framework.cuba.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Grape](../detail/lang.ruby.framework.grape.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Roda](../detail/lang.ruby.framework.roda.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟢 2/2 | — | 🟢 1/1 | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
 
 
 ## Tools
@@ -55,11 +55,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🟢 1/1 | |
-| [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | 🟡 7/8 | |
-| [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟡 6/8 | |
-| [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟡 3/6 | |
-| [ROM (Ruby Object Mapper)](../detail/lang.ruby.orm.rom-rb.md) | 🟡 6/8 | |
-| [Sequel](../detail/lang.ruby.orm.sequel.md) | 🟡 6/8 | |
+| [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | 🟢 8/8 | |
+| [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟢 8/8 | |
+| [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟢 6/6 | |
+| [ROM (Ruby Object Mapper)](../detail/lang.ruby.orm.rom-rb.md) | 🟢 8/8 | |
+| [Sequel](../detail/lang.ruby.orm.sequel.md) | 🟢 8/8 | |
 | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | 🟢 1/1 | |
 | [elasticsearch-ruby](../detail/lang.ruby.driver.elastic.md) | 🟢 2/2 | |
 | [mysql2 (Ruby driver)](../detail/lang.ruby.driver.mysql.md) | 🟢 1/1 | |
