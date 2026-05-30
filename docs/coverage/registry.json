@@ -30643,17 +30643,23 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; Kotlin trailing-lambda route DSL proven by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
           },
           "handler_attribution": {
             "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; handler attribution proven by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
@@ -31458,51 +31464,69 @@
         "Transactions": {
           "transaction_boundary_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Transactional (JTA/Spring) on Kotlin proven by TestKotlinTransactional_Quarkus_Issue3274 (JTA path covers micronaut too)",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; propagation capture via transactional.go txFrameworks[\"micronaut\"]",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; rollbackFor rules parsed by transactional.go txFrameworks[\"micronaut\"]",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/micronaut_aop.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; Micronaut @Around/@InterceptorBean on Kotlin proven by TestKotlinMicronautAOP_Interceptor_Issue3274",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/micronaut_aop.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; Micronaut interceptor/aspect extraction proven by TestKotlinMicronautAOP_Interceptor_Issue3274",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/micronaut_aop.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; proven by TestKotlinMicronautAOP_Interceptor_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; SLF4J/@Slf4j on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274 (obsFrameworks[\"micronaut\"]=true)",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; Micrometer @Timed on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274 (obsFrameworks[\"micronaut\"]=true)",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
@@ -31723,51 +31747,69 @@
         "Transactions": {
           "transaction_boundary_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; Jakarta @Transactional on Kotlin quarkus class proven by TestKotlinTransactional_Quarkus_Issue3274",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; txFrameworks[\"quarkus\"]=true in transactional.go",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; txFrameworks[\"quarkus\"]=true in transactional.go",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
             "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin (cdiFrameworks[\"quarkus\"]=true); @Interceptor/@AroundInvoke on Kotlin proven by TestKotlinCDIInterceptors_Issue3274",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; CDI interceptor aspect extraction proven by TestKotlinCDIInterceptors_Issue3274",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
             "status": "partial",
+            "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; proven by TestKotlinCDIInterceptors_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; obsFrameworks[\"quarkus\"]=true; SLF4J/@Slf4j proven by TestKotlinObservability_Slf4j_Issue3274",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Timed Micrometer proven by TestKotlinObservability_Micrometer_Issue3274",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @WithSpan OTel proven by TestKotlinObservability_OTel_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
@@ -31968,68 +32010,92 @@
         "DI": {
           "di_binding_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin (ctx.Language==\"kotlin\" || ctx.Language==\"java\"); proven by TestKotlinSpringBoot_Component_Issue3274 and TestKotlinSpringBoot_Autowired_Issue3274",
             "verified_at": "2026-05-30"
           },
           "di_injection_point": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Autowired constructor injection on Kotlin classes proven by TestKotlinSpringBoot_Autowired_Issue3274",
             "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Scope/@RequestScope/@SessionScope on Kotlin classes proven by TestKotlinSpringBoot_Scope_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Transactional on Kotlin fun proven by TestKotlinTransactional_Method_Issue3274",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; propagation attribute captured in TestKotlinTransactional_Method_Issue3274",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; rollbackFor=[Exception::class] captured in TestKotlinTransactional_Method_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Aspect on Kotlin class proven by TestKotlinSpringAOP_Aspect_Issue3274",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; aspect extraction proven by TestKotlinSpringAOP_Aspect_Issue3274",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; proven by TestKotlinSpringAOP_Aspect_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Slf4j and SLF4J logger on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @Timed Micrometer on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
@@ -32234,17 +32300,23 @@
           },
           "foreign_key_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @JoinColumn/@ForeignKey on Kotlin entities proven by TestKotlinHibernate_Issue3274",
             "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
             "status": "partial",
+            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; FetchType.LAZY/EAGER on Kotlin val/var properties proven by TestKotlinHibernate_Issue3274",
             "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @OneToMany/@ManyToOne/@ManyToMany on Kotlin proved by TestKotlinHibernate_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
@@ -32464,17 +32536,23 @@
           },
           "foreign_key_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; same jpa_fk_lazy.go covers Spring Data JPA entities with @JoinColumn/@ForeignKey",
             "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
             "status": "partial",
+            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; FetchType.LAZY/EAGER on Kotlin Spring Data JPA entities",
             "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
             "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
             "issue": "3274",
+            "notes": "java extractor language-gated to kotlin; @OneToMany/@ManyToOne on Kotlin Spring Data entities covered by hibernate.go hibAssociationRE",
             "verified_at": "2026-05-30"
           }
         },

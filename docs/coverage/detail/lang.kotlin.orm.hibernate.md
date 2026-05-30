@@ -23,9 +23,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go` | Recording win: hibernate.go hibAssociationRE matches @OneToMany/@ManyToOne/@OneToOne/@ManyToMany before Kotlin 'var/val' properties. jpa_fk_lazy.go ExtractJPAFKAndLazy also runs on Kotlin (language gate: java or kotlin). Partial because collection types differ from Java generics. |
-| Foreign key extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Lazy loading recognition | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Relationship extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Foreign key extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; @JoinColumn/@ForeignKey on Kotlin entities proven by TestKotlinHibernate_Issue3274 |
+| Lazy loading recognition | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; FetchType.LAZY/EAGER on Kotlin val/var properties proven by TestKotlinHibernate_Issue3274 |
+| Relationship extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; @OneToMany/@ManyToOne/@ManyToMany on Kotlin proved by TestKotlinHibernate_Issue3274 |
 
 ### Queries
 
