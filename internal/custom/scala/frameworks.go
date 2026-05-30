@@ -16,21 +16,28 @@
 //	framework.play                Routing/route_extraction        partial
 //	framework.play                Routing/router_pattern          partial
 //
-//	framework.akka-http           Auth/auth_coverage              partial
+//	framework.akka-http           Auth/auth_coverage              full     (deep)
+//	framework.http4s              Auth/auth_coverage              full     (deep)
+//	framework.play                Auth/auth_coverage              full     (deep)
 //	framework.cask                Auth/auth_coverage              partial
 //	framework.finatra             Auth/auth_coverage              partial
-//	framework.http4s              Auth/auth_coverage              partial
 //	framework.lagom               Auth/auth_coverage              partial
 //	framework.scalatra            Auth/auth_coverage              partial
 //	framework.zio-http            Auth/auth_coverage              partial
 //
-//	framework.akka-http           Middleware/middleware_coverage   partial
+//	framework.akka-http           Middleware/middleware_coverage   full    (deep)
+//	framework.http4s              Middleware/middleware_coverage   full    (deep)
+//	framework.play                Middleware/middleware_coverage   full    (deep)
 //	framework.cask                Middleware/middleware_coverage   partial
 //	framework.finatra             Middleware/middleware_coverage   partial
-//	framework.http4s              Middleware/middleware_coverage   partial
 //	framework.lagom               Middleware/middleware_coverage   partial
 //	framework.scalatra            Middleware/middleware_coverage   partial
 //	framework.zio-http            Middleware/middleware_coverage   partial
+//
+// Deep auth/middleware (http4s/akka-http/play) stamp the specific auth method
+// (basic/oauth2/bearer/jwt) plus named realm/authenticator/action and the named
+// middleware/filters/directives with composition order. Other frameworks remain
+// regex-detection partial. Cross-file route→middleware binding is unresolved.
 //
 //	framework.akka-http           Validation/dto_extraction       partial
 //	framework.akka-http           Validation/request_validation   partial
@@ -54,7 +61,8 @@
 //	all 9 framework records       Testing/tests_linkage           partial
 //
 // Honest limit: all regex-based, file-local. Cross-file route wiring is not
-// resolved. Cells are partial.
+// resolved. Most cells are partial; the deep auth/middleware cells above
+// (http4s/akka-http/play) are full.
 package scala
 
 import (
@@ -185,6 +193,60 @@ var (
 )
 
 // ---------------------------------------------------------------------------
+// Deep AUTH extraction — flagship frameworks (http4s / akka-http / play).
+//
+// These capture the *specific auth method* (basic / oauth2 / bearer-jwt) plus
+// the named realm / authenticator / action so a downstream consumer can answer
+// "which auth scheme guards this route and what is it named", not merely "auth
+// exists somewhere in this file".
+// ---------------------------------------------------------------------------
+
+var (
+	// akka-http security directives. Capture realm + authenticator name where present.
+	//   authenticateBasic(realm = "secure", myAuthenticator)
+	//   authenticateBasicAsync(realm = "secure", asyncAuth)
+	//   authenticateOAuth2(realm = "api", tokenAuth)
+	//   authenticateOAuth2Async("api", tokenAuth)
+	reAkkaAuthDirective = regexp.MustCompile(
+		`\b(authenticateBasic|authenticateBasicAsync|authenticateBasicPF|authenticateBasicPFAsync|authenticateOAuth2|authenticateOAuth2Async|authenticateOrRejectWithChallenge)\s*\(`)
+
+	// akka-http realm argument: realm = "secure"  OR  positional first string arg
+	reAkkaAuthRealm = regexp.MustCompile(
+		`\brealm\s*=\s*"([^"]*)"`)
+
+	// akka-http authorization directive: authorize(...) / authorizeAsync(...)
+	reAkkaAuthorize = regexp.MustCompile(
+		`\b(authorize|authorizeAsync)\s*\(`)
+
+	// http4s AuthMiddleware: AuthMiddleware(authUser)  /  AuthMiddleware(authUser, onFailure)
+	reHttp4sAuthMiddleware = regexp.MustCompile(
+		`\bAuthMiddleware(?:\.noSpider|\.withFallThrough)?\s*\(\s*([A-Za-z_][\w]*)`)
+
+	// http4s authed routes: AuthedRoutes.of[User, IO] { ... }
+	reHttp4sAuthedRoutes = regexp.MustCompile(
+		`\bAuthedRoutes\.of\s*(?:\[[^\]]*\])?\s*\{`)
+
+	// http4s credential constructs → infer scheme
+	reHttp4sBasicCreds = regexp.MustCompile(`\bBasicCredentials\b`)
+	reHttp4sBearer     = regexp.MustCompile(`\b(?:Authorization\s*\(\s*Credentials\.Token\s*\(\s*AuthScheme\.Bearer|AuthScheme\.Bearer|Credentials\.Token)\b`)
+
+	// play auth actions: object/class Foo extends ActionBuilder / ActionFilter / ActionRefiner
+	//   class AuthenticatedAction extends ActionBuilder[UserRequest, AnyContent]
+	//   object AuthFilter extends ActionFilter[Request]
+	// The pre-extends gap allows newlines (constructor params often wrap) but is
+	// length-bounded and forbids a second declaration keyword so it cannot leap
+	// across an adjacent class/object into the wrong base type.
+	rePlayAuthAction = regexp.MustCompile(
+		`\b(?:class|object|trait)\s+(\w+)(?:[^{]{0,200}?)\bextends\b[^{\n]{0,120}?\b(ActionBuilder|ActionFilter|ActionRefiner|ActionTransformer)\b`)
+
+	// Cross-framework auth scheme hints (used to refine method classification).
+	reSchemeJwt    = regexp.MustCompile(`\b(?:JWT|JwtToken|Jwt\.decode|pdi\.jwt|decodeJwt|JwtClaim|JwtCirce|JwtSprayJson)\b`)
+	reSchemeBearer = regexp.MustCompile(`\b(?:[Bb]earer(?:Auth|Token)?|AuthScheme\.Bearer)\b`)
+	reSchemeBasic  = regexp.MustCompile(`\b(?:[Bb]asic(?:Auth|Credentials)?|authenticateBasic)\b`)
+	reSchemeOAuth2 = regexp.MustCompile(`\b(?:OAuth2|authenticateOAuth2)\b`)
+)
+
+// ---------------------------------------------------------------------------
 // Middleware regexes
 // ---------------------------------------------------------------------------
 
@@ -216,6 +278,55 @@ var (
 	// Lagom: ServiceLocator / CircuitBreaker / ServiceCall.invoke
 	reLagomMiddleware = regexp.MustCompile(
 		`\b(?:CircuitBreaker|ServiceLocator|HeaderFilter|ServiceCall\.invoke)\b`)
+)
+
+// ---------------------------------------------------------------------------
+// Deep MIDDLEWARE extraction — flagship frameworks (http4s / akka-http / play).
+//
+// These capture *named* middleware/filters/directives and their composition
+// *order*, not just "middleware exists". For http4s the order is the wrapping
+// order of mw1(mw2(routes)); for play it is the declared order in the Filters
+// chain; for akka-http it is the lexical order of handle*/directive calls.
+// ---------------------------------------------------------------------------
+
+var (
+	// http4s named built-in middlewares applied to routes/httpApp.
+	//   CORS.policy(...)  CORS(routes)  GZip(routes)  Logger.httpApp(...)  AutoSlash(...)  Timeout(...)
+	reHttp4sNamedMw = regexp.MustCompile(
+		`\b(CORS|GZip|Logger|AutoSlash|Timeout|RequestLogger|ResponseLogger|HSTS|CSRF|ErrorAction|ErrorHandling|EntityLimiter|ConcurrentRequests|FollowRedirect)\b\s*(?:\.(?:httpApp|httpRoutes|policy|apply|default|impl)\b)?\s*\(`)
+
+	// http4s middleware composition: mw1(mw2(routes)) — capture the outer call chain
+	// of identifier( identifier( ... so we can record nesting order. We detect a
+	// chain of >=2 nested single-arg applications wrapping a routes/app identifier.
+	reHttp4sCompose = regexp.MustCompile(
+		`\b([A-Z]\w+)\s*\(\s*([A-Z]\w+)\s*\(\s*([A-Za-z_]\w*)\s*\)\s*\)`)
+
+	// akka-http handler directives (rejection/exception handling middleware).
+	//   handleRejections(rejectionHandler)  handleExceptions(exceptionHandler)
+	reAkkaHandleDir = regexp.MustCompile(
+		`\b(handleRejections|handleExceptions)\s*\(\s*([A-Za-z_]\w*)?`)
+
+	// akka-http transform directives commonly used as middleware.
+	reAkkaTransformDir = regexp.MustCompile(
+		`\b(mapRequest|mapResponse|mapInnerRoute|withRequestTimeout|encodeResponse|decodeRequest|logRequestResult|logRequest|logResult|extractRequestContext)\b`)
+
+	// akka-http CORS (akka-http-cors / pekko-http-cors): cors() / cors(settings)
+	reAkkaCors = regexp.MustCompile(`\bcors\s*\(`)
+
+	// play global filter chain. Two shapes:
+	//   class Filters @Inject() (...) extends DefaultHttpFilters(a, b, c)
+	//   override def filters: Seq[EssentialFilter] = Seq(a, b, c)
+	rePlayDefaultFilters = regexp.MustCompile(
+		`\bextends\s+(?:DefaultHttpFilters|HttpFilters)\b\s*(?:\(([^)]*)\))?`)
+	rePlayFiltersSeq = regexp.MustCompile(
+		`\bdef\s+filters\s*(?::\s*Seq\[\s*EssentialFilter\s*\])?\s*=\s*Seq\s*\(([^)]*)\)`)
+
+	// play custom filter definition: class X extends Filter / EssentialFilter
+	rePlayFilterDef = regexp.MustCompile(
+		`\b(?:class|object)\s+(\w+)[^\n{]*?\bextends\b[^\n{]*?\b(EssentialFilter|Filter)\b`)
+
+	// generic comma-separated identifier splitter for filter chains.
+	reIdentList = regexp.MustCompile(`[A-Za-z_]\w*`)
 )
 
 // ---------------------------------------------------------------------------
@@ -531,30 +642,45 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 	// ---------------------------------------------------------------------------
 	// Auth extraction
 	// ---------------------------------------------------------------------------
-	authRe := authReForFramework(framework)
-	if authRe != nil {
-		for _, m := range authRe.FindAllStringSubmatchIndex(src, -1) {
-			ent := makeEntity("auth:"+src[m[0]:m[1]], "SCOPE.Security", "auth_check", file.Path, file.Language, lineOf(src, m[0]))
-			setProps(&ent, "framework", framework, "provenance", "AUTH_PATTERN")
+	// Deep, value-asserting auth extraction for the flagship frameworks. These
+	// stamp the specific auth method (basic / oauth2 / bearer-jwt / authorize)
+	// plus the named realm / authenticator / action.
+	deepAuthHandled := extractDeepAuth(framework, src, file, add)
+
+	// Generic per-framework auth fallback (non-flagship frameworks, and any
+	// flagship file with no deep match — e.g. a manual header check).
+	if !deepAuthHandled {
+		authRe := authReForFramework(framework)
+		if authRe != nil {
+			for _, m := range authRe.FindAllStringSubmatchIndex(src, -1) {
+				ent := makeEntity("auth:"+src[m[0]:m[1]], "SCOPE.Security", "auth_check", file.Path, file.Language, lineOf(src, m[0]))
+				setProps(&ent, "framework", framework, "provenance", "AUTH_PATTERN")
+				add(ent)
+			}
+		}
+		// generic auth fallback
+		if reGenericAuth.MatchString(src) {
+			ent := makeEntity("auth:generic", "SCOPE.Security", "auth_check", file.Path, file.Language, 1)
+			setProps(&ent, "framework", framework, "provenance", "GENERIC_AUTH_PATTERN")
 			add(ent)
 		}
-	}
-	// generic auth fallback
-	if reGenericAuth.MatchString(src) {
-		ent := makeEntity("auth:generic", "SCOPE.Security", "auth_check", file.Path, file.Language, 1)
-		setProps(&ent, "framework", framework, "provenance", "GENERIC_AUTH_PATTERN")
-		add(ent)
 	}
 
 	// ---------------------------------------------------------------------------
 	// Middleware extraction
 	// ---------------------------------------------------------------------------
-	mwRe := middlewareReForFramework(framework)
-	if mwRe != nil {
-		for _, m := range mwRe.FindAllStringSubmatchIndex(src, -1) {
-			ent := makeEntity("middleware:"+src[m[0]:min(m[0]+40, len(src))], "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
-			setProps(&ent, "framework", framework, "provenance", "MIDDLEWARE_PATTERN")
-			add(ent)
+	// Deep, value-asserting middleware extraction for the flagship frameworks.
+	// These stamp named middleware/filters/directives and their composition order.
+	deepMwHandled := extractDeepMiddleware(framework, src, file, add)
+
+	if !deepMwHandled {
+		mwRe := middlewareReForFramework(framework)
+		if mwRe != nil {
+			for _, m := range mwRe.FindAllStringSubmatchIndex(src, -1) {
+				ent := makeEntity("middleware:"+src[m[0]:min(m[0]+40, len(src))], "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+				setProps(&ent, "framework", framework, "provenance", "MIDDLEWARE_PATTERN")
+				add(ent)
+			}
 		}
 	}
 
@@ -621,6 +747,251 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Deep AUTH extraction (flagship frameworks)
+// ---------------------------------------------------------------------------
+
+// scalaAuthFirstStringArg returns the first quoted-string argument inside the
+// parenthesised arg list that begins at openParen (index of '('). It uses a
+// quoted-string match so a ')' inside the realm string does not truncate it.
+func scalaAuthFirstStringArg(src string, openParen int) string {
+	// Bound the search to the current call's argument region (next 200 chars).
+	end := min(openParen+200, len(src))
+	region := src[openParen:end]
+	if m := reAkkaAuthRealm.FindStringSubmatch(region); m != nil {
+		return m[1]
+	}
+	// positional first string literal
+	if m := regexp.MustCompile(`"([^"]*)"`).FindStringSubmatch(region); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// classifyScalaAuthMethod infers the auth scheme from a snippet/window.
+func classifyScalaAuthMethod(window string) string {
+	switch {
+	case reSchemeJwt.MatchString(window):
+		return "jwt"
+	case reSchemeOAuth2.MatchString(window):
+		return "oauth2"
+	case reSchemeBearer.MatchString(window):
+		return "bearer"
+	case reSchemeBasic.MatchString(window):
+		return "basic"
+	}
+	return "custom"
+}
+
+// extractDeepAuth handles http4s / akka-http / play with method+name stamping.
+// Returns true if it produced (or definitively handled) auth for a flagship
+// framework, so the generic fallback can be skipped.
+func extractDeepAuth(framework, src string, file extractor.FileInput, add func(types.EntityRecord)) bool {
+	switch framework {
+	case "akka-http", "pekko-http":
+		handled := false
+		// Security directives: authenticateBasic / authenticateOAuth2 / ...
+		for _, m := range reAkkaAuthDirective.FindAllStringSubmatchIndex(src, -1) {
+			directive := src[m[2]:m[3]]
+			realm := scalaAuthFirstStringArg(src, m[1]-1)
+			method := "custom"
+			switch {
+			case strings.Contains(directive, "OAuth2"):
+				method = "oauth2"
+			case strings.Contains(directive, "Basic"):
+				method = "basic"
+			}
+			// Refine basic→jwt when the surrounding window decodes a JWT.
+			winEnd := min(m[1]+240, len(src))
+			if method == "basic" && reSchemeJwt.MatchString(src[m[0]:winEnd]) {
+				method = "jwt"
+			}
+			name := "auth:akka:" + directive
+			if realm != "" {
+				name += ":" + realm
+			}
+			ent := makeEntity(name, "SCOPE.Security", "auth_check", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", framework, "auth_method", method, "directive", directive,
+				"realm", realm, "provenance", "AKKA_HTTP_AUTH_DIRECTIVE")
+			add(ent)
+			handled = true
+		}
+		// Authorization directives (authorize / authorizeAsync).
+		for _, m := range reAkkaAuthorize.FindAllStringSubmatchIndex(src, -1) {
+			directive := src[m[2]:m[3]]
+			ent := makeEntity("authz:akka:"+directive, "SCOPE.Security", "auth_check", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", framework, "auth_method", "authorize", "directive", directive,
+				"provenance", "AKKA_HTTP_AUTHORIZE_DIRECTIVE")
+			add(ent)
+			handled = true
+		}
+		return handled
+
+	case "http4s":
+		handled := false
+		// AuthMiddleware(authUser) — capture the authenticator function name.
+		for _, m := range reHttp4sAuthMiddleware.FindAllStringSubmatchIndex(src, -1) {
+			authFn := ""
+			if m[2] >= 0 {
+				authFn = src[m[2]:m[3]]
+			}
+			winEnd := min(m[1]+240, len(src))
+			method := classifyScalaAuthMethod(src[max0(m[0]-120):winEnd])
+			name := "auth:http4s:AuthMiddleware"
+			if authFn != "" {
+				name += ":" + authFn
+			}
+			ent := makeEntity(name, "SCOPE.Security", "auth_check", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "http4s", "auth_method", method, "authenticator", authFn,
+				"construct", "AuthMiddleware", "provenance", "HTTP4S_AUTH_MIDDLEWARE")
+			add(ent)
+			handled = true
+		}
+		// AuthedRoutes.of[User, IO] { ... }
+		for _, m := range reHttp4sAuthedRoutes.FindAllStringSubmatchIndex(src, -1) {
+			ent := makeEntity("auth:http4s:AuthedRoutes", "SCOPE.Security", "auth_check", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "http4s", "auth_method", "authed-routes", "construct", "AuthedRoutes",
+				"provenance", "HTTP4S_AUTHED_ROUTES")
+			add(ent)
+			handled = true
+		}
+		return handled
+
+	case "play":
+		handled := false
+		for _, m := range rePlayAuthAction.FindAllStringSubmatchIndex(src, -1) {
+			name := src[m[2]:m[3]]
+			base := src[m[4]:m[5]]
+			winEnd := min(m[1]+400, len(src))
+			method := classifyScalaAuthMethod(src[m[0]:winEnd])
+			ent := makeEntity("auth:play:"+base+":"+name, "SCOPE.Security", "auth_check", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "play", "auth_method", method, "action_kind", base, "action_name", name,
+				"provenance", "PLAY_AUTH_ACTION")
+			add(ent)
+			handled = true
+		}
+		return handled
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// Deep MIDDLEWARE extraction (flagship frameworks)
+// ---------------------------------------------------------------------------
+
+// extractDeepMiddleware handles http4s / akka-http / play with named middleware
+// and composition order. Returns true if it definitively handled the framework.
+func extractDeepMiddleware(framework, src string, file extractor.FileInput, add func(types.EntityRecord)) bool {
+	switch framework {
+	case "http4s":
+		handled := false
+		// Named built-in middlewares (CORS, GZip, Logger, ...).
+		for _, m := range reHttp4sNamedMw.FindAllStringSubmatchIndex(src, -1) {
+			mw := src[m[2]:m[3]]
+			ent := makeEntity("middleware:http4s:"+mw, "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "http4s", "middleware_name", mw, "provenance", "HTTP4S_NAMED_MIDDLEWARE")
+			add(ent)
+			handled = true
+		}
+		// Composition order: mw1(mw2(routes)) — record outer→inner chain.
+		for _, m := range reHttp4sCompose.FindAllStringSubmatchIndex(src, -1) {
+			outer := src[m[2]:m[3]]
+			inner := src[m[4]:m[5]]
+			target := src[m[6]:m[7]]
+			order := outer + ">" + inner + "(" + target + ")"
+			ent := makeEntity("middleware:http4s:compose:"+order, "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "http4s", "composition_order", order,
+				"outer", outer, "inner", inner, "provenance", "HTTP4S_MIDDLEWARE_COMPOSITION")
+			add(ent)
+			handled = true
+		}
+		return handled
+
+	case "akka-http", "pekko-http":
+		handled := false
+		// Rejection / exception handlers.
+		for _, m := range reAkkaHandleDir.FindAllStringSubmatchIndex(src, -1) {
+			directive := src[m[2]:m[3]]
+			handlerName := ""
+			if m[4] >= 0 {
+				handlerName = src[m[4]:m[5]]
+			}
+			name := "middleware:akka:" + directive
+			if handlerName != "" {
+				name += ":" + handlerName
+			}
+			ent := makeEntity(name, "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", framework, "middleware_name", directive, "handler", handlerName,
+				"provenance", "AKKA_HTTP_HANDLE_DIRECTIVE")
+			add(ent)
+			handled = true
+		}
+		// Transform directives (mapRequest/mapResponse/encodeResponse/...).
+		for _, m := range reAkkaTransformDir.FindAllStringSubmatchIndex(src, -1) {
+			directive := src[m[2]:m[3]]
+			ent := makeEntity("middleware:akka:"+directive, "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", framework, "middleware_name", directive, "provenance", "AKKA_HTTP_TRANSFORM_DIRECTIVE")
+			add(ent)
+			handled = true
+		}
+		// CORS directive.
+		for _, m := range reAkkaCors.FindAllStringSubmatchIndex(src, -1) {
+			ent := makeEntity("middleware:akka:cors", "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", framework, "middleware_name", "cors", "provenance", "AKKA_HTTP_CORS")
+			add(ent)
+			handled = true
+		}
+		return handled
+
+	case "play":
+		handled := false
+		// Global filter chain via DefaultHttpFilters(a, b, c).
+		for _, m := range rePlayDefaultFilters.FindAllStringSubmatchIndex(src, -1) {
+			args := ""
+			if m[2] >= 0 {
+				args = src[m[2]:m[3]]
+			}
+			filters := reIdentList.FindAllString(args, -1)
+			order := strings.Join(filters, ">")
+			ent := makeEntity("middleware:play:filters:"+order, "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "play", "filter_chain", order, "chain_kind", "DefaultHttpFilters",
+				"provenance", "PLAY_DEFAULT_HTTP_FILTERS")
+			add(ent)
+			handled = true
+		}
+		// Global filter chain via def filters = Seq(a, b, c).
+		for _, m := range rePlayFiltersSeq.FindAllStringSubmatchIndex(src, -1) {
+			args := src[m[2]:m[3]]
+			filters := reIdentList.FindAllString(args, -1)
+			order := strings.Join(filters, ">")
+			ent := makeEntity("middleware:play:filterSeq:"+order, "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "play", "filter_chain", order, "chain_kind", "EssentialFilterSeq",
+				"provenance", "PLAY_ESSENTIAL_FILTER_SEQ")
+			add(ent)
+			handled = true
+		}
+		// Individual custom filter definitions.
+		for _, m := range rePlayFilterDef.FindAllStringSubmatchIndex(src, -1) {
+			name := src[m[2]:m[3]]
+			base := src[m[4]:m[5]]
+			ent := makeEntity("middleware:play:filterDef:"+name, "SCOPE.Middleware", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "play", "middleware_name", name, "filter_base", base,
+				"provenance", "PLAY_FILTER_DEFINITION")
+			add(ent)
+			handled = true
+		}
+		return handled
+	}
+	return false
+}
+
+func max0(a int) int {
+	if a < 0 {
+		return 0
+	}
+	return a
+}
 
 // detectScalaFramework returns the dominant framework based on imports/code patterns.
 func detectScalaFramework(src string) string {

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 34
+- **Capability cells:** 36
 
 ## Capabilities
 
@@ -89,6 +89,13 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | — |
 | Template pattern catalog | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_scala.go` | Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files. |
 | Vulnerability finding | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | — |
+
+### Uncategorized
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | ✅ `full` | — | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks deep extractor: Play ActionBuilder/ActionFilter/ActionRefiner/ActionTransformer auth actions stamp action_kind + action_name + auth_method (jwt/bearer/basic from window). Value-asserting tests. File-local. |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks deep extractor: Play global filter chain via DefaultHttpFilters(...) and def filters=Seq(...) stamp ordered filter_chain; custom EssentialFilter/Filter defs stamped. Value-asserting tests. File-local. |
 
 ## Provenance
 

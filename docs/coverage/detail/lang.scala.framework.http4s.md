@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local. |
+| Auth coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks deep extractor: http4s AuthMiddleware(authUser) stamps authenticator name + auth_method (basic/bearer/jwt) from window; AuthedRoutes.of detected. Value-asserting tests. File-local (route-binding cross-file unresolved). |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local. |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks deep extractor: http4s named middleware CORS/GZip/Logger/Timeout/AutoSlash/CSRF/HSTS + composition order mw1(mw2(routes)) recorded as outer>inner(target). Value-asserting tests. File-local. |
 
 ### Testing
 
