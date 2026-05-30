@@ -561,6 +561,19 @@ const (
 	//   "via"     : "request_validation" or "dto_extraction" (capability tag)
 	// Append-only — never modifies existing entities or edges.
 	RelationshipKindValidates RelationshipKind = "VALIDATES"
+
+	// #3520: Kustomize overlay-patch edge. Emitted by the YAML extractor's
+	// Kustomize flavor for every entry in `patches:` / `patchesStrategicMerge:`
+	// / `patchesJson6902:`. The edge goes from the kustomization entity →
+	// a synthetic patch-target stub ("kustomize_target:<Kind>/<name>" when the
+	// patch declares a target, or "kustomize_patch_file:<path>" for a bare
+	// strategic-merge file reference). Properties:
+	//   "patch_style" : "strategic_merge" | "json6902" | "inline"
+	//   "target_kind" : the K8s Kind named by the patch target (when present)
+	//   "target_name" : the metadata.name named by the patch target (when present)
+	// Lets the overlay graph show which base resources an overlay mutates.
+	// Append-only — never modifies existing entities or edges.
+	RelationshipKindPatches RelationshipKind = "PATCHES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -662,6 +675,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindResolvesTo,
 		// #2904 request-validation / DTO-extraction linkage:
 		RelationshipKindValidates,
+		// #3520 Kustomize overlay-patch edge:
+		RelationshipKindPatches,
 	}
 }
 
