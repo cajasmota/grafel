@@ -122,6 +122,82 @@ func synthesisSupportsLanguage(lang string) bool {
 	}
 }
 
+// isTestSourceFile reports whether filePath is a test/spec/fixture file that
+// should be excluded from production endpoint synthesis.
+//
+// Test files often contain framework setup code (NestJS @Controller inside an
+// e2e spec, Express app.get() inside a Supertest fixture, Django views in a
+// conftest, etc.) that looks identical to a production route declaration. We
+// must NOT emit http_endpoint_definition entities for routes that only exist
+// to support the test harness — they would appear in the production endpoint
+// catalogue and generate spurious cross-repo links.
+//
+// The patterns below mirror the per-language conventions tracked by
+// internal/graph/coverage.go's isTestFile and the testmap extractor's
+// frameworkEntry filename/path hints. They are intentionally conservative:
+// a file that does NOT match these patterns is treated as production code even
+// if it imports a test library (import-based detection is deferred to the
+// testmap extractor which emits SCOPE.Pattern/test_coverage, not endpoints).
+func isTestSourceFile(filePath string) bool {
+	// Normalise to forward slashes for cross-platform consistency.
+	slashed := "/" + filepath.ToSlash(strings.ToLower(filePath))
+
+	// Directory-segment fast-path: canonical test directories.
+	for _, seg := range []string{"/__tests__/", "/test/", "/tests/", "/spec/", "/e2e/", "/fixtures/"} {
+		if strings.Contains(slashed, seg) {
+			return true
+		}
+	}
+
+	base := filepath.Base(filePath)
+	lower := strings.ToLower(base)
+	ext := filepath.Ext(lower)
+	stem := strings.TrimSuffix(lower, ext)
+
+	switch ext {
+	case ".go":
+		// Go: foo_test.go
+		return strings.HasSuffix(stem, "_test")
+	case ".py":
+		// Python: test_foo.py  or  foo_test.py
+		return strings.HasPrefix(stem, "test_") || strings.HasSuffix(stem, "_test")
+	case ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs":
+		// JS/TS: foo.test.ts, foo.spec.ts, foo.e2e-spec.ts, foo.e2e.spec.ts, …
+		//
+		// Patterns covered:
+		//   foo.spec.ts      → stem="foo.spec"      HasSuffix ".spec"
+		//   foo.test.ts      → stem="foo.test"      HasSuffix ".test"
+		//   foo.e2e-spec.ts  → stem="foo.e2e-spec"  HasSuffix "-spec"
+		//   foo.e2e-test.ts  → stem="foo.e2e-test"  HasSuffix "-test"
+		//   foo.e2e.spec.ts  → lower contains ".spec."
+		//   foo.e2e.test.ts  → lower contains ".test."
+		return strings.Contains(lower, ".test.") ||
+			strings.Contains(lower, ".spec.") ||
+			strings.HasSuffix(stem, ".test") ||
+			strings.HasSuffix(stem, ".spec") ||
+			strings.HasSuffix(stem, "-spec") ||
+			strings.HasSuffix(stem, "-test")
+	case ".rb":
+		// Ruby: foo_spec.rb
+		return strings.HasSuffix(stem, "_spec")
+	case ".java", ".kt", ".cs", ".scala", ".swift":
+		// Java/Kotlin/C#/Scala/Swift: FooTest.java, FooTests.java, FooIT.java, FooSpec.java
+		return strings.HasSuffix(stem, "test") ||
+			strings.HasSuffix(stem, "tests") ||
+			strings.HasSuffix(stem, "it") ||
+			strings.HasSuffix(stem, "spec")
+	case ".php":
+		// PHP: FooTest.php
+		return strings.HasSuffix(stem, "test")
+	case ".rs":
+		// Rust tests live in modules within production files; file-level
+		// exclusion is not meaningful. Return false and rely on the testmap
+		// extractor for Rust coverage.
+		return false
+	}
+	return false
+}
+
 // applyHTTPEndpointSynthesis runs after the existing route-composition
 // passes and APPENDS synthetic http_endpoint entities + edges to the
 // detector's output. It never modifies or removes existing entities or
@@ -136,6 +212,15 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	entities := args.Entities
 	relationships := args.Relationships
 	if len(content) == 0 {
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
+	}
+
+	// Guard: test/spec/fixture files contain framework setup code that looks
+	// identical to production route declarations (e.g. NestJS @Controller in an
+	// *.e2e-spec.ts, Express app.get() in a Supertest fixture). Do NOT emit
+	// http_endpoint_definition entities from test files — they are not real
+	// production routes. See isTestSourceFile for the pattern catalogue.
+	if isTestSourceFile(path) {
 		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
