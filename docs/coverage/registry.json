@@ -50292,6 +50292,240 @@
       }
     },
     {
+      "id": "lang.scala.framework.caliban",
+      "category": "http_framework",
+      "subcategory": "jvm_backend",
+      "language": "scala",
+      "label": "Caliban",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "notes": "graphQL(RootResolver(...)) synthesises one GRAPHQL endpoint per resolver case-class field, path /graphql/\u003cRoot\u003e/\u003cfield\u003e, positional Query/Mutation/Subscription root. TestCalibanResolverFields.",
+            "verified_at": "2026-05-30"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "notes": "handler_name = \u003cRoot\u003e.\u003cfield\u003e bound from resolver case-class field. TestCalibanResolverFields.",
+            "verified_at": "2026-05-30"
+          },
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "notes": "GraphQL field path /graphql/\u003cRoot\u003e/\u003cfield\u003e recorded as route_path. TestCalibanResolverFields.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "notes": "@GQLDescription/@GQLName/@GQLInputName case classes + Schema.gen[T]/deriveSchema[T] become SCOPE.Schema DTOs. TestCalibanDTOs.",
+            "verified_at": "2026-05-30"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "notes": "@GQL-annotated enum extracted with graphql_dto_role=enum. TestCalibanDTOs.",
+            "verified_at": "2026-05-30"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "notes": "Caliban schema types extracted as DTO entities. TestCalibanDTOs.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Transactions": {
+          "transaction_boundary_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_rollback_rules": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "AOP": {
+          "advice_attribution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "aspect_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pointcut_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Honest limit: RootResolver root binding is positional + intra-file; cross-file resolver case-class composition is not chased.",
+            "verified_at": "2026-05-30"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Resolver field argument type (e.g. UserArgs in user: UserArgs =\u003e ...) is visible in the field declaration but not deeply parsed into a shape.",
+            "verified_at": "2026-05-30"
+          },
+          "response_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Resolver field return type (e.g. List[User]) visible in declaration; not deeply parsed.",
+            "verified_at": "2026-05-30"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.scala.framework.cask",
       "category": "http_framework",
       "subcategory": "jvm_backend",

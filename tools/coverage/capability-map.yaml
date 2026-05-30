@@ -7560,80 +7560,92 @@ records:
           issues_implemented: ["3508"]
           verified_at: "2026-05-31"
 
-  lang.rust.framework.utoipa:
+  lang.scala.framework.caliban:
     capabilities:
       Routing:
         route_extraction:
           status: full
           symbols:
-            - file: internal/custom/rust/utoipa.go
-              functions: [Extract, rustBalancedParens]
-            - file: internal/custom/rust/helpers.go
-              functions: [rustNormalizePath]
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanArgList, calibanResolverFields, calibanOperationForIndex]
           tests:
-            - file: internal/custom/rust/utoipa_test.go
-          issues_implemented: ["3538"]
-          verified_at: "2026-05-31"
-        handler_attribution:
-          status: full
-          symbols:
-            - file: internal/custom/rust/utoipa.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/rust/utoipa_test.go
-          issues_implemented: ["3538"]
+            - file: internal/custom/scala/caliban_test.go
+              functions: [TestCalibanResolverFields]
+          issues_implemented: ["3536"]
           verified_at: "2026-05-31"
         endpoint_synthesis:
           status: full
           symbols:
-            - file: internal/custom/rust/utoipa.go
-              functions: [Extract, rustBalancedParens]
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanRootName, calibanSplitTopLevel]
           tests:
-            - file: internal/custom/rust/utoipa_test.go
-          issues_implemented: ["3538"]
+            - file: internal/custom/scala/caliban_test.go
+              functions: [TestCalibanResolverFields, TestCalibanSchemaAdapter]
+          issues_implemented: ["3536"]
+          verified_at: "2026-05-31"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/scala/caliban_test.go
+              functions: [TestCalibanResolverFields]
+          issues_implemented: ["3536"]
           verified_at: "2026-05-31"
       Validation:
         dto_extraction:
           status: full
           symbols:
-            - file: internal/custom/rust/utoipa.go
-              functions: [Extract, splitIdentList]
-            - file: internal/custom/rust/fw_validation.go
-              functions: [parseDTOFields, rustStructBody]
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanDTORole, calibanLeadingType]
           tests:
-            - file: internal/custom/rust/utoipa_test.go
-          issues_implemented: ["3538"]
-          verified_at: "2026-05-31"
-      Substrate:
-        request_shape_extraction:
-          status: full
-          symbols:
-            - file: internal/custom/rust/utoipa.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/rust/utoipa_test.go
-          issues_implemented: ["3538"]
-          verified_at: "2026-05-31"
-        response_shape_extraction:
-          status: full
-          symbols:
-            - file: internal/custom/rust/utoipa.go
-              functions: [Extract]
-          tests:
-            - file: internal/custom/rust/utoipa_test.go
-          issues_implemented: ["3538"]
+            - file: internal/custom/scala/caliban_test.go
+              functions: [TestCalibanDTOs]
+          issues_implemented: ["3536"]
           verified_at: "2026-05-31"
       Type System:
         type_extraction:
           status: full
           symbols:
-            - file: internal/custom/rust/utoipa.go
-              functions: [Extract]
-            - file: internal/custom/rust/fw_validation.go
-              functions: [parseDTOFields]
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanDTORole]
           tests:
-            - file: internal/custom/rust/utoipa_test.go
-          issues_implemented: ["3538"]
+            - file: internal/custom/scala/caliban_test.go
+              functions: [TestCalibanDTOs]
+          issues_implemented: ["3536"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanDTORole]
+          tests:
+            - file: internal/custom/scala/caliban_test.go
+              functions: [TestCalibanDTOs]
+          issues_implemented: ["3536"]
+          verified_at: "2026-05-31"
+      Substrate:
+        request_shape_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanResolverFields]
+          issues_implemented: ["3536"]
+          verified_at: "2026-05-31"
+        response_shape_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanResolverFields]
+          issues_implemented: ["3536"]
+          verified_at: "2026-05-31"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/custom/scala/caliban.go
+              functions: [Extract, calibanRootName]
+          issues_implemented: ["3536"]
           verified_at: "2026-05-31"
 
   lang.rust.framework.tonic:

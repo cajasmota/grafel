@@ -1,0 +1,127 @@
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# `lang.scala.framework.caliban` — Caliban
+
+Auto-generated. Back to [summary](../summary.md).
+
+- **Language:** [scala](../by-language/scala.md)
+- **Category:** [http_framework](../by-category/http_framework.md)
+- **Subcategory:** JVM Backend
+- **Capability cells:** 45
+
+## Capabilities
+
+
+### Routing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | graphQL(RootResolver(...)) synthesises one GRAPHQL endpoint per resolver case-class field, path /graphql/<Root>/<field>, positional Query/Mutation/Subscription root. TestCalibanResolverFields. |
+| Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | handler_name = <Root>.<field> bound from resolver case-class field. TestCalibanResolverFields. |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | GraphQL field path /graphql/<Root>/<field> recorded as route_path. TestCalibanResolverFields. |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Validation
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | @GQLDescription/@GQLName/@GQLInputName case classes + Schema.gen[T]/deriveSchema[T] become SCOPE.Schema DTOs. TestCalibanDTOs. |
+| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Middleware
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Middleware coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Tests linkage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Enum extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | @GQL-annotated enum extracted with graphql_dto_role=enum. TestCalibanDTOs. |
+| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Type extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | Caliban schema types extracted as DTO entities. TestCalibanDTOs. |
+
+### DI
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DI binding extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI injection point | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI scope resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction boundary extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction rollback rules | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### AOP
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Advice attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Aspect extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Pointcut resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Observability
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Data
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DB effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Substrate
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Import resolution quality | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | Honest limit: RootResolver root binding is positional + intra-file; cross-file resolver case-class composition is not chased. |
+| Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | Resolver field argument type (e.g. UserArgs in user: UserArgs => ...) is visible in the field declaration but not deeply parsed into a shape. |
+| Response shape extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | Resolver field return type (e.g. List[User]) visible in declaration; not deeply parsed. |
+| Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint source detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+## Provenance
+
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
+(or use `go run ./tools/coverage update lang.scala.framework.caliban ...`) then regenerate:
+
+```
+go run ./tools/coverage validate
+go run ./tools/coverage gen
+```
