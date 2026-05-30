@@ -29,14 +29,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/fastapi_reqresp.go` | — |
-| Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/fastapi.go`<br>`internal/custom/python/fastapi_reqresp.go` | — |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/python/fastapi.go`<br>`internal/custom/python/fastapi_reqresp.go` | fastapi_reqresp.go extracts Pydantic BaseModel body params (ACCEPTS_INPUT), response_model= kwarg (RETURNS), and return type annotations for all FastAPI route decorators; fastapi.go extracts APIRouter, Depends(), and per-route metadata. Fixture test TestFastAPIReqResp_FullFixture proves CreateOrderRequest/UpdateOrderRequest body params + OrderResponse response_model and annotation returns. Pydantic v1/v2 unwrapping via unwrapType. Depends/Query/Path injection tokens skipped. |
+| Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/python/fastapi.go`<br>`internal/custom/python/fastapi_reqresp.go`<br>`internal/custom/python/http_reqresp_generic.go` | fastapi.go extracts Depends() injection tokens (dependency-injection as validation). fastapi_reqresp.go extracts Pydantic body-parameter type annotations (ACCEPTS_INPUT) proving request validation at the type level. http_reqresp_generic.go handles pydantic model_validate/parse_obj/from_orm calls in handler bodies. Tests: TestFastAPI_Depends, TestFastAPIReqResp_AcceptsInput, TestFastAPIReqResp_FullFixture. |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | — | `internal/custom/python/fastapi.go` | — |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/python/fastapi.go`<br>`internal/custom/python/http_middleware.go` | @app.middleware('http') decorator extracted by fastapi.go (faMiddlewareRe); app.add_middleware(Cls, ...) extracted via starletteAddMiddlewareRe in http_middleware.go for Starlette/FastAPI. Tests: TestFastAPI_Middleware (decorator form), TestFastAPI_FullFixture_Middleware (fixture). Covers both ASGI middleware registration patterns used in FastAPI. |
 
 ### Type System
 
@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Metric extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Trace extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of stdlib logging (logging.getLogger + call sites), loguru (from loguru import logger + bind/opt/contextualize), and structlog (structlog.get_logger + structlog.configure). Emits SCOPE.Pattern/logger + SCOPE.Pattern/log_statement entities per file. Partial by design: no cross-file dataflow — a logger declared in utils.py and used in views.py produces entities only in the file where the call site lives. Tests: TestObservability_StdlibLogging, TestObservability_Loguru, TestObservability_Structlog, TestObservability_FixtureLogging. |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of prometheus_client (Counter/Gauge/Histogram/Summary construction + push_to_gateway), statsd (incr/decr/gauge/timing/histogram calls), and datadog DogStatsd (increment/gauge/histogram/timing). Emits SCOPE.Pattern/metric entities with metric_type and metric_name properties. Partial by design: no cross-file dataflow; prometheus_client REGISTRY custom collector classes not detected; StatsD pipelines not followed. Tests: TestObservability_PrometheusClient, TestObservability_Statsd, TestObservability_Datadog, TestObservability_FixtureMetrics. |
+| Trace extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of OpenTelemetry (tracer.start_as_current_span decorator + context-manager + start_span), ddtrace (@tracer.wrap decorator + tracer.trace context-manager), and jaeger_client (Config(service_name=) + tracer.start_span). Emits SCOPE.Pattern/trace_span entities with span_name, span_kind, and library properties. Partial by design: no cross-file dataflow; OTel Resource/TracerProvider setup not tracked; auto-instrumentation via opentelemetry-instrument not detected. Tests: TestObservability_OpenTelemetry, TestObservability_DDTrace, TestObservability_JaegerClient, TestObservability_FixtureTracing. |
 
 ### Data
 

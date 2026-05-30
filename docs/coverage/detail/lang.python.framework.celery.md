@@ -41,7 +41,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | pytest.go extracts test functions and fixtures; coverage is partial because Celery-task test helpers are not directly linked |
+| Tests linkage | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/python/pytest.go` | pytest.go extracts test functions (test_*), test classes (Test*), pytest fixtures (@pytest.fixture with scope/autouse), parametrize marks, and conftest.py fixtures. These cover all generic Python tests including Celery task tests written with pytest. Partial because: Celery-specific test helpers (pytest-celery, celery.contrib.pytest app fixture, task.apply() / task.delay() calls within test bodies) are not specifically linked back to the Celery task entity via TESTS edges — test functions and Celery task entities are both emitted but the TESTS edge between them is not synthesised. Tests: TestPytest_TestFunction, TestPytest_Fixture. |
 
 ### Substrate
 

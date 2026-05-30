@@ -29,14 +29,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/extractors/python/drf_serializer_fields.go`<br>`internal/extractors/python/drf_serializer_fields_test.go` | — |
-| Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/extractors/python/django_drf_permissions.go`<br>`internal/extractors/python/django_drf_permissions_test.go` | — |
+| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/python/django.go`<br>`internal/extractors/python/drf_serializer_fields.go` | django.go emits DRF ModelSerializer/Serializer/HyperlinkedModelSerializer class entities. drf_serializer_fields.go emits REFERENCES edges from PrimaryKeyRelatedField/NestedSerializer/source= fields. Partial because: SerializerMethodField return-type inference is not done; writable vs read-only field distinction not captured; custom Field subclasses not tracked. Tests: TestDjango_DRFSerializer, drf_serializer_fields_test.go. |
+| Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/python/http_reqresp_generic.go`<br>`internal/extractors/python/drf_serializer_fields.go` | http_reqresp_generic.go detects DRF request.data, .validated_data, serializer.is_valid() in CBV/APIView post/put/patch handler bodies. drf_serializer_fields.go emits REFERENCES edges from serializer fields to model entities. Tests: TestGHR_DRF_RequestData, TestGHR_DRF_ValidatedData cover the validation evidence chain. |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | — | `internal/engine/django_imports_rewrite.go` | Django middleware import rewriting provides partial coverage; DRF-specific middleware detection not yet implemented |
+| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/engine/django_imports_rewrite.go` | Django import rewriting provides coverage for stock Django middleware (SecurityMiddleware, SessionMiddleware etc.) via class-name rewriting. Partial because: DRF DEFAULT_AUTHENTICATION_CLASSES / DEFAULT_THROTTLE_CLASSES in settings.py are not parsed; custom DRF middleware (BaseAuthentication subclasses used as middleware) is not detected; no MIDDLEWARE_CLASSES list parsing. DRF has no dedicated middleware extractor. |
 
 ### Type System
 
@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Metric extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Trace extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of stdlib logging (logging.getLogger + call sites), loguru (from loguru import logger + bind/opt/contextualize), and structlog (structlog.get_logger + structlog.configure). Emits SCOPE.Pattern/logger + SCOPE.Pattern/log_statement entities per file. Partial by design: no cross-file dataflow — a logger declared in utils.py and used in views.py produces entities only in the file where the call site lives. Tests: TestObservability_StdlibLogging, TestObservability_Loguru, TestObservability_Structlog, TestObservability_FixtureLogging. |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of prometheus_client (Counter/Gauge/Histogram/Summary construction + push_to_gateway), statsd (incr/decr/gauge/timing/histogram calls), and datadog DogStatsd (increment/gauge/histogram/timing). Emits SCOPE.Pattern/metric entities with metric_type and metric_name properties. Partial by design: no cross-file dataflow; prometheus_client REGISTRY custom collector classes not detected; StatsD pipelines not followed. Tests: TestObservability_PrometheusClient, TestObservability_Statsd, TestObservability_Datadog, TestObservability_FixtureMetrics. |
+| Trace extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of OpenTelemetry (tracer.start_as_current_span decorator + context-manager + start_span), ddtrace (@tracer.wrap decorator + tracer.trace context-manager), and jaeger_client (Config(service_name=) + tracer.start_span). Emits SCOPE.Pattern/trace_span entities with span_name, span_kind, and library properties. Partial by design: no cross-file dataflow; OTel Resource/TracerProvider setup not tracked; auto-instrumentation via opentelemetry-instrument not detected. Tests: TestObservability_OpenTelemetry, TestObservability_DDTrace, TestObservability_JaegerClient, TestObservability_FixtureTracing. |
 
 ### Data
 

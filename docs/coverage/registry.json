@@ -37441,8 +37441,8 @@
             "status": "partial",
             "cites": ["internal/custom/python/pytest.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "pytest.go extracts test functions and fixtures; coverage is partial because Celery-task test helpers are not directly linked",
-            "verified_at": "2026-05-29"
+            "notes": "pytest.go extracts test functions (test_*), test classes (Test*), pytest fixtures (@pytest.fixture with scope/autouse), parametrize marks, and conftest.py fixtures. These cover all generic Python tests including Celery task tests written with pytest. Partial because: Celery-specific test helpers (pytest-celery, celery.contrib.pytest app fixture, task.apply() / task.delay() calls within test bodies) are not specifically linked back to the Celery task entity via TESTS edges — test functions and Celery task entities are both emitted but the TESTS edge between them is not synthesised. Tests: TestPytest_TestFunction, TestPytest_Fixture.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -37858,25 +37858,24 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/python/django.go"],
+            "cites": ["internal/custom/python/django.go","internal/custom/python/http_reqresp_generic.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Django admin registrations (admin.site.register, @admin.register) and form patterns; full form field introspection not yet implemented",
-            "verified_at": "2026-05-29"
+            "notes": "django.go emits DRF Serializer/ModelSerializer class entities and Form/ModelForm admin class entities. http_reqresp_generic.go emits djangoFormClassRe-matched Form/ModelForm classes as request_dto entities. Partial because: individual form field types (CharField, IntegerField) are not introspected per-field; FormSet is not detected; inline forms not handled. Tests: TestDjango_DRFSerializer, TestGHR_Django_FormIsValid, TestGHR_Django_ModelForm.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/python/django.go","internal/custom/python/http_reqresp_generic.go"],
-            "issue": "3185",
-            "notes": "Django Form.is_valid() + cleaned_data patterns in FBV/CBV handlers; DRF request.data/.validated_data/.is_valid() patterns detected via generic HTTP extractor.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/python/http_reqresp_generic.go"],
+            "notes": "http_reqresp_generic.go: djangoIsValidRe detects form.is_valid() calls, djangoCleanedDataRe detects .cleaned_data access, drfRequestDataRe detects request.data/.query_params/.FILES, drfValidatedDataRe detects serializer.validated_data, drfIsValidRe detects serializer.is_valid() — all in Django FBV/CBV handler bodies. Tests: TestGHR_Django_FormIsValid, TestGHR_Django_CleanedData, TestGHR_DRF_RequestData, TestGHR_DRF_ValidatedData.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
             "cites": ["internal/custom/python/django.go"],
-            "notes": "Middleware class and process_request/process_response/process_view hooks extracted; MIDDLEWARE setting list analysis not yet implemented",
-            "verified_at": "2026-05-29"
+            "notes": "django.go extracts *Middleware class definitions (djangoMiddlewareClassRe) + process_request/process_response/process_view/process_exception hook methods. Partial because: Django MIDDLEWARE settings list (settings.py list of dotted paths) is not parsed; new-style __call__-based middleware is detected via class name but __call__ method is not specifically emitted; mixin-based middleware (MiddlewareMixin subclass) is covered. Test: TestDjango_Middleware.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -37918,17 +37917,23 @@
           "log_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of stdlib logging (logging.getLogger + call sites), loguru (from loguru import logger + bind/opt/contextualize), and structlog (structlog.get_logger + structlog.configure). Emits SCOPE.Pattern/logger + SCOPE.Pattern/log_statement entities per file. Partial by design: no cross-file dataflow — a logger declared in utils.py and used in views.py produces entities only in the file where the call site lives. Tests: TestObservability_StdlibLogging, TestObservability_Loguru, TestObservability_Structlog, TestObservability_FixtureLogging.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of prometheus_client (Counter/Gauge/Histogram/Summary construction + push_to_gateway), statsd (incr/decr/gauge/timing/histogram calls), and datadog DogStatsd (increment/gauge/histogram/timing). Emits SCOPE.Pattern/metric entities with metric_type and metric_name properties. Partial by design: no cross-file dataflow; prometheus_client REGISTRY custom collector classes not detected; StatsD pipelines not followed. Tests: TestObservability_PrometheusClient, TestObservability_Statsd, TestObservability_Datadog, TestObservability_FixtureMetrics.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of OpenTelemetry (tracer.start_as_current_span decorator + context-manager + start_span), ddtrace (@tracer.wrap decorator + tracer.trace context-manager), and jaeger_client (Config(service_name=) + tracer.start_span). Emits SCOPE.Pattern/trace_span entities with span_name, span_kind, and library properties. Partial by design: no cross-file dataflow; OTel Resource/TracerProvider setup not tracked; auto-instrumentation via opentelemetry-instrument not detected. Tests: TestObservability_OpenTelemetry, TestObservability_DDTrace, TestObservability_JaegerClient, TestObservability_FixtureTracing.",
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {
@@ -38093,23 +38098,24 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/extractors/python/drf_serializer_fields.go","internal/extractors/python/drf_serializer_fields_test.go"],
+            "cites": ["internal/custom/python/django.go","internal/extractors/python/drf_serializer_fields.go"],
             "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "notes": "django.go emits DRF ModelSerializer/Serializer/HyperlinkedModelSerializer class entities. drf_serializer_fields.go emits REFERENCES edges from PrimaryKeyRelatedField/NestedSerializer/source= fields. Partial because: SerializerMethodField return-type inference is not done; writable vs read-only field distinction not captured; custom Field subclasses not tracked. Tests: TestDjango_DRFSerializer, drf_serializer_fields_test.go.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/extractors/python/django_drf_permissions.go","internal/extractors/python/django_drf_permissions_test.go"],
-            "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/python/http_reqresp_generic.go","internal/extractors/python/drf_serializer_fields.go"],
+            "notes": "http_reqresp_generic.go detects DRF request.data, .validated_data, serializer.is_valid() in CBV/APIView post/put/patch handler bodies. drf_serializer_fields.go emits REFERENCES edges from serializer fields to model entities. Tests: TestGHR_DRF_RequestData, TestGHR_DRF_ValidatedData cover the validation evidence chain.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
             "cites": ["internal/engine/django_imports_rewrite.go"],
-            "notes": "Django middleware import rewriting provides partial coverage; DRF-specific middleware detection not yet implemented",
-            "verified_at": "2026-05-29"
+            "notes": "Django import rewriting provides coverage for stock Django middleware (SecurityMiddleware, SessionMiddleware etc.) via class-name rewriting. Partial because: DRF DEFAULT_AUTHENTICATION_CLASSES / DEFAULT_THROTTLE_CLASSES in settings.py are not parsed; custom DRF middleware (BaseAuthentication subclasses used as middleware) is not detected; no MIDDLEWARE_CLASSES list parsing. DRF has no dedicated middleware extractor.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -38151,17 +38157,23 @@
           "log_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of stdlib logging (logging.getLogger + call sites), loguru (from loguru import logger + bind/opt/contextualize), and structlog (structlog.get_logger + structlog.configure). Emits SCOPE.Pattern/logger + SCOPE.Pattern/log_statement entities per file. Partial by design: no cross-file dataflow — a logger declared in utils.py and used in views.py produces entities only in the file where the call site lives. Tests: TestObservability_StdlibLogging, TestObservability_Loguru, TestObservability_Structlog, TestObservability_FixtureLogging.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of prometheus_client (Counter/Gauge/Histogram/Summary construction + push_to_gateway), statsd (incr/decr/gauge/timing/histogram calls), and datadog DogStatsd (increment/gauge/histogram/timing). Emits SCOPE.Pattern/metric entities with metric_type and metric_name properties. Partial by design: no cross-file dataflow; prometheus_client REGISTRY custom collector classes not detected; StatsD pipelines not followed. Tests: TestObservability_PrometheusClient, TestObservability_Statsd, TestObservability_Datadog, TestObservability_FixtureMetrics.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of OpenTelemetry (tracer.start_as_current_span decorator + context-manager + start_span), ddtrace (@tracer.wrap decorator + tracer.trace context-manager), and jaeger_client (Config(service_name=) + tracer.start_span). Emits SCOPE.Pattern/trace_span entities with span_name, span_kind, and library properties. Partial by design: no cross-file dataflow; OTel Resource/TracerProvider setup not tracked; auto-instrumentation via opentelemetry-instrument not detected. Tests: TestObservability_OpenTelemetry, TestObservability_DDTrace, TestObservability_JaegerClient, TestObservability_FixtureTracing.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -38764,23 +38776,24 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/python/fastapi_reqresp.go"],
-            "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/python/fastapi.go","internal/custom/python/fastapi_reqresp.go"],
+            "notes": "fastapi_reqresp.go extracts Pydantic BaseModel body params (ACCEPTS_INPUT), response_model= kwarg (RETURNS), and return type annotations for all FastAPI route decorators; fastapi.go extracts APIRouter, Depends(), and per-route metadata. Fixture test TestFastAPIReqResp_FullFixture proves CreateOrderRequest/UpdateOrderRequest body params + OrderResponse response_model and annotation returns. Pydantic v1/v2 unwrapping via unwrapType. Depends/Query/Path injection tokens skipped.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/python/fastapi.go","internal/custom/python/fastapi_reqresp.go"],
-            "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/python/fastapi.go","internal/custom/python/fastapi_reqresp.go","internal/custom/python/http_reqresp_generic.go"],
+            "notes": "fastapi.go extracts Depends() injection tokens (dependency-injection as validation). fastapi_reqresp.go extracts Pydantic body-parameter type annotations (ACCEPTS_INPUT) proving request validation at the type level. http_reqresp_generic.go handles pydantic model_validate/parse_obj/from_orm calls in handler bodies. Tests: TestFastAPI_Depends, TestFastAPIReqResp_AcceptsInput, TestFastAPIReqResp_FullFixture.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/python/fastapi.go"],
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/python/fastapi.go","internal/custom/python/http_middleware.go"],
+            "notes": "@app.middleware('http') decorator extracted by fastapi.go (faMiddlewareRe); app.add_middleware(Cls, ...) extracted via starletteAddMiddlewareRe in http_middleware.go for Starlette/FastAPI. Tests: TestFastAPI_Middleware (decorator form), TestFastAPI_FullFixture_Middleware (fixture). Covers both ASGI middleware registration patterns used in FastAPI.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -38822,17 +38835,23 @@
           "log_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of stdlib logging (logging.getLogger + call sites), loguru (from loguru import logger + bind/opt/contextualize), and structlog (structlog.get_logger + structlog.configure). Emits SCOPE.Pattern/logger + SCOPE.Pattern/log_statement entities per file. Partial by design: no cross-file dataflow — a logger declared in utils.py and used in views.py produces entities only in the file where the call site lives. Tests: TestObservability_StdlibLogging, TestObservability_Loguru, TestObservability_Structlog, TestObservability_FixtureLogging.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of prometheus_client (Counter/Gauge/Histogram/Summary construction + push_to_gateway), statsd (incr/decr/gauge/timing/histogram calls), and datadog DogStatsd (increment/gauge/histogram/timing). Emits SCOPE.Pattern/metric entities with metric_type and metric_name properties. Partial by design: no cross-file dataflow; prometheus_client REGISTRY custom collector classes not detected; StatsD pipelines not followed. Tests: TestObservability_PrometheusClient, TestObservability_Statsd, TestObservability_Datadog, TestObservability_FixtureMetrics.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of OpenTelemetry (tracer.start_as_current_span decorator + context-manager + start_span), ddtrace (@tracer.wrap decorator + tracer.trace context-manager), and jaeger_client (Config(service_name=) + tracer.start_span). Emits SCOPE.Pattern/trace_span entities with span_name, span_kind, and library properties. Partial by design: no cross-file dataflow; OTel Resource/TracerProvider setup not tracked; auto-instrumentation via opentelemetry-instrument not detected. Tests: TestObservability_OpenTelemetry, TestObservability_DDTrace, TestObservability_JaegerClient, TestObservability_FixtureTracing.",
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {
@@ -38997,23 +39016,25 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/python/flask_reqresp.go"],
-            "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/python/flask.go","internal/custom/python/flask_reqresp.go"],
+            "notes": "flask_reqresp.go extracts marshmallow Schema.load() call sites in route handler bodies (ACCEPTS_INPUT), and return type annotations (RETURNS). flask.go emits FlaskForm/class entities as schema-level DTOs. canonicalSchemaName converts snake_case schema vars to PascalCase. Tests: TestFlaskReqResp_SchemaLoad, TestFlaskReqResp_Returns, TestFlaskReqResp_PascalCaseSchema, TestFlask_FlaskForm.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/python/flask.go"],
+            "cites": ["internal/custom/python/flask.go","internal/custom/python/flask_reqresp.go","internal/custom/python/http_reqresp_generic.go"],
             "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "notes": "flask_reqresp.go detects marshmallow schema.load() in handler bodies as ACCEPTS_INPUT evidence. flask.go emits before_request hooks (lifecycle gates). http_reqresp_generic.go detects Pydantic model_validate/parse_obj calls and marshmallow load in Flask handlers. Partial because: Flask-WTF form.validate_on_submit() is not explicitly detected; request.json/request.form.get() raw access patterns are not tracked; no Flask-RESTX/flask-smorest RequestParser body validation. Tests: TestFlaskReqResp_SchemaLoad, TestGHR_Marshmallow_SchemaLoad.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/python/flask.go"],
-            "verified_at": "2026-05-29"
+            "notes": "flask.go extracts @app.before_request / @app.after_request / @app.teardown_request / @bp.before_app_request decorators as request_hook pattern entities — these ARE Flask's middleware mechanism (no traditional middleware class in Flask; hooks are the canonical approach). Test: TestFlask_RequestHook proves before_request hook extraction with hook_type property.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -39055,17 +39076,23 @@
           "log_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of stdlib logging (logging.getLogger + call sites), loguru (from loguru import logger + bind/opt/contextualize), and structlog (structlog.get_logger + structlog.configure). Emits SCOPE.Pattern/logger + SCOPE.Pattern/log_statement entities per file. Partial by design: no cross-file dataflow — a logger declared in utils.py and used in views.py produces entities only in the file where the call site lives. Tests: TestObservability_StdlibLogging, TestObservability_Loguru, TestObservability_Structlog, TestObservability_FixtureLogging.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of prometheus_client (Counter/Gauge/Histogram/Summary construction + push_to_gateway), statsd (incr/decr/gauge/timing/histogram calls), and datadog DogStatsd (increment/gauge/histogram/timing). Emits SCOPE.Pattern/metric entities with metric_type and metric_name properties. Partial by design: no cross-file dataflow; prometheus_client REGISTRY custom collector classes not detected; StatsD pipelines not followed. Tests: TestObservability_PrometheusClient, TestObservability_Statsd, TestObservability_Datadog, TestObservability_FixtureMetrics.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
             "cites": ["internal/custom/python/observability.go"],
-            "issue": "3063"
+            "issue": "3063",
+            "notes": "observability.go: import-heuristic detection of OpenTelemetry (tracer.start_as_current_span decorator + context-manager + start_span), ddtrace (@tracer.wrap decorator + tracer.trace context-manager), and jaeger_client (Config(service_name=) + tracer.start_span). Emits SCOPE.Pattern/trace_span entities with span_name, span_kind, and library properties. Partial by design: no cross-file dataflow; OTel Resource/TracerProvider setup not tracked; auto-instrumentation via opentelemetry-instrument not detected. Tests: TestObservability_OpenTelemetry, TestObservability_DDTrace, TestObservability_JaegerClient, TestObservability_FixtureTracing.",
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {

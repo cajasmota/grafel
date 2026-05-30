@@ -29,14 +29,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/flask_reqresp.go` | — |
-| Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/python/flask.go` | — |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/python/flask.go`<br>`internal/custom/python/flask_reqresp.go` | flask_reqresp.go extracts marshmallow Schema.load() call sites in route handler bodies (ACCEPTS_INPUT), and return type annotations (RETURNS). flask.go emits FlaskForm/class entities as schema-level DTOs. canonicalSchemaName converts snake_case schema vars to PascalCase. Tests: TestFlaskReqResp_SchemaLoad, TestFlaskReqResp_Returns, TestFlaskReqResp_PascalCaseSchema, TestFlask_FlaskForm. |
+| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/python/flask.go`<br>`internal/custom/python/flask_reqresp.go`<br>`internal/custom/python/http_reqresp_generic.go` | flask_reqresp.go detects marshmallow schema.load() in handler bodies as ACCEPTS_INPUT evidence. flask.go emits before_request hooks (lifecycle gates). http_reqresp_generic.go detects Pydantic model_validate/parse_obj calls and marshmallow load in Flask handlers. Partial because: Flask-WTF form.validate_on_submit() is not explicitly detected; request.json/request.form.get() raw access patterns are not tracked; no Flask-RESTX/flask-smorest RequestParser body validation. Tests: TestFlaskReqResp_SchemaLoad, TestGHR_Marshmallow_SchemaLoad. |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | — | `internal/custom/python/flask.go` | — |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/python/flask.go` | flask.go extracts @app.before_request / @app.after_request / @app.teardown_request / @bp.before_app_request decorators as request_hook pattern entities — these ARE Flask's middleware mechanism (no traditional middleware class in Flask; hooks are the canonical approach). Test: TestFlask_RequestHook proves before_request hook extraction with hook_type property. |
 
 ### Type System
 
@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Metric extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
-| Trace extraction | 🟢 `partial` | — | 3063 | `internal/custom/python/observability.go` | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of stdlib logging (logging.getLogger + call sites), loguru (from loguru import logger + bind/opt/contextualize), and structlog (structlog.get_logger + structlog.configure). Emits SCOPE.Pattern/logger + SCOPE.Pattern/log_statement entities per file. Partial by design: no cross-file dataflow — a logger declared in utils.py and used in views.py produces entities only in the file where the call site lives. Tests: TestObservability_StdlibLogging, TestObservability_Loguru, TestObservability_Structlog, TestObservability_FixtureLogging. |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of prometheus_client (Counter/Gauge/Histogram/Summary construction + push_to_gateway), statsd (incr/decr/gauge/timing/histogram calls), and datadog DogStatsd (increment/gauge/histogram/timing). Emits SCOPE.Pattern/metric entities with metric_type and metric_name properties. Partial by design: no cross-file dataflow; prometheus_client REGISTRY custom collector classes not detected; StatsD pipelines not followed. Tests: TestObservability_PrometheusClient, TestObservability_Statsd, TestObservability_Datadog, TestObservability_FixtureMetrics. |
+| Trace extraction | 🟢 `partial` | `2026-05-30` | 3063 | `internal/custom/python/observability.go` | observability.go: import-heuristic detection of OpenTelemetry (tracer.start_as_current_span decorator + context-manager + start_span), ddtrace (@tracer.wrap decorator + tracer.trace context-manager), and jaeger_client (Config(service_name=) + tracer.start_span). Emits SCOPE.Pattern/trace_span entities with span_name, span_kind, and library properties. Partial by design: no cross-file dataflow; OTel Resource/TracerProvider setup not tracked; auto-instrumentation via opentelemetry-instrument not detected. Tests: TestObservability_OpenTelemetry, TestObservability_DDTrace, TestObservability_JaegerClient, TestObservability_FixtureTracing. |
 
 ### Data
 
