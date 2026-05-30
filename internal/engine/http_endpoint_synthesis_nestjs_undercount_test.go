@@ -304,6 +304,71 @@ for (const p of REQUIRED_PATHS) {
 	requireNotContains(t, got, []string{"http:GET:/health"}, "defect3b build script")
 }
 
+// ---------------------------------------------------------------------------
+// Multi-controller-per-file — each @Controller keeps its own base path.
+// ---------------------------------------------------------------------------
+//
+// Before the fix synthesizeNestJS took the FIRST @Controller prefix in the file
+// and folded EVERY verb method under it, so a second controller's routes were
+// mis-attributed to the first's base path. The fix attributes each method to
+// the nearest PRECEDING @Controller. This asserts BOTH controllers' routes land
+// under their own prefixes (not both under the first).
+func TestNestJS_TwoControllersOneFile_EachKeepsOwnPrefix(t *testing.T) {
+	src := `import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('api/v1/users')
+export class UsersController {
+  @Get(':id')
+  findOne() {
+    return this.usersService.findOne();
+  }
+}
+
+@Controller('api/v1/orders')
+export class OrdersController {
+  @Post()
+  create() {
+    return this.ordersService.create();
+  }
+}
+`
+	got, _ := runDetect(t, "typescript", "src/modules/mixed.controller.ts", src)
+	requireContains(t, got, []string{
+		"http:GET:/api/v1/users/{id}",
+		"http:POST:/api/v1/orders",
+	}, "two controllers one file")
+	// The second controller's POST must NOT be mis-attributed to the first
+	// controller's prefix (the pre-fix bug).
+	requireNotContains(t, got, []string{
+		"http:POST:/api/v1/users",
+	}, "two controllers — orders route must not land under users prefix")
+}
+
+// Single-controller regression — the common case still attributes every method
+// to the sole controller's prefix.
+func TestNestJS_SingleController_Regression(t *testing.T) {
+	src := `import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('api/v1/users')
+export class UsersController {
+  @Get(':id')
+  findOne() {
+    return this.usersService.findOne();
+  }
+
+  @Post()
+  create() {
+    return this.usersService.create();
+  }
+}
+`
+	got, _ := runDetect(t, "typescript", "src/modules/users.controller.ts", src)
+	requireContains(t, got, []string{
+		"http:GET:/api/v1/users/{id}",
+		"http:POST:/api/v1/users",
+	}, "single controller regression")
+}
+
 // isNonAppSourceFile unit table — conservative exclusion, real app code kept.
 func TestIsNonAppSourceFile(t *testing.T) {
 	cases := []struct {

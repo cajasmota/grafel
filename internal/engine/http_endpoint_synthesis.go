@@ -3447,10 +3447,10 @@ func isInlineExpressHandler(fullMatch, raw string) bool {
 // with the composed canonical path, mirroring the Spring/JAX-RS shape.
 //
 // This is a regex pass (no AST) consistent with the other framework
-// synthesizers. It handles the single-controller-per-file convention that
-// NestJS overwhelmingly follows; a file with two @Controller classes will
-// attribute all methods to the first prefix (acceptable — the cross-repo
-// linker matches on path, and split controllers are rare).
+// synthesizers. It is multi-controller aware: a file with several @Controller
+// classes attributes each HTTP-verb method to the base path of the nearest
+// PRECEDING @Controller (by source position), so two controllers in one file
+// keep their own prefixes instead of collapsing onto the first.
 
 // nestControllerRe captures the class-level @Controller('prefix') value.
 // The prefix is optional (`@Controller()` → root prefix ""). Accepts single,
@@ -3590,15 +3590,35 @@ func nestjsBracketDelta(line string) int {
 	return delta
 }
 
+// nestController records one @Controller occurrence: the line index it appears
+// on and the base-path prefix it declares (empty for `@Controller()`).
+type nestController struct {
+	lineIdx int
+	prefix  string
+}
+
 func synthesizeNestJS(content string, emit emitFn) {
 	if !strings.Contains(content, "@Controller") {
 		return
 	}
-	prefix := ""
-	if m := nestControllerRe.FindStringSubmatch(content); len(m) >= 2 {
-		prefix = m[1]
-	}
 	lines := strings.Split(content, "\n")
+	// Collect EVERY @Controller declaration with the line it sits on, so each
+	// HTTP-verb method can be attributed to the base path of the nearest
+	// PRECEDING controller. A file with two @Controller classes no longer
+	// folds the second controller's routes under the first's prefix. The line
+	// index is used (rather than a byte offset) because the verb loop below is
+	// line-oriented; an @Controller decorator and its prefix sit on the same
+	// line in every practical NestJS source.
+	var controllers []nestController
+	for lineIdx, line := range lines {
+		for _, m := range nestControllerRe.FindAllStringSubmatch(line, -1) {
+			prefix := ""
+			if len(m) >= 2 {
+				prefix = m[1]
+			}
+			controllers = append(controllers, nestController{lineIdx: lineIdx, prefix: prefix})
+		}
+	}
 	// Map each byte offset's line to an index for the forward scan. We re-find
 	// the verb decorators on a per-line basis so the handler scan starts from
 	// the line AFTER the verb decorator line.
@@ -3616,6 +3636,9 @@ func synthesizeNestJS(content string, emit emitFn) {
 		if methodName == "" {
 			continue
 		}
+		// Attribute this method to the nearest preceding @Controller. Methods
+		// before any @Controller (rare) fall back to the root prefix "".
+		prefix := nestjsPrefixForLine(controllers, lineIdx)
 		full := joinPathFragments("/"+strings.Trim(prefix, "/"), methodPath)
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, full)
 		if canonical == "" {
@@ -3623,6 +3646,20 @@ func synthesizeNestJS(content string, emit emitFn) {
 		}
 		emit(verb, canonical, "nestjs", "Controller", methodName)
 	}
+}
+
+// nestjsPrefixForLine returns the base-path prefix of the @Controller nearest
+// above `lineIdx`. `controllers` is in ascending line order (built by a forward
+// line scan). Returns "" when no controller precedes the line.
+func nestjsPrefixForLine(controllers []nestController, lineIdx int) string {
+	prefix := ""
+	for _, c := range controllers {
+		if c.lineIdx > lineIdx {
+			break
+		}
+		prefix = c.prefix
+	}
+	return prefix
 }
 
 // ---------------------------------------------------------------------------
