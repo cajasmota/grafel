@@ -31,7 +31,7 @@ var cdiFrameworks = map[string]bool{
 	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
 	"java_ee": true, "javaee": true,
 	"jaxrs": true, "jax-rs": true, "jax_rs": true,
-	"quarkus": true,
+	"quarkus":      true,
 	"microprofile": true, "micro_profile": true, "micro-profile": true,
 }
 
@@ -112,10 +112,13 @@ type cdiInterceptorInfo struct {
 }
 
 // ExtractCDIInterceptors runs the CDI interceptor / AOP extractor for
-// jakarta-ee, jaxrs, and quarkus frameworks.
+// jakarta-ee, jaxrs, and quarkus frameworks. Accepts both Java and Kotlin
+// source: Kotlin Quarkus uses the same @Interceptor/@AroundInvoke/
+// @InterceptorBinding annotations before class/fun declarations (regex
+// patterns match identically in both languages).
 func ExtractCDIInterceptors(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !cdiFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !cdiFrameworks[ctx.Framework] {
 		return result
 	}
 

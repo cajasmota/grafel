@@ -13,6 +13,15 @@ var springBootFrameworks = map[string]bool{
 	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
 }
 
+// kotlinSpringBootFrameworks is the set of Kotlin framework identifiers that
+// map to Spring Boot / Spring WebFlux. Kotlin Spring Boot uses identical
+// annotation syntax (@Autowired, @Bean, @Component, @Scope, etc.) so the same
+// extractor applies — we just gate on language "kotlin" in addition to "java".
+var kotlinSpringBootFrameworks = map[string]bool{
+	"spring_boot": true, "spring-boot": true, "springboot": true,
+	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
+}
+
 var (
 	// actuator_detection: @Endpoint/@ReadOperation/@WriteOperation/@DeleteOperation
 	sbActuatorEndpointRE = regexp.MustCompile(
@@ -82,9 +91,13 @@ var sbHTTPMappingVerbs = map[string]string{
 }
 
 // ExtractSpringBoot runs the Spring Boot custom extractor.
+// It accepts both Java and Kotlin source files: Kotlin Spring Boot uses the
+// same annotations (@Autowired, @Bean, @Component, @Scope, @RestController,
+// etc.) with `fun` instead of method declarations and `class` declarations
+// that are otherwise syntactically identical to Java for these patterns.
 func ExtractSpringBoot(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !springBootFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !springBootFrameworks[ctx.Framework] {
 		return result
 	}
 

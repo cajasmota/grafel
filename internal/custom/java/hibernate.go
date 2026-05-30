@@ -10,15 +10,30 @@ var hibernateFrameworks = map[string]bool{
 	"spring-data-jpa": true, "springdatajpa": true,
 }
 
+// kotlinHibernateFrameworks mirrors hibernateFrameworks for Kotlin ORM records
+// (lang.kotlin.orm.hibernate, lang.kotlin.orm.spring-data). Kotlin uses the
+// same JPA/Hibernate annotations (@Entity, @OneToMany, @JoinColumn, etc.)
+// before data class / class declarations, so the extractor applies unchanged.
+var kotlinHibernateFrameworks = map[string]bool{
+	"hibernate": true, "jpa": true, "spring_data_jpa": true,
+	"spring-data-jpa": true, "springdatajpa": true,
+}
+
 var (
 	hibEntityClassRE = regexp.MustCompile(
 		`(?s)@Entity\b(?:[^{]|\{[^}]*\})*?class\s+(\w+)`)
 	hibTableNameRE = regexp.MustCompile(
 		`(?s)@Table\s*\([^)]*name\s*=\s*\"([^\"]+)\"`)
+	// hibAssociationRE matches @OneToMany/@ManyToOne/@OneToOne/@ManyToMany
+	// association annotations. Accepts both:
+	//   Java:   private List<Employee> employees;
+	//   Kotlin: var employees: List<Employee>? = null  (no trailing semicolon)
+	// Group 1 = annotation name, group 2 = generic target type, group 3 = raw
+	// target type (non-generic), group 4 = field/property name.
 	hibAssociationRE = regexp.MustCompile(
 		`(?s)@(OneToMany|ManyToOne|OneToOne|ManyToMany)\b(?:\s*\([^)]*\))?` +
-			`\s*(?:@\w+(?:\s*\([^)]*\))?\s*)*(?:private|protected|public|)\s+` +
-			`(?:(?:final|transient)\s+)*(?:\w+<(\w+)>|(\w+))\s+(\w+)\s*;`)
+			`\s*(?:@\w+(?:\s*\([^)]*\))?\s*)*(?:private|protected|public|var|val|)\s+` +
+			`(?:(?:final|transient)\s+)*(?:\w+<(\w+)>|(\w+))\s+(\w+)(?:\s*[:?=;])`)
 	hibNamedQueryRE = regexp.MustCompile(
 		`(?s)@NamedQuery\s*\(\s*` +
 			`(?:name\s*=\s*\"(?P<name>[^\"]*)\"\s*,\s*query\s*=\s*\"(?P<query>[^\"]*)\"` +
@@ -38,9 +53,12 @@ var (
 )
 
 // ExtractHibernate runs the Hibernate/JPA extractor.
+// Accepts both Java and Kotlin source: Kotlin JPA entities use the same
+// @Entity, @Table, @OneToMany, @ManyToOne, @JoinColumn annotations before
+// class / data class declarations (regex patterns match identically).
 func ExtractHibernate(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !hibernateFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !hibernateFrameworks[ctx.Framework] {
 		return result
 	}
 

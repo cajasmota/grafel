@@ -72,9 +72,12 @@ var (
 
 // ExtractMicronautAOP detects Micronaut AOP interceptors and HttpServerFilter
 // middleware, emitting SCOPE.Pattern and SCOPE.Component entities.
+// Accepts both Java and Kotlin source: Micronaut Kotlin uses the same
+// @Around, @InterceptorBean, and @Filter annotations before class/fun
+// declarations (regex patterns are identical in Kotlin).
 func ExtractMicronautAOP(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !micronautFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !micronautFrameworks[ctx.Framework] {
 		return result
 	}
 

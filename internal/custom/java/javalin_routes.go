@@ -26,7 +26,12 @@ import (
 //                   transaction_rollback_rules                                   → not_applicable
 
 // javalinFrameworks is the set of framework identifiers that activate the
-// Javalin extractor.
+// Javalin extractor. Kotlin Javalin uses the same DSL:
+//
+//	app.get("/path") { ctx -> ... }
+//
+// The route regex (verb + path in quoted string) matches both Java lambda style
+// and Kotlin trailing-lambda style identically.
 var javalinFrameworks = map[string]bool{
 	"javalin": true,
 }
@@ -95,9 +100,12 @@ var (
 
 // ExtractJavalin runs the Javalin extractor for route, middleware, DTO, auth,
 // and test-linkage patterns.
+// Accepts both Java and Kotlin source: Kotlin Javalin uses the same
+// app.get("/path") { ctx -> ... } routing DSL — the path-extraction regex
+// matches identically for both languages.
 func ExtractJavalin(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !javalinFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !javalinFrameworks[ctx.Framework] {
 		return result
 	}
 
@@ -293,8 +301,8 @@ func ExtractJavalin(ctx PatternContext) PatternResult {
 			Provenance: "INFERRED_FROM_JAVALIN_VALIDATION",
 			Ref:        ref,
 			Properties: map[string]any{
-				"framework":        "javalin",
-				"dto_source":       "ctx.bodyValidator",
+				"framework":         "javalin",
+				"dto_source":        "ctx.bodyValidator",
 				"request_validated": true,
 			},
 		}

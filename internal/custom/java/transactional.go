@@ -23,6 +23,8 @@ import "regexp"
 
 // txFrameworks gates the frameworks for which @Transactional extraction runs.
 // All entries share the Spring/JTA @Transactional annotation surface.
+// Kotlin frameworks are included because Kotlin Spring Boot / Quarkus / Micronaut
+// use the identical @Transactional annotation syntax before fun/class declarations.
 var txFrameworks = map[string]bool{
 	"spring_boot": true, "spring-boot": true, "springboot": true,
 	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
@@ -143,9 +145,11 @@ var methodNameStopwords = map[string]bool{
 }
 
 // ExtractTransactional runs the @Transactional extractor.
+// Accepts both Java and Kotlin source: Kotlin uses the identical @Transactional
+// annotation before fun/class declarations (same regex patterns apply).
 func ExtractTransactional(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !txFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !txFrameworks[ctx.Framework] {
 		return result
 	}
 

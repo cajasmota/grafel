@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| DI injection point | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| DI scope resolution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Transaction propagation | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Transaction rollback rules | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Aspect extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Pointcut resolution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Trace extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 
 ### Data
 

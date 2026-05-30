@@ -29326,14 +29326,19 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -30022,44 +30027,53 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -30253,44 +30267,53 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -30472,58 +30495,70 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -30708,16 +30743,19 @@
             "issue": "backfill:dictionary-completeness"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -30908,16 +30946,19 @@
             "issue": "backfill:dictionary-completeness"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "issue": "3274",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {

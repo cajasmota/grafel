@@ -23,9 +23,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Lazy loading recognition | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Relationship extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 
 ### Queries
 

@@ -25,6 +25,8 @@ import "regexp"
 // aopFrameworks gates the frameworks for which Spring AOP extraction runs.
 // Spring AOP / AspectJ proxying is idiomatic only on the Spring frameworks;
 // other JVM frameworks are intentionally left red (see issue #3004).
+// Kotlin Spring Boot uses the same @Aspect/@Pointcut/@Before/@After/@Around
+// annotation syntax, so Kotlin is admitted under the same Spring framework IDs.
 var aopFrameworks = map[string]bool{
 	"spring_boot": true, "spring-boot": true, "springboot": true,
 	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
@@ -50,9 +52,11 @@ var (
 
 	// aopPointcutRE matches a @Pointcut method declaration, capturing the
 	// pointcut expression (group 1) and the declaring method name (group 2).
+	// Handles both Java (`void name()`) and Kotlin (`fun name()`) syntax so
+	// that Kotlin Spring Boot @Pointcut methods are correctly recognised.
 	aopPointcutRE = regexp.MustCompile(
 		`@Pointcut\s*\(\s*"([^"]*)"\s*\)\s*` +
-			`(?:(?:public|protected|private)\s+)?(?:abstract\s+)?void\s+(\w+)`)
+			`(?:(?:public|protected|private)\s+)?(?:abstract\s+)?(?:void|fun)\s+(\w+)`)
 
 	// aopAdviceMethodNameRE captures the method name that follows an advice
 	// annotation (skipping modifiers / return type) so an advice entity can be
@@ -129,9 +133,12 @@ func aopReferencedPointcut(expr string) string {
 }
 
 // ExtractSpringAOP runs the Spring AOP / AspectJ extractor.
+// Accepts both Java and Kotlin source: Kotlin Spring Boot uses the same
+// @Aspect/@Pointcut/@Before/@After/@Around annotation syntax before class/fun
+// declarations (patterns are regex-equivalent in Kotlin).
 func ExtractSpringAOP(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !aopFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !aopFrameworks[ctx.Framework] {
 		return result
 	}
 

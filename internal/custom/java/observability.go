@@ -34,6 +34,8 @@ import "regexp"
 // obsFrameworks gates the JVM backend frameworks for which observability
 // extraction runs. These are the http_framework / microprofile records that
 // carry the log/metric/trace cells in the coverage registry.
+// Kotlin frameworks are included because SLF4J/Micrometer/OTel annotations
+// and logger patterns are identical in Kotlin source.
 var obsFrameworks = map[string]bool{
 	"spring_boot": true, "spring-boot": true, "springboot": true,
 	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
@@ -161,10 +163,13 @@ func canonicalObsFramework(framework string) string {
 	}
 }
 
-// ExtractObservability runs the Java observability extractor.
+// ExtractObservability runs the Java/Kotlin observability extractor.
+// Accepts both Java and Kotlin source: SLF4J, Micrometer, and OTel patterns
+// (LoggerFactory.getLogger, @Timed, @WithSpan, etc.) are syntactically
+// identical in Kotlin files.
 func ExtractObservability(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if ctx.Language != "java" || !obsFrameworks[ctx.Framework] {
+	if (ctx.Language != "java" && ctx.Language != "kotlin") || !obsFrameworks[ctx.Framework] {
 		return result
 	}
 

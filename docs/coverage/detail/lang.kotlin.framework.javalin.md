@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🔴 `missing` | — | — | — | — |
-| Handler attribution | 🔴 `missing` | — | — | — | — |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Handler attribution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Route extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
 
 ### Auth
 
