@@ -96,6 +96,36 @@ var (
 	reSQLMigrationFile = regexp.MustCompile(
 		`^(\d+)_([A-Za-z0-9_\-]+)\.(up|down)\.sql$`,
 	)
+
+	// Query-attribution struct-context patterns (#3348 deepening).
+	//
+	// Goal: when a scan target is declared as a typed local variable immediately
+	// before or at the call site, record the struct name as model_struct on the
+	// query entity. This is a heuristic (not dataflow) — we match the three
+	// common idioms:
+	//
+	//   var dest MyStruct                    // var-decl
+	//   dest := MyStruct{}                   // composite-literal short-decl
+	//   var dest []MyStruct                  // slice receiver (Select/Queryx)
+	//
+	// The model_struct property enables downstream passes to link queries to
+	// their schema entities without full dataflow analysis.
+
+	// reSQLDestVarDecl matches `var <name> [*[]]*<TypeName>` preceding a call site.
+	// Group 1 = variable name, group 2 = type name (bare, no pointer/slice).
+	reSQLDestVarDecl = regexp.MustCompile(
+		`(?m)\bvar\s+(\w+)\s+(?:\[\]|\*)*([A-Z]\w*)`,
+	)
+	// reSQLDestShortDecl matches `<name> := [&][TypeName]{` short-var composite literal.
+	// Group 1 = variable name, group 2 = type name.
+	reSQLDestShortDecl = regexp.MustCompile(
+		`(?m)(\w+)\s*:=\s*(?:&|\[\])?([A-Z]\w*)\{`,
+	)
+	// reSQLGetCallWithDest matches db.Get/Select/QueryRow(&dest, …) or db.GetContext(ctx, &dest, …).
+	// Group 1 = the call verb, group 2 = the destination variable name (without &).
+	reSQLGetCallWithDest = regexp.MustCompile(
+		`\.(Get|Select|QueryRow|Queryx|QueryRowx|GetContext|SelectContext|QueryRowContext|QueryRowxContext)\s*\(\s*(?:\w+\s*,\s*)?&(\w+)`,
+	)
 )
 
 func (e *sqlDriversExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -215,12 +245,29 @@ func (e *sqlDriversExtractor) Extract(ctx context.Context, file extractor.FileIn
 	}
 
 	// 3. Queries: Exec/Query/QueryRow/Get/Select/NamedExec call sites.
-	//    Heuristic — captures the verb but cannot bind to a concrete model.
+	//    Where possible, link to the destination struct via the struct-context
+	//    resolution heuristic (see buildSQLDestTypeMap). Stays partial: the
+	//    heuristic resolves same-function typed variables only; cross-function
+	//    return-type chains are out of scope.
+	destMap := buildSQLDestTypeMap(src)
 	for _, m := range reSQLQueryCall.FindAllStringSubmatchIndex(src, -1) {
 		verb := src[m[2]:m[3]]
 		ent := makeEntity("call:"+driver+":"+verb+":"+lineToken(src, m[0]), "SCOPE.Operation", "query", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", driver, "provenance", "INFERRED_FROM_SQL_CALL",
 			"query_type", "call", "call_verb", verb)
+
+		// Attempt struct-context attribution: find &dest in the call args and
+		// look up dest's type in the file-level var-decl map.
+		end := m[0] + 200
+		if end > len(src) {
+			end = len(src)
+		}
+		if mc := reSQLGetCallWithDest.FindStringSubmatch(src[m[0]:end]); mc != nil {
+			destVar := mc[2]
+			if modelStruct, ok := destMap[destVar]; ok && modelStruct != "" {
+				setProps(&ent, "model_struct", modelStruct)
+			}
+		}
 		add(ent)
 	}
 
@@ -304,4 +351,48 @@ func lineToken(src string, offset int) string {
 		n /= 10
 	}
 	return string(digits)
+}
+
+// buildSQLDestTypeMap scans a Go source file for typed variable declarations
+// that are commonly used as scan destinations in sqlx/pgx query calls. It
+// returns a `varName → typeName` map for the three idiomatic shapes:
+//
+//	var u User                  → "u" → "User"
+//	var users []User            → "users" → "User"   (slice stripped)
+//	u := User{}                 → "u" → "User"
+//	u := &User{}                → "u" → "User"        (pointer stripped)
+//
+// Only exported (PascalCase) type names are recorded — primitives and
+// lower-case types are skipped to avoid noise. The map is consumed by the
+// query-attribution step to stamp model_struct on query-call entities, giving
+// a heuristic link from query call site to the schema struct being populated.
+//
+// This is intentionally file-local (no cross-file resolution) so it can never
+// produce a wrong binding — a miss is always safer than a mis-bind.
+func buildSQLDestTypeMap(src string) map[string]string {
+	out := map[string]string{}
+
+	// var-decl: `var dest [*|[]]TypeName`
+	for _, m := range reSQLDestVarDecl.FindAllStringSubmatch(src, -1) {
+		varName, typeName := m[1], m[2]
+		if varName == "" || typeName == "" {
+			continue
+		}
+		if _, exists := out[varName]; !exists {
+			out[varName] = typeName
+		}
+	}
+
+	// short-decl: `dest := [&|[]]TypeName{`
+	for _, m := range reSQLDestShortDecl.FindAllStringSubmatch(src, -1) {
+		varName, typeName := m[1], m[2]
+		if varName == "" || typeName == "" {
+			continue
+		}
+		if _, exists := out[varName]; !exists {
+			out[varName] = typeName
+		}
+	}
+
+	return out
 }

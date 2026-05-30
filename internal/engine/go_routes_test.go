@@ -308,3 +308,155 @@ func main() {
 		t.Errorf("ToID = %q, want unchanged Controller:h", got[0].ToID)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// AST cross-file route composition: same-file multi-handler deepening (#3348).
+//
+// These tests prove that the AST pass correctly resolves ROUTES_TO edges when
+// multiple distinct handler variables are registered in the same file — the
+// "multi-receiver same-file composition" case. The extractor runs per-file, so
+// cross-file composition is genuinely out of scope; same-file with multiple
+// handler instances is the deepened surface.
+// ---------------------------------------------------------------------------
+
+func TestApplyGoRouteComposition_MultipleHandlersSameFile(t *testing.T) {
+	// Two distinct handler structs wired to different route groups in the same file.
+	// The AST var-type map must correctly separate them: h1→UsersHandler,
+	// h2→OrdersHandler, so routes don't mis-cross.
+	src := []byte(`package main
+
+import "github.com/go-chi/chi/v5"
+
+func main() {
+	h1 := &UsersHandler{}
+	h2 := &OrdersHandler{}
+	r := chi.NewRouter()
+	r.Get("/users", h1.List)
+	r.Get("/users/{id}", h1.Get)
+	r.Post("/orders", h2.Create)
+	r.Delete("/orders/{id}", h2.Delete)
+}
+`)
+	rels := []types.RelationshipRecord{
+		makeRoutesToRel("/users", "h1"),
+		makeRoutesToRel("/users/{id}", "h1"),
+		makeRoutesToRel("/orders", "h2"),
+		makeRoutesToRel("/orders/{id}", "h2"),
+	}
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
+
+	want := map[string]string{
+		"/users":       "Controller:UsersHandler.List",
+		"/users/{id}":  "Controller:UsersHandler.Get",
+		"/orders":      "Controller:OrdersHandler.Create",
+		"/orders/{id}": "Controller:OrdersHandler.Delete",
+	}
+	for _, r := range got {
+		if r.Kind != "ROUTES_TO" {
+			continue
+		}
+		path := r.FromID[len("Route:"):]
+		wantToID, ok := want[path]
+		if !ok {
+			continue
+		}
+		if r.ToID != wantToID {
+			t.Errorf("route %q: ToID=%q, want %q", path, r.ToID, wantToID)
+		}
+	}
+}
+
+func TestApplyGoRouteComposition_FiberGroupedRoutes(t *testing.T) {
+	// fiber's Title-case verbs (Get/Post) with a group of routes using a
+	// single handler struct. Verifies the same AST resolution path works for
+	// Fiber's API surface (group-scoped but single-file).
+	src := []byte(`package main
+
+import "github.com/gofiber/fiber/v2"
+
+func setupRoutes(app *fiber.App) {
+	h := NewProductHandler(nil)
+	app.Get("/products", h.List)
+	app.Post("/products", h.Create)
+	app.Put("/products/:id", h.Update)
+}
+`)
+	rels := []types.RelationshipRecord{
+		makeRoutesToRel("/products", "h"),
+		makeRoutesToRel("/products", "h"),
+		makeRoutesToRel("/products/:id", "h"),
+	}
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "routes.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
+
+	for _, r := range got {
+		if r.Kind != "ROUTES_TO" {
+			continue
+		}
+		if r.ToID == "Controller:h" {
+			t.Errorf("bare receiver not rewritten for fiber route %q: %q", r.FromID, r.ToID)
+		}
+		if r.Properties["pattern_type"] != "ast_driven" {
+			t.Errorf("route %q: pattern_type=%q, want ast_driven", r.FromID, r.Properties["pattern_type"])
+		}
+	}
+}
+
+func TestApplyGoRouteComposition_EchoGroupRoutes(t *testing.T) {
+	// echo's uppercase verbs (GET/POST) with a sub-group handler variable.
+	// Same-file group composition: `api` sub-group with a dedicated handler.
+	src := []byte(`package main
+
+import "github.com/labstack/echo/v4"
+
+func main() {
+	e := echo.New()
+	h := &ProductHandler{}
+	api := e.Group("/api")
+	_ = api
+	e.GET("/products", h.List)
+	e.POST("/products", h.Create)
+}
+`)
+	rels := []types.RelationshipRecord{
+		makeRoutesToRel("/products", "h"),
+		makeRoutesToRel("/products", "h"),
+	}
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "routes.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
+
+	for _, r := range got {
+		if r.Kind != "ROUTES_TO" {
+			continue
+		}
+		if r.ToID == "Controller:h" {
+			t.Errorf("echo route receiver not resolved for %q", r.FromID)
+		}
+	}
+}
+
+func TestApplyGoRouteComposition_CrossFileReceiverLeftUntouched(t *testing.T) {
+	// When the handler variable is declared in a different file (not present in
+	// this file's AST), the pass leaves the edge unchanged (safe-bias). This
+	// test verifies the honest-partial boundary: cross-file composition is out
+	// of scope for the single-file AST pass, and the edge is not mis-bound.
+	src := []byte(`package main
+
+import "github.com/go-chi/chi/v5"
+
+// h is injected from another file — not declared here.
+func setupRoutes(r *chi.Mux) {
+	r.Get("/items", h.List)
+}
+`)
+	rels := []types.RelationshipRecord{
+		makeRoutesToRel("/items", "h"),
+	}
+	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "routes.go", Content: src, Relationships: rels})
+	_, got := _res.Entities, _res.Relationships
+	// h cannot be resolved from this file alone → edge stays as-is.
+	if got[0].ToID != "Controller:h" {
+		t.Errorf("cross-file receiver should not be rewritten, got: %q", got[0].ToID)
+	}
+}
