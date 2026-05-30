@@ -27,7 +27,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Kustomize](../detail/infra.container.kustomize.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | — | — | — | ✅ | ✅ | |
-| [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | 🟢 | — | — | 🟢 | 🟢 | |
+| [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Terraform (HCL)](../detail/infra.iac.terraform.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Terraform / OpenTofu / Vault / Nomad / Packer / Waypoint](../detail/infra.resource.terraform.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [docker-compose.yml](../detail/config.docker-compose.md) | — | — | ✅ | — | ✅ | |
