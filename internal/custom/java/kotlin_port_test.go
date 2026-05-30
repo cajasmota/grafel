@@ -733,3 +733,330 @@ func TestKotlinJavalin_WrongLanguage_Issue3274(t *testing.T) {
 		t.Errorf("[#3274 kotlin javalin gate] expected 0 for scala, got %d", len(r.Entities))
 	}
 }
+
+// ============================================================================
+// DEEP-GRIND (#3435): value-asserting tests for Kotlin Spring Boot DI +
+// Transactions + AOP. These assert SPECIFIC bean names, injected types,
+// stereotypes, scope values, transaction attributes (propagation / read_only /
+// rollback_for / isolation), and advice types + pointcut expressions — the bar
+// required to flip the spring-boot DI/Transactions/AOP cells from partial→full.
+// ============================================================================
+
+// ---- DI: di_binding_extraction ---------------------------------------------
+
+// TestKotlinSpringBoot_DI_BindingNames_3435 asserts the exact bean names and
+// stereotypes produced for @Service/@Repository/@Component/@Bean on Kotlin.
+func TestKotlinSpringBoot_DI_BindingNames_3435(t *testing.T) {
+	source := `
+import org.springframework.stereotype.Service
+import org.springframework.stereotype.Repository
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+
+@Service
+class UserService
+
+@Repository
+class UserRepository
+
+@Configuration
+class AppConfig {
+    @Bean
+    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+}
+`
+	r := ExtractSpringBoot(PatternContext{
+		Source: source, Language: "kotlin", Framework: "spring_boot", FilePath: "Beans.kt",
+	})
+
+	// Stereotype beans keyed by class name → stereotype.
+	stereotypeOf := map[string]string{}
+	beanMethods := map[string]string{} // bean_method → config_class
+	for _, e := range r.Entities {
+		if s, ok := e.Properties["stereotype"]; ok {
+			stereotypeOf[e.Name] = s.(string)
+		}
+		if bm, ok := e.Properties["bean_method"]; ok {
+			beanMethods[bm.(string)] = ""
+			if cc, ok2 := e.Properties["config_class"]; ok2 {
+				beanMethods[bm.(string)] = cc.(string)
+			}
+		}
+	}
+	if stereotypeOf["UserService"] != "service" {
+		t.Errorf("[3435 di_binding] UserService stereotype = %q, want service", stereotypeOf["UserService"])
+	}
+	if stereotypeOf["UserRepository"] != "repository" {
+		t.Errorf("[3435 di_binding] UserRepository stereotype = %q, want repository", stereotypeOf["UserRepository"])
+	}
+	if cc, ok := beanMethods["passwordEncoder"]; !ok {
+		t.Errorf("[3435 di_binding] missing @Bean method passwordEncoder; beans=%v", beanMethods)
+	} else if cc != "AppConfig" {
+		t.Errorf("[3435 di_binding] passwordEncoder config_class = %q, want AppConfig", cc)
+	}
+}
+
+// ---- DI: di_injection_point ------------------------------------------------
+
+// TestKotlinSpringBoot_DI_ConstructorInjection_3435 asserts that Kotlin primary
+// constructor injection (the idiomatic Kotlin DI form, previously uncaptured)
+// emits DEPENDS_ON edges carrying the EXACT injected type names and
+// injection_kind=constructor.
+func TestKotlinSpringBoot_DI_ConstructorInjection_3435(t *testing.T) {
+	source := `
+import org.springframework.stereotype.Service
+import org.springframework.beans.factory.annotation.Autowired
+
+@Service
+class OrderService @Autowired constructor(
+    private val userRepository: UserRepository,
+    private val paymentGateway: PaymentGateway
+) {
+    @Autowired
+    lateinit var auditLogger: AuditLogger
+}
+`
+	r := ExtractSpringBoot(PatternContext{
+		Source: source, Language: "kotlin", Framework: "spring_boot", FilePath: "OrderService.kt",
+	})
+
+	// Collect injected_type → injection_kind from DEPENDS_ON edges.
+	injected := map[string]string{}
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType != "DEPENDS_ON" {
+			continue
+		}
+		if it, ok := rel.Properties["injected_type"]; ok {
+			injected[it] = rel.Properties["injection_kind"]
+		}
+	}
+	if k := injected["UserRepository"]; k != "constructor" {
+		t.Errorf("[3435 di_injection] UserRepository injection_kind = %q, want constructor (injected=%v)", k, injected)
+	}
+	if k := injected["PaymentGateway"]; k != "constructor" {
+		t.Errorf("[3435 di_injection] PaymentGateway injection_kind = %q, want constructor", k)
+	}
+	if k := injected["AuditLogger"]; k != "field" {
+		t.Errorf("[3435 di_injection] AuditLogger injection_kind = %q, want field", k)
+	}
+}
+
+// TestKotlinSpringBoot_DI_PrimaryCtorNoAnnotation_3435 asserts that a Kotlin
+// primary constructor WITHOUT an explicit @Autowired (single-constructor
+// implicit injection) on a stereotype class still yields the dependency edges.
+func TestKotlinSpringBoot_DI_PrimaryCtorNoAnnotation_3435(t *testing.T) {
+	source := `
+import org.springframework.stereotype.Component
+
+@Component
+class NotificationService(
+    private val mailer: Mailer,
+    private val smsSender: SmsSender
+)
+`
+	r := ExtractSpringBoot(PatternContext{
+		Source: source, Language: "kotlin", Framework: "spring_boot", FilePath: "NotificationService.kt",
+	})
+	got := map[string]bool{}
+	for _, rel := range r.Relationships {
+		if it, ok := rel.Properties["injected_type"]; ok {
+			got[it] = true
+		}
+	}
+	for _, want := range []string{"Mailer", "SmsSender"} {
+		if !got[want] {
+			t.Errorf("[3435 di_injection implicit] missing dependency %q; got %v", want, got)
+		}
+	}
+}
+
+// ---- DI: di_scope_resolution -----------------------------------------------
+
+// TestKotlinSpringBoot_DI_ScopeValues_3435 asserts the exact spring_scope value
+// captured for @RequestScope / @SessionScope / @Scope("prototype") on Kotlin.
+func TestKotlinSpringBoot_DI_ScopeValues_3435(t *testing.T) {
+	source := `
+import org.springframework.stereotype.Component
+import org.springframework.context.annotation.Scope
+import org.springframework.web.context.annotation.RequestScope
+
+@RequestScope
+@Component
+class RequestContext
+
+@Scope("prototype")
+@Component
+class PrototypeBean
+`
+	r := ExtractSpringBoot(PatternContext{
+		Source: source, Language: "kotlin", Framework: "spring_boot", FilePath: "Scopes.kt",
+	})
+	scopeOf := map[string]string{}
+	for _, e := range r.Entities {
+		if s, ok := e.Properties["spring_scope"]; ok {
+			scopeOf[e.Name] = s.(string)
+		}
+	}
+	if scopeOf["RequestContext"] != "request" {
+		t.Errorf("[3435 di_scope] RequestContext spring_scope = %q, want request (got %v)", scopeOf["RequestContext"], scopeOf)
+	}
+	if scopeOf["PrototypeBean"] != "prototype" {
+		t.Errorf("[3435 di_scope] PrototypeBean spring_scope = %q, want prototype", scopeOf["PrototypeBean"])
+	}
+}
+
+// ---- Transactions: boundary / propagation / rollback / read_only / isolation
+
+// TestKotlinTransactional_Attributes_3435 asserts the EXACT method names and
+// transaction attributes captured from @Transactional on Kotlin funs.
+func TestKotlinTransactional_Attributes_3435(t *testing.T) {
+	source := `
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.annotation.Propagation
+
+class OrderService {
+
+    @Transactional(readOnly = true)
+    fun getOrders(): List<Order> = emptyList()
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = [PaymentException::class])
+    fun processPayment(payment: Payment) {}
+
+    @Transactional(isolation = Isolation.SERIALIZABLE, noRollbackFor = [WarnException::class])
+    fun reconcile() {}
+}
+`
+	r := ExtractTransactional(PatternContext{
+		Source: source, Language: "kotlin", Framework: "spring_boot", FilePath: "OrderService.kt",
+	})
+
+	// Index boundary entities by their method property.
+	byMethod := map[string]map[string]any{}
+	for _, e := range r.Entities {
+		if e.Subtype != "transaction_boundary" {
+			continue
+		}
+		if mth, ok := e.Properties["method"]; ok {
+			byMethod[mth.(string)] = e.Properties
+		}
+	}
+
+	get := func(method string) map[string]any {
+		p, ok := byMethod[method]
+		if !ok {
+			t.Fatalf("[3435 tx] no transaction_boundary for method %q; methods=%v", method, keysOf(byMethod))
+		}
+		return p
+	}
+
+	if p := get("getOrders"); p["read_only"] != "true" {
+		t.Errorf("[3435 tx read_only] getOrders read_only = %v, want true", p["read_only"])
+	}
+	if p := get("processPayment"); p["propagation"] != "REQUIRES_NEW" {
+		t.Errorf("[3435 tx propagation] processPayment propagation = %v, want REQUIRES_NEW", p["propagation"])
+	}
+	if p := get("processPayment"); p["rollback_for"] != "PaymentException" {
+		t.Errorf("[3435 tx rollback] processPayment rollback_for = %v, want PaymentException", p["rollback_for"])
+	}
+	if p := get("reconcile"); p["isolation"] != "SERIALIZABLE" {
+		t.Errorf("[3435 tx isolation] reconcile isolation = %v, want SERIALIZABLE", p["isolation"])
+	}
+	if p := get("reconcile"); p["no_rollback_for"] != "WarnException" {
+		t.Errorf("[3435 tx no_rollback] reconcile no_rollback_for = %v, want WarnException", p["no_rollback_for"])
+	}
+}
+
+// ---- AOP: aspect / advice_type / pointcut expression -----------------------
+
+// TestKotlinSpringAOP_Attributes_3435 asserts the exact aspect name, advice
+// types, and pointcut expressions captured from a Kotlin @Aspect class.
+func TestKotlinSpringAOP_Attributes_3435(t *testing.T) {
+	source := `
+import org.aspectj.lang.annotation.Aspect
+import org.aspectj.lang.annotation.Before
+import org.aspectj.lang.annotation.Around
+import org.aspectj.lang.annotation.Pointcut
+import org.springframework.stereotype.Component
+
+@Aspect
+@Component
+class LoggingAspect {
+
+    @Pointcut("execution(* com.example.service.*.*(..))")
+    fun serviceMethods() {}
+
+    @Before("serviceMethods()")
+    fun logEntry() {}
+
+    @Around("execution(* com.example.repo.*.*(..))")
+    fun timeIt(pjp: ProceedingJoinPoint): Any? = null
+}
+`
+	r := ExtractSpringAOP(PatternContext{
+		Source: source, Language: "kotlin", Framework: "spring_boot", FilePath: "LoggingAspect.kt",
+	})
+
+	var aspectName string
+	adviceTypeByMethod := map[string]string{}
+	pointcutExprByMethod := map[string]string{}
+	var namedPointcutExpr string
+	for _, e := range r.Entities {
+		switch e.Subtype {
+		case "aspect":
+			aspectName = e.Name
+		case "advice":
+			if mth, ok := e.Properties["method"]; ok {
+				adviceTypeByMethod[mth.(string)] = str(e.Properties["advice_type"])
+				pointcutExprByMethod[mth.(string)] = str(e.Properties["pointcut_expression"])
+			}
+		case "pointcut":
+			if str(e.Properties["pointcut"]) == "serviceMethods" {
+				namedPointcutExpr = str(e.Properties["pointcut_expression"])
+			}
+		}
+	}
+
+	if aspectName != "LoggingAspect" {
+		t.Errorf("[3435 aop aspect] aspect name = %q, want LoggingAspect", aspectName)
+	}
+	if adviceTypeByMethod["logEntry"] != "before" {
+		t.Errorf("[3435 aop advice] logEntry advice_type = %q, want before (got %v)", adviceTypeByMethod["logEntry"], adviceTypeByMethod)
+	}
+	if adviceTypeByMethod["timeIt"] != "around" {
+		t.Errorf("[3435 aop advice] timeIt advice_type = %q, want around", adviceTypeByMethod["timeIt"])
+	}
+	if got := pointcutExprByMethod["timeIt"]; got != "execution(* com.example.repo.*.*(..))" {
+		t.Errorf("[3435 aop pointcut] timeIt pointcut_expression = %q", got)
+	}
+	if namedPointcutExpr != "execution(* com.example.service.*.*(..))" {
+		t.Errorf("[3435 aop pointcut] serviceMethods @Pointcut expression = %q", namedPointcutExpr)
+	}
+
+	// pointcut_resolution: advice -> named pointcut REFERENCES edge.
+	foundRef := false
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "REFERENCES" {
+			foundRef = true
+		}
+	}
+	if !foundRef {
+		t.Error("[3435 aop pointcut_resolution] expected REFERENCES edge from advice to named pointcut")
+	}
+}
+
+// keysOf returns the keys of a map[string]map[string]any for diagnostics.
+func keysOf(m map[string]map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// str coerces an any property value to string, returning "" for nil/non-string.
+func str(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}

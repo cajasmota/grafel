@@ -111,3 +111,62 @@ func TestKtorTransactions_EmptySource(t *testing.T) {
 		t.Errorf("[ktor_tx] expected no entities for empty file, got %d", len(ents))
 	}
 }
+
+// ----------------------------------------------------------------------------
+// DEEP-GRIND (#3435): value-asserting tests for Koin DI binding types /
+// injection points and Exposed transaction boundaries (incl. isolation level).
+// These assert SPECIFIC bound type names — the bar to flip the ktor
+// di_binding_extraction / di_injection_point / transaction_boundary_extraction
+// cells from partial→full.
+// ----------------------------------------------------------------------------
+
+// TestKtorDI_BindingTypeNames_3435 asserts that each Koin single/factory/scoped
+// declaration produces a di_binding entity named after its bound TYPE.
+func TestKtorDI_BindingTypeNames_3435(t *testing.T) {
+	ents := extract(t, "custom_kotlin_ktor_di", fi("AppModule.kt", "kotlin", ktorKoinModuleSrc))
+
+	bindings := map[string]bool{}
+	var injectionPoint string
+	for _, e := range ents {
+		switch e.Subtype {
+		case "di_binding":
+			bindings[e.Name] = true
+		case "di_injection_point":
+			injectionPoint = e.Name
+		}
+	}
+	for _, want := range []string{"UserService", "UserRepository", "CacheService"} {
+		if !bindings[want] {
+			t.Errorf("[3435 ktor di_binding] missing bound type %q; got %v", want, bindings)
+		}
+	}
+	// `val repo: UserRepository by inject()` → injection point keyed field:type.
+	if injectionPoint != "repo:UserRepository" {
+		t.Errorf("[3435 ktor di_injection] injection point = %q, want repo:UserRepository", injectionPoint)
+	}
+}
+
+// TestKtorTransactions_BoundaryAndIsolation_3435 asserts that Exposed
+// transaction { } / newSuspendedTransaction { } produce boundary entities and
+// that the SERIALIZABLE isolation level is captured by name.
+func TestKtorTransactions_BoundaryAndIsolation_3435(t *testing.T) {
+	ents := extract(t, "custom_kotlin_ktor_transactions", fi("UserDao.kt", "kotlin", ktorExposedTransactionSrc))
+
+	boundaries := 0
+	foundIsolation := false
+	for _, e := range ents {
+		if e.Subtype != "transaction_boundary" {
+			continue
+		}
+		boundaries++
+		if e.Name == "transaction#isolation:SERIALIZABLE" {
+			foundIsolation = true
+		}
+	}
+	if boundaries < 3 {
+		t.Errorf("[3435 ktor tx] expected >=3 transaction boundaries (transaction + suspended + isolation), got %d", boundaries)
+	}
+	if !foundIsolation {
+		t.Error("[3435 ktor tx] expected SERIALIZABLE isolation boundary entity")
+	}
+}
