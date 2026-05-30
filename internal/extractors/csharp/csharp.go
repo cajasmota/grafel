@@ -6,6 +6,8 @@
 //   - class_declaration       → Kind="SCOPE.Component", Subtype="class"
 //   - interface_declaration   → Kind="SCOPE.Component", Subtype="interface"
 //   - struct_declaration      → Kind="SCOPE.Component", Subtype="struct"
+//   - record_declaration      → Kind="SCOPE.Component", Subtype="type"
+//   - enum_declaration        → Kind="SCOPE.Schema",    Subtype="enum"
 //   - using_directive         → IMPORTS relationship
 //
 // Issue #368 — relationship parity. The extractor emits:
@@ -97,13 +99,15 @@ func walk(
 	}
 
 	switch node.Type() {
-	case "class_declaration", "interface_declaration", "struct_declaration":
+	case "class_declaration", "interface_declaration", "struct_declaration", "record_declaration":
 		subtype := "class"
 		switch node.Type() {
 		case "interface_declaration":
 			subtype = "interface"
 		case "struct_declaration":
 			subtype = "struct"
+		case "record_declaration":
+			subtype = "type"
 		}
 		rec, ok := buildComponent(node, file, subtype)
 		if !ok {
@@ -134,6 +138,12 @@ func walk(
 						Kind: "CONTAINS",
 					})
 			}
+		}
+		return
+
+	case "enum_declaration":
+		if rec, ok := buildEnumEntity(node, file); ok {
+			*out = append(*out, rec)
 		}
 		return
 
@@ -208,6 +218,48 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 		StartLine:          int(node.StartPoint().Row) + 1,
 		EndLine:            int(node.EndPoint().Row) + 1,
 		Signature:          buildClassSignature(node, file.Content),
+		EnrichmentRequired: false,
+	}, true
+}
+
+// buildEnumEntity creates a SCOPE.Schema entity (subtype="enum") for enum declarations.
+// Enum member names are collected and stored in the Signature field as a comma-separated
+// list so the graph carries the full member set without additional enrichment.
+func buildEnumEntity(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	name := childFieldText(node, "name", file.Content)
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+
+	// Collect member names from enum_member_declaration_list children.
+	var members []string
+	for _, memberList := range findAllNodes(node, "enum_member_declaration_list") {
+		for _, member := range findAllNodes(memberList, "enum_member_declaration") {
+			// The first identifier child is the member name.
+			for i := 0; i < int(member.ChildCount()); i++ {
+				ch := member.Child(i)
+				if ch != nil && ch.Type() == "identifier" {
+					members = append(members, string(file.Content[ch.StartByte():ch.EndByte()]))
+					break
+				}
+			}
+		}
+	}
+
+	sig := name
+	if len(members) > 0 {
+		sig = name + " { " + strings.Join(members, ", ") + " }"
+	}
+
+	return types.EntityRecord{
+		Name:               name,
+		Kind:               "SCOPE.Schema",
+		Subtype:            "enum",
+		SourceFile:         file.Path,
+		Language:           "csharp",
+		StartLine:          int(node.StartPoint().Row) + 1,
+		EndLine:            int(node.EndPoint().Row) + 1,
+		Signature:          sig,
 		EnrichmentRequired: false,
 	}, true
 }

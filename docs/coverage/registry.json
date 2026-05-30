@@ -5806,12 +5806,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO types inferred from FluentValidation AbstractValidator\u003cT\u003e type arg and DataAnnotation model classes; heuristic"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FluentValidation AbstractValidator\u003cT\u003e + DataAnnotations [Required]/[StringLength]/[Range]/[RegularExpression] regex extractor; heuristic"
           }
         },
         "Middleware": {
@@ -5823,20 +5827,23 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum; members collected in Signature"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface; was already extracted, cell now confirmed"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
             "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record_declaration added this PR"
           }
         },
         "Testing": {
@@ -6009,12 +6016,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO types inferred from FluentValidation + DataAnnotation model classes; heuristic"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FluentValidation AbstractValidator\u003cT\u003e + DataAnnotations regex extractor; heuristic"
           }
         },
         "Middleware": {
@@ -6024,20 +6035,23 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
             "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
           }
         },
         "Testing": {
@@ -6214,10 +6228,14 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
@@ -6382,10 +6400,14 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
@@ -6550,10 +6572,14 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
@@ -6710,12 +6736,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO types inferred from FluentValidation + DataAnnotation model classes; heuristic"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FluentValidation AbstractValidator\u003cT\u003e + DataAnnotations regex extractor; heuristic"
           }
         },
         "Middleware": {
@@ -6725,20 +6755,23 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
             "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
           }
         },
         "Testing": {
@@ -6907,12 +6940,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO types inferred from FluentValidation + DataAnnotation model classes; heuristic"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FluentValidation AbstractValidator\u003cT\u003e + DataAnnotations regex extractor; heuristic"
           }
         },
         "Middleware": {
@@ -6922,20 +6959,23 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
             "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
           }
         },
         "Testing": {
@@ -7242,12 +7282,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO types inferred from FluentValidation + DataAnnotation model classes; heuristic"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FluentValidation AbstractValidator\u003cT\u003e + DataAnnotations regex extractor; heuristic"
           }
         },
         "Middleware": {
@@ -7257,20 +7301,23 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
             "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
           }
         },
         "Testing": {
@@ -7614,12 +7661,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO types inferred from FluentValidation + DataAnnotation model classes; heuristic"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FluentValidation AbstractValidator\u003cT\u003e + DataAnnotations regex extractor; heuristic"
           }
         },
         "Middleware": {
@@ -7629,20 +7680,23 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST interface_declaration → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
             "status": "not_applicable",
             "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/csharp/csharp.go"],
+            "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
           }
         },
         "Testing": {
