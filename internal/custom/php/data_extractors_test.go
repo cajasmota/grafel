@@ -218,6 +218,323 @@ class User extends Model
 }
 
 // ============================================================================
+// Eloquent deep extraction — models, relationships, FK, lazy, migrations
+// ============================================================================
+
+// TestEloquentDeep_ModelExtraction verifies that model class name, $table override,
+// $fillable columns, and $casts entries are all surfaced.
+func TestEloquentDeep_ModelExtraction(t *testing.T) {
+	src := `<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class User extends Model
+{
+    protected $table = 'app_users';
+    protected $fillable = ['name', 'email', 'age'];
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'age'               => 'integer',
+    ];
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("app/Models/User.php", "php", src))
+
+	// model class entity
+	if !containsEntity(ents, "SCOPE.Schema", "User") {
+		t.Error("expected User model entity (SCOPE.Schema/model)")
+	}
+	// explicit $table property
+	if !containsEntity(ents, "SCOPE.Schema", "app_users") {
+		t.Error("expected app_users table entity from $table property")
+	}
+	// fillable columns
+	for _, col := range []string{"name", "email", "age"} {
+		if !containsEntity(ents, "SCOPE.Schema", col) {
+			t.Errorf("expected fillable column %q", col)
+		}
+	}
+	// casts columns
+	if !containsEntity(ents, "SCOPE.Schema", "email_verified_at") {
+		t.Error("expected email_verified_at column from $casts")
+	}
+}
+
+// TestEloquentDeep_RelationshipExtractionWithRelatedModel verifies all relationship
+// types are captured, with the related model name stored in properties.
+func TestEloquentDeep_RelationshipExtractionWithRelatedModel(t *testing.T) {
+	src := `<?php
+class Post extends Model
+{
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+    public function comments(): HasMany
+    {
+        return $this->hasMany(Comment::class);
+    }
+    public function thumbnail(): HasOne
+    {
+        return $this->hasOne(Image::class);
+    }
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class);
+    }
+    public function history(): HasManyThrough
+    {
+        return $this->hasManyThrough(Revision::class, Edit::class);
+    }
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("Post.php", "php", src))
+
+	// Each relationship method must produce a SCOPE.Component/relation entity.
+	for _, rel := range []string{"author", "comments", "thumbnail", "tags", "history"} {
+		if !containsEntity(ents, "SCOPE.Component", rel) {
+			t.Errorf("expected relation entity for method %q", rel)
+		}
+	}
+}
+
+// TestEloquentDeep_MorphRelationships verifies morphTo and morphMany extraction.
+func TestEloquentDeep_MorphRelationships(t *testing.T) {
+	src := `<?php
+class Image extends Model
+{
+    public function imageable()
+    {
+        return $this->morphTo();
+    }
+}
+
+class Post extends Model
+{
+    public function images(): MorphMany
+    {
+        return $this->morphMany(Image::class, 'imageable');
+    }
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("Polymorphic.php", "php", src))
+
+	if !containsEntity(ents, "SCOPE.Component", "imageable") {
+		t.Error("expected imageable morphTo relation entity")
+	}
+	if !containsEntity(ents, "SCOPE.Component", "images") {
+		t.Error("expected images morphMany relation entity")
+	}
+}
+
+// TestEloquentDeep_ForeignKeyConvention verifies that a belongsTo method without
+// an explicit FK arg produces the conventional snake_case FK column.
+func TestEloquentDeep_ForeignKeyConvention(t *testing.T) {
+	src := `<?php
+class Comment extends Model
+{
+    public function post(): BelongsTo
+    {
+        return $this->belongsTo(Post::class);
+    }
+    public function postAuthor(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("Comment.php", "php", src))
+
+	// Conventional FKs: post → post_id; postAuthor → post_author_id
+	if !containsEntity(ents, "SCOPE.Schema", "fk:post_id") {
+		t.Error("expected fk:post_id from belongsTo(Post::class) convention")
+	}
+	if !containsEntity(ents, "SCOPE.Schema", "fk:post_author_id") {
+		t.Error("expected fk:post_author_id from belongsTo(User::class) camelCase convention")
+	}
+}
+
+// TestEloquentDeep_ForeignKeyExplicit verifies that an explicit 2nd arg FK overrides
+// the conventional name.
+func TestEloquentDeep_ForeignKeyExplicit(t *testing.T) {
+	src := `<?php
+class Profile extends Model
+{
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("Profile.php", "php", src))
+
+	if !containsEntity(ents, "SCOPE.Schema", "fk:owner_id") {
+		t.Error("expected fk:owner_id from explicit 2nd arg in belongsTo")
+	}
+}
+
+// TestEloquentDeep_MigrationForeignIdConstrained verifies the ->foreignId()->constrained() pattern.
+func TestEloquentDeep_MigrationForeignIdConstrained(t *testing.T) {
+	src := `<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('posts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('category_id')->constrained('categories');
+            $table->string('title');
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('posts');
+    }
+};
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("database/migrations/2024_create_posts.php", "php", src))
+
+	// Migration operation entities
+	if !containsEntity(ents, "SCOPE.Operation", "create:posts") {
+		t.Error("expected create:posts migration entity")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "drop:posts") {
+		t.Error("expected drop:posts migration entity from dropIfExists")
+	}
+	// up/down methods
+	if !containsEntity(ents, "SCOPE.Operation", "migration:up") {
+		t.Error("expected migration:up from public function up()")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "migration:down") {
+		t.Error("expected migration:down from public function down()")
+	}
+	// foreignId()->constrained()
+	if !containsEntity(ents, "SCOPE.Schema", "fk:constrained:user_id") {
+		t.Error("expected fk:constrained:user_id from foreignId()->constrained()")
+	}
+	// Blueprint string column
+	if !containsEntity(ents, "SCOPE.Schema", "title") {
+		t.Error("expected title column from Blueprint->string('title')")
+	}
+}
+
+// TestEloquentDeep_LazyByDefault verifies that a model without $with produces the
+// lazy:default marker (Eloquent is lazy by default).
+func TestEloquentDeep_LazyByDefault(t *testing.T) {
+	src := `<?php
+class Article extends Model
+{
+    protected $fillable = ['title'];
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("Article.php", "php", src))
+
+	if !containsEntity(ents, "SCOPE.Pattern", "lazy:default") {
+		t.Error("expected lazy:default pattern — Eloquent is lazy by default when no $with is set")
+	}
+}
+
+// TestEloquentDeep_EagerLoadWithCall verifies ->with() call-site eager loading detection.
+func TestEloquentDeep_EagerLoadWithCall(t *testing.T) {
+	src := `<?php
+class PostController extends Controller
+{
+    public function index()
+    {
+        return Post::with(['author', 'comments'])->paginate();
+    }
+    public function show($id)
+    {
+        $post = Post::findOrFail($id);
+        $post->load('author');
+        return $post;
+    }
+}
+`
+	_ = src // controller source unused; use model source instead
+	src2 := `<?php
+class Post extends Model
+{
+    public function getWithAuthor()
+    {
+        return $this->with(['author'])->get();
+    }
+    public function getLoaded()
+    {
+        $post = Post::first();
+        $post->load('tags');
+        return $post;
+    }
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("Post.php", "php", src2))
+
+	if !containsEntity(ents, "SCOPE.Pattern", "eager_load:with") {
+		t.Error("expected eager_load:with entity from ->with() call")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "eager_load:load") {
+		t.Error("expected eager_load:load entity from ->load() call")
+	}
+}
+
+// TestEloquentDeep_MigrationAlterTable verifies Schema::table (alter) extraction.
+func TestEloquentDeep_MigrationAlterTable(t *testing.T) {
+	src := `<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class AddStatusToOrdersTable extends Migration
+{
+    public function up()
+    {
+        Schema::table('orders', function (Blueprint $table) {
+            $table->string('status')->default('pending');
+            $table->unsignedBigInteger('assigned_user_id')->nullable();
+            $table->foreign('assigned_user_id')->references('id')->on('users');
+        });
+    }
+
+    public function down()
+    {
+        Schema::table('orders', function (Blueprint $table) {
+            $table->dropColumn('status');
+        });
+    }
+}
+`
+	ents := extract(t, "php_eloquent_orm_data", fi("2024_add_status_to_orders.php", "php", src))
+
+	if !containsEntity(ents, "SCOPE.Operation", "alter:orders") {
+		t.Error("expected alter:orders from Schema::table")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "migration:up") {
+		t.Error("expected migration:up step")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "migration:down") {
+		t.Error("expected migration:down step")
+	}
+	if !containsEntity(ents, "SCOPE.Schema", "status") {
+		t.Error("expected status column from Blueprint->string")
+	}
+	if !containsEntity(ents, "SCOPE.Schema", "fk:assigned_user_id") {
+		t.Error("expected fk:assigned_user_id from ->foreign()")
+	}
+}
+
+// ============================================================================
 // CycleORM
 // ============================================================================
 

@@ -36389,35 +36389,30 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
           },
           "foreign_key_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
           },
           "lazy_loading_recognition": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
           }
         },
@@ -36430,7 +36425,7 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
           }

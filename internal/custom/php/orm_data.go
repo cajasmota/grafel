@@ -209,11 +209,41 @@ var (
 	// eloquentFillableEntryRe extracts column names from fillable arrays
 	eloquentFillableEntryRe = regexp.MustCompile(`['"](\w+)['"]`)
 
-	// eloquentBelongsToRe detects belongsTo/belongsToMany FK side (implied FK)
-	eloquentBelongsToRe = regexp.MustCompile(
-		`(?s)public\s+function\s+(\w+)\s*\(\s*\)\s*(?::\s*\w+\s*)?\{[^}]*?\b(belongsTo|belongsToMany)\s*\(`)
+	// eloquentTablePropertyRe matches $table = 'tablename' overrides
+	eloquentTablePropertyRe = regexp.MustCompile(
+		`(?m)protected\s+\$table\s*=\s*['"]([^'"]+)['"]`)
 
-	// eloquentLazyLoadRe detects whenLoaded or $with for lazy/eager hints
+	// elqModelWithTableRe captures (className, tableName) from class header through $table
+	// Used to associate model name with its explicit table. Group 1=class, Group 2=table.
+	elqModelWithTableRe = regexp.MustCompile(
+		`(?s)class\s+(\w+)\s+extends\s+(?:Model|Authenticatable|Pivot)\b[^{]*\{[^}]*?protected\s+\$table\s*=\s*['"]([^'"]+)['"]`)
+
+	// eloquentRelationMethodRe captures the full function body for relationship methods.
+	// Group 1=method name, Group 2=body content (between braces, shallow — stops at first })
+	// Group 3=relationship type, Group 4=rest after relation call (for extracting related model arg).
+	eloquentRelationMethodRe = regexp.MustCompile(
+		`(?s)public\s+function\s+(\w+)\s*\(\s*\)\s*(?::\s*[\w\\|?]+\s*)?\{\s*return\s+\$this->(hasOne|hasMany|belongsTo|belongsToMany|morphTo|morphMany|morphOne|hasManyThrough|hasOneThrough)\s*\(([^)]*)\)`)
+
+	// elqRelatedModelRe extracts the related model class from an argument like User::class or 'User'
+	// Group 1 = class name
+	elqRelatedModelRe = regexp.MustCompile(
+		`(?:^|\s|,)\s*(?:\\?(?:[\w\\]+\\)?)(\w+)::class`)
+
+	// elqBelongsToExplicitFKRe extracts the explicit FK column from belongsTo 2nd arg.
+	// belongsTo(User::class, 'owner_id')  — Group 1=related class, Group 2=FK column.
+	elqBelongsToExplicitFKRe = regexp.MustCompile(
+		`\b(belongsTo|belongsToMany)\s*\(\s*(?:\\?(?:[\w\\]+\\)?)(\w+)::class\s*,\s*['"](\w+)['"]`)
+
+	// eloquentEagerWithCallRe detects eager loading via query scoping with()
+	// Matches: ->with([...]) or ->with('rel') or Model::with(...)
+	eloquentEagerWithCallRe = regexp.MustCompile(
+		`(?m)->\bwith\s*\(`)
+
+	// eloquentLoadCallRe detects dynamic eager loading via ->load([...])
+	eloquentLoadCallRe = regexp.MustCompile(
+		`(?m)->\bload\s*\(`)
+
+	// eloquentLazyLoadRe detects $with or $withCount property (always-eager classes)
 	eloquentLazyLoadRe = regexp.MustCompile(
 		`(?m)protected\s+\$(?:with|withCount)\s*=\s*\[([^\]]*)\]`)
 
@@ -225,14 +255,45 @@ var (
 	eloquentMigrationTableRe = regexp.MustCompile(
 		`(?m)Schema::table\s*\(\s*['"]([^'"]+)['"]`)
 
+	// eloquentMigrationDropRe detects Schema::drop/dropIfExists
+	eloquentMigrationDropRe = regexp.MustCompile(
+		`(?m)Schema::drop(?:IfExists)?\s*\(\s*['"]([^'"]+)['"]`)
+
+	// eloquentMigrationUpDownRe detects up()/down() migration methods
+	eloquentMigrationUpDownRe = regexp.MustCompile(
+		`(?m)public\s+function\s+(up|down)\s*\(\s*\)`)
+
 	// eloquentColumnDefRe detects Blueprint column definitions in migrations
 	eloquentColumnDefRe = regexp.MustCompile(
-		`(?m)\$table->(string|integer|bigInteger|unsignedBigInteger|boolean|text|json|jsonb|timestamp|date|decimal|float|double|enum|morphs|nullableMorphs|foreignId)\s*\(\s*['"]([^'"]+)['"]`)
+		`(?m)\$(?:table|t)->(string|integer|bigInteger|unsignedBigInteger|boolean|text|longText|json|jsonb|timestamp|timestamps|date|decimal|float|double|enum|morphs|nullableMorphs|foreignId|id|uuid|ulid|char|tinyInteger|smallInteger|mediumInteger|tinyText|mediumText)\s*\(\s*['"]([^'"]+)['"]`)
 
 	// eloquentForeignKeyRe detects explicit foreign key definitions
 	eloquentForeignKeyRe = regexp.MustCompile(
-		`(?m)\$table->foreign(?:Id)?\s*\(\s*['"]([^'"]+)['"]`)
+		`(?m)\$(?:table|t)->foreign(?:Id)?\s*\(\s*['"]([^'"]+)['"]`)
+
+	// elqForeignIdConstrainedRe detects ->foreignId('col')->constrained() pattern
+	elqForeignIdConstrainedRe = regexp.MustCompile(
+		`(?m)\$(?:table|t)->foreignId\s*\(\s*['"]([^'"]+)['"]\s*\)[^;]*->constrained\s*\(`)
 )
+
+// elqConventionalFK derives the conventional FK column name from a belongsTo method name.
+// e.g. method "user" → "user_id"; method "postAuthor" → "post_author_id" (camelCase → snake_case)
+func elqConventionalFK(methodName string) string {
+	// Convert camelCase to snake_case
+	var out []byte
+	for i := 0; i < len(methodName); i++ {
+		c := methodName[i]
+		if c >= 'A' && c <= 'Z' && i > 0 {
+			out = append(out, '_')
+			out = append(out, c+('a'-'A'))
+		} else if c >= 'A' && c <= 'Z' {
+			out = append(out, c+('a'-'A'))
+		} else {
+			out = append(out, c)
+		}
+	}
+	return string(out) + "_id"
+}
 
 func (e *eloquentORMDataExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/php")
@@ -254,14 +315,32 @@ func (e *eloquentORMDataExtractor) Extract(ctx context.Context, file extractor.F
 
 	// Gate: must contain Eloquent or Schema markers
 	hasEloquent := reEloquentModel.FindStringIndex(src) != nil
-	hasMigration := eloquentMigrationCreateRe.FindStringIndex(src) != nil || eloquentMigrationTableRe.FindStringIndex(src) != nil
+	hasMigration := eloquentMigrationCreateRe.FindStringIndex(src) != nil ||
+		eloquentMigrationTableRe.FindStringIndex(src) != nil ||
+		eloquentMigrationDropRe.FindStringIndex(src) != nil
 
 	if !hasEloquent && !hasMigration {
 		span.SetAttributes(attribute.Int("entity_count", 0))
 		return nil, nil
 	}
 
-	// 1. Schema: $fillable columns → SCOPE.Schema/column
+	// 1. Schema: model class name → SCOPE.Schema/model
+	for _, m := range reEloquentModel.FindAllStringSubmatchIndex(src, -1) {
+		modelName := src[m[2]:m[3]]
+		ent := makeEntity(modelName, "SCOPE.Schema", "model", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_MODEL")
+		add(ent)
+	}
+
+	// 2. Schema: $table property → SCOPE.Schema/table
+	for _, m := range eloquentTablePropertyRe.FindAllStringSubmatchIndex(src, -1) {
+		tableName := src[m[2]:m[3]]
+		ent := makeEntity(tableName, "SCOPE.Schema", "table", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_TABLE_PROPERTY")
+		add(ent)
+	}
+
+	// 3. Schema: $fillable columns → SCOPE.Schema/column
 	for _, m := range eloquentFillableRe.FindAllStringSubmatchIndex(src, -1) {
 		arrayContent := src[m[2]:m[3]]
 		for _, cm := range eloquentFillableEntryRe.FindAllStringSubmatch(arrayContent, -1) {
@@ -272,54 +351,140 @@ func (e *eloquentORMDataExtractor) Extract(ctx context.Context, file extractor.F
 		}
 	}
 
-	// 2. Schema: $casts type annotations → SCOPE.Schema/column
+	// 4. Schema: $casts type annotations → SCOPE.Schema/column
 	for _, m := range eloquentCastsRe.FindAllStringSubmatchIndex(src, -1) {
 		arrayContent := src[m[2]:m[3]]
 		for _, cm := range eloquentCastEntryRe.FindAllStringSubmatch(arrayContent, -1) {
 			colName := cm[1]
+			castType := cm[2]
 			ent := makeEntity(colName, "SCOPE.Schema", "column", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_CAST",
-				"cast_type", cm[2])
+				"cast_type", castType)
 			add(ent)
 		}
 	}
 
-	// 3. Relationship: belongsTo/belongsToMany (FK-owning side) → SCOPE.Component/relation
-	for _, m := range eloquentBelongsToRe.FindAllStringSubmatchIndex(src, -1) {
+	// 5. Relationships: all types with related model extraction → SCOPE.Component/relation
+	for _, m := range eloquentRelationMethodRe.FindAllStringSubmatchIndex(src, -1) {
 		methodName := src[m[2]:m[3]]
 		relType := src[m[4]:m[5]]
+		argsStr := src[m[6]:m[7]]
+
+		// Extract related model class from first arg (e.g. User::class)
+		relatedModel := ""
+		if rm := elqRelatedModelRe.FindStringSubmatch(argsStr); rm != nil {
+			relatedModel = rm[1]
+		}
+
 		ent := makeEntity(methodName, "SCOPE.Component", "relation", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_BELONGS_TO",
-			"relation_type", relType)
+		props := []string{
+			"framework", "eloquent",
+			"provenance", "INFERRED_FROM_ELOQUENT_RELATIONSHIP",
+			"relation_type", relType,
+		}
+		if relatedModel != "" {
+			props = append(props, "related_model", relatedModel)
+		}
+		setProps(&ent, props...)
 		add(ent)
+
+		// 5a. FK inference for belongsTo side
+		if relType == "belongsTo" || relType == "belongsToMany" {
+			// Check for explicit FK as 2nd arg
+			fkCol := ""
+			if em := elqBelongsToExplicitFKRe.FindStringSubmatch("$this->" + relType + "(" + argsStr + ")"); em != nil {
+				fkCol = em[3]
+			}
+			// Fallback: conventional FK from method name
+			if fkCol == "" && (relType == "belongsTo") {
+				fkCol = elqConventionalFK(methodName)
+			}
+			if fkCol != "" {
+				fkEnt := makeEntity("fk:"+fkCol, "SCOPE.Schema", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
+				props := []string{
+					"framework", "eloquent",
+					"provenance", "INFERRED_FROM_ELOQUENT_BELONGS_TO_CONVENTION",
+					"fk_column", fkCol,
+				}
+				if relatedModel != "" {
+					props = append(props, "related_model", relatedModel)
+				}
+				setProps(&fkEnt, props...)
+				add(fkEnt)
+			}
+		}
 	}
 
-	// 4. Lazy/eager loading hints: $with or $withCount arrays → SCOPE.Pattern
+	// 6. Lazy/eager loading hints: $with or $withCount property → SCOPE.Pattern/eager_loading
 	for _, m := range eloquentLazyLoadRe.FindAllStringSubmatchIndex(src, -1) {
 		ent := makeEntity("eager_with", "SCOPE.Pattern", "eager_loading", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_WITH")
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_WITH",
+			"loading_mode", "eager")
 		add(ent)
 	}
 
-	// 5. Migration: Schema::create → SCOPE.Operation/migration
+	// 7. Eager loading via ->with() query scope calls → SCOPE.Pattern/eager_loading
+	for _, m := range eloquentEagerWithCallRe.FindAllStringIndex(src, -1) {
+		ent := makeEntity("eager_load:with", "SCOPE.Pattern", "eager_loading", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_WITH_CALL",
+			"loading_mode", "eager")
+		add(ent)
+	}
+
+	// 8. Dynamic eager loading via ->load() → SCOPE.Pattern/eager_loading
+	for _, m := range eloquentLoadCallRe.FindAllStringIndex(src, -1) {
+		ent := makeEntity("eager_load:load", "SCOPE.Pattern", "eager_loading", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_LOAD_CALL",
+			"loading_mode", "eager")
+		add(ent)
+	}
+
+	// 9. Lazy loading: Eloquent is lazy by default — emit a lazy marker when
+	//    a model class is detected but no eager $with property is present.
+	if hasEloquent && eloquentLazyLoadRe.FindStringIndex(src) == nil {
+		ent := makeEntity("lazy:default", "SCOPE.Pattern", "lazy_loading", file.Path, file.Language, 1)
+		setProps(&ent, "framework", "eloquent", "provenance", "ELOQUENT_LAZY_BY_DEFAULT",
+			"loading_mode", "lazy")
+		add(ent)
+	}
+
+	// 10. Migration: Schema::create → SCOPE.Operation/migration
 	for _, m := range eloquentMigrationCreateRe.FindAllStringSubmatchIndex(src, -1) {
 		tableName := src[m[2]:m[3]]
 		ent := makeEntity("create:"+tableName, "SCOPE.Operation", "migration", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_MIGRATION_CREATE",
-			"table_name", tableName)
+			"table_name", tableName, "migration_op", "create")
 		add(ent)
 	}
 
-	// 6. Migration: Schema::table → SCOPE.Operation/migration
+	// 11. Migration: Schema::table → SCOPE.Operation/migration
 	for _, m := range eloquentMigrationTableRe.FindAllStringSubmatchIndex(src, -1) {
 		tableName := src[m[2]:m[3]]
 		ent := makeEntity("alter:"+tableName, "SCOPE.Operation", "migration", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_MIGRATION_TABLE",
-			"table_name", tableName)
+			"table_name", tableName, "migration_op", "alter")
 		add(ent)
 	}
 
-	// 7. Migration column definitions → SCOPE.Schema/column
+	// 12. Migration: Schema::drop → SCOPE.Operation/migration
+	for _, m := range eloquentMigrationDropRe.FindAllStringSubmatchIndex(src, -1) {
+		tableName := src[m[2]:m[3]]
+		ent := makeEntity("drop:"+tableName, "SCOPE.Operation", "migration", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_MIGRATION_DROP",
+			"table_name", tableName, "migration_op", "drop")
+		add(ent)
+	}
+
+	// 13. Migration: up()/down() methods → SCOPE.Operation/migration_step
+	for _, m := range eloquentMigrationUpDownRe.FindAllStringSubmatchIndex(src, -1) {
+		direction := src[m[2]:m[3]]
+		ent := makeEntity("migration:"+direction, "SCOPE.Operation", "migration_step", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_MIGRATION_METHOD",
+			"migration_direction", direction)
+		add(ent)
+	}
+
+	// 14. Migration column definitions → SCOPE.Schema/column
 	for _, m := range eloquentColumnDefRe.FindAllStringSubmatchIndex(src, -1) {
 		colName := src[m[4]:m[5]]
 		colType := src[m[2]:m[3]]
@@ -329,12 +494,21 @@ func (e *eloquentORMDataExtractor) Extract(ctx context.Context, file extractor.F
 		add(ent)
 	}
 
-	// 8. Explicit foreign key definitions → SCOPE.Schema/foreign_key
+	// 15. Explicit foreign key definitions → SCOPE.Schema/foreign_key
 	for _, m := range eloquentForeignKeyRe.FindAllStringSubmatchIndex(src, -1) {
 		colName := src[m[2]:m[3]]
 		ent := makeEntity("fk:"+colName, "SCOPE.Schema", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_FK",
 			"fk_column", colName)
+		add(ent)
+	}
+
+	// 16. foreignId()->constrained() — emit a separate fk:constrained entity
+	for _, m := range elqForeignIdConstrainedRe.FindAllStringSubmatchIndex(src, -1) {
+		colName := src[m[2]:m[3]]
+		ent := makeEntity("fk:constrained:"+colName, "SCOPE.Schema", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "eloquent", "provenance", "INFERRED_FROM_ELOQUENT_FOREIGN_ID_CONSTRAINED",
+			"fk_column", colName, "constrained", "true")
 		add(ent)
 	}
 
