@@ -23,20 +23,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces |
+| Auth coverage | ✅ `full` | — | — | `internal/custom/php/laravel_authval.go` | Deep Laravel auth extraction: route middleware (auth/sanctum/api guards), Gate::define/authorize/policy, $this->authorize(), Policy classes+methods, @can/@cannot/@auth/@guest Blade directives, auth() helper, Auth:: facade, Sanctum/Passport HasApiTokens traits |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Validator/InputFilter/FormRequest class detection as DTO shapes |
-| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Validation rule calls detected: FormRequest, InputFilter, $this->validate(), setRules |
+| DTO extraction | ✅ `full` | — | — | `internal/custom/php/laravel_authval.go` | FormRequest subclasses extracted with per-field validation rules from rules() method body; authorize()/messages()/prepareForValidation hooks detected |
+| Request validation | ✅ `full` | — | — | `internal/custom/php/laravel_authval.go` | Inline $request->validate([field=>rules]) with per-field extraction, Validator::make(), $this->validate(); withValidator/prepareForValidation hooks |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/php/laravel_authval.go` | Full Kernel.php coverage ($middleware/$middlewareGroups/$routeMiddleware/$middlewareAliases arrays with per-entry class+alias extraction); custom middleware class via handle(Closure $next) with terminate() detection; route ->middleware() attachment and ->withoutMiddleware() exclusion |
 
 ### Type System
 
