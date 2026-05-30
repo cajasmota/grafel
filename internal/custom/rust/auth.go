@@ -188,6 +188,7 @@ func (e *rustAuthExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"provenance", "INFERRED_FROM_RUST_AUTH",
 				"pattern_kind", "auth",
 				"auth_subtype", sig.atype,
+				"auth_method", authPolicyMethod(sig.atype+" "+detail),
 			)
 			add(ent)
 		}
@@ -229,6 +230,11 @@ func (e *rustAuthExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			}
 		}
 	}
+
+	// --- Deep auth policy + middleware/guard/layer-chain extraction ---
+	// Recovers specific guard/middleware names and the enforced auth policy
+	// (auth_method + auth_required) and enumerates tower layer chains in order.
+	emitAuthPolicy(src, file.Path, file.Language, framework, add)
 
 	span.SetAttributes(
 		attribute.String("framework", framework),

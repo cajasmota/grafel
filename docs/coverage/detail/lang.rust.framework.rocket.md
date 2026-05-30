@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Auth coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go`<br>`internal/custom/rust/auth_policy_test.go`<br>`internal/custom/rust/rocket.go` | Fairing impls and FromRequest request guards captured with guard_name + auth_method + auth_required (auth-shaped guards only) |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go`<br>`internal/custom/rust/auth_policy_test.go`<br>`internal/custom/rust/rocket.go` | impl Fairing for X middleware captured with middleware_name + middleware_trait=Fairing; .attach() registration captured |
 
 ### Type System
 

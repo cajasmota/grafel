@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Auth coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go`<br>`internal/custom/rust/auth_policy_test.go` | HttpAuthentication::bearer/basic(validator) binds validator_name + auth_method + auth_required; custom Transform middleware impls classified. Validator symbol is bound by name, not resolved cross-file. |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/actix_web.go`<br>`internal/custom/rust/auth.go`<br>`internal/custom/rust/axum.go` | — |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/actix_web.go`<br>`internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go`<br>`internal/custom/rust/auth_policy_test.go` | custom Transform<S,ServiceRequest> impls + .wrap() registrations captured with middleware_name/middleware_trait |
 
 ### Type System
 

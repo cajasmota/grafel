@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go` | tower-http auth layers detected when present; hyper itself has no first-class auth surface, so guard-to-route binding is not modelled |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go`<br>`internal/custom/rust/auth_policy_test.go` | hyper services compose via tower ServiceBuilder::new().layer() chains, enumerated in order (layer_order + layer_chain) by the shared tower matcher |
 
 ### Type System
 

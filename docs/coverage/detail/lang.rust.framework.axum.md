@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Auth coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go`<br>`internal/custom/rust/auth_policy_test.go` | from_fn(auth_fn) guards, .route_layer auth, FromRequestParts extractor guards, tower-http ValidateRequestHeaderLayer::bearer; records guard_name + auth_method + auth_required. Cross-file resolution of the from_fn handler body is not chased. |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/actix_web.go`<br>`internal/custom/rust/auth.go`<br>`internal/custom/rust/axum.go` | — |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go`<br>`internal/custom/rust/auth_policy_test.go`<br>`internal/custom/rust/axum.go` | .layer/.route_layer + tower ServiceBuilder ordered layer chains enumerated in source order (layer_order + layer_order_list) |
 
 ### Type System
 

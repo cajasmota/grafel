@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Auth coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go` | heuristic auth-signal detection (jwt/bearer/apikey/session keywords + middleware-name classification); no framework-specific guard-to-validator binding modelled for poem |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go` | — |
+| Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/auth.go`<br>`internal/custom/rust/auth_policy.go` | framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but poem layer chains are not ordered/enumerated like tower |
 
 ### Type System
 

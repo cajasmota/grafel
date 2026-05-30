@@ -45126,8 +45126,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
+            "notes": "HttpAuthentication::bearer/basic(validator) binds validator_name + auth_method + auth_required; custom Transform middleware impls classified. Validator symbol is bound by name, not resolved cross-file.",
             "verified_at": "2026-05-30"
           }
         },
@@ -45147,8 +45148,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/actix_web.go","internal/custom/rust/auth.go","internal/custom/rust/axum.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/actix_web.go","internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
+            "notes": "custom Transform\u003cS,ServiceRequest\u003e impls + .wrap() registrations captured with middleware_name/middleware_trait",
             "verified_at": "2026-05-30"
           }
         },
@@ -45340,8 +45342,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
+            "notes": "from_fn(auth_fn) guards, .route_layer auth, FromRequestParts extractor guards, tower-http ValidateRequestHeaderLayer::bearer; records guard_name + auth_method + auth_required. Cross-file resolution of the from_fn handler body is not chased.",
             "verified_at": "2026-05-30"
           }
         },
@@ -45361,8 +45364,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/actix_web.go","internal/custom/rust/auth.go","internal/custom/rust/axum.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go","internal/custom/rust/axum.go"],
+            "notes": ".layer/.route_layer + tower ServiceBuilder ordered layer chains enumerated in source order (layer_order + layer_order_list)",
             "verified_at": "2026-05-30"
           }
         },
@@ -45555,7 +45559,8 @@
         "Auth": {
           "auth_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "heuristic auth-signal detection (jwt/bearer/apikey/session keywords + middleware-name classification); no framework-specific guard-to-validator binding modelled for gotham",
             "verified_at": "2026-05-30"
           }
         },
@@ -45578,7 +45583,8 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but gotham layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
           }
         },
@@ -45772,7 +45778,8 @@
         "Auth": {
           "auth_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "tower-http auth layers detected when present; hyper itself has no first-class auth surface, so guard-to-route binding is not modelled",
             "verified_at": "2026-05-30"
           }
         },
@@ -45794,8 +45801,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
+            "notes": "hyper services compose via tower ServiceBuilder::new().layer() chains, enumerated in order (layer_order + layer_chain) by the shared tower matcher",
             "verified_at": "2026-05-30"
           }
         },
@@ -45988,7 +45996,8 @@
         "Auth": {
           "auth_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "heuristic auth-signal detection (jwt/bearer/apikey/session keywords + middleware-name classification); no framework-specific guard-to-validator binding modelled for poem",
             "verified_at": "2026-05-30"
           }
         },
@@ -46011,7 +46020,8 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but poem layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
           }
         },
@@ -46203,8 +46213,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go","internal/custom/rust/rocket.go"],
+            "notes": "Fairing impls and FromRequest request guards captured with guard_name + auth_method + auth_required (auth-shaped guards only)",
             "verified_at": "2026-05-30"
           }
         },
@@ -46224,8 +46235,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go","internal/custom/rust/rocket.go"],
+            "notes": "impl Fairing for X middleware captured with middleware_name + middleware_trait=Fairing; .attach() registration captured",
             "verified_at": "2026-05-30"
           }
         },
@@ -46418,7 +46430,8 @@
         "Auth": {
           "auth_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "heuristic auth-signal detection (jwt/bearer/apikey/session keywords + middleware-name classification); no framework-specific guard-to-validator binding modelled for salvo",
             "verified_at": "2026-05-30"
           }
         },
@@ -46441,7 +46454,8 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but salvo layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
           }
         },
@@ -46715,7 +46729,8 @@
         "Auth": {
           "auth_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "heuristic auth-signal detection (jwt/bearer/apikey/session keywords + middleware-name classification); no framework-specific guard-to-validator binding modelled for tide",
             "verified_at": "2026-05-30"
           }
         },
@@ -46738,7 +46753,8 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but tide layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
           }
         },
@@ -46932,8 +46948,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
+            "notes": "tower-http ValidateRequestHeaderLayer::bearer/basic and RequireAuthorizationLayer::bearer/basic captured with auth_method + auth_required + layer_order",
             "verified_at": "2026-05-30"
           }
         },
@@ -46955,8 +46972,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
+            "notes": "ServiceBuilder::new().layer(..).layer(..) chains enumerated in source order: per-layer layer_order plus a layer_chain entity with layer_count + layer_order_list",
             "verified_at": "2026-05-30"
           }
         },
@@ -47149,7 +47167,8 @@
         "Auth": {
           "auth_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "heuristic auth-signal detection (jwt/bearer/apikey/session keywords + middleware-name classification); no framework-specific guard-to-validator binding modelled for warp",
             "verified_at": "2026-05-30"
           }
         },
@@ -47172,7 +47191,8 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/rust/auth.go"],
+            "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
+            "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but warp layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
           }
         },
