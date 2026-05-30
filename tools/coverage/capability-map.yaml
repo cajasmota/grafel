@@ -8780,6 +8780,18 @@ records:
               functions: [sniffEffectsCSharp]
           issues_implemented: ["3262"]
           verified_at: "2026-05-30"
+      Models:
+        schema_extraction:
+          # Cassandra LINQ driver [Table("ks.tbl")] / [Column("col")] POCO
+          # attributes detected via reCassTable/reCassColumn; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/driver_schema.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/driver_schema_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
 
   lang.csharp.driver.dynamodb:
     capabilities:
@@ -8793,6 +8805,19 @@ records:
             - file: internal/substrate/effect_sinks_csharp.go
               functions: [sniffEffectsCSharp]
           issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+      Models:
+        schema_extraction:
+          # AWSSDK.DynamoDBv2 [DynamoDBTable]/[DynamoDBHashKey]/[DynamoDBRangeKey]/
+          # [DynamoDBProperty] attrs detected via reDDBTable/reDDBHashKey/
+          # reDDBRangeKey/reDDBProperty; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/driver_schema.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/driver_schema_test.go
+          issues_implemented: ["3261"]
           verified_at: "2026-05-30"
 
   lang.csharp.driver.elastic:
@@ -8808,6 +8833,19 @@ records:
               functions: [sniffEffectsCSharp]
           issues_implemented: ["3262"]
           verified_at: "2026-05-30"
+      Models:
+        schema_extraction:
+          # NEST/Elastic.Clients.Elasticsearch [ElasticsearchType]/[PropertyName]/
+          # [Text]/[Keyword]/[Number] field attrs detected via reESType/
+          # reESPropertyName/reESFieldAttr; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/driver_schema.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/driver_schema_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
 
   lang.csharp.driver.mongodb:
     capabilities:
@@ -8821,6 +8859,18 @@ records:
             - file: internal/substrate/effect_sinks_csharp.go
               functions: [sniffEffectsCSharp]
           issues_implemented: ["3262"]
+          verified_at: "2026-05-30"
+      Models:
+        schema_extraction:
+          # MongoDB.Bson [BsonCollection]/[BsonElement]/[BsonIgnore] attrs detected
+          # via reBsonCollection/reBsonElement/reBsonIgnore; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/driver_schema.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/driver_schema_test.go
+          issues_implemented: ["3261"]
           verified_at: "2026-05-30"
 
   lang.csharp.driver.mysql:
@@ -9013,6 +9063,276 @@ records:
               functions: [runTaintFlowPass, computeFindings]
           issues_implemented: ["2773"]
           verified_at: "2026-05-28"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest [Fact]/[Theory]/[Test]/[TestMethod] attrs
+          # detected via csharpTestRE in testmap/frameworks.go; TESTS edges
+          # emitted from test → production function; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.framework.aspnet-mvc:
+    capabilities:
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.framework.blazor:
+    capabilities:
+      Data Flow:
+        prop_extraction:
+          # [Parameter]/[CascadingParameter] property declarations detected via
+          # reBDFParameter/reBDFCascadingParameter; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        state_management:
+          # [CascadingParameter] + StateHasChanged() calls detected via
+          # reBDFCascadingParameter/reBDFStateHasChanged; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        data_fetching:
+          # @inject HttpClient + await GetAsync/GetFromJsonAsync calls detected
+          # via reBDFInjectHTTP/reBDFHTTPCall/reBDFHTTPJson; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        branch_conditions:
+          # @if/@switch Razor directives + code if() statements detected via
+          # reBDFRazorIf/reBDFRazorSwitch/reBDFCodeIf; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.framework.blazor-server:
+    capabilities:
+      Data Flow:
+        prop_extraction:
+          # [Parameter]/[CascadingParameter] property declarations detected; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        state_management:
+          # [CascadingParameter] + StateHasChanged() calls; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        data_fetching:
+          # @inject HttpClient + await HTTP calls; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        branch_conditions:
+          # @if/@switch Razor + code if() branches; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.framework.blazor-wasm:
+    capabilities:
+      Data Flow:
+        prop_extraction:
+          # [Parameter]/[CascadingParameter] property declarations detected; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        state_management:
+          # [CascadingParameter] + StateHasChanged() calls; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        data_fetching:
+          # @inject HttpClient + await HTTP calls; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        branch_conditions:
+          # @if/@switch Razor + code if() branches; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.framework.net-maui:
+    capabilities:
+      Data Flow:
+        branch_conditions:
+          # Device.RuntimePlatform/DeviceInfo.Platform platform conditionals
+          # detected via reBDFPlatformBranch/reBDFDeviceInfo; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        state_management:
+          # BindableProperty.Create/SetValue + INotifyPropertyChanged calls
+          # detected via reBDFSetValue/reBDFPropertyChanged; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+
+  lang.csharp.framework.xamarin:
+    capabilities:
+      Data Flow:
+        branch_conditions:
+          # Device.RuntimePlatform platform conditionals detected via
+          # reBDFPlatformBranch; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        state_management:
+          # INotifyPropertyChanged callbacks + SetValue() detected via
+          # reBDFPropertyChanged/reBDFSetValue; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/blazor_dataflow.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/blazor_dataflow_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
 
   lang.csharp.framework.carter:
     capabilities:
@@ -9049,6 +9369,17 @@ records:
           tests:
             - file: internal/custom/csharp/minor_routes_test.go
           issues_implemented: ["3263"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
           verified_at: "2026-05-30"
 
   lang.csharp.framework.fastendpoints:
@@ -9088,6 +9419,17 @@ records:
             - file: internal/custom/csharp/minor_routes_test.go
           issues_implemented: ["3263"]
           verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
 
   lang.csharp.framework.nancyfx:
     capabilities:
@@ -9126,6 +9468,17 @@ records:
             - file: internal/custom/csharp/minor_routes_test.go
           issues_implemented: ["3263"]
           verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
 
   lang.csharp.framework.servicestack:
     capabilities:
@@ -9162,6 +9515,17 @@ records:
           tests:
             - file: internal/custom/csharp/minor_routes_test.go
           issues_implemented: ["3263"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          # C# NUnit/xUnit/MSTest test detection via csharpTestRE; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectCSharpTest]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+          issues_implemented: ["3261"]
           verified_at: "2026-05-30"
 
   lang.csharp.orm.dapper:
@@ -9239,6 +9603,40 @@ records:
             - file: internal/custom/csharp/dapper_models_test.go
           issues_implemented: ["3263"]
           verified_at: "2026-05-30"
+        association_extraction:
+          # [Association(ThisKey="...", OtherKey="...")] attribute detected via
+          # reAssocAttr in orm_relationships.go; emits SCOPE.Pattern/association_extraction;
+          # issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        foreign_key_extraction:
+          # ThisKey/OtherKey extracted from [Association] + explicit [ForeignKey]
+          # attribute detected via reForeignKeyAttr; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        lazy_loading_recognition:
+          # DataLoadOptions.LoadWith<T>() deferred-load pattern detected via
+          # reLoadWith; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
 
   lang.csharp.orm.linqtodb:
     capabilities:
@@ -9277,6 +9675,29 @@ records:
             - file: internal/custom/csharp/dapper_models_test.go
           issues_implemented: ["3263"]
           verified_at: "2026-05-30"
+        association_extraction:
+          # [Association(ThisKey="...", OtherKey="...")] attribute detected via
+          # reAssocAttr in orm_relationships.go; emits SCOPE.Pattern/association_extraction;
+          # issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        foreign_key_extraction:
+          # ThisKey/OtherKey from [Association] + [ForeignKey] attr detected via
+          # reForeignKeyAttr; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
 
   lang.csharp.orm.nhibernate:
     capabilities:
@@ -9314,6 +9735,39 @@ records:
           tests:
             - file: internal/custom/csharp/dapper_models_test.go
           issues_implemented: ["3263"]
+          verified_at: "2026-05-30"
+        association_extraction:
+          # FluentNHibernate References()/HasMany()/HasOne() fluent calls detected
+          # via reNHRef/reNHHM/reNHHasOne with cardinality tagging; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        foreign_key_extraction:
+          # .Column("fk_col") chained after References/HasMany detected via
+          # reNHColumn; FK column names extracted; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+        lazy_loading_recognition:
+          # .LazyLoad() and .Not.LazyLoad() fluent calls detected via
+          # reNHLazyLoad/reNHNotLazyLoad; issue #3261.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/orm_relationships.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/orm_relationships_test.go
+          issues_implemented: ["3261"]
           verified_at: "2026-05-30"
       Queries:
         query_attribution:

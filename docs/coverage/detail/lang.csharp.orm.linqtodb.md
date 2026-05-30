@@ -22,16 +22,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | [Association(ThisKey,OtherKey)] attribute detected via reAssocAttr; emits association_extraction entity |
+| Foreign key extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | ThisKey/OtherKey extracted from [Association] + explicit [ForeignKey] attr via reForeignKeyAttr |
+| Lazy loading recognition | — `not_applicable` | — | — | — | LinqToDB does not support lazy loading — all queries are explicit LINQ expressions |
 | Relationship extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/dapper_models.go` | [Association] attribute detected via regex; heuristic |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | — | — | — |
+| Query attribution | 🟢 `partial` | — | — | `internal/custom/csharp/dapper_models.go` | DataConnection subclass + LINQ query patterns detected; issue #3263 |
 
 ### Migrations
 

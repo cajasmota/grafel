@@ -5665,8 +5665,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/driver_schema.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Cassandra LINQ [Table]/[Column] POCO attributes detected via reCassTable/reCassColumn; emits schema_extraction entities"
           }
         },
         "Relationships": {
@@ -5714,8 +5716,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/driver_schema.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "[DynamoDBTable]/[DynamoDBHashKey]/[DynamoDBRangeKey]/[DynamoDBProperty] attrs detected via reDDBTable/reDDBHashKey/reDDBRangeKey/reDDBProperty"
           }
         },
         "Relationships": {
@@ -5763,8 +5767,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/driver_schema.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "NEST [ElasticsearchType]/[PropertyName]/[Text]/[Keyword] field attrs detected via reESType/reESPropertyName/reESFieldAttr"
           }
         },
         "Relationships": {
@@ -5812,8 +5818,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/driver_schema.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "MongoDB.Bson [BsonCollection]/[BsonElement]/[BsonIgnore] attrs detected via reBsonCollection/reBsonElement/reBsonIgnore"
           }
         },
         "Relationships": {
@@ -5861,8 +5869,8 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw ADO.NET/graph driver — no attribute-based schema mapping; models are plain SQL or driver-specific graph queries"
           }
         },
         "Relationships": {
@@ -5910,8 +5918,8 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw ADO.NET/graph driver — no attribute-based schema mapping; models are plain SQL or driver-specific graph queries"
           }
         },
         "Relationships": {
@@ -5959,8 +5967,8 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw ADO.NET/graph driver — no attribute-based schema mapping; models are plain SQL or driver-specific graph queries"
           }
         },
         "Relationships": {
@@ -6008,8 +6016,8 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw ADO.NET/graph driver — no attribute-based schema mapping; models are plain SQL or driver-specific graph queries"
           }
         },
         "Relationships": {
@@ -6057,8 +6065,8 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw ADO.NET/graph driver — no attribute-based schema mapping; models are plain SQL or driver-specific graph queries"
           }
         },
         "Relationships": {
@@ -6168,8 +6176,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Observability": {
@@ -6376,8 +6386,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Observability": {
@@ -6529,16 +6541,24 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "@if/@switch Razor markup directives + code if() statements detected via reBDFRazorIf/reBDFRazorSwitch/reBDFCodeIf"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "@inject HttpClient + await GetAsync/PostAsync/GetFromJsonAsync calls detected via reBDFInjectHTTP/reBDFHTTPCall/reBDFHTTPJson"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "[Parameter]/[CascadingParameter] property declarations detected via reBDFParameter/reBDFCascadingParameter; emits prop_extraction entities"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "[CascadingParameter] state threading + StateHasChanged() calls detected via reBDFCascadingParameter/reBDFStateHasChanged"
           }
         },
         "Navigation": {
@@ -6569,7 +6589,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Substrate": {
@@ -6701,16 +6723,24 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "@if/@switch Razor markup directives + code if() statements detected via reBDFRazorIf/reBDFRazorSwitch/reBDFCodeIf"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "@inject HttpClient + await GetAsync/PostAsync/GetFromJsonAsync calls detected via reBDFInjectHTTP/reBDFHTTPCall/reBDFHTTPJson"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "[Parameter]/[CascadingParameter] property declarations detected via reBDFParameter/reBDFCascadingParameter; emits prop_extraction entities"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "[CascadingParameter] state threading + StateHasChanged() calls detected via reBDFCascadingParameter/reBDFStateHasChanged"
           }
         },
         "Navigation": {
@@ -6741,7 +6771,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Substrate": {
@@ -6873,16 +6905,24 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "@if/@switch Razor markup directives + code if() statements detected via reBDFRazorIf/reBDFRazorSwitch/reBDFCodeIf"
           },
           "data_fetching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "@inject HttpClient + await GetAsync/PostAsync/GetFromJsonAsync calls detected via reBDFInjectHTTP/reBDFHTTPCall/reBDFHTTPJson"
           },
           "prop_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "[Parameter]/[CascadingParameter] property declarations detected via reBDFParameter/reBDFCascadingParameter; emits prop_extraction entities"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "[CascadingParameter] state threading + StateHasChanged() calls detected via reBDFCascadingParameter/reBDFStateHasChanged"
           }
         },
         "Navigation": {
@@ -6913,7 +6953,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Substrate": {
@@ -7107,8 +7149,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Observability": {
@@ -7322,8 +7366,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Observability": {
@@ -7675,8 +7721,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Observability": {
@@ -7846,10 +7894,14 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "Device.RuntimePlatform/DeviceInfo.Platform platform conditionals + code if() branches detected via reBDFPlatformBranch/reBDFDeviceInfo/reBDFCodeIf"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "MAUI BindableProperty.Create/SetValue + INotifyPropertyChanged callbacks detected via reBDFSetValue/reBDFPropertyChanged/reBDFBindableProperty"
           }
         },
         "Type System": {
@@ -7871,7 +7923,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Substrate": {
@@ -8065,8 +8119,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Observability": {
@@ -8461,10 +8517,14 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "Device.RuntimePlatform/DeviceInfo.Platform platform conditionals + code if() branches detected via reBDFPlatformBranch/reBDFDeviceInfo/reBDFCodeIf"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
+            "notes": "MAUI BindableProperty.Create/SetValue + INotifyPropertyChanged callbacks detected via reBDFSetValue/reBDFPropertyChanged/reBDFBindableProperty"
           }
         },
         "Type System": {
@@ -8486,7 +8546,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE"
           }
         },
         "Substrate": {
@@ -8626,20 +8688,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Dapper is a micro-ORM; relationships must be manually queried via SQL — no built-in association mechanism"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Dapper is a micro-ORM; no FK attribute support — FK columns are raw SQL strings"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Dapper does not support lazy loading — all queries are explicit SQL"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Dapper does not model relationships; multi-table patterns are raw SQL joins"
           }
         },
         "Queries": {
@@ -8741,16 +8803,22 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "[Association(ThisKey,OtherKey)] attribute detected via reAssocAttr; emits association_extraction entity with cardinality info"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ThisKey/OtherKey extracted from [Association] and explicit [ForeignKey] attribute detected via reForeignKeyAttr"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DataLoadOptions.LoadWith\u003cT\u003e() deferred load pattern detected via reLoadWith"
           },
           "relationship_extraction": {
             "status": "partial",
@@ -8800,16 +8868,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "[Association(ThisKey,OtherKey)] attribute detected via reAssocAttr; emits association_extraction entity"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ThisKey/OtherKey extracted from [Association] + explicit [ForeignKey] attr via reForeignKeyAttr"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "LinqToDB does not support lazy loading — all queries are explicit LINQ expressions"
           },
           "relationship_extraction": {
             "status": "partial",
@@ -8821,7 +8893,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/dapper_models.go"],
+            "notes": "DataConnection subclass + LINQ query patterns detected; issue #3263"
           }
         },
         "Migrations": {
@@ -8857,16 +8931,22 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "FluentNHibernate References()/HasMany()/HasOne() fluent calls detected via reNHRef/reNHHM/reNHHasOne with cardinality tagging"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": ".Column(\"fk_col\") chained after References/HasMany detected via reNHColumn; FK column names extracted"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/orm_relationships.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": ".LazyLoad() and .Not.LazyLoad() fluent calls detected via reNHLazyLoad/reNHNotLazyLoad"
           },
           "relationship_extraction": {
             "status": "partial",

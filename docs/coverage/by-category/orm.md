@@ -18,20 +18,20 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C/C++](../by-language/c-cpp.md) | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟢 3/3 | |
 | [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/1 | |
 | [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟢 3/3 | |
-| [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 3/7 | |
+| [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟢 2/2 | |
+| [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟢 2/2 | |
+| [C#](../by-language/csharp.md) | [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟢 3/3 | |
 | [C#](../by-language/csharp.md) | [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ✅ 8/8 | |
-| [C#](../by-language/csharp.md) | [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟡 4/7 | |
-| [C#](../by-language/csharp.md) | [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟡 3/7 | |
-| [C#](../by-language/csharp.md) | [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟡 4/7 | |
-| [C#](../by-language/csharp.md) | [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🟡 1/2 | |
-| [C#](../by-language/csharp.md) | [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟡 1/2 | |
+| [C#](../by-language/csharp.md) | [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟢 7/7 | |
+| [C#](../by-language/csharp.md) | [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟢 6/6 | |
+| [C#](../by-language/csharp.md) | [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🟢 1/1 | |
+| [C#](../by-language/csharp.md) | [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟢 2/2 | |
+| [C#](../by-language/csharp.md) | [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🟢 1/1 | |
+| [C#](../by-language/csharp.md) | [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟢 2/2 | |
+| [C#](../by-language/csharp.md) | [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟢 7/7 | |
+| [C#](../by-language/csharp.md) | [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🟢 1/1 | |
+| [C#](../by-language/csharp.md) | [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🟢 1/1 | |
+| [C#](../by-language/csharp.md) | [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟢 1/1 | |
 | [elixir](../by-language/elixir.md) | [Ecto](../detail/lang.elixir.orm.ecto.md) | 🟡 2/8 | |
 | [elixir](../by-language/elixir.md) | [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🟡 1/6 | |
 | [elixir](../by-language/elixir.md) | [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🟡 1/6 | |

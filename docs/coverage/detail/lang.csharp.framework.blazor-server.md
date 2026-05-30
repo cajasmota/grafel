@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🔴 `missing` | — | — | — | — |
-| Data fetching | 🔴 `missing` | — | — | — | — |
-| Prop extraction | 🔴 `missing` | — | — | — | — |
-| State management | 🔴 `missing` | — | — | — | — |
+| Branch conditions | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | @if/@switch Razor markup directives + code if() statements detected via reBDFRazorIf/reBDFRazorSwitch/reBDFCodeIf |
+| Data fetching | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | @inject HttpClient + await GetAsync/PostAsync/GetFromJsonAsync calls detected via reBDFInjectHTTP/reBDFHTTPCall/reBDFHTTPJson |
+| Prop extraction | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | [Parameter]/[CascadingParameter] property declarations detected via reBDFParameter/reBDFCascadingParameter; emits prop_extraction entities |
+| State management | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | [CascadingParameter] state threading + StateHasChanged() calls detected via reBDFCascadingParameter/reBDFStateHasChanged |
 
 ### Navigation
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | — | — | — | — |
+| Tests linkage | 🟢 `partial` | — | — | `internal/extractors/cross/testmap/frameworks.go` | C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE |
 
 ### Substrate
 

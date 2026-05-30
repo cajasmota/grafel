@@ -41,8 +41,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🔴 `missing` | — | — | — | — |
-| State management | 🔴 `missing` | — | — | — | — |
+| Branch conditions | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | Device.RuntimePlatform/DeviceInfo.Platform platform conditionals + code if() branches detected via reBDFPlatformBranch/reBDFDeviceInfo/reBDFCodeIf |
+| State management | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | MAUI BindableProperty.Create/SetValue + INotifyPropertyChanged callbacks detected via reBDFSetValue/reBDFPropertyChanged/reBDFBindableProperty |
 
 ### Type System
 
@@ -62,7 +62,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | — | — | — | — |
+| Tests linkage | 🟢 `partial` | — | — | `internal/extractors/cross/testmap/frameworks.go` | C# NUnit/xUnit/MSTest: [Fact]/[Theory]/[Test]/[TestMethod] attrs detected via csharpTestRE |
 
 ### Substrate
 

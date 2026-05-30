@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | — `not_applicable` | — | — | — | Raw ADO.NET/graph driver — no attribute-based schema mapping; models are plain SQL or driver-specific graph queries |
 
 ### Relationships
 

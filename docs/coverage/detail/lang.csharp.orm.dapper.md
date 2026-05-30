@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | — | Dapper is a micro-ORM; relationships must be manually queried via SQL — no built-in association mechanism |
+| Foreign key extraction | — `not_applicable` | — | — | — | Dapper is a micro-ORM; no FK attribute support — FK columns are raw SQL strings |
+| Lazy loading recognition | — `not_applicable` | — | — | — | Dapper does not support lazy loading — all queries are explicit SQL |
+| Relationship extraction | — `not_applicable` | — | — | — | Dapper does not model relationships; multi-table patterns are raw SQL joins |
 
 ### Queries
 

@@ -22,9 +22,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | FluentNHibernate References()/HasMany()/HasOne() fluent calls detected via reNHRef/reNHHM/reNHHasOne with cardinality tagging |
+| Foreign key extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | .Column("fk_col") chained after References/HasMany detected via reNHColumn; FK column names extracted |
+| Lazy loading recognition | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | .LazyLoad() and .Not.LazyLoad() fluent calls detected via reNHLazyLoad/reNHNotLazyLoad |
 | Relationship extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/dapper_models.go` | FluentNHibernate References/HasMany fluent relationship calls detected via regex; heuristic |
 
 ### Queries

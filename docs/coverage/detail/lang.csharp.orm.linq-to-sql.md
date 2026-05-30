@@ -22,9 +22,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | [Association(ThisKey,OtherKey)] attribute detected via reAssocAttr; emits association_extraction entity with cardinality info |
+| Foreign key extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | ThisKey/OtherKey extracted from [Association] and explicit [ForeignKey] attribute detected via reForeignKeyAttr |
+| Lazy loading recognition | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/orm_relationships.go` | DataLoadOptions.LoadWith<T>() deferred load pattern detected via reLoadWith |
 | Relationship extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/dapper_models.go` | [Association] attribute detected via regex; heuristic |
 
 ### Queries

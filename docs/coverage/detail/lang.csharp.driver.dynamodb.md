@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/driver_schema.go` | [DynamoDBTable]/[DynamoDBHashKey]/[DynamoDBRangeKey]/[DynamoDBProperty] attrs detected via reDDBTable/reDDBHashKey/reDDBRangeKey/reDDBProperty |
 
 ### Relationships
 

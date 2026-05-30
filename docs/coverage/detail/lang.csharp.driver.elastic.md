@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/csharp/driver_schema.go` | NEST [ElasticsearchType]/[PropertyName]/[Text]/[Keyword] field attrs detected via reESType/reESPropertyName/reESFieldAttr |
 
 ### Relationships
 
