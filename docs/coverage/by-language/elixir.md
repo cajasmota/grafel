@@ -26,14 +26,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 4/4 | |
-| [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟢 3/3 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟢 1/1 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 1/1 | |
-| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟢 3/3 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 2/2 | |
+| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟢 3/3 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 5/5 | |
+| [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟢 1/1 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟢 3/3 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 4/4 | |
 | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟢 1/1 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 1/1 | |
-| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟢 1/1 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ✅ 3/3 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 4/4 | |
-| [Plug](../detail/lang.elixir.framework.plug.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 4/4 | |
+| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟢 1/1 | — | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 5/5 | |
+| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ✅ 3/3 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Plug](../detail/lang.elixir.framework.plug.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 
 
 ### Meta Framework

@@ -9567,17 +9567,24 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.* calls captured via elixir template-pattern sniffer"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "not_applicable",
-            "notes": ":telemetry.execute convention-based; no dedicated Absinthe metric extractor"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting tests prove exact names. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "not_applicable",
-            "notes": "OpenTelemetry spans not statically extractable in Absinthe"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test proves exact name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file).",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -9783,17 +9790,24 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.* literal calls captured"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "not_applicable",
-            "notes": ":telemetry convention; no dedicated extractor"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting tests prove exact names. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "not_applicable",
-            "notes": "OpenTelemetry spans not statically extractable"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test proves exact name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file).",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -9992,17 +10006,24 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.* calls captured"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "not_applicable",
-            "notes": ":telemetry convention; no dedicated extractor"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting tests prove exact names. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "not_applicable",
-            "notes": "OpenTelemetry spans not statically extractable"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test proves exact name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file).",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -10205,17 +10226,24 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.* calls captured"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "not_applicable",
-            "notes": ":telemetry convention; no dedicated extractor"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting tests prove exact names. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "not_applicable",
-            "notes": "OpenTelemetry spans not statically extractable"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test proves exact name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file).",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -10411,9 +10439,10 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.* calls captured"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "not_applicable",
@@ -10621,17 +10650,24 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.* calls captured"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "not_applicable",
-            "notes": "Oban emits :telemetry events; no dedicated extractor"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting tests prove exact names. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "not_applicable",
-            "notes": "OpenTelemetry spans not statically extractable"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test proves exact name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file).",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -10839,17 +10875,24 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.debug/info/warn/error with string literals captured as log_format template patterns via elixir template sniffer"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "not_applicable",
-            "notes": "Telemetry event calls are convention-based (:telemetry.execute/3); no dedicated extractor. Covered at framework level by Phoenix.Telemetry integration."
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting tests prove exact names. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "not_applicable",
-            "notes": "OpenTelemetry / :telemetry spans not statically extractable without runtime context. No dedicated elixir trace extractor."
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test proves exact name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file).",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -11264,17 +11307,24 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Logger.* calls with string literals captured via elixir template-pattern sniffer"
+            "notes": "Logger.debug/info/warning/error(...) statements captured by dedicated observabilityExtractor as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "not_applicable",
-            "notes": ":telemetry.execute convention-based; no dedicated extractor"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting tests prove exact names. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "not_applicable",
-            "notes": "OpenTelemetry spans not statically extractable"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test proves exact name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file).",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
