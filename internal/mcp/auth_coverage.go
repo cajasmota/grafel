@@ -48,7 +48,10 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -230,6 +233,91 @@ var idorParams = []string{
 }
 
 // ---------------------------------------------------------------------------
+// EndpointRecord — one auth-coverage finding (package-scoped for #2828 terse).
+// ---------------------------------------------------------------------------
+
+// EndpointRecord is a single endpoint's auth-coverage finding. It is the wire
+// shape emitted under "endpoints" in format=full; in format=terse it is
+// rendered to a single line via terse().
+type EndpointRecord struct {
+	EntityID       string `json:"entity_id"`
+	Name           string `json:"name"`
+	Repo           string `json:"repo"`
+	SourceFile     string `json:"source_file,omitempty"`
+	StartLine      int    `json:"start_line,omitempty"`
+	Method         string `json:"method,omitempty"`
+	Path           string `json:"path,omitempty"`
+	HasAuth        bool   `json:"has_auth"`
+	AuthEvidence   string `json:"auth_evidence,omitempty"`
+	Severity       string `json:"severity"`
+	SensitiveOp    bool   `json:"sensitive_op,omitempty"`
+	IDORRisk       bool   `json:"idor_risk,omitempty"`
+	SensitiveTerms string `json:"sensitive_terms,omitempty"`
+}
+
+// terse renders one finding as a compact single line, e.g.
+//
+//	error DELETE /users/{user_id} NO-AUTH idor,sensitive(delete) routes/u.py:42 (repo1)
+//	info  GET /dashboard auth(login_required) views/dashboard.py:10 (repo1)
+//
+// It keeps every fact a reviewer acts on (severity, verb, path, auth state +
+// evidence, IDOR/sensitive flags, location, repo) and drops only the JSON
+// envelope and the redundant entity_id/name.
+func (r EndpointRecord) terse() string {
+	var b strings.Builder
+	b.WriteString(r.Severity)
+	b.WriteByte(' ')
+	if r.Method != "" {
+		b.WriteString(r.Method)
+		b.WriteByte(' ')
+	}
+	if r.Path != "" {
+		b.WriteString(r.Path)
+	} else if r.Name != "" {
+		b.WriteString(r.Name)
+	}
+	if r.HasAuth {
+		b.WriteString(" auth")
+		if r.AuthEvidence != "" {
+			b.WriteString("(")
+			b.WriteString(r.AuthEvidence)
+			b.WriteString(")")
+		}
+	} else {
+		b.WriteString(" NO-AUTH")
+		var flags []string
+		if r.IDORRisk {
+			flags = append(flags, "idor")
+		}
+		if r.SensitiveOp {
+			if r.SensitiveTerms != "" {
+				flags = append(flags, "sensitive("+r.SensitiveTerms+")")
+			} else {
+				flags = append(flags, "sensitive")
+			}
+		}
+		if len(flags) > 0 {
+			b.WriteByte(' ')
+			b.WriteString(strings.Join(flags, ","))
+		}
+	}
+	if r.SourceFile != "" {
+		b.WriteByte(' ')
+		b.WriteString(r.SourceFile)
+		if r.StartLine > 0 {
+			b.WriteByte(':')
+			b.WriteString(strconv.Itoa(r.StartLine))
+		}
+	}
+	if r.Repo != "" {
+		b.WriteString(" (")
+		b.WriteString(r.Repo)
+		b.WriteString(")")
+	}
+	return b.String()
+}
+
+// ---------------------------------------------------------------------------
 // handleAuthCoverage — the MCP tool handler
 // ---------------------------------------------------------------------------
 
@@ -240,24 +328,30 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	limit := argInt(req, "limit", 200)
-	onlyMissing := argBool(req, "only_missing", false)
 
-	type EndpointRecord struct {
-		EntityID       string `json:"entity_id"`
-		Name           string `json:"name"`
-		Repo           string `json:"repo"`
-		SourceFile     string `json:"source_file,omitempty"`
-		StartLine      int    `json:"start_line,omitempty"`
-		Method         string `json:"method,omitempty"`
-		Path           string `json:"path,omitempty"`
-		HasAuth        bool   `json:"has_auth"`
-		AuthEvidence   string `json:"auth_evidence,omitempty"`
-		Severity       string `json:"severity"`
-		SensitiveOp    bool   `json:"sensitive_op,omitempty"`
-		IDORRisk       bool   `json:"idor_risk,omitempty"`
-		SensitiveTerms string `json:"sensitive_terms,omitempty"`
+	// #2828 token-cost optimisation. Live telemetry flagged auth_coverage as the
+	// single biggest token hog (~7.5K tok/call): the old default limit of 200
+	// full per-endpoint records plus a ~340-byte static note on every call.
+	//
+	//   - format="terse" (default): emit one compact line per finding instead of
+	//     a verbose object, and drop the static note. Same security-essential
+	//     facts (repo, verb, path, severity, has_auth, location), far fewer bytes.
+	//   - format="full": the legacy structured `endpoints` array (every field),
+	//     for callers that machine-parse individual records.
+	//   - limit default lowered 200→50 with an explicit truncation marker.
+	//   - token_budget: optional hard byte cap (token_budget*4) on the returned
+	//     list, truncating with a marker so the agent can opt into more.
+	format := strings.ToLower(argString(req, "format", ""))
+	verbose := argBool(req, "verbose", false)
+	switch format {
+	case "full":
+		verbose = true
+	case "terse":
+		verbose = false
 	}
+	limit := argInt(req, "limit", 50)
+	tokenBudget := argInt(req, "token_budget", 0)
+	onlyMissing := argBool(req, "only_missing", false)
 
 	type RepoSummary struct {
 		Repo          string  `json:"repo"`
@@ -405,6 +499,12 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 	if limit > 0 && len(endpoints) > limit {
 		endpoints = endpoints[:limit]
 	}
+	// #2828: optional hard token budget. Trim further (after the limit cap) so
+	// the rendered list fits ~token_budget*4 bytes, always leaving a marker.
+	if tokenBudget > 0 {
+		endpoints = capAuthByBudget(endpoints, tokenBudget*4, verbose)
+	}
+	shown := len(endpoints)
 
 	totalEndpoints := 0
 	totalCovered := 0
@@ -418,18 +518,80 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 		overallRate = float64(totalCovered) / float64(totalEndpoints)
 	}
 
-	return jsonResult(map[string]any{
-		"endpoints":        endpoints,
-		"count":            len(endpoints),
+	resp := map[string]any{
+		"count":            shown,
 		"total":            total,
-		"truncated":        total > len(endpoints),
+		"truncated":        total > shown,
 		"repo_summaries":   summaries,
 		"overall_coverage": overallRate,
-		"note": "has_auth=false with severity=error indicates an unprotected endpoint " +
+		"format":           formatLabel(verbose),
+	}
+	if total > shown {
+		resp["truncated_count"] = total - shown
+		resp["truncation_note"] = fmt.Sprintf(
+			"%d more findings omitted — pass a larger limit or token_budget, or only_missing=true to focus on uncovered endpoints",
+			total-shown,
+		)
+	}
+	if verbose {
+		// Legacy structured array + the explanatory note (full mode only).
+		resp["endpoints"] = endpoints
+		resp["note"] = "has_auth=false with severity=error indicates an unprotected endpoint " +
 			"performing a sensitive operation or accepting user-scoped parameters (IDOR risk). " +
 			"has_auth=false with severity=warn indicates a potentially public endpoint — " +
-			"verify intentional exposure.",
-	}), nil
+			"verify intentional exposure."
+	} else {
+		// Terse: one compact line per finding. severity=error first (already
+		// sorted). Format: "<SEV> <verb> <path> [auth|NO-AUTH] file:line (repo)".
+		resp["findings"] = renderTerseAuthFindings(endpoints)
+	}
+	return jsonResult(resp), nil
+}
+
+// renderTerseAuthFindings serialises auth findings as one compact line each,
+// preserving the security-essential facts (severity, verb, path, auth state,
+// IDOR/sensitive flags, location) while dropping the verbose per-record JSON
+// envelope (entity_id, repeated keys). #2828.
+func renderTerseAuthFindings(recs []EndpointRecord) []string {
+	out := make([]string, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, r.terse())
+	}
+	return out
+}
+
+// capAuthByBudget returns the largest prefix of recs whose rendered form fits
+// maxBytes. Verbose mode measures the JSON array; terse mode measures the
+// joined terse lines. Always returns at least one record when recs is non-empty
+// and a single record already exceeds the budget (so the marker is meaningful).
+func capAuthByBudget(recs []EndpointRecord, maxBytes int, verbose bool) []EndpointRecord {
+	if maxBytes <= 0 || len(recs) == 0 {
+		return recs
+	}
+	size := func(n int) int {
+		if verbose {
+			b, _ := json.Marshal(recs[:n])
+			return len(b)
+		}
+		total := 0
+		for i := 0; i < n; i++ {
+			total += len(recs[i].terse()) + 1
+		}
+		return total
+	}
+	if size(len(recs)) <= maxBytes {
+		return recs
+	}
+	lo, hi := 1, len(recs)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if size(mid) <= maxBytes {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return recs[:lo]
 }
 
 // ---------------------------------------------------------------------------

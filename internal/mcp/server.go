@@ -380,7 +380,7 @@ func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
 		mcpapi.WithDescription("Return source for a node; accepts id, qualified_name, or label."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
-		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(20)),
+		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(8)), // #2828: was 20
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))
@@ -691,6 +691,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithArray("fields"),
+		mcpapi.WithString("format"),                                // #2828: "terse" → compact `lines`
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(0)), // #2828: 0 = unbounded
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
@@ -836,10 +838,13 @@ func (s *Server) registerTools() {
 	// Walk all http_endpoint_definition entities and flag those without auth
 	// decorators/middleware.  Severity: error (sensitive/IDOR), warn (public), info (covered).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_auth_coverage",
-		mcpapi.WithDescription("Security audit: flag HTTP endpoints missing auth (severity, IDOR risk)."),
+		mcpapi.WithDescription("Flag endpoints missing auth (severity, IDOR). format=terse|full, token_budget."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("only_missing", mcpapi.DefaultBool(false)),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithString("format"), // #2828: "terse" (default) | "full"
+		mcpapi.WithBoolean("verbose", mcpapi.DefaultBool(false)),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(0)), // #2828: 0 = unbounded
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
