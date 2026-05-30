@@ -52,6 +52,12 @@ var customPrefixForLanguage = map[string]string{
 	"sql":    "custom_js_",
 	"java":   "custom_java_",
 	"kotlin": "custom_kotlin_",
+	// Lua framework extractors (OpenResty, Lapis, Kong, APISIX) register under
+	// the bare `lua_` prefix (lua_routing, lua_middleware, lua_kong, …) rather
+	// than `custom_lua_`. The base "lua" tree-sitter extractor key is shorter
+	// than this prefix, so the `len(k) > len(prefix)` guard in
+	// CustomExtractorsFor excludes it and only the framework extractors match.
+	"lua":    "lua_",
 	"scala":  "custom_scala_",
 	"ruby":   "custom_ruby_",
 	"php":    "custom_php_",

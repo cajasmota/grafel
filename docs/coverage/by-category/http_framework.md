@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 199 records · **C/C++**: 19 · **C#**: 15 · **elixir**: 13 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 15 · **lua**: 2 · **php**: 13 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 12 · **swift**: 1
+**Total**: 201 records · **C/C++**: 19 · **C#**: 15 · **elixir**: 13 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 15 · **lua**: 4 · **php**: 13 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 12 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -70,6 +70,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 8/8 | |
+| [lua](../by-language/lua.md) | [Apache APISIX](../detail/lang.lua.framework.apisix.md) | 🟡 2/3 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 3/7 | |
+| [lua](../by-language/lua.md) | [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/3 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 3/7 | |
 | [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |
 | [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |
 | [php](../by-language/php.md) | [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |

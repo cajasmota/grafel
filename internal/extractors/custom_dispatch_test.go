@@ -106,6 +106,7 @@ func TestCustomExtractorsForEveryMappedLanguageIsReachable(t *testing.T) {
 		"javascript": "custom_js_fixture",
 		"java":       "custom_java_fixture",
 		"kotlin":     "custom_kotlin_fixture",
+		"lua":        "lua_fixture",
 		"scala":      "custom_scala_fixture",
 		"ruby":       "custom_ruby_fixture",
 		"php":        "custom_php_fixture",
