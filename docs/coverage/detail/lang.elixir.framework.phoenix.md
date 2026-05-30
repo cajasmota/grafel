@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/phoenix_routes.go`<br>`internal/engine/rules/elixir/frameworks/phoenix.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/phoenix_routes.go` | — |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/elixir/phoenix.go`<br>`internal/engine/phoenix_routes.go`<br>`internal/engine/rules/elixir/frameworks/phoenix.yaml` | phoenixExtractor extracts HTTP verbs (get/post/put/patch/delete), resources CRUD expansion (8 routes), live routes; scope blocks captured as SCOPE.Pattern |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/phoenix_routes.go`<br>`internal/engine/phoenix_routes_test.go` | synthesizePhoenix emits canonical http_endpoint per get/post/put/patch/delete/head/options verb + resources CRUD expansion (only:/except: filters) with nested scope-prefix composition and :id->{id} normalisation; controller#action attributed via handler_file hint. Value-asserting engine tests (TestPhoenix_VerbInScope/Resources/NestedScope/ControllerHandlerRef) prove exact (verb,path,controller#action). |
 
 ### Auth
 

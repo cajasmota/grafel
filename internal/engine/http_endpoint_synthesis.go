@@ -766,6 +766,26 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 			}
 			last.Properties["handler_file"] = fileHint
 		})
+		// Producer side (#3468): Phoenix LiveView `live "/path", Mod, :action`
+		// initial-GET endpoints (handler_file hint stamped like verb routes).
+		synthesizePhoenixLive(string(content), func(method, canonicalPath, framework, refKind, refName, fileHint string) {
+			before := len(entities)
+			emit(method, canonicalPath, framework, refKind, refName)
+			if fileHint == "" || len(entities) == before {
+				return
+			}
+			last := &entities[len(entities)-1]
+			if last.Properties == nil {
+				last.Properties = map[string]string{}
+			}
+			last.Properties["handler_file"] = fileHint
+		})
+		// Producer side (#3468): Plug.Router verb routes + forwards.
+		synthesizePlugRouter(string(content), emit)
+		// Producer side (#3468): Cowboy dispatch route tables.
+		synthesizeCowboy(string(content), emit)
+		// Producer side (#3468): Absinthe GraphQL query/mutation/subscription fields.
+		synthesizeAbsinthe(string(content), emit)
 		// Consumer side (#1483): Finch.build(:verb, url) + HTTPoison.<verb>(url).
 		synthesizeElixirHTTPClients(string(content), emitClient)
 	}

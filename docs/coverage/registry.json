@@ -9497,10 +9497,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Absinthe GraphQL types/fields serve as route-equivalents; field resolvers extracted via engine YAML detection markers"
+            "status": "full",
+            "cites": ["internal/engine/elixir_routes.go","internal/engine/elixir_routes_test.go"],
+            "notes": "synthesizeAbsinthe maps each top-level 'field :name' under an Absinthe query/mutation/subscription block to http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e (Strawberry/Apollo convention, #3066), tracking do/end depth so nested object-type fields are excluded. Value-asserting test (TestAbsinthe_Schema proves Query/users, Query/user, Mutation/create_user and excludes nested object fields).",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -10140,10 +10140,10 @@
             "notes": "init/2 and handle/2 callbacks recognised as framework_lifecycle; cowboy_handler behaviour tracked via @behaviour"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Cowboy dispatch routes specified as match patterns; detection via engine YAML markers"
+            "status": "full",
+            "cites": ["internal/engine/elixir_routes.go","internal/engine/elixir_routes_test.go"],
+            "notes": "synthesizeCowboy parses :cowboy_router.compile dispatch tables, emitting an ANY http_endpoint per {\"/path\", Handler, _} route (:id-\u003e{id}), attributed to the handler module; the :_ host wildcard rule is skipped and the gate requires a cowboy_router/cowboy_handler signal. Value-asserting test (TestCowboy_Dispatch proves ANY /, ANY /users/{id}, ANY /ws with handler attribution).",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -10769,10 +10769,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/elixir/phoenix.go","internal/engine/phoenix_routes.go","internal/engine/rules/elixir/frameworks/phoenix.yaml"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "phoenixExtractor extracts HTTP verbs (get/post/put/patch/delete), resources CRUD expansion (8 routes), live routes; scope blocks captured as SCOPE.Pattern"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/phoenix_routes.go","internal/engine/phoenix_routes_test.go"],
+            "notes": "synthesizePhoenix emits canonical http_endpoint per get/post/put/patch/delete/head/options verb + resources CRUD expansion (only:/except: filters) with nested scope-prefix composition and :id-\u003e{id} normalisation; controller#action attributed via handler_file hint. Value-asserting engine tests (TestPhoenix_VerbInScope/Resources/NestedScope/ControllerHandlerRef) prove exact (verb,path,controller#action).",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -11007,9 +11007,10 @@
         },
         "Routing": {
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/elixir/phoenix.go","internal/engine/phoenix_routes.go"],
-            "notes": "live/1 macro routes extracted as SCOPE.Operation/endpoint with route_type=live; scope context preserved"
+            "status": "full",
+            "cites": ["internal/custom/elixir/phoenix.go","internal/engine/elixir_routes.go","internal/engine/elixir_routes_test.go","internal/engine/phoenix_routes.go"],
+            "notes": "synthesizePhoenixLive emits the initial-GET http_endpoint for each Phoenix LiveView 'live \"/path\", Module, :action' route, composing the active scope prefix and normalising :id-\u003e{id}; live-module :action attributed as handler (route_type=live). Value-asserting tests (TestPhoenixLive_Routes proves GET /dashboard + GET /users/{id} with handler attribution; TestPhoenixLive_NoAction covers the action-less form).",
+            "verified_at": "2026-05-30"
           },
           "router_pattern": {
             "status": "partial",
@@ -11192,10 +11193,10 @@
             "notes": "def call(conn, opts) implementation captured as SCOPE.Operation/plug_impl per module"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/elixir/plug.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "plugExtractor extracts get/post/put/patch/delete/match routes from Plug.Router modules; forward/2 captured"
+            "status": "full",
+            "cites": ["internal/custom/elixir/plug.go","internal/custom/elixir/plug_test.go","internal/engine/elixir_routes.go","internal/engine/elixir_routes_test.go"],
+            "notes": "synthesizePlugRouter emits canonical http_endpoint per Plug.Router get/post/put/patch/delete/options/head verb route (:id-\u003e{id}) + forward/2 as ANY mount, attributed to the router module; catch-all 'match _' correctly excluded. plugExtractor additionally emits SCOPE.Operation route + middleware/call entities. Value-asserting tests (TestPlugRouter_Verbs proves GET /health, GET /users/{id}, POST /users, DELETE /users/{id}, ANY /admin; TestPlugRouter_NotPlug guards false positives).",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {

@@ -133,6 +133,16 @@ const (
 	// (dynamic segments come from Scala PathMatcher / segment() calls, not embedded `{name}`).
 	// Canonicalisation is identity + slash normalisation (default case).
 	FrameworkAkkaHTTP = "akka-http"
+	// FrameworkPlug (#3468) — Elixir Plug.Router `get "/users/:id" do ... end`
+	// uses the Express-style `:name` colon-prefixed path parameter convention,
+	// identical to Phoenix. Canonicalisation reuses canonicalizeColonParams.
+	FrameworkPlug = "plug"
+	// FrameworkCowboy (#3468) — Erlang/Elixir Cowboy dispatch route tables
+	// (`{"/users/:id", Handler, []}`) use the Phoenix-style `:name` colon
+	// convention; Cowboy's native `:name` / `[...]` bindings are normalised to
+	// the colon form by the synthesizer before canonicalisation. Reuses
+	// canonicalizeColonParams.
+	FrameworkCowboy = "cowboy"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -181,7 +191,7 @@ func Canonicalize(framework, raw string) string {
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi, FrameworkPhoenix,
 		FrameworkAdonis, FrameworkMarble, FrameworkPolka, FrameworkRestify, FrameworkSails,
-		FrameworkRobyn:
+		FrameworkRobyn, FrameworkPlug, FrameworkCowboy:
 		out = canonicalizeColonParams(raw)
 	default:
 		// Unknown framework: pass through but still normalise slashes.
