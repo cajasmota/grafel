@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference |
-| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference |
+| DTO extraction | ✅ `full` | — | — | `internal/custom/cpp/validation.go` | oatpp DTO_FIELD(type,name) extracts field name + declared C++ type (String, Int32, Vector<String>, oatpp::Boolean); DTO_FIELD_INFO descriptions captured; value-asserting tests on type+description |
+| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains("field") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference |
 
 ### Middleware
 

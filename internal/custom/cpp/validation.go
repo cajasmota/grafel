@@ -4,9 +4,17 @@ package cpp
 //
 // Covered surfaces:
 //
-//  1. oatpp DTO macro fields:
+//  1. oatpp DTO macro fields (with type + description):
 //     DTO_FIELD(type, name)                 — declares a request/response field
 //     DTO_FIELD(type, name, "json_key")
+//     DTO_FIELD_INFO(name) { info->description = "..."; } — field documentation
+//     The captured field carries its declared C++ type (e.g. String, Int32,
+//     Vector<String>) in the field_type property.
+//
+//  1a. nlohmann/json struct mapping:
+//     NLOHMANN_DEFINE_TYPE_INTRUSIVE(User, name, age)
+//     NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(User, name, age)
+//     Each mapped member becomes a request/response field of the struct.
 //
 //  2. Generic JSON body / parameter extraction patterns used across
 //     crow, drogon, pistache, cpprestsdk, oatpp, poco, restbed, restinio:
@@ -54,7 +62,20 @@ var (
 	// oatpp DTO_FIELD(String, username) or DTO_FIELD(String, username, "username")
 	// capture: (1) type, (2) field name
 	reDTOField = regexp.MustCompile(
-		`(?m)\bDTO_FIELD\s*\(\s*([A-Za-z_]\w*(?:<[^>]+>)?)\s*,\s*([A-Za-z_]\w*)`,
+		`(?m)\bDTO_FIELD\s*\(\s*([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*(?:\s*<[^>]+>)?)\s*,\s*([A-Za-z_]\w*)`,
+	)
+
+	// oatpp DTO_FIELD_INFO(field) { info->description = "..."; }
+	// capture: (1) field name, (2) description text
+	reDTOFieldInfoDesc = regexp.MustCompile(
+		`(?ms)\bDTO_FIELD_INFO\s*\(\s*([A-Za-z_]\w*)\s*\).*?info\s*->\s*description\s*=\s*"((?:[^"\\]|\\.)*)"`,
+	)
+
+	// nlohmann: NLOHMANN_DEFINE_TYPE_INTRUSIVE(Type, f1, f2, ...)
+	// also NON_INTRUSIVE / _WITH_DEFAULT variants.
+	// capture: (1) struct type, (2) raw member list
+	reNlohmannDefineType = regexp.MustCompile(
+		`(?ms)\bNLOHMANN_DEFINE_TYPE(?:_INTRUSIVE|_NON_INTRUSIVE)?(?:_WITH_DEFAULT)?\s*\(\s*([A-Za-z_]\w*)\s*,\s*([^)]*)\)`,
 	)
 
 	// Drogon: req->getParameter("key") or req->getJsonObject()["key"]
@@ -86,6 +107,13 @@ var (
 	rePocoFormGet = regexp.MustCompile(
 		`(?m)\bform\s*(?:\.get\s*\(\s*"([^"]+)"\s*,|(?:->|\[)\s*"([^"]+)")`,
 	)
+
+	// nlohmann required-field check: j.contains("field") used to validate
+	// that a request body carries a field.
+	// capture: (1) field
+	reNlohmannContains = regexp.MustCompile(
+		`(?m)\b(?:j|req_json|json|body)\s*\.\s*contains\s*\(\s*"([^"]+)"\s*\)`,
+	)
 )
 
 func (e *cppValidationExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -112,6 +140,7 @@ func (e *cppValidationExtractor) Extract(ctx context.Context, file extractor.Fil
 		strings.Contains(src, "getParameter") ||
 		strings.Contains(src, "extract_json") ||
 		strings.Contains(src, "DTO_FIELD") ||
+		strings.Contains(src, "NLOHMANN_DEFINE_TYPE") ||
 		(strings.Contains(src, `["`) && (strings.Contains(src, "body") || strings.Contains(src, " j[")))
 	if !hasValidation {
 		return nil, nil
@@ -119,6 +148,7 @@ func (e *cppValidationExtractor) Extract(ctx context.Context, file extractor.Fil
 
 	var entities []types.EntityRecord
 	seen := make(map[string]bool)
+	byName := make(map[string]int) // param_name|framework -> index into entities
 
 	emitParam := func(paramName, framework, provenance string, offset int) {
 		key := paramName + "|" + framework
@@ -132,13 +162,61 @@ func (e *cppValidationExtractor) Extract(ctx context.Context, file extractor.Fil
 			"framework", framework,
 			"provenance", provenance,
 		)
+		byName[key] = len(entities)
 		entities = append(entities, ent)
 	}
 
-	// oatpp DTO fields
+	// emitField is like emitParam but additionally records the declared C++
+	// field type (e.g. String, Int32, Vector<String>) so downstream schema
+	// consumers carry the concrete type, matching the TS/JS DTO bar.
+	emitField := func(fieldName, fieldType, framework, provenance string, offset int) {
+		key := fieldName + "|" + framework
+		if !seen[key] {
+			emitParam(fieldName, framework, provenance, offset)
+		}
+		if idx, ok := byName[key]; ok && fieldType != "" {
+			entities[idx].Properties["field_type"] = fieldType
+		}
+	}
+
+	// setFieldProp updates a property on an already-emitted field, if present.
+	setFieldProp := func(fieldName, framework, prop, value string) {
+		key := fieldName + "|" + framework
+		if idx, ok := byName[key]; ok && value != "" {
+			entities[idx].Properties[prop] = value
+		}
+	}
+
+	// oatpp DTO fields (carry declared type)
 	for _, m := range reDTOField.FindAllStringSubmatchIndex(src, -1) {
+		fieldType := strings.TrimSpace(src[m[2]:m[3]])
 		fieldName := strings.TrimSpace(src[m[4]:m[5]])
-		emitParam(fieldName, "oatpp", "INFERRED_FROM_DTO_FIELD", m[0])
+		emitField(fieldName, normalizeType(fieldType), "oatpp", "INFERRED_FROM_DTO_FIELD", m[0])
+	}
+
+	// oatpp DTO_FIELD_INFO descriptions attach to the matching field.
+	for _, m := range reDTOFieldInfoDesc.FindAllStringSubmatchIndex(src, -1) {
+		fieldName := strings.TrimSpace(src[m[2]:m[3]])
+		desc := strings.TrimSpace(src[m[4]:m[5]])
+		// The field may not have been emitted yet if INFO precedes FIELD; ensure it exists.
+		if _, ok := byName[fieldName+"|oatpp"]; !ok {
+			emitParam(fieldName, "oatpp", "INFERRED_FROM_DTO_FIELD_INFO", m[0])
+		}
+		setFieldProp(fieldName, "oatpp", "description", desc)
+	}
+
+	// nlohmann/json NLOHMANN_DEFINE_TYPE struct mapping: each member becomes a field.
+	for _, m := range reNlohmannDefineType.FindAllStringSubmatchIndex(src, -1) {
+		structType := strings.TrimSpace(src[m[2]:m[3]])
+		members := src[m[4]:m[5]]
+		for _, raw := range strings.Split(members, ",") {
+			member := strings.TrimSpace(raw)
+			if member == "" || !isIdentifier(member) {
+				continue
+			}
+			emitField(member, "", "nlohmann", "INFERRED_FROM_NLOHMANN_DEFINE_TYPE", m[0])
+			setFieldProp(member, "nlohmann", "struct_type", structType)
+		}
 	}
 
 	// Drogon request params
@@ -176,5 +254,41 @@ func (e *cppValidationExtractor) Extract(ctx context.Context, file extractor.Fil
 		}
 	}
 
+	// nlohmann required-field validation (j.contains("field")) marks the
+	// referenced field as explicitly validated.
+	for _, m := range reNlohmannContains.FindAllStringSubmatchIndex(src, -1) {
+		field := strings.TrimSpace(src[m[2]:m[3]])
+		if _, ok := byName[field+"|generic"]; !ok {
+			emitParam(field, "generic", "INFERRED_FROM_JSON_FIELD", m[0])
+		}
+		setFieldProp(field, "generic", "validation", "required")
+	}
+
 	return entities, nil
+}
+
+// normalizeType collapses internal whitespace inside a C++ type so that
+// "Vector < String >" becomes "Vector<String>".
+func normalizeType(t string) string {
+	return strings.Join(strings.Fields(t), "")
+}
+
+// isIdentifier reports whether s is a plain C++ identifier (used to filter
+// NLOHMANN_DEFINE_TYPE member lists, which only contain bare member names).
+func isIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z'):
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }

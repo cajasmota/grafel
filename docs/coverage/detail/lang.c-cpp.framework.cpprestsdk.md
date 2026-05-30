@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference |
-| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference |
+| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j["field"] access still typeless — partial: no cross-file struct/type resolution |
+| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains("field") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference |
 
 ### Middleware
 

@@ -2600,13 +2600,13 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j[\"field\"] access still typeless — partial: no cross-file struct/type resolution"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
@@ -2816,13 +2816,13 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j[\"field\"] access still typeless — partial: no cross-file struct/type resolution"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
@@ -3032,13 +3032,13 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j[\"field\"] access still typeless — partial: no cross-file struct/type resolution"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
@@ -3855,16 +3855,15 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/validation.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "oatpp DTO_FIELD(type,name) extracts field name + declared C++ type (String, Int32, Vector\u003cString\u003e, oatpp::Boolean); DTO_FIELD_INFO descriptions captured; value-asserting tests on type+description"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
@@ -4074,13 +4073,13 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j[\"field\"] access still typeless — partial: no cross-file struct/type resolution"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
@@ -4288,13 +4287,13 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j[\"field\"] access still typeless — partial: no cross-file struct/type resolution"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
@@ -4687,13 +4686,13 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j[\"field\"] access still typeless — partial: no cross-file struct/type resolution"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
@@ -4900,13 +4899,13 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
+            "notes": "NLOHMANN_DEFINE_TYPE struct mapping captured (members + struct_type); generic j[\"field\"] access still typeless — partial: no cross-file struct/type resolution"
           },
           "request_validation": {
             "status": "partial",
             "cites": ["internal/custom/cpp/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
+            "notes": "Request param extraction (getParam/getParameter/JSON field) + nlohmann j.contains(\"field\") required-field validation detected; partial: no constraint-value (min/max/regex) or custom-validator inference"
           }
         },
         "Middleware": {
