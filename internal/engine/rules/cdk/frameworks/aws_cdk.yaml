@@ -22,6 +22,17 @@ frameworks:
     AWS CDK is a multi-language IaC framework supporting TypeScript, Python,
     Go, Java, and C#. The App and Stack classes are the root abstractions.
 
+    DORMANT (part of #3512): this file lives under rules/cdk/, which the loader
+    buckets by top-level dir name into language key "cdk". The detector resolves
+    compiled rules by file.Language (typescript/python/...), and no file is ever
+    tagged "cdk", so these patterns NEVER fire. The active CDK-TS rule set lives
+    at rules/javascript_typescript/frameworks/aws_cdk.yaml (Stack/App scope) plus
+    the Go pass internal/engine/cdk_edges.go (resources + dependency edges).
+    This file is retained only because rules/cdk/_manifest.yaml is a coverage
+    discovery citation target; it is knowledge metadata, not a firing rule. Do
+    not add new firing patterns here — add them to the javascript_typescript
+    bucket (or a future per-language bucket cdk-python/.../).
+
 # ---------------------------------------------------------------------------
 # Extraction schema (FrameworkExtractionSchema —)
 # ---------------------------------------------------------------------------

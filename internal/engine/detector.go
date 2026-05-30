@@ -558,6 +558,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// byQualifiedName index binds them. Append-only — cannot regress the yaml
 	// extractor's output or the surrounding pipeline's bug-rate.
 	applyPass(applyKubernetesEdges)
+	// AWS CDK (TypeScript) resource + dependency extraction (part of #3512).
+	// Emits one SCOPE.InfraResource per construct (`new s3.Bucket(this,'Id',…)`),
+	// NAMED by its 'LogicalId' string literal and tagged with the construct type
+	// + a coarse scope class, plus DEPENDS_ON edges for grant calls
+	// (`bucket.grantRead(fn)`), Lambda event sources (`fn.addEventSource(new
+	// SqsEventSource(queue))`), and construct variables passed through props.
+	// Mirrors the hcl extractor's depends_on → DEPENDS_ON edge kind so CDK and
+	// Terraform dependency edges are uniform. JS/TS only (CDK-Python/Java/Go/C#
+	// follow under their own language buckets). Append-only — cannot regress the
+	// surrounding pipeline's bug-rate.
+	applyPass(applyCDKEdges)
 
 	// Debezium / Kafka-Connect CDC connector edges (#1708). Parses the
 	// JSON config of a CDC connector and emits a SCOPE.Component

@@ -1309,13 +1309,17 @@
       "capabilities": {
         "dependency_attribution": {
           "status": "partial",
-          "cites": ["internal/engine/rules/cdk/_manifest.yaml"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/cdk_edges.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3512",
+          "notes": "CDK-TS dependency edges implemented: DEPENDS_ON from grant calls (bucket.grantRead(fn)), Lambda addEventSource, and construct vars passed through props; mirrors the hcl extractor's depends_on-\u003eDEPENDS_ON edge kind. CDK-Python/Java/Go/C# pending. Was citing the dormant rules/cdk/_manifest.yaml.",
+          "verified_at": "2026-05-30"
         },
         "resource_extraction": {
           "status": "partial",
-          "cites": ["internal/engine/rules/cdk/_manifest.yaml"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/cdk_edges.go","internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3512",
+          "notes": "CDK-TS implemented (applyCDKEdges): SCOPE.InfraResource per construct named by LogicalId. Stack/App scope via rules/javascript_typescript/frameworks/aws_cdk.yaml. CDK-Python/Java/Go/C# pending. Was citing the dormant rules/cdk/_manifest.yaml (knowledge metadata, never fired).",
+          "verified_at": "2026-05-30"
         }
       }
     },
@@ -1553,9 +1557,11 @@
       "label": "AWS CDK",
       "capabilities": {
         "resource_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/hcl/extractor.go"],
-          "verified_at": "2026-05-28"
+          "status": "partial",
+          "cites": ["internal/engine/cdk_edges.go","internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3512",
+          "notes": "CDK-TS only: applyCDKEdges emits SCOPE.InfraResource per construct named by its 'LogicalId' literal (construct_type + coarse resource_scope). CDK-Python/Java/Go/C# not yet implemented. Previously over-stamped full citing the hcl/Terraform extractor, which cannot parse .ts.",
+          "verified_at": "2026-05-30"
         }
       }
     },

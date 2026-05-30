@@ -1,0 +1,67 @@
+frameworks:
+  name: AWS CDK
+  vendor: Amazon Web Services
+  category: infrastructure_as_code
+  current_version_2025: 2.140.x
+  registry: constructs.dev (construct hub), npmjs.com
+  detection:
+    file_extensions:
+      - .ts
+      - .js
+    config_files:
+      - cdk.json
+      - cdk.context.json
+    content_patterns:
+      - aws-cdk-lib
+      - "@aws-cdk"
+      - "extends Stack"
+  notes: >-
+    AWS CDK (TypeScript/JavaScript). This rule set fires on real .ts/.js files
+    via the javascript_typescript → typescript/javascript bucket alias in
+    detector.compile(); the older rules/cdk/ bucket was dormant because no file
+    is ever tagged language "cdk".
+
+    SCOPE NOTE: resource extraction (`new s3.Bucket(this,'LogicalId',…)`) and
+    dependency edges (grant calls / addEventSource / props refs) are handled by
+    the dedicated Go pass applyCDKEdges (internal/engine/cdk_edges.go), which
+    captures the 'LogicalId' string literal as the resource NAME, the construct
+    TYPE, and the var→LogicalId binding needed to resolve grant/event-source
+    edges — none of which a single-capture regex source_pattern can express.
+    This YAML therefore only declares the Stack / App scope idioms; it must NOT
+    re-emit constructs as resources (that would double-emit alongside the Go
+    pass and mis-name them by construct type instead of LogicalId).
+
+# ---------------------------------------------------------------------------
+# Extraction schema — Stack/App scope only (resources live in the Go pass).
+# ---------------------------------------------------------------------------
+
+source_patterns:
+  # Stack class (TypeScript/JS): class MyStack extends cdk.Stack / Stack
+  - pattern: "class\\s+(\\w+)\\s+extends\\s+(?:cdk\\.)?Stack\\b"
+    entity_type: Component
+    name_group: 1
+    scope: class
+  # Construct/Stage subclass: class MyConstruct extends Construct / Stage
+  - pattern: "class\\s+(\\w+)\\s+extends\\s+(?:cdk\\.)?(?:Construct|Stage|NestedStack)\\b"
+    entity_type: Component
+    name_group: 1
+    scope: class
+  # App instantiation: new cdk.App() / new App()
+  - pattern: "new\\s+(?:cdk\\.)?App\\s*\\("
+    entity_type: Config
+    name_group: 0
+    scope: file
+  # CfnOutput: new cdk.CfnOutput(this, 'OutputId', …)
+  - pattern: "(?:new\\s+)?(?:cdk\\.)?CfnOutput\\s*\\(\\s*\\w+\\s*,\\s*[\"']([^\"']+)[\"']"
+    entity_type: Config
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # App instantiates stacks: new MyStack(app, 'StackId', …) → app CALLS stack
+  - pattern: "new\\s+(\\w+Stack)\\s*\\(\\s*(\\w+)"
+    source_type: Config
+    target_type: Component
+    relationship: CALLS
+    source_group: 2
+    target_group: 1

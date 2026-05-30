@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Resource extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/hcl/extractor.go` | — |
+| Resource extraction | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3512) | `internal/engine/cdk_edges.go`<br>`internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml` | CDK-TS only: applyCDKEdges emits SCOPE.InfraResource per construct named by its 'LogicalId' literal (construct_type + coarse resource_scope). CDK-Python/Java/Go/C# not yet implemented. Previously over-stamped full citing the hcl/Terraform extractor, which cannot parse .ts. |
 
 ## Provenance
 
