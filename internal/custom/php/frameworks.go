@@ -229,7 +229,7 @@ var (
 		`(?m)\$middlewareQueue->add\s*\(\s*new\s+(\w+)`,
 	)
 	reCakePHPAuth = regexp.MustCompile(
-		`(?m)\b(?:AuthenticationService|AuthorizationService|$this->Authentication|$this->Authorization|isAuthenticated|isAuthorized)\b`,
+		`(?m)(?:\b(?:AuthenticationService|AuthorizationService|isAuthenticated|isAuthorized)\b|\$this->Authentication|\$this->Authorization)`,
 	)
 	reCakePHPValidation = regexp.MustCompile(
 		`(?m)\$validator->(?:notEmptyString|requirePresence|add|allowEmpty|notEmpty)\s*\(\s*['"]([^'"]+)['"]`,
@@ -773,7 +773,7 @@ var (
 		`(?m)class\s+(\w+)\s+implements\s+(?:MiddlewareInterface|BeforeMiddleware|AfterMiddleware)\b`,
 	)
 	rePhalconAuth = regexp.MustCompile(
-		`(?m)\b(?:Auth|Acl|Phalcon\\Acl|Phalcon\\Security|$this->auth)\b`,
+		`(?m)(?:\b(?:Auth|Acl|Phalcon\\Acl|Phalcon\\Security)\b|\$this->auth)`,
 	)
 	rePhalconValidation = regexp.MustCompile(
 		`(?m)class\s+(\w+)\s+extends\s+Validation\b`,
@@ -1081,7 +1081,7 @@ var (
 		`(?m)class\s+(\w+)\s+extends\s+ActionFilter\b`,
 	)
 	reYiiAuth = regexp.MustCompile(
-		`(?m)\b(?:Yii::app\(\)->user|Yii::$app->user|checkAccess|can\s*\(|AccessControl|HttpBearerAuth|QueryParamAuth)\b`,
+		`(?m)\b(?:Yii::app\(\)->user|Yii::\$app->user|checkAccess|can\s*\(|AccessControl|HttpBearerAuth|QueryParamAuth)\b`,
 	)
 	reYiiValidator = regexp.MustCompile(
 		`(?m)class\s+(\w+)\s+extends\s+Validator\b`,

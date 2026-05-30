@@ -323,6 +323,31 @@ $middlewareQueue->add(new CsrfProtectionMiddleware());
 	}
 }
 
+// TestCakePHPAuthDollarThis verifies that the CakePHP auth regex correctly
+// matches $this->Authentication and $this->Authorization — the two alternations
+// that were previously dead due to an unescaped $ acting as end-of-text anchor
+// in Go's regexp engine instead of a literal dollar sign.
+func TestCakePHPAuthDollarThis(t *testing.T) {
+	src := `<?php
+$this->Authentication->check();
+$this->Authorization->can($user, 'edit');
+`
+	ents := extract(t, "custom_php_cakephp", fi("AppController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "cakephp:auth") {
+		t.Error("expected cakephp:auth entity for $this->Authentication usage (was dead before regex fix)")
+	}
+}
+
+func TestCakePHPAuthDollarThisAuthorization(t *testing.T) {
+	src := `<?php
+$this->Authorization->can($user, 'delete');
+`
+	ents := extract(t, "custom_php_cakephp", fi("PostsController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "cakephp:auth") {
+		t.Error("expected cakephp:auth entity for $this->Authorization usage (was dead before regex fix)")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CodeIgniter
 // ---------------------------------------------------------------------------
@@ -476,6 +501,21 @@ $app->post('/api/robots/add', RobotsController::class);
 	}
 }
 
+// TestPhalconAuthDollarThis verifies that the Phalcon auth regex correctly
+// matches $this->auth — previously dead due to an unescaped $ in an alternation
+// inside a \b-bounded group ($ is not a word character so the boundary never matched).
+func TestPhalconAuthDollarThis(t *testing.T) {
+	src := `<?php
+if (!$this->auth->isLoggedIn()) {
+    return $this->response->redirect('/login');
+}
+`
+	ents := extract(t, "custom_php_phalcon", fi("ControllerBase.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "phalcon:auth") {
+		t.Error("expected phalcon:auth entity for $this->auth usage (was dead before regex fix)")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Laminas
 // ---------------------------------------------------------------------------
@@ -508,5 +548,25 @@ class AuthMiddleware implements MiddlewareInterface {
 	ents := extract(t, "custom_php_laminas", fi("AuthMiddleware.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "middleware:AuthMiddleware") {
 		t.Error("expected middleware:AuthMiddleware pattern")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Yii auth dollar-this regression
+// ---------------------------------------------------------------------------
+
+// TestYiiAuthDollarApp verifies that the Yii auth regex correctly matches
+// Yii::$app->user — previously dead due to unescaped $ inside an alternation
+// group with a leading \b word-boundary ($ is not a word character).
+func TestYiiAuthDollarApp(t *testing.T) {
+	src := `<?php
+$identity = Yii::$app->user->identity;
+if (Yii::$app->user->isGuest) {
+    return $this->redirect(['site/login']);
+}
+`
+	ents := extract(t, "custom_php_yii", fi("SiteController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "yii:auth") {
+		t.Error("expected yii:auth entity for Yii::$app->user usage (was dead before regex fix)")
 	}
 }
