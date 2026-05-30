@@ -319,8 +319,19 @@ func canonicalRefFromExpression(expr *sitter.Node, src []byte) string {
 		return "module." + parts[1]
 	case "data":
 		if len(parts) >= 3 {
+			// terraform_remote_state references are cross-stack and are
+			// handled separately as a special DEPENDS_ON edge, not a generic
+			// data-source CALLS edge.
+			if parts[1] == "terraform_remote_state" {
+				return ""
+			}
 			return "data." + parts[1] + "." + parts[2]
 		}
+		return ""
+	case "each", "count", "self":
+		// Iteration / self pseudo-references (each.value, each.key,
+		// count.index, self.*) are not entity references — they resolve
+		// within the surrounding resource set. Suppress the bogus CALLS edge.
 		return ""
 	default:
 		// Resource reference: <type>.<name>

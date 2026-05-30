@@ -175,8 +175,9 @@ func extractBlock(n *sitter.Node, src []byte, path, lang string) ([]types.Entity
 	case "locals":
 		return extractLocalsBlock(n, src, path, lang)
 	case "terraform":
-		// terraform block → file metadata, not emitted as entity per spec.
-		return nil, false
+		// Issue #3527 — capture required_providers + backend instead of
+		// dropping. Empty / version-only terraform blocks stay metadata-only.
+		return extractTerraformBlock(n, src, path, lang, start, end)
 	}
 	return nil, false
 }
@@ -213,15 +214,26 @@ func extractResourceBlock(n *sitter.Node, src []byte, path, lang string, start, 
 
 	// Extract depends_on relationships.
 	body := blockBody(n)
+	out := []types.EntityRecord{rec}
 	if body != nil {
 		deps := extractDependsOn(body, src, path, lang)
-		rec.Relationships = append(rec.Relationships, deps...)
+		out[0].Relationships = append(out[0].Relationships, deps...)
 		// Issue #387 — interpolation cross-references → CALLS edges.
 		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
-		rec.Relationships = append(rec.Relationships, calls...)
+		out[0].Relationships = append(out[0].Relationships, calls...)
+		// Issue #3527 — iteration meta-args (for_each / count).
+		applyIterationMeta(&out[0], body, src, path, lang, selfRef)
+		// Issue #3527 — terraform_remote_state cross-stack deps.
+		out[0].Relationships = append(out[0].Relationships, extractRemoteStateDeps(body, src, path, lang, selfRef)...)
+		// Issue #3527 — lifecycle / provisioner meta-blocks.
+		if meta := hasLifecycleMetaBlocks(body, src); len(meta) > 0 {
+			out[0].Metadata["meta_blocks"] = strings.Join(meta, ",")
+		}
+		// Issue #3527 — dynamic "x" {} nested blocks as child entities.
+		out = append(out, extractDynamicBlocks(body, src, path, lang, selfRef)...)
 	}
 
-	return []types.EntityRecord{rec}, true
+	return out, true
 }
 
 // extractDataBlock: data "type" "name" → SCOPE.Component / data_source
@@ -251,15 +263,20 @@ func extractDataBlock(n *sitter.Node, src []byte, path, lang string, start, end 
 	}
 
 	body := blockBody(n)
+	out := []types.EntityRecord{rec}
 	if body != nil {
 		deps := extractDependsOn(body, src, path, lang)
-		rec.Relationships = append(rec.Relationships, deps...)
+		out[0].Relationships = append(out[0].Relationships, deps...)
 		// Issue #387 — interpolation cross-references → CALLS edges.
 		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
-		rec.Relationships = append(rec.Relationships, calls...)
+		out[0].Relationships = append(out[0].Relationships, calls...)
+		// Issue #3527 — iteration meta-args (for_each / count).
+		applyIterationMeta(&out[0], body, src, path, lang, selfRef)
+		// Issue #3527 — dynamic "x" {} nested blocks as child entities.
+		out = append(out, extractDynamicBlocks(body, src, path, lang, selfRef)...)
 	}
 
-	return []types.EntityRecord{rec}, true
+	return out, true
 }
 
 // extractModuleBlock: module "name" → SCOPE.Component / module
@@ -298,6 +315,14 @@ func extractModuleBlock(n *sitter.Node, src []byte, path, lang string, start, en
 		// Issue #387 — interpolation cross-references → CALLS edges.
 		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
 		rec.Relationships = append(rec.Relationships, calls...)
+		// Issue #3527 — module I/O data-flow edges (module.this → module.x
+		// where an input arg consumes module.x's output).
+		rec.Relationships = append(rec.Relationships, extractModuleDataFlow(body, src, path, lang, selfRef)...)
+		// Issue #3527 — terraform_remote_state cross-stack deps consumed as
+		// module inputs.
+		rec.Relationships = append(rec.Relationships, extractRemoteStateDeps(body, src, path, lang, selfRef)...)
+		// Issue #3527 — iteration meta-args (for_each / count).
+		applyIterationMeta(&rec, body, src, path, lang, selfRef)
 	}
 
 	return []types.EntityRecord{rec}, true

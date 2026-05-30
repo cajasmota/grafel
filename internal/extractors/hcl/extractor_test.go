@@ -920,6 +920,8 @@ func TestTerraformFixtureZeroFalsePositives(t *testing.T) {
 		"resource": true, "data_source": true, "module": true,
 		"variable": true, "output": true, "provider": true,
 		"local": true, "file": true,
+		// Issue #3527 — deeper extraction adds these subtypes.
+		"terraform_settings": true, "dynamic_block": true,
 	}
 	for _, r := range records {
 		if r.Name == "" {
