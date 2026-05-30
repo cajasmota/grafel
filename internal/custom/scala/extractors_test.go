@@ -25,12 +25,17 @@ func extract(t *testing.T, name string, file extreg.FileInput) []entitySummary {
 	}
 	var out []entitySummary
 	for _, ent := range ents {
-		out = append(out, entitySummary{Kind: ent.Kind, Subtype: ent.Subtype, Name: ent.Name})
+		out = append(out, entitySummary{
+			Kind: ent.Kind, Subtype: ent.Subtype, Name: ent.Name, Props: ent.Properties,
+		})
 	}
 	return out
 }
 
-type entitySummary struct{ Kind, Subtype, Name string }
+type entitySummary struct {
+	Kind, Subtype, Name string
+	Props               map[string]string
+}
 
 func containsEntity(ents []entitySummary, kind, name string) bool {
 	for _, e := range ents {
@@ -39,6 +44,16 @@ func containsEntity(ents []entitySummary, kind, name string) bool {
 		}
 	}
 	return false
+}
+
+// findEntity returns the first entity matching kind+name, or nil.
+func findEntity(ents []entitySummary, kind, name string) *entitySummary {
+	for i := range ents {
+		if ents[i].Kind == kind && ents[i].Name == name {
+			return &ents[i]
+		}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/slick.yaml` | — |
-| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | slickTableClassRe extracts Table[T] class defs; slickColumnRe extracts column[T] defs; slickTableQueryRe extracts TableQuery[T] |
+| Schema extraction | ✅ `full` | — | — | `internal/custom/scala/orm_extractors.go` | slickTableClassRe extracts Table[T] class defs; slickColumnRe extracts column[T] defs; slickTableQueryRe extracts TableQuery[T] |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | Slick foreignKey() declarations extracted as relationship entities; no high-level ORM association DSL but FK constraints captured |
-| Foreign key extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | slickForeignKeyRe captures foreignKey(name, col, targetTable)(_.col) declarations → SCOPE.Schema entities with pattern_type=foreign_key |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | Slick foreignKey() captured as relationship entity with local_column+target_table; no high-level hasMany/belongsTo DSL exists in Slick, so association resolution stays partial |
+| Foreign key extraction | ✅ `full` | — | — | `internal/custom/scala/orm_extractors.go` | slickForeignKeyRe captures foreignKey(name, col, targetTable)(_.col) declarations → SCOPE.Schema entities with pattern_type=foreign_key |
 | Lazy loading recognition | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Slick uses explicit db.run() with explicit DBIOAction composition; no transparent lazy-loading proxy mechanism exists |
-| Relationship extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | FK declarations and TableQuery join patterns extracted; no higher-level hasMany/belongsTo DSL in Slick |
+| Relationship extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | FK declarations + TableQuery join sites extracted with local/target columns; resolving the joined Table[T] across files (cross-file association graph) is out of scope — honest partial |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🟢 `partial` | — | — | `internal/custom/scala/orm_extractors.go` | slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway) |
+| Migration parsing | ✅ `full` | — | — | `internal/custom/scala/orm_extractors.go` | slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway) |
 
 ## Provenance
 

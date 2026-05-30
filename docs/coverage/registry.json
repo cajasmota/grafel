@@ -50121,9 +50121,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "doobieQueryRe captures .query[T] row type mappings; doobieCaseClassRe captures case class row models; doobieSQLRe captures sql\"...\" fragments"
           }
         },
@@ -50179,9 +50178,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "elastic4sIndexRe captures createIndex/indexInto index defs; elastic4sHitReaderRe captures HitReader[T]/HitWriter[T] document type mappings; elastic4sCaseClassRe captures document case classes"
           }
         },
@@ -50235,17 +50233,15 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "quillQuerySchemaRe captures querySchema[T](\"table\") mappings; quillCaseClassRe captures entity case classes; compile-time macro expansion limits runtime introspection"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "quillQuoteQueryRe captures quote {} blocks containing query[T] references; JOIN associations expressed in quoted DSL blocks"
           },
           "foreign_key_extraction": {
@@ -50262,7 +50258,7 @@
             "status": "partial",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "quote {} blocks with join / nested query patterns captured; no declarative hasMany/belongsTo DSL"
+            "notes": "quote{} join(query[T]) blocks captured as join associations with joined_entity; resolving the on-predicate column pairing across the quote body is out of scope — honest partial"
           }
         },
         "Queries": {
@@ -50295,17 +50291,15 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "scalikejdbcSyntaxSupportRe captures SQLSyntaxSupport[T] companion objects; scalikejdbcCaseClassRe captures row case classes"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "scalikejdbcHasManyRe captures hasMany/hasManyThrough/hasOne/belongsTo relationship declarations → SCOPE.Schema entities"
           },
           "foreign_key_extraction": {
@@ -50319,9 +50313,8 @@
             "notes": "ScalikeJDBC uses explicit DB session blocks; no transparent lazy-loading proxies — queries are always explicit"
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "hasMany/hasManyThrough/hasOne/belongsTo DSL extracted; DB session block patterns captured for join-query sites"
           }
         },
@@ -50334,7 +50327,7 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "scalikejdbcDBMigrationRe captures DB autoCommit/localTx blocks which can contain DDL; scalikejdbc-play-support includes DB evolution integration"
           }
@@ -50355,9 +50348,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "scanamoTableRe captures Table[T](\"name\") DynamoDB table defs; scanamoDynamoFormatRe captures DynamoFormat[T] implicit derivations; scanamoCaseClassRe captures item case classes"
           }
         },
@@ -50411,9 +50403,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "slickTableClassRe extracts Table[T] class defs; slickColumnRe extracts column[T] defs; slickTableQueryRe extracts TableQuery[T]"
           }
         },
@@ -50422,12 +50413,11 @@
             "status": "partial",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Slick foreignKey() declarations extracted as relationship entities; no high-level ORM association DSL but FK constraints captured"
+            "notes": "Slick foreignKey() captured as relationship entity with local_column+target_table; no high-level hasMany/belongsTo DSL exists in Slick, so association resolution stays partial"
           },
           "foreign_key_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "slickForeignKeyRe captures foreignKey(name, col, targetTable)(_.col) declarations → SCOPE.Schema entities with pattern_type=foreign_key"
           },
           "lazy_loading_recognition": {
@@ -50439,7 +50429,7 @@
             "status": "partial",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "FK declarations and TableQuery join patterns extracted; no higher-level hasMany/belongsTo DSL in Slick"
+            "notes": "FK declarations + TableQuery join sites extracted with local/target columns; resolving the joined Table[T] across files (cross-file association graph) is out of scope — honest partial"
           }
         },
         "Queries": {
@@ -50451,7 +50441,7 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway)"
           }
