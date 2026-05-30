@@ -323,16 +323,62 @@ func applyPyReturnArg(src, handlerBody, arg string, status int, sh *shape) {
 // immediately above the def line and returns the response_model class
 // name, or "" when none was found.
 func lookupFastAPIResponseModel(src, handler string) string {
-	re := regexp.MustCompile(`@[\w.]+\([^)]*\)\s*[\r\n]+(?:\s*@[^\r\n]*[\r\n]+)*\s*(?:async\s+)?def\s+` + regexp.QuoteMeta(handler) + `\s*\(`)
-	loc := re.FindStringIndex(src)
+	// Locate the handler's `def` line, then take the contiguous decorator
+	// block immediately above it as the search region. This is immune to a
+	// route decorator whose argument contains a ')' inside a string literal
+	// (e.g. a regex route `@app.get("/items/{id:(\d+)}", response_model=...)`):
+	// the previous leading `@[\w.]+\([^)]*\)` match stopped at that inner ')'
+	// and failed to anchor to the def, dropping the response shape entirely.
+	defRe := regexp.MustCompile(`(?m)^[ \t]*(?:async\s+)?def\s+` + regexp.QuoteMeta(handler) + `\s*\(`)
+	loc := defRe.FindStringIndex(src)
 	if loc == nil {
 		return ""
 	}
-	region := src[loc[0]:loc[1]]
+	// Walk backwards over the lines preceding the def, collecting the
+	// contiguous run of decorator / decorator-continuation lines.
+	prefix := src[:loc[0]]
+	lines := strings.Split(prefix, "\n")
+	// Drop a trailing empty element produced by the newline immediately before
+	// the def line, so the scan starts on the real decorator line.
+	if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	start := len(lines) // first line index (in `lines`) that belongs to the block
+	for i := len(lines) - 1; i >= 0; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" {
+			// FastAPI decorators are normally contiguous; stop at a blank gap.
+			break
+		}
+		if strings.HasPrefix(t, "@") || strings.HasPrefix(t, ")") ||
+			strings.HasPrefix(t, "#") || isDecoratorContinuation(t) {
+			start = i
+			continue
+		}
+		break
+	}
+	if start >= len(lines) {
+		return ""
+	}
+	region := strings.Join(lines[start:], "\n")
 	if m := fastapiResponseModelRe.FindStringSubmatch(region); len(m) >= 2 {
 		return m[1]
 	}
 	return ""
+}
+
+// isDecoratorContinuation reports whether a trimmed line is plausibly a
+// continuation of a multi-line decorator argument list (e.g. a `response_model=`
+// or `summary="..."` kwarg line, or a closing-paren line). Used to extend the
+// decorator block scanned for `response_model=` upward from a handler def.
+func isDecoratorContinuation(t string) bool {
+	// kwarg-style continuation: `name=...` or quoted/paren fragments.
+	if strings.Contains(t, "=") || strings.HasPrefix(t, "\"") ||
+		strings.HasPrefix(t, "'") || strings.HasSuffix(t, ",") ||
+		strings.HasSuffix(t, "(") {
+		return true
+	}
+	return false
 }
 
 // extractFastAPIRequestSchema walks the def signature looking for a

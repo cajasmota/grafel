@@ -933,24 +933,36 @@ func synthesizeDjangoFromComposed(entities []types.EntityRecord, path string, em
 // jaxrsClassPathRe captures the class-level @Path("/prefix") value.
 var jaxrsClassPathRe = regexp.MustCompile(`@Path\s*\(\s*"([^"\n\r]*)"\s*\)\s*[\r\n]+(?:[^@\r\n]*[\r\n]+)*?[^{]*?\bclass\s+\w+`)
 
-// jaxrsMethodAnnotationRe captures method-level verb + optional @Path on
-// the same handler. We scan the whole file, since the grouping with the
-// owning class is approximated by emitting per-method with the class
-// prefix detected by jaxrsClassPathRe.
-//
-// Matches forms like:
-//
-//	@GET
-//	@Path("/{id}")
-//	public Foo get(@PathParam("id") long id) { ... }
-//
-// or just `@GET` followed by a method declaration with no method-level path.
-var jaxrsMethodVerbRe = regexp.MustCompile(`@(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b(?:[^\n\r{}]*[\r\n]+){0,3}?\s*(?:@Path\s*\(\s*"([^"\n\r]*)"\s*\)\s*[\r\n]+)?\s*(?:@[\w.]+(?:\([^)]*\))?\s*[\r\n]*)*?\s*(?:public|protected|private|static|final|abstract|\s)+[\w<>\[\],.\s?]+?\s+(\w+)\s*\(`)
+// jaxrsVerbLineRe matches a bare JAX-RS verb annotation line. Group 1 = verb.
+// The handler and any method-level @Path are bound by a line-oriented forward
+// scan (see synthesizeJAXRS) rather than a single multi-line regex, so an
+// intervening Swagger annotation whose argument contains a ')' inside a string
+// (e.g. `@Operation(summary = "Get (all) widgets")`) cannot truncate the scan
+// and silently drop the route — the parens-in-string undercount bug class.
+var jaxrsVerbLineRe = regexp.MustCompile(`@(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b`)
+
+// jaxrsMethodPathLineRe matches a method-level `@Path("/x")` annotation line and
+// captures the path string. Used by the forward scan.
+var jaxrsMethodPathLineRe = regexp.MustCompile(`@Path\s*\(\s*"([^"\n\r]*)"\s*\)`)
+
+// jaxrsHandlerNameRe matches a method-declaration line and captures the method
+// name. Anchored to the start of a trimmed line. Mirrors javaMethodDeclRe.
+var jaxrsHandlerNameRe = regexp.MustCompile(
+	`^\s*(?:public|protected|private|static|final|abstract|synchronized|default|\s)+[\w<>\[\],.\s?]+?\s+(\w+)\s*\(`)
 
 // synthesizeJAXRS scans a Java file for JAX-RS handlers. Supports a single
 // class-level @Path prefix per file (the dominant convention); files with
 // multiple JAX-RS resource classes will still emit endpoints but only
 // under the first class prefix.
+//
+// Binding strategy (parens-in-string immune): for each JAX-RS verb annotation
+// line, a forward line scan collects any intervening method-level `@Path` and
+// then locates the handler method declaration. Comment, blank and arbitrary
+// annotation lines (including multi-line annotation argument lists tracked with
+// a string-aware bracket counter) are skipped. This replaces the previous
+// single multi-line regex whose `(?:@[\w.]+(?:\([^)]*\))?...)*?` decorator-skip
+// stopped at the first ')' inside any intervening annotation's string and
+// silently dropped the handler.
 func synthesizeJAXRS(content string, emit emitFn) {
 	if !strings.Contains(content, "@Path") {
 		return
@@ -959,17 +971,83 @@ func synthesizeJAXRS(content string, emit emitFn) {
 	if m := jaxrsClassPathRe.FindStringSubmatch(content); len(m) >= 2 {
 		classPrefix = m[1]
 	}
-	for _, m := range jaxrsMethodVerbRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
+	lines := strings.Split(content, "\n")
+	for lineIdx, line := range lines {
+		m := jaxrsVerbLineRe.FindStringSubmatch(line)
+		if m == nil {
 			continue
 		}
 		verb := m[1]
-		methodPath := m[2]
-		methodName := m[3]
+		methodPath, methodName, ok := jaxrsBindHandler(lines, lineIdx+1)
+		if !ok {
+			continue
+		}
 		full := joinPathFragments(classPrefix, methodPath)
 		canonical := httproutes.Canonicalize(httproutes.FrameworkJAXRS, full)
 		emit(verb, canonical, "jaxrs", "Controller", methodName)
 	}
+}
+
+// jaxrsBindHandler scans forward from `fromLine` to bind a JAX-RS verb
+// annotation to its handler. It returns the method-level @Path (or "") and the
+// handler method name. ok is false when no handler is found before the next
+// verb annotation, the class end, or EOF.
+//
+// The scan is immune to parens-in-strings inside intervening annotations: an
+// annotation that opens a multi-line argument list is consumed via a
+// string-aware bracket counter (nestjsBracketDelta) so its continuation lines
+// are treated as annotation data, not as a handler. A method-level `@Path` seen
+// along the way is captured as the route's method path.
+func jaxrsBindHandler(lines []string, fromLine int) (methodPath, methodName string, ok bool) {
+	depth := 0
+	for i := fromLine; i < len(lines); i++ {
+		raw := lines[i]
+		t := strings.TrimSpace(raw)
+		if t == "" {
+			continue
+		}
+		// Inside a multi-line annotation argument list: keep consuming until
+		// the brackets balance again.
+		if depth > 0 {
+			depth += nestjsBracketDelta(raw)
+			if depth < 0 {
+				depth = 0
+			}
+			continue
+		}
+		// Comment lines.
+		if strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") ||
+			strings.HasPrefix(t, "/*") || strings.HasPrefix(t, "*/") {
+			continue
+		}
+		// Another verb annotation before a handler — give up; this verb line
+		// has no handler of its own (malformed input).
+		if jaxrsVerbLineRe.MatchString(t) {
+			return "", "", false
+		}
+		// Annotation line. Capture a method-level @Path; track any multi-line
+		// argument list so its continuation lines are skipped as data.
+		if strings.HasPrefix(t, "@") {
+			if methodPath == "" {
+				if pm := jaxrsMethodPathLineRe.FindStringSubmatch(t); pm != nil {
+					methodPath = pm[1]
+				}
+			}
+			depth += nestjsBracketDelta(raw)
+			if depth < 0 {
+				depth = 0
+			}
+			continue
+		}
+		// Handler declaration line.
+		if hm := jaxrsHandlerNameRe.FindStringSubmatch(t); hm != nil {
+			return methodPath, hm[1], true
+		}
+		// A non-blank, non-comment, non-annotation, non-handler line means we
+		// walked past the handler region. Stop.
+		return "", "", false
+	}
+	return "", "", false
 }
 
 // ---------------------------------------------------------------------------

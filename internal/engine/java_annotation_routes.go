@@ -78,14 +78,22 @@ var javaClassDeclRe = regexp.MustCompile(`(?m)^\s*(?:public\s+|abstract\s+|final
 // captured group is the raw path string.
 var javaPathAnnotationRe = regexp.MustCompile(`@Path\s*\(\s*(?:value\s*=\s*)?"([^"]*)"\s*\)`)
 
-// javaRequestMappingRe matches a Spring class-level OR method-level
-// @RequestMapping. Captures the entire argument list so we can extract
-// both the path and (optionally) the method= keyword.
-var javaRequestMappingRe = regexp.MustCompile(`@RequestMapping\s*\(([^)]*)\)`)
+// javaRequestMappingHeadRe matches the HEAD of a @RequestMapping annotation up
+// to and including its opening paren. The argument list is extracted with a
+// string-aware balanced-paren scan (javaAnnotationArgsAt) rather than a
+// `([^)]*)` capture, so a path-template regex containing string-internal parens
+// (e.g. `@RequestMapping("/items/{id:(\\d+)}")`) is not truncated.
+var javaRequestMappingHeadRe = regexp.MustCompile(`@RequestMapping\s*\(`)
 
-// javaSpringVerbMappingRe matches @GetMapping("/x") / @PostMapping(...) etc.
-// Captures the verb keyword (group 1) and the argument list (group 2).
-var javaSpringVerbMappingRe = regexp.MustCompile(`@(Get|Post|Put|Delete|Patch)Mapping\s*(?:\(([^)]*)\))?`)
+// javaSpringVerbMappingHeadRe matches the HEAD of a @GetMapping / @PostMapping /
+// … annotation: the verb keyword and the opening paren (if any). It deliberately
+// does NOT capture the argument list — the argument is extracted with a
+// string-aware balanced-paren scan (javaSpringMappingArg) so a path-template
+// regex containing parens inside a string literal
+// (e.g. `@GetMapping("/items/{id:(\\d+)}")`) is not truncated at the first
+// string-internal ')'. The previous `(?:\(([^)]*)\))?` capture stopped at that
+// inner ')', silently dropping the path. Group 1 = verb keyword.
+var javaSpringVerbMappingHeadRe = regexp.MustCompile(`@(Get|Post|Put|Delete|Patch)Mapping\s*\(?`)
 
 // javaJAXRSVerbRe matches a bare JAX-RS verb annotation. Captures the verb.
 var javaJAXRSVerbRe = regexp.MustCompile(`@(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b`)
@@ -586,8 +594,8 @@ func buildClassFrame(className string, annos []string) classFrame {
 	}
 	// Spring class-level @RequestMapping. Path may be the bare quoted
 	// arg or `value = "..."`.
-	if m := javaRequestMappingRe.FindStringSubmatch(joined); m != nil {
-		if sm := javaStringArgRe.FindStringSubmatch(m[1]); sm != nil {
+	if args := javaAnnotationArgsAt(joined, javaRequestMappingHeadRe); len(args) > 0 {
+		if sm := javaStringArgRe.FindStringSubmatch(args[0]); sm != nil {
 			cf.prefix = sm[1]
 			cf.framework = "spring"
 		}
@@ -657,21 +665,26 @@ func buildMethodEndpointsWithAuth(
 	for _, m := range javaJAXRSVerbRe.FindAllStringSubmatch(joined, -1) {
 		verbs = append(verbs, strings.ToUpper(m[1]))
 	}
-	// Spring specialised mappings (@GetMapping, etc.).
-	for _, m := range javaSpringVerbMappingRe.FindAllStringSubmatch(joined, -1) {
+	// Spring specialised mappings (@GetMapping, etc.). The verb is read from
+	// the head match; the argument list is extracted with a string-aware
+	// balanced scan so a path-template regex with string-internal parens
+	// (e.g. `@GetMapping("/items/{id:(\\d+)}")`) is not truncated.
+	verbHeads := javaSpringVerbMappingHeadRe.FindAllStringSubmatch(joined, -1)
+	verbArgs := javaAnnotationArgsAt(joined, javaSpringVerbMappingHeadRe)
+	for i, m := range verbHeads {
 		verb := strings.ToUpper(m[1])
 		verbs = append(verbs, verb)
 		// If the specialised mapping carries an inline path arg, use it.
-		if methodPath == "" && len(m) > 2 && m[2] != "" {
-			if sm := javaStringArgRe.FindStringSubmatch(m[2]); sm != nil {
+		if methodPath == "" && i < len(verbArgs) && verbArgs[i] != "" {
+			if sm := javaStringArgRe.FindStringSubmatch(verbArgs[i]); sm != nil {
 				methodPath = sm[1]
 			}
 		}
 	}
 	// Method-level @RequestMapping. Captures the verb from the `method=...`
-	// keyword (if any) and the path from the first quoted string.
-	for _, m := range javaRequestMappingRe.FindAllStringSubmatch(joined, -1) {
-		args := m[1]
+	// keyword (if any) and the path from the first quoted string. The argument
+	// list is extracted with the same string-aware balanced scan.
+	for _, args := range javaAnnotationArgsAt(joined, javaRequestMappingHeadRe) {
 		// Path.
 		if methodPath == "" {
 			if sm := javaStringArgRe.FindStringSubmatch(args); sm != nil {
@@ -998,10 +1011,31 @@ func extractAPIResponseAnnotations(joined string) []APIResponseEntry {
 
 // findMatchingClose walks forward from position `open` (a '(') and returns the
 // index of the matching ')'. Returns -1 when the input is unbalanced.
+//
+// Parens, single- and double-quoted string literals are honoured: a '(' or ')'
+// inside a Java string literal (e.g. a Spring path-template regex
+// `@GetMapping("/items/{id:(\\d+)}")`) does NOT affect the depth count, so the
+// scan returns the annotation's true closing paren rather than stopping at the
+// first ')' inside a string. This prevents the path-truncation bug class where
+// `[^)]*` stops at a string-internal ')'.
 func findMatchingClose(s string, open int) int {
 	depth := 0
+	var quote byte // 0 = not in a string; otherwise the opening quote char
 	for i := open; i < len(s); i++ {
-		switch s[i] {
+		c := s[i]
+		if quote != 0 {
+			if c == '\\' { // skip the escaped char inside a string literal
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
 		case '(':
 			depth++
 		case ')':
@@ -1012,6 +1046,38 @@ func findMatchingClose(s string, open int) int {
 		}
 	}
 	return -1
+}
+
+// javaAnnotationArgsAt extracts the full, balanced argument list of every
+// annotation whose head (up to and INCLUDING the opening '(') is matched by
+// `headRe` in `joined`. headRe must end its match at the opening paren. The
+// returned slice contains the inner argument text (without the surrounding
+// parens) for each occurrence, using a string-aware balanced scan so parens
+// inside string literals do not truncate the argument. The optional `verbs`
+// out-param style is avoided; callers re-match the verb from headRe separately.
+func javaAnnotationArgsAt(joined string, headRe *regexp.Regexp) []string {
+	locs := headRe.FindAllStringIndex(joined, -1)
+	if len(locs) == 0 {
+		return nil
+	}
+	var out []string
+	for _, loc := range locs {
+		// The head match ends at (or just after) the opening '('. Locate the
+		// '(' at the end of the matched head.
+		open := loc[1] - 1
+		if open < 0 || open >= len(joined) || joined[open] != '(' {
+			// No argument list (e.g. bare `@GetMapping`).
+			out = append(out, "")
+			continue
+		}
+		closeAt := findMatchingClose(joined, open)
+		if closeAt > open {
+			out = append(out, joined[open+1:closeAt])
+		} else {
+			out = append(out, "")
+		}
+	}
+	return out
 }
 
 // parseDigits converts a pure-ASCII decimal string to int. Returns 0 on error.

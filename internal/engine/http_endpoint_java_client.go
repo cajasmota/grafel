@@ -186,22 +186,13 @@ func mergeFeignDIEntries(content string, into JavaDIRegistry) JavaDIRegistry {
 	if !strings.Contains(content, "FeignClient") {
 		return into
 	}
-	for _, ifaceMatch := range javaFeignClientRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(ifaceMatch) < 6 {
-			continue
-		}
-		baseURL := ""
-		if ifaceMatch[2] >= 0 {
-			rawBase := content[ifaceMatch[2]:ifaceMatch[3]]
-			baseURL = stripURLHost(rawBase)
-		}
-		ifaceName := content[ifaceMatch[4]:ifaceMatch[5]]
-		body := javaFindInterfaceBody(content, ifaceMatch[1])
+	for _, decl := range parseFeignClients(content) {
+		body := javaFindInterfaceBody(content, decl.bodyStart)
 		if body == "" {
 			continue
 		}
-		methodMap := parseFeignInterfaceMethods(body, baseURL)
-		into[ifaceName] = methodMap
+		methodMap := parseFeignInterfaceMethods(body, decl.url)
+		into[decl.ifaceName] = methodMap
 	}
 	return into
 }
@@ -974,15 +965,151 @@ func javaFindInterfaceBody(content string, start int) string {
 // (@GetMapping / @PostMapping / @RequestMapping) on the interface methods
 // instead of JAX-RS annotations.
 
-// javaFeignClientRe detects @FeignClient-annotated interfaces.
-// Group 1: url attribute (optional). Group 2: interface name.
-var javaFeignClientRe = regexp.MustCompile(
-	`@FeignClient\s*\(\s*` +
-		`(?:[^)]*?url\s*=\s*"([^"\n\r]*)"[^)]*?|[^)]*)` + // group 1: url (optional)
-		`\)\s*` +
-		`(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*` +
-		`(?:public\s+)?interface\s+(\w+)`, // group 2: interface name
-)
+// javaFeignClientHeadRe matches the head of a @FeignClient annotation up to its
+// opening paren. The argument list (for the url attribute) is then read with a
+// string-aware balanced scan, and the `interface NAME` declaration that follows
+// is located by a parens-immune forward scan that skips any number of
+// intervening annotations (e.g. @Validated, @Tag(name = "x (y)")). The previous
+// single regex used a `(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*` decorator-skip whose
+// `[^)]*` stopped at the first ')' inside an intervening annotation's string,
+// silently dropping the whole @FeignClient interface.
+var javaFeignClientHeadRe = regexp.MustCompile(`@FeignClient\s*\(`)
+
+// javaFeignURLRe extracts the url attribute from a @FeignClient argument string.
+var javaFeignURLRe = regexp.MustCompile(`url\s*=\s*"([^"\n\r]*)"`)
+
+// feignClientDecl is a parsed @FeignClient interface header.
+type feignClientDecl struct {
+	url       string // url attribute value (may be empty)
+	ifaceName string // interface name
+	bodyStart int    // byte offset at/after `interface NAME`, for body scan
+}
+
+// parseFeignClients finds every @FeignClient-annotated interface in `content`
+// using a string-aware balanced scan for the annotation argument list and a
+// parens-immune forward scan to the `interface NAME` declaration. This is the
+// parens-in-string-immune replacement for javaFeignClientRe.
+func parseFeignClients(content string) []feignClientDecl {
+	heads := javaFeignClientHeadRe.FindAllStringIndex(content, -1)
+	if len(heads) == 0 {
+		return nil
+	}
+	var out []feignClientDecl
+	for _, h := range heads {
+		open := h[1] - 1 // index of '('
+		closeAt := javaFindMatchingCloseString(content, open)
+		if closeAt <= open {
+			continue
+		}
+		args := content[open+1 : closeAt]
+		url := ""
+		if m := javaFeignURLRe.FindStringSubmatch(args); len(m) >= 2 {
+			url = stripURLHost(m[1])
+		}
+		// Scan forward past intervening annotations to the interface decl.
+		decl := javaSkipAnnotationsToDecl(content, closeAt+1)
+		if decl < 0 {
+			continue
+		}
+		m := javaInterfaceDeclRe.FindStringSubmatchIndex(content[decl:])
+		if m == nil || m[0] != 0 {
+			continue
+		}
+		out = append(out, feignClientDecl{
+			url:       url,
+			ifaceName: content[decl+m[2] : decl+m[3]],
+			bodyStart: decl + m[1],
+		})
+	}
+	return out
+}
+
+// javaFindMatchingCloseString walks forward from `open` (a '(') and returns the
+// index of the matching ')', honouring single/double-quoted string literals so
+// a ')' inside a string does not affect the depth count. Returns -1 when
+// unbalanced.
+func javaFindMatchingCloseString(s string, open int) int {
+	depth := 0
+	var quote byte
+	for i := open; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// javaSkipAnnotationsToDecl returns the offset of the first non-whitespace,
+// non-comment, non-annotation token at or after `from`. Annotations (including
+// a balanced, string-aware `(...)` argument list) and whitespace/comments are
+// skipped. Returns -1 if EOF is reached first.
+func javaSkipAnnotationsToDecl(s string, from int) int {
+	i := from
+	for i < len(s) {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+			i++
+		case c == '/' && i+1 < len(s) && s[i+1] == '/':
+			// line comment
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			// block comment
+			i += 2
+			for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+				i++
+			}
+			i += 2
+		case c == '@':
+			// annotation name
+			i++
+			for i < len(s) && (isJavaIdentChar(s[i]) || s[i] == '.') {
+				i++
+			}
+			// skip whitespace before optional arg list
+			for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+				i++
+			}
+			if i < len(s) && s[i] == '(' {
+				closeAt := javaFindMatchingCloseString(s, i)
+				if closeAt < 0 {
+					return -1
+				}
+				i = closeAt + 1
+			}
+		default:
+			return i
+		}
+	}
+	return -1
+}
+
+// isJavaIdentChar reports whether c is valid in a Java identifier.
+func isJavaIdentChar(c byte) bool {
+	return c == '_' || c == '$' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
 
 // javaSpringMappingAnnotationRe matches Spring MVC shortcut mapping annotations
 // used on Feign interface methods.
@@ -1020,24 +1147,13 @@ func synthesizeFeignClient(content string, emit javaClientEmitFn) {
 	// ---- Pass 1: parse @FeignClient interface definitions ----
 	registry := map[string]map[string]restClientMethodEntry{}
 
-	for _, ifaceMatch := range javaFeignClientRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(ifaceMatch) < 6 {
-			continue
-		}
-		baseURL := ""
-		if ifaceMatch[2] >= 0 {
-			rawBase := content[ifaceMatch[2]:ifaceMatch[3]]
-			baseURL = stripURLHost(rawBase) // strip http://host prefix
-		}
-		ifaceName := content[ifaceMatch[4]:ifaceMatch[5]]
-
-		body := javaFindInterfaceBody(content, ifaceMatch[1])
+	for _, decl := range parseFeignClients(content) {
+		body := javaFindInterfaceBody(content, decl.bodyStart)
 		if body == "" {
 			continue
 		}
-
-		methodMap := parseFeignInterfaceMethods(body, baseURL)
-		registry[ifaceName] = methodMap
+		methodMap := parseFeignInterfaceMethods(body, decl.url)
+		registry[decl.ifaceName] = methodMap
 	}
 
 	// ---- Pass 2: find Feign client field references and call sites ----

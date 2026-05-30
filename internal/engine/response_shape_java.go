@@ -180,6 +180,52 @@ func unwrapJavaReturnType(t string) string {
 	return ""
 }
 
+// javaBodyTypeRe captures the leading type token of a Java parameter once any
+// leading annotations have been stripped: `Dto<Generic> name` → `Dto<Generic>`.
+var javaBodyTypeRe = regexp.MustCompile(`^([A-Z][\w<>,.\s\[\]]*?)\s+\w+`)
+
+// stripLeadingJavaAnnotations removes a run of leading Java annotations
+// (`@Name` optionally followed by a balanced `(...)` argument list) and the
+// surrounding whitespace from `s`, returning the remainder. The argument-list
+// scan is string-aware so a ')' inside an annotation's string literal
+// (e.g. `@Schema(description = "(x)")`) does not truncate the strip. This is the
+// parens-in-string-immune replacement for `(?:@\w+(?:\([^)]*\))?\s+)*`.
+func stripLeadingJavaAnnotations(s string) string {
+	i := 0
+	for i < len(s) {
+		// skip whitespace
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+			i++
+		}
+		if i >= len(s) || s[i] != '@' {
+			break
+		}
+		j := i + 1
+		for j < len(s) && (isJavaIdentChar(s[j]) || s[j] == '.') {
+			j++
+		}
+		// optional whitespace then arg list
+		k := j
+		for k < len(s) && (s[k] == ' ' || s[k] == '\t' || s[k] == '\r' || s[k] == '\n') {
+			k++
+		}
+		if k < len(s) && s[k] == '(' {
+			closeAt := javaFindMatchingCloseString(s, k)
+			if closeAt < 0 {
+				break // unbalanced — leave the rest intact
+			}
+			i = closeAt + 1
+		} else {
+			i = j
+		}
+	}
+	// trim leading whitespace of the remainder
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+		i++
+	}
+	return s[i:]
+}
+
 // extractJavaRequestDTO locates a @RequestBody-annotated argument (Spring)
 // or the first un-annotated body argument (JAX-RS) and returns the DTO
 // type name, or "" when none was found.
@@ -189,8 +235,19 @@ func extractJavaRequestDTO(params, framework string) string {
 		return ""
 	}
 	if framework == "spring_mvc" {
-		re := regexp.MustCompile(`@RequestBody\s+(?:final\s+)?(?:@\w+(?:\([^)]*\))?\s+)*([A-Z][\w<>,.\s\[\]]*?)\s+\w+`)
-		if m := re.FindStringSubmatch(params); len(m) >= 2 {
+		// Find the @RequestBody marker, then strip any further leading
+		// annotations (e.g. @Valid, @Schema(description = "(x)")) with a
+		// string-aware scan before reading the DTO type. The previous
+		// `(?:@\w+(?:\([^)]*\))?\s+)*` skip stopped at the first ')' inside an
+		// annotation's string literal, dropping the body shape.
+		idx := strings.Index(params, "@RequestBody")
+		if idx < 0 {
+			return ""
+		}
+		rest := strings.TrimSpace(params[idx+len("@RequestBody"):])
+		rest = strings.TrimSpace(strings.TrimPrefix(rest, "final"))
+		rest = stripLeadingJavaAnnotations(rest)
+		if m := javaBodyTypeRe.FindStringSubmatch(rest); len(m) >= 2 {
 			return unwrapJavaReturnType(m[1])
 		}
 		return ""
@@ -212,8 +269,9 @@ func extractJavaRequestDTO(params, framework string) string {
 		if hasParamAnno {
 			continue
 		}
-		// Strip leading annotations.
-		stripped := regexp.MustCompile(`^(?:@\w+(?:\([^)]*\))?\s+)*`).ReplaceAllString(p, "")
+		// Strip leading annotations (string-aware, so a paren inside an
+		// annotation's string literal does not truncate the strip).
+		stripped := stripLeadingJavaAnnotations(p)
 		parts := strings.Fields(stripped)
 		if len(parts) < 2 {
 			continue
@@ -279,9 +337,11 @@ func walkJavaClassFields(src, name string) map[string]string {
 			params := src[parenStart+1 : parenEnd]
 			out := map[string]string{}
 			for _, p := range splitJavaParams(params) {
-				// Strip leading annotations from each record component.
+				// Strip leading annotations from each record component
+				// (string-aware so a paren inside a @Schema string literal does
+				// not truncate the strip and drop the component).
 				p = strings.TrimSpace(p)
-				p = regexp.MustCompile(`^(?:@\w+(?:\([^)]*\))?\s+)*`).ReplaceAllString(p, "")
+				p = stripLeadingJavaAnnotations(p)
 				parts := strings.Fields(strings.TrimSpace(p))
 				if len(parts) >= 2 {
 					out[parts[len(parts)-1]] = parts[len(parts)-2]
