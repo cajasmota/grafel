@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency graph | ✅ `full` | `2026-05-28` | — | `internal/engine/tests_edges.go` | — |
-| Target extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/elixir/test_patterns.yaml`<br>`internal/engine/tests_edges.go` | — |
+| Target extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/rules/elixir/test_patterns.yaml`<br>`internal/engine/tests_edges.go`<br>`internal/extractors/cross/testmap/frameworks.go` | — |
 
 ## Provenance
 

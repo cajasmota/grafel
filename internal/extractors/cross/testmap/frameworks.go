@@ -1611,6 +1611,202 @@ func scalaParenBody(source string, startAt int) string {
 }
 
 // ---------------------------------------------------------------------------
+// Elixir — ExUnit / StreamData  (deep linkage, #3473)
+//
+// Deep linkage covers two families, both subject-aware: the module under test
+// is derived from the test module name (FooTest → Foo), mirroring the
+// C#/Kotlin/Scala describeSubject path, so a naming-convention TESTS edge is
+// emitted even for a case whose body contains no direct production call. A
+// case body that calls a production function (Foo.bar(...)) is promoted by the
+// resolver to a high-confidence edge (the ExUnit assertion macros — assert,
+// refute, assert_raise, assert_received, assert_in_delta, catch_throw — are
+// stop-worded in resolver.go so they never masquerade as the tested subject).
+//
+//	exunit     — defmodule FooTest do
+//	                use ExUnit.Case
+//	                test "does x" do … end
+//	                describe "group" do test "does y" do … end end
+//	             end
+//	streamdata — property "round-trips" do check all … end  (StreamData)
+//
+// Elixir delimits blocks with `do … end` (not braces), so a dedicated
+// balanced `do`/`end` body capture is used (extractElixirDoBody). describe
+// containers are NOT emitted as their own case — the inner `test`/`property`
+// leaves are the finest-grained cases (the describe body is re-scanned via the
+// leaf bodies), matching the kotest/scalatest container-suppression rule.
+// ---------------------------------------------------------------------------
+
+// elixirTestModuleRE captures the first test module name in an Elixir test
+// source so the subject under test can be derived from it (FooTest → Foo).
+// Elixir test modules conventionally end in `Test` and are namespaced with
+// `.` (e.g. MyApp.UserServiceTest); group 1 captures the full dotted name.
+var elixirTestModuleRE = regexp.MustCompile(
+	`(?m)^\s*defmodule\s+([A-Z][A-Za-z0-9_.]*)\s+do\b`,
+)
+
+// elixirTestCaseRE matches an ExUnit `test "description" do` leaf case. The
+// description is a double-quoted string; group 1 captures it. ExUnit also
+// accepts a trailing context argument (`test "x", %{conn: conn} do`), so the
+// match tolerates anything between the closing quote and the `do`.
+var elixirTestCaseRE = regexp.MustCompile(
+	`(?m)^\s*test\s+"([^"]{1,200})"[^\n]*\bdo\b`,
+)
+
+// elixirPropertyRE matches a StreamData `property "description" do` leaf case.
+// group 1 captures the description.
+var elixirPropertyRE = regexp.MustCompile(
+	`(?m)^\s*property\s+"([^"]{1,200})"[^\n]*\bdo\b`,
+)
+
+// elixirSubjectFromModuleName derives the module under test from an Elixir test
+// module name by stripping the trailing "Test" suffix and taking the final
+// dotted segment:
+//
+//	FooTest                  → Foo
+//	MyApp.UserServiceTest    → UserService
+//	MyApp.Accounts.UserTest  → User
+//	(no Test suffix)         → ""
+func elixirSubjectFromModuleName(moduleName string) string {
+	if !strings.HasSuffix(moduleName, "Test") || len(moduleName) <= len("Test") {
+		return ""
+	}
+	stem := moduleName[:len(moduleName)-len("Test")]
+	if idx := strings.LastIndexByte(stem, '.'); idx >= 0 {
+		stem = stem[idx+1:]
+	}
+	return stem
+}
+
+// extractElixirDoBody returns the body of the `do … end` block whose opening
+// `do` keyword ends at bodyStart (i.e. bodyStart is the offset immediately
+// after the opening `do`, as produced by the leaf-case regexes whose match end
+// index sits right after `\bdo\b`). It balances nested `do`/`fn` … `end`
+// keyword pairs so a `describe`/`test` block containing nested blocks is
+// captured in full. Inline `do:` one-liners are not treated as block openers.
+// Returns "" when the block is unbalanced (caller falls back to naming
+// convention). String literals are skipped so a `"do"`/`"end"` inside a string
+// does not perturb the balance.
+func extractElixirDoBody(source string, bodyStart int) string {
+	n := len(source)
+	if bodyStart < 0 || bodyStart > n {
+		return ""
+	}
+	depth := 1
+	i := bodyStart
+	for i < n {
+		c := source[i]
+		// Skip string literals (double-quoted; Elixir also has charlists/sigils,
+		// but double-quoted strings are the common case for keywords-in-strings).
+		if c == '"' {
+			i++
+			for i < n && source[i] != '"' {
+				if source[i] == '\\' {
+					i += 2
+					continue
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		// Match a keyword only on a word boundary.
+		if isElixirWordStart(source, i) {
+			if hasWordAt(source, i, "end") {
+				depth--
+				if depth == 0 {
+					return source[bodyStart:i]
+				}
+				i += 3
+				continue
+			}
+			if hasWordAt(source, i, "do") {
+				// Inline `do:` does not open a block.
+				if !(i+2 < n && source[i+2] == ':') {
+					depth++
+				}
+				i += 2
+				continue
+			}
+			if hasWordAt(source, i, "fn") {
+				depth++
+				i += 2
+				continue
+			}
+		}
+		i++
+	}
+	return ""
+}
+
+// isElixirWordStart reports whether position i begins a new identifier token
+// (the preceding byte is not an identifier character).
+func isElixirWordStart(source string, i int) bool {
+	if i == 0 {
+		return true
+	}
+	p := source[i-1]
+	return !(p == '_' || (p >= 'a' && p <= 'z') || (p >= 'A' && p <= 'Z') || (p >= '0' && p <= '9'))
+}
+
+// hasWordAt reports whether the identifier `word` occurs at position i with a
+// trailing word boundary (the character after the word is not an identifier
+// character). The leading boundary is the caller's responsibility
+// (isElixirWordStart).
+func hasWordAt(source string, i int, word string) bool {
+	if i+len(word) > len(source) {
+		return false
+	}
+	if source[i:i+len(word)] != word {
+		return false
+	}
+	j := i + len(word)
+	if j >= len(source) {
+		return true
+	}
+	c := source[j]
+	return !(c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+}
+
+// detectExUnit detects ExUnit `test "…" do` and StreamData `property "…" do`
+// leaf cases. Each leaf is annotated with the subject derived from the test
+// module name (FooTest → Foo) so a TESTS edge is emitted even for a leaf with
+// no direct production call; leaves whose body calls a production symbol are
+// promoted by the resolver to high confidence.
+func detectExUnit(source string) []testFunction {
+	subject := elixirSubjectFromModuleName(elixirFirstModuleName(source))
+
+	var out []testFunction
+	seen := map[string]bool{}
+	add := func(rawName, body string) {
+		name := jestCaseQName(rawName) // reuse string→ident scrubber
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
+	}
+
+	// ExUnit test cases: test "…" do … end
+	for _, m := range elixirTestCaseRE.FindAllStringSubmatchIndex(source, -1) {
+		add(source[m[2]:m[3]], extractElixirDoBody(source, m[1]))
+	}
+	// StreamData property tests: property "…" do … end
+	for _, m := range elixirPropertyRE.FindAllStringSubmatchIndex(source, -1) {
+		add(source[m[2]:m[3]], extractElixirDoBody(source, m[1]))
+	}
+
+	return out
+}
+
+// elixirFirstModuleName returns the first `defmodule` name declared in source.
+func elixirFirstModuleName(source string) string {
+	if m := elixirTestModuleRE.FindStringSubmatch(source); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
 // Framework registry
 // ---------------------------------------------------------------------------
 
@@ -1624,6 +1820,40 @@ func scalaParenBody(source string, startAt int) string {
 // namespace "microsoft.visualstudio.testtools.unittesting" and would otherwise
 // cause a false-positive match on C# files.
 var frameworkOrder = []frameworkEntry{
+	// Elixir — StreamData / ExUnit: listed FIRST because the C# xUnit import hint
+	// "xunit" is a substring of the Elixir "exunit" token and matchesAnyImport
+	// uses a tolerant substring match; placing the Elixir entries ahead of the C#
+	// block ensures an ExUnit file (token "exunit") is not mis-attributed to the
+	// xunit framework. The Elixir hints ("exunit"/"streamdata") do not substring-
+	// match any C# token, so the C# entries remain correct for .cs files.
+	//
+	// StreamData property tests are listed before exunit so a file that imports
+	// ExUnitProperties / StreamData (and necessarily ExUnit.Case too) is
+	// attributed to the streamdata framework. Both share detectExUnit, which
+	// surfaces `property "…" do` and `test "…" do` leaves alike.
+	{
+		name: "streamdata",
+		importHints: []string{
+			"exunitproperties", "streamdata",
+		},
+		detect: detectExUnit,
+	},
+	// Elixir — ExUnit: import hint `use ExUnit.Case` (token exunit.case / exunit)
+	// or the `*_test.exs` filename convention. .exs is the script extension used
+	// exclusively for tests, so the filename hint is a strong signal.
+	{
+		name: "exunit",
+		importHints: []string{
+			"exunit.case", "exunit", "exunit.casetemplate",
+		},
+		filenameHints: []*regexp.Regexp{
+			regexp.MustCompile(`_test\.exs$`),
+		},
+		pathHints: []*regexp.Regexp{
+			regexp.MustCompile(`/test/.*_test\.exs$`),
+		},
+		detect: detectExUnit,
+	},
 	// C# — NUnit: import-hints only (no filenameHints so the xUnit fallback
 	// below is not shadowed when only the filename matches).
 	{

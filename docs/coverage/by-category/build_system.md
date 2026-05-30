@@ -29,7 +29,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [elixir](../by-language/elixir.md) | [ExUnit](../detail/test.exunit.md) | ✅ | — | — | ✅ | |
 | [elixir](../by-language/elixir.md) | [Hex](../detail/build.hex.md) | 🟢 | — | — | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Mix (mix.exs)](../detail/build.mix.md) | ✅ | — | — | ✅ | |
-| [elixir](../by-language/elixir.md) | [StreamData (property tests)](../detail/test.streamdata.md) | 🔴 | — | — | 🔴 | |
+| [elixir](../by-language/elixir.md) | [StreamData (property tests)](../detail/test.streamdata.md) | ✅ | — | — | ✅ | |
 | [go](../by-language/go.md) | [Ginkgo](../detail/test.ginkgo.md) | 🟢 | — | — | ✅ | |
 | [go](../by-language/go.md) | [Gomega](../detail/test.gomega.md) | 🟢 | — | — | ✅ | |
 | [go](../by-language/go.md) | [Mage](../detail/build.mage.md) | ✅ | — | — | ✅ | |
