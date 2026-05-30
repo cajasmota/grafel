@@ -1949,3 +1949,328 @@ func TestKustomize_AllKindsAllowlisted(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Helm (#3526)
+// ---------------------------------------------------------------------------
+
+// helmChartFixture is a Chart.yaml with a subchart dependency.
+var helmChartFixture = []byte(`apiVersion: v2
+name: myapp
+description: A web app
+type: application
+version: 1.4.2
+appVersion: "2.0.0"
+dependencies:
+  - name: postgresql
+    version: 12.1.0
+    repository: https://charts.bitnami.com/bitnami
+    alias: db
+  - name: redis
+    version: 17.0.0
+    repository: https://charts.bitnami.com/bitnami
+`)
+
+// helmValuesFixture is the chart's default values.
+var helmValuesFixture = []byte(`replicaCount: 1
+image:
+  repository: nginx
+  tag: "1.25"
+service:
+  port: 80
+resources: {}
+`)
+
+// helmDeploymentTemplateFixture is a templates/deployment.yaml interleaving Go
+// template directives with a real K8s Deployment.
+var helmDeploymentTemplateFixture = []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "myapp.fullname" . }}
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+  template:
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          {{- if .Values.resources }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+`)
+
+// helmHelpersFixture is a templates/_helpers.tpl named-template library.
+var helmHelpersFixture = []byte(`{{- define "myapp.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 -}}
+{{- end -}}
+
+{{- define "myapp.fullname" -}}
+{{- printf "%s-%s" .Release.Name (include "myapp.name" .) -}}
+{{- end -}}
+
+{{- define "myapp.labels" -}}
+app.kubernetes.io/name: {{ include "myapp.name" . }}
+{{- end -}}
+`)
+
+// --- Chart.yaml: dependency IMPORTS edges ---
+
+func TestHelm_Chart_DetectedAndEntity(t *testing.T) {
+	entities, err := extractYAML(helmChartFixture, "charts/myapp/Chart.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	var charts []types.EntityRecord
+	for _, e := range findEntitiesBySubtype(entities, "helm_chart") {
+		if e.Kind == "SCOPE.Component" {
+			charts = append(charts, e)
+		}
+	}
+	if len(charts) != 1 {
+		t.Fatalf("expected one helm_chart Component entity, got %d: %+v", len(charts), entities)
+	}
+	if charts[0].Name != "myapp" {
+		t.Errorf("chart Name=%q, want myapp", charts[0].Name)
+	}
+	if charts[0].Properties["chart_version"] != "1.4.2" {
+		t.Errorf("chart_version=%q, want 1.4.2", charts[0].Properties["chart_version"])
+	}
+}
+
+func TestHelm_Chart_SubchartImports(t *testing.T) {
+	const chartRef = "charts/myapp/Chart.yaml"
+	entities, err := extractYAML(helmChartFixture, chartRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	imports := findRels(entities, "IMPORTS")
+	for _, dep := range []string{"helm_subchart:postgresql", "helm_subchart:redis"} {
+		if !relExists(imports, chartRef, dep) {
+			t.Errorf("missing IMPORTS edge %s -> %s; got %+v", chartRef, dep, imports)
+		}
+	}
+	// Provenance properties on the postgresql edge.
+	var found bool
+	for _, r := range imports {
+		if r.ToID == "helm_subchart:postgresql" {
+			found = true
+			if r.Properties["version"] != "12.1.0" {
+				t.Errorf("postgresql dep version=%q, want 12.1.0", r.Properties["version"])
+			}
+			if r.Properties["repository"] != "https://charts.bitnami.com/bitnami" {
+				t.Errorf("postgresql dep repository=%q", r.Properties["repository"])
+			}
+			if r.Properties["alias"] != "db" {
+				t.Errorf("postgresql dep alias=%q, want db", r.Properties["alias"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("postgresql IMPORTS edge not found")
+	}
+}
+
+// --- values.yaml: values_key entities ---
+
+func TestHelm_Values_LeafKeys(t *testing.T) {
+	entities, err := extractYAML(helmValuesFixture, "charts/myapp/values.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	keys := findEntitiesBySubtype(entities, "values_key")
+	want := map[string]bool{
+		"replicaCount":     false,
+		"image":            false,
+		"image.repository": false,
+		"image.tag":        false,
+		"service":          false,
+		"service.port":     false,
+		"resources":        false,
+	}
+	for _, e := range keys {
+		if _, ok := want[e.Name]; ok {
+			want[e.Name] = true
+		}
+		if e.QualifiedName != "helm_values:"+e.Name {
+			t.Errorf("values_key %q QualifiedName=%q, want helm_values:%s", e.Name, e.QualifiedName, e.Name)
+		}
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Errorf("missing values_key entity for path %q", k)
+		}
+	}
+}
+
+// --- templates/*.yaml: pre-strip recovers the K8s Deployment + .Values binds ---
+
+func TestHelm_Template_RecoversDeployment(t *testing.T) {
+	entities, err := extractYAML(helmDeploymentTemplateFixture, "charts/myapp/templates/deployment.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	// The pre-strip must let the Kubernetes extractor recover the Deployment
+	// resource and its container.
+	res := findEntitiesBySubtype(entities, "k8s_resource")
+	if len(res) != 1 {
+		t.Fatalf("expected one recovered k8s_resource (Deployment), got %d: %+v", len(res), entities)
+	}
+	if res[0].Kind != "SCOPE.Service" {
+		t.Errorf("recovered Deployment Kind=%q, want SCOPE.Service", res[0].Kind)
+	}
+	if !hasEntityWithName(entities, "app") {
+		t.Errorf("expected recovered container named 'app'; entities=%+v", entities)
+	}
+}
+
+func TestHelm_Template_ValuesBindings(t *testing.T) {
+	const tplRef = "charts/myapp/templates/deployment.yaml"
+	entities, err := extractYAML(helmDeploymentTemplateFixture, tplRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	binds := findRels(entities, "BINDS")
+	// Every .Values.<path> referenced in the template must produce a BINDS edge
+	// to the matching values key stub.
+	for _, want := range []string{
+		"helm_values:replicaCount",
+		"helm_values:image.repository",
+		"helm_values:image.tag",
+		"helm_values:service.port",
+		"helm_values:resources",
+	} {
+		if !relExists(binds, tplRef, want) {
+			t.Errorf("missing BINDS edge %s -> %s; got %+v", tplRef, want, binds)
+		}
+	}
+}
+
+func TestHelm_Template_IncludeEdges(t *testing.T) {
+	const tplRef = "charts/myapp/templates/deployment.yaml"
+	entities, err := extractYAML(helmDeploymentTemplateFixture, tplRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	includes := findRels(entities, "INCLUDES")
+	for _, want := range []string{
+		"helm_template:myapp.fullname",
+		"helm_template:myapp.labels",
+	} {
+		if !relExists(includes, tplRef, want) {
+			t.Errorf("missing INCLUDES edge %s -> %s; got %+v", tplRef, want, includes)
+		}
+	}
+}
+
+// --- _helpers.tpl: named-template entities + include edges ---
+
+func TestHelm_Helpers_NamedTemplates(t *testing.T) {
+	entities, err := extractYAML(helmHelpersFixture, "charts/myapp/templates/_helpers.tpl")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	nts := findEntitiesBySubtype(entities, "named_template")
+	want := map[string]bool{"myapp.name": false, "myapp.fullname": false, "myapp.labels": false}
+	for _, e := range nts {
+		if _, ok := want[e.Name]; ok {
+			want[e.Name] = true
+		}
+		if e.QualifiedName != "helm_template:"+e.Name {
+			t.Errorf("named_template %q QualifiedName=%q", e.Name, e.QualifiedName)
+		}
+		if e.Kind != "SCOPE.Operation" {
+			t.Errorf("named_template %q Kind=%q, want SCOPE.Operation", e.Name, e.Kind)
+		}
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Errorf("missing named_template entity %q", k)
+		}
+	}
+}
+
+func TestHelm_Helpers_IncludeEdge(t *testing.T) {
+	const ref = "charts/myapp/templates/_helpers.tpl"
+	entities, err := extractYAML(helmHelpersFixture, ref)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	// myapp.fullname and myapp.labels both `include "myapp.name"`.
+	includes := findRels(entities, "INCLUDES")
+	if !relExists(includes, ref, "helm_template:myapp.name") {
+		t.Errorf("missing INCLUDES edge %s -> helm_template:myapp.name; got %+v", ref, includes)
+	}
+}
+
+// --- detection guards ---
+
+// A plain Kubernetes manifest (no directives) must NOT be hijacked as Helm.
+func TestHelm_PlainK8sNotHijacked(t *testing.T) {
+	entities, err := extractYAML(k8sDeploymentFixture, "k8s/deployment.yml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(findEntitiesBySubtype(entities, "helm_chart")) != 0 {
+		t.Error("plain k8s manifest mis-detected as helm_chart")
+	}
+	// Should still be a normal k8s_resource.
+	if len(findEntitiesBySubtype(entities, "k8s_resource")) == 0 {
+		t.Error("plain k8s manifest lost its k8s_resource extraction")
+	}
+}
+
+// An Ansible playbook using Jinja2 {{ var }} must keep its Ansible flavor.
+func TestHelm_AnsibleJinjaNotHijacked(t *testing.T) {
+	src := []byte(`---
+- name: Configure host
+  hosts: all
+  tasks:
+    - name: Write config
+      ansible.builtin.template:
+        dest: "/etc/app/{{ app_name }}.conf"
+        content: "port={{ app_port }}"
+`)
+	entities, err := extractYAML(src, "playbook.yml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(findEntitiesBySubtype(entities, "helm_template")) != 0 ||
+		len(findEntitiesBySubtype(entities, "helm_chart")) != 0 {
+		t.Errorf("Ansible Jinja playbook mis-detected as Helm: %+v", entities)
+	}
+	if len(findEntitiesBySubtype(entities, "task")) == 0 {
+		t.Error("Ansible playbook lost its task extraction (mis-flavored)")
+	}
+}
+
+// All Helm-emitted entity kinds must be allowlisted.
+func TestHelm_AllKindsAllowlisted(t *testing.T) {
+	fixtures := []struct {
+		src  []byte
+		path string
+	}{
+		{helmChartFixture, "charts/myapp/Chart.yaml"},
+		{helmValuesFixture, "charts/myapp/values.yaml"},
+		{helmDeploymentTemplateFixture, "charts/myapp/templates/deployment.yaml"},
+		{helmHelpersFixture, "charts/myapp/templates/_helpers.tpl"},
+	}
+	for _, f := range fixtures {
+		entities, err := extractYAML(f.src, f.path)
+		if err != nil {
+			t.Fatalf("extract %s: %v", f.path, err)
+		}
+		for _, e := range entities {
+			if !allowedKinds[e.Kind] {
+				t.Errorf("entity %q has non-allowlisted kind %q (file: %s)", e.Name, e.Kind, f.path)
+			}
+		}
+	}
+}

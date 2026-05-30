@@ -163,6 +163,15 @@ func detectFlavor(src []byte, path string) (flavor string) {
 		return flavorDockerCompose
 	}
 
+	// Helm: a Chart.yaml, values.yaml, _helpers.tpl, or a templates/*.yaml
+	// carrying Go-template directives. Must be checked BEFORE Kubernetes — a
+	// templated manifest carries `apiVersion:`/`kind:` and would otherwise be
+	// mis-classified as a plain (unparseable) K8s manifest. The Helm path runs a
+	// tolerant pre-strip so the underlying K8s resource is still recovered.
+	if hf := helmFlavor(content, path); hf != "" {
+		return hf
+	}
+
 	// Kustomize: a kustomization.yaml. Must be checked BEFORE Kubernetes because
 	// a kustomization carries `kind: Kustomization` + `apiVersion: kustomize...`
 	// which would otherwise match the generic K8s manifest branch below.
@@ -316,6 +325,8 @@ func extractByFlavor(flavor string, root *sitter.Node, file extractor.FileInput)
 		entities = extractAnsible(root, file)
 	case flavorKustomize:
 		entities = extractKustomize(root, file)
+	case flavorHelmChart, flavorHelmValues, flavorHelmTemplate, flavorHelmHelpers:
+		entities = extractHelm(flavor, root, file)
 	default:
 		entities = extractGeneric(root, file)
 	}

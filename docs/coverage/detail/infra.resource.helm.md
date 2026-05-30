@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Resource extraction | 🔴 `missing` | — | — | — | — |
+| Resource extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/yaml/extractor.go`<br>`internal/extractors/yaml/extractor_test.go`<br>`internal/extractors/yaml/helm.go` | — |
 
 ## Provenance
 

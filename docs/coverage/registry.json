@@ -1226,14 +1226,14 @@
       "label": "Helm charts",
       "capabilities": {
         "dependency_attribution": {
-          "status": "partial",
-          "cites": ["internal/extractors/yaml/extractor.go"],
-          "verified_at": "2026-05-28"
+          "status": "full",
+          "cites": ["internal/extractors/yaml/extractor.go","internal/extractors/yaml/extractor_test.go","internal/extractors/yaml/helm.go"],
+          "verified_at": "2026-05-30"
         },
         "resource_extraction": {
-          "status": "partial",
-          "cites": ["internal/extractors/yaml/extractor.go"],
-          "verified_at": "2026-05-28"
+          "status": "full",
+          "cites": ["internal/extractors/yaml/extractor.go","internal/extractors/yaml/extractor_test.go","internal/extractors/yaml/helm.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },
@@ -1596,7 +1596,9 @@
       "label": "Helm charts",
       "capabilities": {
         "resource_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/yaml/extractor.go","internal/extractors/yaml/extractor_test.go","internal/extractors/yaml/helm.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },

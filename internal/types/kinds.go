@@ -574,6 +574,28 @@ const (
 	// Lets the overlay graph show which base resources an overlay mutates.
 	// Append-only — never modifies existing entities or edges.
 	RelationshipKindPatches RelationshipKind = "PATCHES"
+
+	// #3526: Helm chart edges. Emitted by the YAML extractor's Helm flavors.
+	//
+	//   BINDS    : a templates/*.yaml entity → a values.yaml "values_key"
+	//              entity, for every `{{ .Values.<dotted.path> }}` reference in
+	//              the template. ToID is the synthetic stub
+	//              "helm_values:<dotted.path>" which matches the QualifiedName of
+	//              the values_key entity emitted from values.yaml, so the edge
+	//              resolves cross-file within the chart. Properties:
+	//                "binding_kind" : "helm_values_ref"
+	//                "values_path"  : the dotted path under .Values
+	//
+	//   INCLUDES : a template / helper → a named template ("helm_template:<name>")
+	//              for every `{{ include "name" . }}` or `{{ template "name" . }}`
+	//              reference. ToID matches the QualifiedName of the
+	//              named_template entity emitted from _helpers.tpl. Properties:
+	//                "include_kind"  : "helm_include"
+	//                "template_name" : the named-template name
+	//
+	// Both are append-only — they never modify existing entities or edges.
+	RelationshipKindBinds    RelationshipKind = "BINDS"
+	RelationshipKindIncludes RelationshipKind = "INCLUDES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -677,6 +699,9 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindValidates,
 		// #3520 Kustomize overlay-patch edge:
 		RelationshipKindPatches,
+		// #3526 Helm chart edges:
+		RelationshipKindBinds,
+		RelationshipKindIncludes,
 	}
 }
 
