@@ -16,12 +16,18 @@
 //
 // # Discovery loop
 //
-// The Watcher polls `git worktree list --porcelain` for every registered
-// repo every 5 minutes (ARCHIGRAPH_WORKTREE_POLL_MINUTES override).
+// Discovery is event-driven: the post-checkout git hook (#3352) and an
+// fsnotify watch on each parent's .git/worktrees/ directory call Sync()
+// promptly when a worktree is added or removed.  The Watcher ALSO runs a
+// periodic RECONCILIATION poll of `git worktree list --porcelain` for
+// every registered repo (default 60s, ARCHIGRAPH_WORKTREE_POLL_SECONDS
+// override; ARCHIGRAPH_WORKTREE_POLL_MINUTES still honoured) to catch any
+// events missed while the daemon was down or dropped.
 //
-//   - New worktrees → added to the Store.
+//   - New worktrees → added to the Store; OnActivate fires.
 //   - Still-present worktrees → LastSeenAt refreshed.
-//   - Removed worktrees → Status set to StatusExpired and StaleAt recorded.
+//   - Removed worktrees → Status set to StatusExpired, StaleAt recorded;
+//     OnExpire fires.
 //
 // # Per-parent cap
 //
@@ -53,6 +59,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // ---------------------------------------------------------------------------
@@ -445,18 +453,49 @@ type ParentRepo struct {
 
 // Watcher is a background goroutine that polls registered repos for linked
 // worktrees and syncs them into the Store.
+//
+// The poll is now a RECONCILIATION pass (#3354): event-driven onboarding
+// happens via the post-checkout git hook (#3352) and/or the daemon's
+// fsnotify watch on each parent's .git/worktrees/ directory, which call
+// Sync() directly.  The periodic poll exists only to (a) catch worktrees
+// that were added/removed while the daemon was down or while events were
+// dropped, and (b) detect REMOVED worktrees (no inotify event fires on the
+// parent for a `git worktree remove` of an external dir).
+//
+// OnActivate / OnExpire let the daemon react to liveness transitions
+// (e.g. subscribe/unsubscribe the worktree working tree from the file
+// watcher and enqueue an initial reindex).  Both may be nil.
 type Watcher struct {
 	store    *Store
 	parents  func() []ParentRepo // called on every tick to get the current set
 	interval time.Duration
 	logger   *slog.Logger
+
+	// OnActivate fires once per child when it becomes (or re-becomes)
+	// active — i.e. on first discovery and on re-activation after expiry.
+	// Used by the daemon to watch the worktree working tree and trigger an
+	// initial reindex of the worktree's ref tier.  May be nil.
+	OnActivate func(child *WorktreeChild)
+	// OnExpire fires once per child when it transitions to expired (the
+	// worktree was removed).  Used by the daemon to unsubscribe the
+	// worktree working tree from the file watcher.  May be nil.
+	OnExpire func(child *WorktreeChild)
 }
 
-// defaultPollInterval is the default discovery interval.
-const defaultPollInterval = 5 * time.Minute
+// defaultPollInterval is the default reconciliation interval.
+const defaultPollInterval = 60 * time.Second
 
-// pollInterval reads ARCHIGRAPH_WORKTREE_POLL_MINUTES or returns the default.
+// pollInterval returns the reconciliation interval.
+//
+// ARCHIGRAPH_WORKTREE_POLL_SECONDS takes precedence (the poll is now a
+// fast reconciliation pass, #3354).  ARCHIGRAPH_WORKTREE_POLL_MINUTES is
+// still honoured for backward compatibility when SECONDS is unset.
 func pollInterval() time.Duration {
+	if v := os.Getenv("ARCHIGRAPH_WORKTREE_POLL_SECONDS"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
 	if v := os.Getenv("ARCHIGRAPH_WORKTREE_POLL_MINUTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			return time.Duration(n) * time.Minute
@@ -480,9 +519,25 @@ func NewWatcher(store *Store, parents func() []ParentRepo, logger *slog.Logger) 
 }
 
 // Start runs the discovery loop until ctx is cancelled.  It performs one
-// immediate poll before waiting for the first tick.
+// immediate discovery pass, then drives both:
+//
+//   - an event-driven fsnotify watch on each parent's .git/worktrees/
+//     directory, so `git worktree add`/`remove` is picked up promptly, and
+//   - a periodic RECONCILIATION poll (default 60s) that catches removals
+//     and any events missed while the daemon was down or dropped.
+//
+// Both call Sync(), which de-dups via a single `git worktree list` per
+// parent per pass.
 func (w *Watcher) Start(ctx context.Context) {
 	w.poll()
+
+	// Event-driven onboarding: fsnotify-watch each parent's common
+	// .git/worktrees/ dir.  git creates/removes a child dir there on every
+	// `git worktree add`/`remove`, so a Create/Remove event is a reliable,
+	// prompt signal to reconcile.  Best-effort — failures fall back to poll.
+	gitWatch := w.startGitDirsWatch(ctx)
+	defer gitWatch()
+
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 	for {
@@ -495,8 +550,118 @@ func (w *Watcher) Start(ctx context.Context) {
 	}
 }
 
-// Poll runs one discovery cycle synchronously.  Exported for test control.
+// startGitDirsWatch sets up an fsnotify watch on every parent's
+// .git/worktrees/ directory.  On any event it debounces briefly and calls
+// Sync().  It also re-resolves the parent set lazily (cheap) so newly
+// registered repos get watched on the next reconciliation tick (which calls
+// this is not re-run; the periodic poll still covers them).  Returns a stop
+// func.  Best-effort: if fsnotify is unavailable it returns a no-op.
+func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
+	fw, err := fsnotify.NewWatcher()
+	if err != nil {
+		w.logger.Warn("worktree: fsnotify unavailable, relying on reconciliation poll", "err", err)
+		return func() {}
+	}
+
+	added := 0
+	for _, p := range w.parents() {
+		dir := gitWorktreesDir(p.Path)
+		if dir == "" {
+			continue
+		}
+		// Ensure the dir exists so the watch survives the first
+		// `git worktree add` (git creates .git/worktrees/ on demand).
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			continue
+		}
+		if err := fw.Add(dir); err != nil {
+			w.logger.Warn("worktree: failed to watch .git/worktrees", "dir", dir, "err", err)
+			continue
+		}
+		added++
+	}
+	if added == 0 {
+		_ = fw.Close()
+		return func() {}
+	}
+	w.logger.Info("worktree: event-driven onboarding active", "git_worktrees_dirs", added)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var timer *time.Timer
+		const debounce = 750 * time.Millisecond
+		fire := func() { w.poll() }
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-fw.Events:
+				if !ok {
+					return
+				}
+				if timer != nil {
+					timer.Stop()
+				}
+				timer = time.AfterFunc(debounce, fire)
+			case _, ok := <-fw.Errors:
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+
+	return func() {
+		_ = fw.Close()
+		<-done
+	}
+}
+
+// gitWorktreesDir returns the absolute path to the common
+// .git/worktrees/ directory for repoPath, or "" if it cannot be resolved.
+// It handles both a normal repo (.git is a directory) — the common case —
+// returning <repo>/.git/worktrees.  When .git is a file (i.e. repoPath is
+// itself a linked worktree) we resolve the gitdir's parent; callers should
+// only pass main checkouts, so this is a defensive fallback.
+func gitWorktreesDir(repoPath string) string {
+	gitPath := filepath.Join(repoPath, ".git")
+	fi, err := os.Stat(gitPath)
+	if err != nil {
+		return ""
+	}
+	if fi.IsDir() {
+		return filepath.Join(gitPath, "worktrees")
+	}
+	// .git is a file ("gitdir: <path>"). Resolve and take its parent dir's
+	// worktrees subdir.
+	data, err := os.ReadFile(gitPath)
+	if err != nil {
+		return ""
+	}
+	line := strings.TrimSpace(string(data))
+	line = strings.TrimPrefix(line, "gitdir:")
+	gitdir := strings.TrimSpace(line)
+	if gitdir == "" {
+		return ""
+	}
+	// gitdir is typically <common>/worktrees/<name>; its parent is the
+	// worktrees dir we want.
+	return filepath.Dir(gitdir)
+}
+
+// Poll runs one reconciliation cycle synchronously.  Exported for test
+// control.  See Sync for the event-driven entry point with identical
+// semantics.
 func (w *Watcher) Poll() { w.poll() }
+
+// Sync runs one reconciliation/discovery cycle synchronously.  It is the
+// event-driven entry point: the daemon calls Sync when an fsnotify event
+// fires on a parent's .git/worktrees/ directory (a worktree was added or
+// removed) or when the post-checkout git hook reports a new worktree.
+// Semantics are identical to a poll tick — it is safe and cheap to call
+// frequently because the per-parent `git worktree list` runs at most once.
+func (w *Watcher) Sync() { w.poll() }
 
 func (w *Watcher) poll() {
 	parents := w.parents()
@@ -505,6 +670,11 @@ func (w *Watcher) poll() {
 
 	// Track every path seen in this tick across all parents.
 	seenPaths := make(map[string]bool)
+
+	// Transitions to fire callbacks for, collected while holding the lock
+	// and dispatched after release so callbacks never run under s.mu
+	// (they call back into the daemon's file watcher / scheduler).
+	var activated, expired []*WorktreeChild
 
 	for _, p := range parents {
 		linked, err := runWorktreeList(p.Path)
@@ -534,6 +704,7 @@ func (w *Watcher) poll() {
 					Status:       StatusActive,
 				}
 				w.store.upsert(child)
+				activated = append(activated, child)
 				w.logger.Info("worktree: registered", "group", p.GroupName, "slug", p.Slug, "path", raw.Path, "branch", raw.Branch)
 			} else {
 				// Refresh.
@@ -543,6 +714,7 @@ func (w *Watcher) poll() {
 				if existing.Status == StatusExpired {
 					existing.Status = StatusActive
 					existing.StaleAt = nil
+					activated = append(activated, existing)
 					w.logger.Info("worktree: re-activated", "group", p.GroupName, "slug", p.Slug, "path", raw.Path)
 				}
 			}
@@ -550,11 +722,14 @@ func (w *Watcher) poll() {
 		w.store.mu.Unlock()
 	}
 
-	// Mark removed worktrees as expired.
+	// Mark removed worktrees as expired.  Reconciliation: this is the
+	// primary mechanism for detecting `git worktree remove` since no
+	// fsnotify event fires on the parent for an external worktree dir.
 	w.store.mu.Lock()
 	for _, c := range w.store.children {
 		if c.Status == StatusActive && !seenPaths[normPath(c.Path)] {
 			w.store.markExpired(c.Path)
+			expired = append(expired, c)
 			w.logger.Info("worktree: expired", "group", c.GroupName, "slug", c.ParentSlug, "path", c.Path, "reason", "no longer listed by git")
 		}
 	}
@@ -562,4 +737,16 @@ func (w *Watcher) poll() {
 		w.logger.Error("worktree: failed to persist store", "err", err)
 	}
 	w.store.mu.Unlock()
+
+	// Fire transition callbacks outside the lock.
+	if w.OnActivate != nil {
+		for _, c := range activated {
+			w.OnActivate(c)
+		}
+	}
+	if w.OnExpire != nil {
+		for _, c := range expired {
+			w.OnExpire(c)
+		}
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"net/rpc/jsonrpc"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,6 +22,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/transport"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
+	"github.com/cajasmota/archigraph/internal/daemon/worktree"
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/gitmeta"
 )
@@ -40,11 +42,25 @@ type Config struct {
 	// repo returned by ReposToWatch. The Index field above remains
 	// the synchronous RPC entrypoint; the scheduler uses
 	// SchedulerIndex for fast (algo-skipped) reactive reindexes.
-	ReposToWatch   func() []string                                          // repos to subscribe at startup
-	GroupsForRepo  func(repoPath string) []string                           // for cross-repo link debounce
-	SchedulerIndex func(ctx context.Context, repo string, ref string) error // fast reindex (skip algo pass); ref is the git branch captured at enqueue time
-	SchedulerLinks func(ctx context.Context, group string) error
-	SchedulerAlgo  func(ctx context.Context, repo string) error
+	ReposToWatch  func() []string                // repos to subscribe at startup
+	GroupsForRepo func(repoPath string) []string // for cross-repo link debounce
+
+	// WorktreeParents, when non-nil, enables linked-worktree discovery
+	// (#3353/#3354). It returns the set of registered repos whose group has
+	// worktree tracking enabled (features.track_worktrees / watchers). The
+	// daemon starts a worktree.Watcher that:
+	//   - discovers each parent's linked worktrees and persists them to
+	//     ~/.archigraph/worktrees.json,
+	//   - subscribes each worktree's WORKING TREE to the fsnotify watcher so
+	//     uncommitted edits trigger a reindex of that worktree's ref tier,
+	//   - watches each parent's .git/worktrees/ dir (event-driven onboarding)
+	//     and runs a periodic reconciliation poll for removals/missed events.
+	// Only started when the fsnotify watcher itself is up. Returns nil when
+	// no group opts in (the Watcher is then not started).
+	WorktreeParents func() []worktree.ParentRepo
+	SchedulerIndex  func(ctx context.Context, repo string, ref string) error // fast reindex (skip algo pass); ref is the git branch captured at enqueue time
+	SchedulerLinks  func(ctx context.Context, group string) error
+	SchedulerAlgo   func(ctx context.Context, repo string) error
 
 	// SchedulerIncremental, when non-nil, is wired as the S3 incremental
 	// file-level reindex hook (issue #2153). It is attempted before
@@ -375,6 +391,45 @@ func Run(ctx context.Context, cfg Config) error {
 			}
 			if cfg.OnWatcherReady != nil {
 				cfg.OnWatcherReady(watcher)
+			}
+
+			// #3353/#3354: linked-worktree discovery + working-tree watching.
+			// Gated on the fsnotify watcher being up (we reuse it to watch each
+			// worktree's working tree) and on a caller-supplied parents provider
+			// (non-nil only when some group opts into worktree tracking).
+			if cfg.WorktreeParents != nil {
+				wtStorePath := filepath.Join(cfg.Layout.Root, "worktrees.json")
+				wtStore := worktree.NewStore(wtStorePath)
+				if err := wtStore.Load(); err != nil {
+					logger.Warn("worktree: failed to load store; starting empty", "path", wtStorePath, "err", err)
+				}
+				wtWatcher := worktree.NewWatcher(wtStore, cfg.WorktreeParents, logger)
+
+				// On activation, subscribe the worktree's WORKING TREE to the
+				// fsnotify watcher so uncommitted edits trigger a reactive
+				// reindex, and enqueue one immediate reindex of its ref tier.
+				// scheduler.Enqueue captures the worktree's checked-out ref via
+				// RefCapture(worktreePath), so the graph lands in the correct
+				// per-ref dir keyed by the worktree path (multi-ref model).
+				wtWatcher.OnActivate = func(child *worktree.WorktreeChild) {
+					if _, aerr := watcher.AddRepo(child.Path); aerr != nil {
+						logger.Warn("worktree: failed to watch working tree", "path", child.Path, "err", aerr)
+					}
+					scheduler.Enqueue(child.Path)
+					logger.Info("worktree: watching working tree + enqueued initial reindex",
+						"path", child.Path, "branch", child.Branch, "group", child.GroupName, "slug", child.ParentSlug, "locked", child.Locked)
+				}
+				// On expiry, unsubscribe the working tree from the watcher.
+				wtWatcher.OnExpire = func(child *worktree.WorktreeChild) {
+					watcher.RemoveRepo(child.Path)
+					logger.Info("worktree: unwatched expired working tree", "path", child.Path)
+				}
+
+				wtCtx, wtCancel := context.WithCancel(ctx)
+				go wtWatcher.Start(wtCtx)
+				defer wtCancel()
+				logger.Info("worktree: discovery started",
+					"store", wtStorePath, "reconcile_env", "ARCHIGRAPH_WORKTREE_POLL_SECONDS")
 			}
 		}
 	}

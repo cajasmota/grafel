@@ -25,6 +25,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
+	"github.com/cajasmota/archigraph/internal/daemon/worktree"
 	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/docgen"
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -282,11 +283,16 @@ func runDaemon(argv []string) error {
 		// reindex skips Pass 4 (graph algorithms) so a freshly-saved
 		// file becomes queryable as soon as the basic graph lands;
 		// the algorithm pass is run separately on a 30s debounce.
-		ReposToWatch:   daemonReposToWatch,
-		GroupsForRepo:  daemonGroupsForRepo,
-		SchedulerIndex: daemonSchedulerIndex,
-		SchedulerLinks: daemonSchedulerLinks,
-		SchedulerAlgo:  daemonSchedulerAlgo,
+		ReposToWatch:  daemonReposToWatch,
+		GroupsForRepo: daemonGroupsForRepo,
+
+		// #3353/#3354: linked-worktree discovery + working-tree watching.
+		// Only groups with track_worktrees or watchers enabled are returned;
+		// nil → discovery not started.
+		WorktreeParents: daemonWorktreeParents,
+		SchedulerIndex:  daemonSchedulerIndex,
+		SchedulerLinks:  daemonSchedulerLinks,
+		SchedulerAlgo:   daemonSchedulerAlgo,
 		// Issue #2406: capture extractorCfg at construction time so the closure
 		// owns an immutable pointer — no package-level singleton needed.
 		SchedulerIncremental: func(ctx context.Context, repoPath string, ref string) sched.IncrementalResult {
@@ -477,6 +483,53 @@ func daemonGroupsForRepo(repoPath string) []string {
 				out = append(out, g.Name)
 				break
 			}
+		}
+	}
+	return out
+}
+
+// daemonWorktreeParents returns the registered repos whose group opts into
+// linked-worktree tracking (#3353/#3354). A group opts in when either
+// features.track_worktrees OR features.watchers is true — worktree
+// working-tree watching is a strict extension of the file watcher, so any
+// group that already has watchers enabled gets it. Returns nil when no
+// group opts in (the daemon then does not start worktree discovery).
+//
+// Each returned ParentRepo carries the group name, repo slug, and the
+// resolved absolute path to the main checkout. Bare worktrees and the main
+// checkout itself are filtered downstream by runWorktreeList.
+func daemonWorktreeParents() []worktree.ParentRepo {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []worktree.ParentRepo
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		if !cfg.Features.TrackWorktrees && !cfg.Features.Watchers {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			abs, aerr := filepath.Abs(r.Path)
+			if aerr != nil {
+				abs = r.Path
+			}
+			// Dedup on (group, path): a repo may legitimately appear in
+			// multiple groups, but within a group the path is unique.
+			key := g.Name + "\x00" + abs
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, worktree.ParentRepo{
+				GroupName: g.Name,
+				Slug:      r.Slug,
+				Path:      abs,
+			})
 		}
 	}
 	return out

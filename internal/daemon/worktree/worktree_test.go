@@ -415,6 +415,173 @@ func TestLookupByParent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// #3353/#3354: activation/expiry callbacks + event-driven Sync
+// ---------------------------------------------------------------------------
+
+// TestWatcher_OnActivate_fires_on_discovery verifies that OnActivate fires
+// exactly once per newly discovered worktree, carrying the correct path and
+// branch — this is the hook the daemon uses to subscribe the worktree's
+// working tree to the file watcher and enqueue an initial reindex.
+func TestWatcher_OnActivate_fires_on_discovery(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+	wt1 := filepath.Join(tmp, "wt1")
+	addWorktree(t, repoDir, wt1, "feat/activate")
+
+	store := worktree.NewStore(filepath.Join(tmp, "wt.json"))
+	parents := func() []worktree.ParentRepo {
+		return []worktree.ParentRepo{{GroupName: "g", Slug: "r", Path: repoDir}}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+
+	var activated []*worktree.WorktreeChild
+	w.OnActivate = func(c *worktree.WorktreeChild) { activated = append(activated, c) }
+
+	w.Poll()
+	if len(activated) != 1 {
+		t.Fatalf("OnActivate fired %d times, want 1", len(activated))
+	}
+	if activated[0].Branch != "feat/activate" {
+		t.Errorf("activated branch = %q, want feat/activate", activated[0].Branch)
+	}
+	realWt1 := realPath(t, wt1)
+	if activated[0].Path != realWt1 && activated[0].Path != wt1 {
+		t.Errorf("activated path = %q, want %q", activated[0].Path, realWt1)
+	}
+
+	// Re-poll with the same worktree: must NOT fire again (idempotent).
+	activated = nil
+	w.Poll()
+	if len(activated) != 0 {
+		t.Fatalf("OnActivate fired %d times on second poll, want 0", len(activated))
+	}
+}
+
+// TestWatcher_OnExpire_fires_on_removal verifies OnExpire fires when a
+// worktree is removed — the daemon uses it to unsubscribe the working tree.
+func TestWatcher_OnExpire_fires_on_removal(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+	wt1 := filepath.Join(tmp, "wt1")
+	addWorktree(t, repoDir, wt1, "feat/expire")
+
+	store := worktree.NewStore(filepath.Join(tmp, "wt.json"))
+	parents := func() []worktree.ParentRepo {
+		return []worktree.ParentRepo{{GroupName: "g", Slug: "r", Path: repoDir}}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+
+	var expired []*worktree.WorktreeChild
+	w.OnExpire = func(c *worktree.WorktreeChild) { expired = append(expired, c) }
+
+	w.Poll()
+	if len(expired) != 0 {
+		t.Fatalf("OnExpire fired before removal: %d", len(expired))
+	}
+
+	realWt1 := realPath(t, wt1)
+	cmd := exec.Command("git", "-C", repoDir, "worktree", "remove", "--force", wt1)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git worktree remove: %v\n%s", err, out)
+	}
+
+	w.Poll()
+	if len(expired) != 1 {
+		t.Fatalf("OnExpire fired %d times after removal, want 1", len(expired))
+	}
+	if expired[0].Path != realWt1 && expired[0].Path != wt1 {
+		t.Errorf("expired path = %q, want %q", expired[0].Path, realWt1)
+	}
+}
+
+// TestWatcher_Sync_discovers verifies the event-driven entry point Sync()
+// has identical semantics to Poll() — a working-tree edit followed by a
+// Sync registers and persists the WorktreeChild.
+func TestWatcher_Sync_discovers_and_persists(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+	wt1 := filepath.Join(tmp, "wt1")
+	addWorktree(t, repoDir, wt1, "feat/sync")
+
+	// Simulate in-progress (uncommitted) work in the worktree.
+	if err := os.WriteFile(filepath.Join(wt1, "new.txt"), []byte("wip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	storePath := filepath.Join(tmp, "wt.json")
+	store := worktree.NewStore(storePath)
+	parents := func() []worktree.ParentRepo {
+		return []worktree.ParentRepo{{GroupName: "g", Slug: "r", Path: repoDir}}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+	w.Sync()
+
+	if len(store.Active()) != 1 {
+		t.Fatalf("Sync: want 1 active child, got %d", len(store.Active()))
+	}
+	// Persistence: a fresh Store loads the same child from disk.
+	store2 := worktree.NewStore(storePath)
+	if err := store2.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(store2.Active()) != 1 {
+		t.Fatalf("persisted store: want 1 active, got %d", len(store2.Active()))
+	}
+}
+
+// TestPollInterval_seconds_env verifies the new SECONDS override takes
+// precedence and that the default is the demoted 60s reconciliation cadence.
+func TestPollInterval_seconds_env(t *testing.T) {
+	// Default (no env) → 60s.
+	t.Setenv("ARCHIGRAPH_WORKTREE_POLL_SECONDS", "")
+	t.Setenv("ARCHIGRAPH_WORKTREE_POLL_MINUTES", "")
+	store := worktree.NewStore(filepath.Join(t.TempDir(), "wt.json"))
+	parents := func() []worktree.ParentRepo { return nil }
+	if got := worktree.NewWatcher(store, parents, nil).IntervalForTest(); got != 60*time.Second {
+		t.Errorf("default interval = %v, want 60s", got)
+	}
+
+	// SECONDS override wins.
+	t.Setenv("ARCHIGRAPH_WORKTREE_POLL_SECONDS", "5")
+	if got := worktree.NewWatcher(store, parents, nil).IntervalForTest(); got != 5*time.Second {
+		t.Errorf("SECONDS interval = %v, want 5s", got)
+	}
+
+	// SECONDS takes precedence over MINUTES.
+	t.Setenv("ARCHIGRAPH_WORKTREE_POLL_MINUTES", "10")
+	if got := worktree.NewWatcher(store, parents, nil).IntervalForTest(); got != 5*time.Second {
+		t.Errorf("SECONDS should win over MINUTES, got %v", got)
+	}
+
+	// MINUTES still honoured for back-compat when SECONDS unset.
+	t.Setenv("ARCHIGRAPH_WORKTREE_POLL_SECONDS", "")
+	if got := worktree.NewWatcher(store, parents, nil).IntervalForTest(); got != 10*time.Minute {
+		t.Errorf("MINUTES back-compat = %v, want 10m", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Worktree TTL policy constants (integration with tier.TTLConfig)
 // ---------------------------------------------------------------------------
 
