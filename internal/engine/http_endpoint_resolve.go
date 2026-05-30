@@ -119,6 +119,11 @@ type ResolveHTTPEndpointStats struct {
 // resolver to look up entities by their stable in-file identity.
 type httpResolveKey struct{ kind, name, sourceFile string }
 
+// httpResolveNameKey is the (kind, name) index key used by the global
+// bare-name fallback and the multi-match candidate list. Package-level so
+// helpers such as firstAppCandidate (#3426) can take it by value.
+type httpResolveNameKey struct{ kind, name string }
+
 func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
 	var stats ResolveHTTPEndpointStats
 
@@ -134,7 +139,7 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// dispatcher. Falling back to a global (kind, name) match keeps
 	// those endpoints alive so the corpus-wide response-shape pass
 	// can locate and scan the actual handler body.
-	type knKey struct{ kind, name string }
+	type knKey = httpResolveNameKey
 	globalIdx := make(map[knKey]int, len(merged))
 	// #2692 — multi-match index for the Phoenix-style `name@file_hint`
 	// resolution path. Routes-file frameworks (Phoenix router) declare
@@ -361,6 +366,30 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 				}
 			}
 		}
+		// #3426 — same-file CROSS-KIND lookup BEFORE the global bare-name
+		// fallback. The exact-kind same-file lookup (above) misses for
+		// annotation-based frameworks (NestJS @Controller, Spring, JAX-RS)
+		// because the synthesizer emits the handler ref as `Controller:check`
+		// while the real handler method `check()` is indexed as a
+		// SCOPE.Operation (or another method kind) in the SAME file. Without
+		// this step the resolver falls to the GLOBAL bare-name index, where a
+		// common method name like `check` collides repo-wide (e.g. a
+		// `function check(...)` in scripts/docs-check.mjs) and mis-sources the
+		// route to an unrelated tooling file. Same-file resolution is the
+		// correct default for annotation frameworks: the handler is emitted in
+		// the same file as the route synthetic by construction, so a same-file
+		// hit is strictly more precise than any global match. Only attempt this
+		// when no handler_file hint redirected lookupFile elsewhere; with a hint
+		// the global hint-substring branch above already covered cross-kind.
+		if !found && handlerFileHint == "" {
+			for _, altKind := range resolverKindEquivalents[hk] {
+				if hi, ok := idx[key{altKind, hn, lookupFile}]; ok {
+					handlerIdx = hi
+					found = true
+					break
+				}
+			}
+		}
 		if !found {
 			// Cross-file fallback (#753). Django composed routes record
 			// a `View:<ViewSet>` handler reference whose entity lives in
@@ -395,21 +424,24 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 				stats.NoHandlerProp++
 				continue
 			}
-			handlerIdx, found = globalIdx[knKey{hk, hn}]
+			// #3426 — GLOBAL bare-name fallback, with a non-app/tooling
+			// exclusion. A route handler must NEVER resolve to a build/CLI
+			// script: a common method name like `check` collides with a
+			// `function check(...)` in scripts/docs-check.mjs and the old
+			// globalIdx (first-writer-wins) could bind the route to it,
+			// mis-sourcing the endpoint to a tooling file. We iterate the
+			// globalMulti candidate LIST (across the declared kind + its
+			// equivalence classes) and pick the FIRST candidate whose
+			// SourceFile is NOT isNonAppSourceFile. If every candidate is a
+			// non-app file we leave `found` false so the synthetic keeps its
+			// own (correct) source instead of being rebound to a script.
+			// Try the declared kind first, then the cross-kind equivalents
+			// (Flask/FastAPI/Express function handlers land as SCOPE.Operation
+			// while the synthesizer emits Controller:<name> — #753).
+			handlerIdx, found = firstAppCandidate(merged, globalMulti, knKey{hk, hn})
 			if !found {
-				// Cross-kind fallback. Synthesizers historically emit
-				// `Controller:<name>` but the Python YAML rules + the
-				// generic SCOPE extractor produce `SCOPE.Operation`
-				// for function-shaped handlers (Flask def, FastAPI
-				// def, Express function expressions). Likewise the
-				// Java AST pass emits `SCOPE.Operation:Class.method`
-				// while older synthesizers still emit `Controller:method`.
-				// Try the known equivalence classes before dropping —
-				// without this fallback every Flask synthetic with a
-				// Controller-shaped ref gets dropped because the
-				// matching entity has kind SCOPE.Operation. #753.
 				for _, altKind := range resolverKindEquivalents[hk] {
-					if hi, ok := globalIdx[knKey{altKind, hn}]; ok {
+					if hi, ok := firstAppCandidate(merged, globalMulti, knKey{altKind, hn}); ok {
 						handlerIdx = hi
 						found = true
 						break
@@ -417,6 +449,19 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 				}
 			}
 			if !found {
+				// #3426 — distinguish "no candidate at all" (genuine orphan →
+				// drop) from "the only global candidate(s) live in non-app /
+				// tooling files" (e.g. the bare name `check` exists ONLY in
+				// scripts/docs-check.mjs). In the latter case we must NOT drop
+				// a real route just because its handler couldn't be cross-
+				// linked to an app entity — and we must NOT rebind it to the
+				// build script. Keep the synthetic with its own (controller)
+				// source and source_handler intact, mirroring the
+				// handler_file-hint miss path (#2851).
+				if hasGlobalCandidate(globalMulti, knKey{hk, hn}, resolverKindEquivalents[hk]) {
+					stats.NoHandlerProp++
+					continue
+				}
 				stats.HandlerDropped++
 				drop[i] = true
 				continue
@@ -605,6 +650,42 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 		out = append(out, merged[i])
 	}
 	return out, stats
+}
+
+// firstAppCandidate looks up the globalMulti candidate list for `gk`
+// (kind, name) and returns the index of the FIRST candidate whose
+// SourceFile is NOT a non-app/tooling file (per isNonAppSourceFile in
+// http_endpoint_synthesis.go). #3426: the global bare-name fallback must
+// never bind a route handler to a build/CLI script — a common method name
+// like `check` collides with `function check(...)` in
+// scripts/docs-check.mjs and would mis-source the endpoint to tooling. When
+// every candidate is a non-app file (or none exist) it returns ok=false so
+// the caller skips the rebind and the synthetic keeps its own source.
+func firstAppCandidate(merged []types.EntityRecord, globalMulti map[httpResolveNameKey][]int, gk httpResolveNameKey) (int, bool) {
+	for _, ci := range globalMulti[gk] {
+		if !isNonAppSourceFile(merged[ci].SourceFile) {
+			return ci, true
+		}
+	}
+	return 0, false
+}
+
+// hasGlobalCandidate reports whether ANY global (kind, name) candidate
+// exists for the base kind or one of its equivalence kinds, regardless of
+// whether that candidate is an app or non-app file. #3426: used to tell a
+// genuine unresolved orphan (no candidate anywhere → drop) apart from a
+// tooling-only collision (a candidate exists but only in a build/CLI
+// script → keep the synthetic, don't rebind, don't drop).
+func hasGlobalCandidate(globalMulti map[httpResolveNameKey][]int, base httpResolveNameKey, altKinds []string) bool {
+	if len(globalMulti[base]) > 0 {
+		return true
+	}
+	for _, ak := range altKinds {
+		if len(globalMulti[httpResolveNameKey{ak, base.name}]) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // splitHandlerRef parses "<Kind>:<Name>" into its parts. Returns ok=false

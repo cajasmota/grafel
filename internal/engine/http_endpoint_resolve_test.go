@@ -289,3 +289,190 @@ func TestResolveCallers_NoMatchKeepsSynthetic(t *testing.T) {
 		t.Errorf("expected synthetic preserved despite unresolved caller, got %d", len(out))
 	}
 }
+
+// findImplementsTo returns the index of the entity in out that owns an
+// IMPLEMENTS edge pointing at toID, or -1.
+func findImplementsTo(out []types.EntityRecord, toID string) int {
+	for i := range out {
+		for _, r := range out[i].Relationships {
+			if r.Kind == implementsEdgeKind && r.ToID == toID {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// TestResolveHandlers_NestHealthNotBoundToToolingScript (#3426) is the
+// parity-oracle bug: a NestJS `GET /health` definition emitted from
+// health.controller.ts with source_handler="Controller:check" must resolve
+// to the SAME-FILE `check` method (indexed as SCOPE.Operation), NOT to the
+// repo-wide `function check(...)` in scripts/docs-check.mjs. Before the fix
+// the exact-kind same-file lookup missed (real method is SCOPE.Operation,
+// not Controller) and the global bare-name fallback bound `check` to the
+// build script, mis-sourcing the route to scripts/docs-check.mjs:28.
+func TestResolveHandlers_NestHealthNotBoundToToolingScript(t *testing.T) {
+	const ctrlFile = "src/modules/health/health.controller.ts"
+	// Real handler method `check()` in the controller file, indexed as a
+	// method kind (SCOPE.Operation), NOT kind Controller.
+	realHandler := types.EntityRecord{
+		Kind:       "SCOPE.Operation",
+		Name:       "check",
+		SourceFile: ctrlFile,
+		StartLine:  17,
+		EndLine:    20,
+		Language:   "typescript",
+	}
+	// Collision: a same-named function in a build/tooling script.
+	toolingHandler := types.EntityRecord{
+		Kind:       "SCOPE.Operation",
+		Name:       "check",
+		SourceFile: "scripts/docs-check.mjs",
+		StartLine:  28,
+		EndLine:    35,
+		Language:   "javascript",
+	}
+	synth := types.EntityRecord{
+		Kind:       httpEndpointKind,
+		Name:       "http:GET:/health",
+		SourceFile: ctrlFile,
+		StartLine:  12,
+		Language:   "typescript",
+		Properties: map[string]string{
+			"source_handler": "Controller:check",
+			"framework":      "nestjs",
+		},
+	}
+	// Order toolingHandler FIRST so the old globalIdx (first-writer-wins)
+	// would have bound to it — proving the fix, not index ordering.
+	merged := []types.EntityRecord{toolingHandler, realHandler, synth}
+	out, stats := ResolveHTTPEndpointHandlers(merged)
+
+	if stats.HandlerResolved != 1 {
+		t.Fatalf("expected handler_resolved=1, got %+v", stats)
+	}
+	// Locate the synthetic in the output.
+	var endpoint *types.EntityRecord
+	for i := range out {
+		if out[i].Kind == httpEndpointDefinitionKind {
+			endpoint = &out[i]
+		}
+	}
+	if endpoint == nil {
+		t.Fatalf("endpoint definition not found in out")
+	}
+	if endpoint.SourceFile != ctrlFile {
+		t.Errorf("endpoint mis-sourced: got SourceFile=%q, want %q (must NOT be the tooling script)",
+			endpoint.SourceFile, ctrlFile)
+	}
+	if endpoint.StartLine != realHandler.StartLine {
+		t.Errorf("endpoint StartLine=%d, want %d (real handler body, not docs-check.mjs:28)",
+			endpoint.StartLine, realHandler.StartLine)
+	}
+	// IMPLEMENTS edge must point at the real same-file handler.
+	owner := findImplementsTo(out, httpEndpointDefinitionKind+":http:GET:/health")
+	if owner < 0 {
+		t.Fatalf("no IMPLEMENTS edge to the endpoint found")
+	}
+	if out[owner].SourceFile != ctrlFile {
+		t.Errorf("IMPLEMENTS edge owned by %q (line %d), want the real handler in %q",
+			out[owner].SourceFile, out[owner].StartLine, ctrlFile)
+	}
+}
+
+// TestResolveHandlers_ToolingOnlyCollisionNotRebound (#3426) verifies that
+// when there is NO same-file handler and the ONLY global match for the
+// bare name lives in a tooling script, the resolver does NOT rebind the
+// endpoint to that script. The synthetic keeps its own (controller) source.
+func TestResolveHandlers_ToolingOnlyCollisionNotRebound(t *testing.T) {
+	const ctrlFile = "src/a.controller.ts"
+	// Only the tooling script has a `check` symbol; the controller file has
+	// none.
+	toolingHandler := types.EntityRecord{
+		Kind:       "SCOPE.Operation",
+		Name:       "check",
+		SourceFile: "scripts/docs-check.mjs",
+		StartLine:  28,
+		Language:   "javascript",
+	}
+	synth := types.EntityRecord{
+		Kind:       httpEndpointKind,
+		Name:       "http:GET:/health",
+		SourceFile: ctrlFile,
+		StartLine:  9,
+		Language:   "typescript",
+		Properties: map[string]string{
+			"source_handler": "Controller:check",
+			"framework":      "nestjs",
+		},
+	}
+	merged := []types.EntityRecord{toolingHandler, synth}
+	out, _ := ResolveHTTPEndpointHandlers(merged)
+
+	var endpoint *types.EntityRecord
+	for i := range out {
+		if out[i].Kind == httpEndpointDefinitionKind {
+			endpoint = &out[i]
+		}
+	}
+	if endpoint == nil {
+		t.Fatalf("endpoint definition not found (should be kept, not dropped)")
+	}
+	if endpoint.SourceFile != ctrlFile {
+		t.Errorf("endpoint rebound to a tooling script: SourceFile=%q, want %q",
+			endpoint.SourceFile, ctrlFile)
+	}
+	if endpoint.SourceFile == "scripts/docs-check.mjs" || endpoint.StartLine == 28 {
+		t.Errorf("endpoint must never resolve to the build script (got %q:%d)",
+			endpoint.SourceFile, endpoint.StartLine)
+	}
+}
+
+// TestResolveHandlers_ExpressCrossFileStillResolves (#3426 regression
+// guard) verifies the legitimate cross-file Express case (#753) is NOT
+// regressed: a handler `index` in controllers/users.js, route synthetic in
+// routes.js, with NO tooling-file collision, still resolves cross-file via
+// the global fallback.
+func TestResolveHandlers_ExpressCrossFileStillResolves(t *testing.T) {
+	handler := types.EntityRecord{
+		Kind:       "SCOPE.Operation",
+		Name:       "index",
+		SourceFile: "controllers/users.js",
+		StartLine:  4,
+		Language:   "javascript",
+	}
+	synth := types.EntityRecord{
+		Kind:       httpEndpointKind,
+		Name:       "http:GET:/users",
+		SourceFile: "routes.js",
+		StartLine:  11,
+		Language:   "javascript",
+		Properties: map[string]string{
+			"source_handler": "Controller:index",
+			"framework":      "express",
+		},
+	}
+	merged := []types.EntityRecord{handler, synth}
+	out, stats := ResolveHTTPEndpointHandlers(merged)
+
+	if stats.HandlerResolved != 1 {
+		t.Fatalf("expected handler_resolved=1 (cross-file Express), got %+v", stats)
+	}
+	var endpoint *types.EntityRecord
+	for i := range out {
+		if out[i].Kind == httpEndpointDefinitionKind {
+			endpoint = &out[i]
+		}
+	}
+	if endpoint == nil {
+		t.Fatalf("endpoint definition not found")
+	}
+	if endpoint.SourceFile != "controllers/users.js" {
+		t.Errorf("Express cross-file resolution regressed: SourceFile=%q, want controllers/users.js",
+			endpoint.SourceFile)
+	}
+	owner := findImplementsTo(out, httpEndpointDefinitionKind+":http:GET:/users")
+	if owner < 0 || out[owner].SourceFile != "controllers/users.js" {
+		t.Errorf("IMPLEMENTS edge not on the real cross-file handler")
+	}
+}
