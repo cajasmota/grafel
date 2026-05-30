@@ -80,6 +80,18 @@ var (
 	// Kong plugin access handler: function plugin:access(conf)
 	reLuaKongAccess = regexp.MustCompile(
 		`(?m)function\s+\w+\s*:\s*access\s*\(\s*\w*\s*\)`)
+
+	// OIDC: require("resty.openidc") / local openidc = require "resty.openidc"
+	reLuaOIDCRequire = regexp.MustCompile(
+		`(?m)\brequire\s*[("']resty\.openidc["')]?\)?`)
+
+	// openidc.authenticate(opts) — the lua-resty-openidc auth entry point.
+	reLuaOIDCAuthenticate = regexp.MustCompile(
+		`(?m)\bopenidc\s*\.\s*authenticate\s*\(`)
+
+	// Lapis @require_login class annotation / decorator.
+	reLapisRequireLogin = regexp.MustCompile(
+		`(?m)@require_login\b|\brequire_login\b`)
 )
 
 // Extract implements extractor.Extractor.
@@ -95,7 +107,8 @@ func (e *luaAuthExtractor) Extract(_ context.Context, file extractor.FileInput) 
 		strings.Contains(src, "session") || strings.Contains(src, "cookie") ||
 		strings.Contains(src, "access_by_lua") || strings.Contains(src, "before_filter") ||
 		strings.Contains(src, "bcrypt") || strings.Contains(src, "resty.hmac") ||
-		strings.Contains(src, ":access(") || strings.Contains(src, "Users:find")
+		strings.Contains(src, ":access(") || strings.Contains(src, "Users:find") ||
+		strings.Contains(src, "openidc") || strings.Contains(src, "require_login")
 	if !hasAuth {
 		return nil, nil
 	}
@@ -107,14 +120,29 @@ func (e *luaAuthExtractor) Extract(_ context.Context, file extractor.FileInput) 
 		idx := reLuaJWTRequire.FindStringIndex(src)
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("lua_jwt_import", string(types.EntityKindPattern), "auth_config", file.Path, "lua", ln)
-		setProps(&entity, "signal", "auth", "library", "resty.jwt", "kind", "jwt_import")
+		setProps(&entity, "signal", "auth", "library", "resty.jwt", "kind", "jwt_import", "auth_method", "jwt")
 		out = append(out, entity)
 	}
 	for _, idx := range reLuaJWTVerify.FindAllStringSubmatchIndex(src, -1) {
 		op := src[idx[2]:idx[3]]
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("jwt_"+op, string(types.EntityKindPattern), "auth_guard", file.Path, "lua", ln)
-		setProps(&entity, "signal", "auth", "library", "resty.jwt", "kind", "jwt_"+op)
+		setProps(&entity, "signal", "auth", "library", "resty.jwt", "kind", "jwt_"+op, "auth_method", "jwt")
+		out = append(out, entity)
+	}
+
+	// OIDC auth (lua-resty-openidc)
+	if reLuaOIDCRequire.MatchString(src) {
+		idx := reLuaOIDCRequire.FindStringIndex(src)
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("lua_oidc_import", string(types.EntityKindPattern), "auth_config", file.Path, "lua", ln)
+		setProps(&entity, "signal", "auth", "library", "resty.openidc", "kind", "oidc_import", "auth_method", "oidc")
+		out = append(out, entity)
+	}
+	for _, idx := range reLuaOIDCAuthenticate.FindAllStringIndex(src, -1) {
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("oidc_authenticate", string(types.EntityKindPattern), "auth_guard", file.Path, "lua", ln)
+		setProps(&entity, "signal", "auth", "library", "resty.openidc", "kind", "oidc_authenticate", "auth_method", "oidc")
 		out = append(out, entity)
 	}
 
@@ -130,7 +158,7 @@ func (e *luaAuthExtractor) Extract(_ context.Context, file extractor.FileInput) 
 	for _, idx := range reLuaCookieAuth.FindAllStringIndex(src, -1) {
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("cookie_auth", string(types.EntityKindPattern), "auth_guard", file.Path, "lua", ln)
-		setProps(&entity, "signal", "auth", "framework", "openresty", "kind", "cookie_check")
+		setProps(&entity, "signal", "auth", "framework", "openresty", "kind", "cookie_check", "auth_method", "session")
 		out = append(out, entity)
 	}
 
@@ -147,7 +175,7 @@ func (e *luaAuthExtractor) Extract(_ context.Context, file extractor.FileInput) 
 		idx := reLapisSession.FindStringIndex(src)
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("lapis_session_auth", string(types.EntityKindPattern), "auth_guard", file.Path, "lua", ln)
-		setProps(&entity, "signal", "auth", "framework", "lapis", "kind", "session_auth")
+		setProps(&entity, "signal", "auth", "framework", "lapis", "kind", "session_auth", "auth_method", "session")
 		out = append(out, entity)
 	}
 
@@ -155,7 +183,15 @@ func (e *luaAuthExtractor) Extract(_ context.Context, file extractor.FileInput) 
 	for _, idx := range reLapisBeforeFilter.FindAllStringIndex(src, -1) {
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("lapis_before_filter", string(types.EntityKindPattern), "auth_guard", file.Path, "lua", ln)
-		setProps(&entity, "signal", "auth", "framework", "lapis", "kind", "before_filter")
+		setProps(&entity, "signal", "auth", "framework", "lapis", "kind", "before_filter", "auth_method", "session")
+		out = append(out, entity)
+	}
+
+	// Lapis @require_login annotation / require_login mixin
+	for _, idx := range reLapisRequireLogin.FindAllStringIndex(src, -1) {
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("lapis_require_login", string(types.EntityKindPattern), "auth_guard", file.Path, "lua", ln)
+		setProps(&entity, "signal", "auth", "framework", "lapis", "kind", "require_login", "auth_method", "session")
 		out = append(out, entity)
 	}
 

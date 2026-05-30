@@ -143,6 +143,17 @@ const (
 	// the colon form by the synthesizer before canonicalisation. Reuses
 	// canonicalizeColonParams.
 	FrameworkCowboy = "cowboy"
+	// FrameworkLapis (#3484) — Lua Lapis `app:get("/users/:id", fn)` and named
+	// `app:match("name", "/users/:id", fn)` routes use the Express-style `:name`
+	// colon-prefixed path parameter convention. Splat params `*` are passed
+	// through. Canonicalisation reuses canonicalizeColonParams.
+	FrameworkLapis = "lapis"
+	// FrameworkOpenResty (#3484) — OpenResty nginx `location /path { ... }`
+	// stanzas use literal path prefixes (no param syntax); lua-resty-router
+	// `r:get("/users/:id", fn)` uses the `:name` colon convention. Both are
+	// normalised by canonicalizeColonParams (a literal nginx path has no `:`
+	// segments, so it passes through unchanged save for slash normalisation).
+	FrameworkOpenResty = "openresty"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -191,7 +202,8 @@ func Canonicalize(framework, raw string) string {
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi, FrameworkPhoenix,
 		FrameworkAdonis, FrameworkMarble, FrameworkPolka, FrameworkRestify, FrameworkSails,
-		FrameworkRobyn, FrameworkPlug, FrameworkCowboy:
+		FrameworkRobyn, FrameworkPlug, FrameworkCowboy,
+		FrameworkLapis, FrameworkOpenResty:
 		out = canonicalizeColonParams(raw)
 	default:
 		// Unknown framework: pass through but still normalise slashes.

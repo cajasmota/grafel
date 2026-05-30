@@ -15,15 +15,15 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/lua/routing.go` | Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only. |
-| Handler attribution | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/routing.go` | Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only. |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/routing.go` | Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only. |
+| Endpoint synthesis | ✅ `full` | — | — | `internal/engine/lua_routes.go` | Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id->{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path. |
+| Handler attribution | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id->{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path. |
+| Route extraction | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id->{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path. |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/auth.go` | Regex extractor for resty.jwt verify/decode, ngx.req.get_headers Authorization, access_by_lua_block gates, Lapis session/before_filter auth, and Kong :access() handlers. |
+| Auth coverage | ✅ `full` | — | — | `internal/custom/lua/auth.go` | Lapis auth coverage: session.current_user/lapis.session (auth_method=session), before_filter + @require_login guards (auth_method=session), Users:find lookups, bcrypt/crypto password hashing. Each guard stamps auth_method; value-asserting tests TestLuaAuthRequireLogin in extractors_test.go. |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/middleware.go` | Regex extractor for Lapis before_filter/app:before/app:after/error_handler patterns and lapis.flow pipeline. |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/lua/middleware.go` | Lapis middleware chain: before_filter/app:before (phase=before) + app:after filters with chain_index ordering, error_handler/on_error, lapis.flow pipeline. value-asserting tests in extractors_test.go. |
 
 ### Type System
 

@@ -23,11 +23,39 @@ package lua
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// luaPhaseRank gives the canonical OpenResty request-lifecycle order of a phase
+// directive, so the emitted middleware chain carries a stable, comparable
+// `phase_order` independent of textual position in nginx.conf. Phases not in
+// the table sort after the known ones.
+func luaPhaseRank(phase string) int {
+	switch {
+	case strings.HasPrefix(phase, "init_worker_by_lua"):
+		return 1
+	case strings.HasPrefix(phase, "init_by_lua"):
+		return 0
+	case strings.HasPrefix(phase, "rewrite_by_lua"):
+		return 2
+	case strings.HasPrefix(phase, "access_by_lua"):
+		return 3
+	case strings.HasPrefix(phase, "content_by_lua"):
+		return 4
+	case strings.HasPrefix(phase, "header_filter_by_lua"):
+		return 5
+	case strings.HasPrefix(phase, "body_filter_by_lua"):
+		return 6
+	case strings.HasPrefix(phase, "log_by_lua"):
+		return 7
+	default:
+		return 99
+	}
+}
 
 func init() {
 	extractor.Register("lua_middleware", &luaMiddlewareExtractor{})
@@ -97,8 +125,10 @@ func (e *luaMiddlewareExtractor) Extract(_ context.Context, file extractor.FileI
 
 	var out []types.EntityRecord
 
-	// OpenResty phase directives
-	for _, idx := range reNginxPhase.FindAllStringSubmatchIndex(src, -1) {
+	// OpenResty phase directives. `chain_index` records the textual order of
+	// appearance; `phase_order` records the canonical request-lifecycle rank
+	// so the middleware chain is reconstructable regardless of file layout.
+	for chainIdx, idx := range reNginxPhase.FindAllStringSubmatchIndex(src, -1) {
 		directive := src[idx[2]:idx[3]]
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("nginx_phase:"+directive, string(types.EntityKindPattern), "middleware_hook", file.Path, "lua", ln)
@@ -107,6 +137,8 @@ func (e *luaMiddlewareExtractor) Extract(_ context.Context, file extractor.FileI
 			"framework", "openresty",
 			"kind", "nginx_phase",
 			"phase", directive,
+			"chain_index", strconv.Itoa(chainIdx),
+			"phase_order", strconv.Itoa(luaPhaseRank(directive)),
 		)
 		out = append(out, entity)
 	}
@@ -125,14 +157,17 @@ func (e *luaMiddlewareExtractor) Extract(_ context.Context, file extractor.FileI
 		out = append(out, entity)
 	}
 
-	// Lapis before_filter / before middleware
-	for _, idx := range reLapisBeforeMiddleware.FindAllStringIndex(src, -1) {
+	// Lapis before_filter / before middleware. `chain_index` records the
+	// textual order so a multi-filter chain is reconstructable.
+	for chainIdx, idx := range reLapisBeforeMiddleware.FindAllStringIndex(src, -1) {
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("lapis_before_filter", string(types.EntityKindPattern), "middleware_hook", file.Path, "lua", ln)
 		setProps(&entity,
 			"signal", "middleware",
 			"framework", "lapis",
 			"kind", "before_filter",
+			"phase", "before",
+			"chain_index", strconv.Itoa(chainIdx),
 		)
 		out = append(out, entity)
 	}

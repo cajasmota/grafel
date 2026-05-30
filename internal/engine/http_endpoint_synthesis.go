@@ -101,6 +101,9 @@ func synthesisSupportsLanguage(lang string) bool {
 	// #1483: Elixir Finch / HTTPoison consumer-side extraction.
 	case "elixir":
 		return true
+	// #3484: Lua Lapis / OpenResty producer-side route synthesis.
+	case "lua":
+		return true
 	// #1596: Infrastructure-as-Code languages have no compiled YAML rule sets
 	// of their own (Terraform rules live under the `hcl` key; CloudFormation
 	// YAML has none), so without this they would short-circuit out of Detect
@@ -788,6 +791,12 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeAbsinthe(string(content), emit)
 		// Consumer side (#1483): Finch.build(:verb, url) + HTTPoison.<verb>(url).
 		synthesizeElixirHTTPClients(string(content), emitClient)
+	case "lua":
+		// Producer side (#3484): Lapis verb/match/respond_to routes.
+		synthesizeLapis(string(content), emit)
+		// Producer side (#3484): OpenResty nginx `location` stanzas (in
+		// lua-classified config-driver files) + lua-resty-router DSL routes.
+		synthesizeOpenResty(string(content), emit)
 	}
 
 	// #722 — response/request shape extraction. Mutates Properties on

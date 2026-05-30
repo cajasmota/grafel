@@ -32724,29 +32724,26 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/lua/routing.go"],
-            "notes": "Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only."
+            "status": "full",
+            "cites": ["internal/engine/lua_routes.go"],
+            "notes": "Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id-\u003e{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path."
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/lua/routing.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only."
+            "status": "full",
+            "cites": ["internal/custom/lua/routing.go","internal/engine/lua_routes.go"],
+            "notes": "Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id-\u003e{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path."
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/lua/routing.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only."
+            "status": "full",
+            "cites": ["internal/custom/lua/routing.go","internal/engine/lua_routes.go"],
+            "notes": "Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id-\u003e{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path."
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/auth.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for resty.jwt verify/decode, ngx.req.get_headers Authorization, access_by_lua_block gates, Lapis session/before_filter auth, and Kong :access() handlers."
+            "notes": "Lapis auth coverage: session.current_user/lapis.session (auth_method=session), before_filter + @require_login guards (auth_method=session), Users:find lookups, bcrypt/crypto password hashing. Each guard stamps auth_method; value-asserting tests TestLuaAuthRequireLogin in extractors_test.go."
           }
         },
         "Validation": {
@@ -32764,10 +32761,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/middleware.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for Lapis before_filter/app:before/app:after/error_handler patterns and lapis.flow pipeline."
+            "notes": "Lapis middleware chain: before_filter/app:before (phase=before) + app:after filters with chain_index ordering, error_handler/on_error, lapis.flow pipeline. value-asserting tests in extractors_test.go."
           }
         },
         "Type System": {
@@ -32947,29 +32943,26 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/lua/routing.go"],
-            "notes": "Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic."
+            "status": "full",
+            "cites": ["internal/engine/lua_routes.go"],
+            "notes": "OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id-\u003e{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path."
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/lua/routing.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic."
+            "status": "full",
+            "cites": ["internal/custom/lua/routing.go","internal/engine/lua_routes.go"],
+            "notes": "OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id-\u003e{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path."
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/lua/routing.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic."
+            "status": "full",
+            "cites": ["internal/custom/lua/routing.go","internal/engine/lua_routes.go"],
+            "notes": "OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id-\u003e{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path."
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/auth.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for resty.jwt verify/decode, ngx.req.get_headers Authorization, access_by_lua_block gates, and Kong :access() handlers."
+            "notes": "OpenResty auth coverage: resty.jwt verify/decode/load_jwt (auth_method=jwt), lua-resty-openidc require + openidc.authenticate (auth_method=oidc), Authorization header + cookie/session checks (auth_method=session), access_by_lua gates, Kong :access() handlers. Each guard stamps auth_method (jwt/oidc/session); value-asserting tests TestLuaAuthJWT + TestLuaAuthOIDC in extractors_test.go."
           }
         },
         "Validation": {
@@ -32988,10 +32981,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/middleware.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor for OpenResty nginx phase directives: rewrite_by_lua_block, access_by_lua_block, header_filter_by_lua_block, body_filter_by_lua_block, log_by_lua_block, init_by_lua_block. Also Kong plugin handler phases."
+            "notes": "OpenResty middleware chain: nginx phase directives (init/init_worker/rewrite/access/content/header_filter/body_filter/log _by_lua) emitted with chain_index (textual order) + phase_order (canonical request-lifecycle rank) so the ordered chain is reconstructable; Kong plugin handler phases. value-asserting test TestLuaMiddlewareOrdering asserts specific phase_order ranks."
           }
         },
         "Type System": {

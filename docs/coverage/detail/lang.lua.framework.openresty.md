@@ -15,15 +15,15 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/lua/routing.go` | Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic. |
-| Handler attribution | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/routing.go` | Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic. |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/routing.go` | Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic. |
+| Endpoint synthesis | ✅ `full` | — | — | `internal/engine/lua_routes.go` | OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id->{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path. |
+| Handler attribution | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id->{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path. |
+| Route extraction | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id->{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path. |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/auth.go` | Regex extractor for resty.jwt verify/decode, ngx.req.get_headers Authorization, access_by_lua_block gates, and Kong :access() handlers. |
+| Auth coverage | ✅ `full` | — | — | `internal/custom/lua/auth.go` | OpenResty auth coverage: resty.jwt verify/decode/load_jwt (auth_method=jwt), lua-resty-openidc require + openidc.authenticate (auth_method=oidc), Authorization header + cookie/session checks (auth_method=session), access_by_lua gates, Kong :access() handlers. Each guard stamps auth_method (jwt/oidc/session); value-asserting tests TestLuaAuthJWT + TestLuaAuthOIDC in extractors_test.go. |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/middleware.go` | Regex extractor for OpenResty nginx phase directives: rewrite_by_lua_block, access_by_lua_block, header_filter_by_lua_block, body_filter_by_lua_block, log_by_lua_block, init_by_lua_block. Also Kong plugin handler phases. |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/lua/middleware.go` | OpenResty middleware chain: nginx phase directives (init/init_worker/rewrite/access/content/header_filter/body_filter/log _by_lua) emitted with chain_index (textual order) + phase_order (canonical request-lifecycle rank) so the ordered chain is reconstructable; Kong plugin handler phases. value-asserting test TestLuaMiddlewareOrdering asserts specific phase_order ranks. |
 
 ### Type System
 

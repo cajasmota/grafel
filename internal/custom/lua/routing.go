@@ -58,6 +58,12 @@ var (
 	reLapisMatch = regexp.MustCompile(
 		`(?m)\b(\w+)\s*:\s*match\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']`)
 
+	// Lapis: app:match("/path", handler) — unnamed form whose FIRST argument
+	// is the path (starts with `/`); the named form's first arg is a route
+	// name with no leading slash.
+	reLapisAnonMatch = regexp.MustCompile(
+		`(?m)\b(\w+)\s*:\s*match\s*\(\s*["'](/[^"']*)["']`)
+
 	// Lapis: respond_to({ GET = handler, POST = handler })
 	reLapisRespondTo = regexp.MustCompile(
 		`(?m)\brespond_to\s*\(\s*\{`)
@@ -113,6 +119,7 @@ func (e *luaRoutingExtractor) Extract(_ context.Context, file extractor.FileInpu
 			"framework", "openresty",
 			"kind", "nginx_location",
 			"path", path,
+			"canonical_path", luaCanonicalPath(path),
 		)
 		out = append(out, entity)
 	}
@@ -151,6 +158,7 @@ func (e *luaRoutingExtractor) Extract(_ context.Context, file extractor.FileInpu
 			"kind", "verb_route",
 			"method", verb,
 			"path", path,
+			"canonical_path", luaCanonicalPath(path),
 		)
 		out = append(out, entity)
 	}
@@ -159,6 +167,11 @@ func (e *luaRoutingExtractor) Extract(_ context.Context, file extractor.FileInpu
 	for _, idx := range reLapisMatch.FindAllStringSubmatchIndex(src, -1) {
 		name := src[idx[4]:idx[5]]
 		path := src[idx[6]:idx[7]]
+		// Skip the unnamed form where the first arg is actually the path
+		// (handled by reLapisAnonMatch); a route NAME never starts with `/`.
+		if strings.HasPrefix(name, "/") {
+			continue
+		}
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("match:"+name+":"+path, string(types.EntityKindRoute), "http_route", file.Path, "lua", ln)
 		setProps(&entity,
@@ -167,6 +180,23 @@ func (e *luaRoutingExtractor) Extract(_ context.Context, file extractor.FileInpu
 			"kind", "named_route",
 			"route_name", name,
 			"path", path,
+			"canonical_path", luaCanonicalPath(path),
+		)
+		out = append(out, entity)
+	}
+
+	// --- Lapis app:match("/path", ...) unnamed ---
+	for _, idx := range reLapisAnonMatch.FindAllStringSubmatchIndex(src, -1) {
+		path := src[idx[4]:idx[5]]
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("match:"+path, string(types.EntityKindRoute), "http_route", file.Path, "lua", ln)
+		setProps(&entity,
+			"signal", "routing",
+			"framework", "lapis",
+			"kind", "anon_route",
+			"method", "ANY",
+			"path", path,
+			"canonical_path", luaCanonicalPath(path),
 		)
 		out = append(out, entity)
 	}

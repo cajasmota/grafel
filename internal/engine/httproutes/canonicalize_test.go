@@ -80,6 +80,27 @@ func TestCanonicalize_Express(t *testing.T) {
 	}
 }
 
+// TestCanonicalize_Lua covers Lapis + OpenResty colon-prefixed params and
+// literal nginx location paths (#3484).
+func TestCanonicalize_Lua(t *testing.T) {
+	cases := []struct {
+		framework, in, want string
+	}{
+		{FrameworkLapis, "/users/:id", "/users/{id}"},
+		{FrameworkLapis, "/users/:user_id/posts/:post_id", "/users/{user_id}/posts/{post_id}"},
+		{FrameworkLapis, "/about", "/about"},
+		{FrameworkOpenResty, "/api/users", "/api/users"},
+		{FrameworkOpenResty, "/users/:id", "/users/{id}"},
+		{FrameworkOpenResty, "/health/", "/health"},
+	}
+	for _, tc := range cases {
+		got := Canonicalize(tc.framework, tc.in)
+		if got != tc.want {
+			t.Errorf("Canonicalize(%s, %q) = %q, want %q", tc.framework, tc.in, got, tc.want)
+		}
+	}
+}
+
 // TestCanonicalize_SlashNormalisation verifies the leading-slash + no-
 // trailing-slash + collapse-duplicate-slash conventions hold across edge
 // cases.

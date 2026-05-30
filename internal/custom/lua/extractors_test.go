@@ -102,6 +102,39 @@ end)
 	}
 }
 
+// TestLuaRoutingLapisCanonical asserts `:id`→{id} normalisation and the
+// unnamed app:match("/path", fn) form are captured.
+func TestLuaRoutingLapisCanonical(t *testing.T) {
+	src := `
+local app = lapis.Application()
+app:get("/users/:id", function(self) end)
+app:match("/about", function(self) end)
+app:match("named", "/things/:thing_id", function(self) end)
+`
+	e := &luaRoutingExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("app.lua", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	canon := map[string]string{} // path -> canonical_path
+	kinds := map[string]bool{}
+	for _, r := range got {
+		if p, ok := r.Properties["path"]; ok {
+			canon[p] = r.Properties["canonical_path"]
+		}
+		kinds[r.Properties["kind"]] = true
+	}
+	if canon["/users/:id"] != "/users/{id}" {
+		t.Errorf("verb route canonical_path=%q, want /users/{id}", canon["/users/:id"])
+	}
+	if canon["/things/:thing_id"] != "/things/{thing_id}" {
+		t.Errorf("named route canonical_path=%q, want /things/{thing_id}", canon["/things/:thing_id"])
+	}
+	if !kinds["anon_route"] {
+		t.Errorf("expected anon_route kind for app:match(\"/about\", ...); kinds=%v", kinds)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -137,6 +170,61 @@ end
 	}
 }
 
+// TestLuaAuthOIDC asserts lua-resty-openidc detection with auth_method=oidc.
+func TestLuaAuthOIDC(t *testing.T) {
+	src := `
+local openidc = require("resty.openidc")
+local res, err = openidc.authenticate(opts)
+if not res then
+  ngx.exit(401)
+end
+`
+	e := &luaAuthExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("auth.lua", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasAuthenticate := false
+	for _, r := range got {
+		if r.Properties["kind"] == "oidc_authenticate" {
+			hasAuthenticate = true
+			if r.Properties["auth_method"] != "oidc" {
+				t.Errorf("oidc: auth_method=%q, want oidc", r.Properties["auth_method"])
+			}
+		}
+	}
+	if !hasAuthenticate {
+		t.Error("expected openidc.authenticate guard entity")
+	}
+}
+
+// TestLuaAuthRequireLogin asserts Lapis @require_login is captured as a
+// session-method auth guard.
+func TestLuaAuthRequireLogin(t *testing.T) {
+	src := `
+local app = lapis.Application()
+app:before_filter(require_login)
+app:get("/dashboard", function(self) end)
+`
+	e := &luaAuthExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("app.lua", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range got {
+		if r.Properties["kind"] == "require_login" {
+			found = true
+			if r.Properties["auth_method"] != "session" {
+				t.Errorf("require_login: auth_method=%q, want session", r.Properties["auth_method"])
+			}
+		}
+	}
+	if !found {
+		t.Error("expected require_login auth guard entity")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Middleware
 // ---------------------------------------------------------------------------
@@ -169,6 +257,45 @@ header_filter_by_lua_block {
 	}
 	if !phases["access_by_lua_block"] {
 		t.Errorf("expected access_by_lua_block phase, got %v", phases)
+	}
+}
+
+// TestLuaMiddlewareOrdering asserts the OpenResty phase chain carries both a
+// textual chain_index and a canonical lifecycle phase_order, so the middleware
+// chain is reconstructable. The fixture lists phases OUT of lifecycle order to
+// prove phase_order reflects the request lifecycle, not file position.
+func TestLuaMiddlewareOrdering(t *testing.T) {
+	src := `
+log_by_lua_block { ngx.log(ngx.INFO, "done") }
+access_by_lua_block { check_auth() }
+rewrite_by_lua_block { ngx.req.set_uri("/v2") }
+`
+	e := &luaMiddlewareExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("nginx.conf", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := map[string]string{}    // phase -> phase_order
+	chainIdx := map[string]string{} // phase -> chain_index
+	for _, r := range got {
+		if p, ok := r.Properties["phase"]; ok && r.Properties["kind"] == "nginx_phase" {
+			order[p] = r.Properties["phase_order"]
+			chainIdx[p] = r.Properties["chain_index"]
+		}
+	}
+	// Lifecycle: rewrite(2) < access(3) < log(7).
+	if order["rewrite_by_lua_block"] != "2" {
+		t.Errorf("rewrite phase_order=%q, want 2", order["rewrite_by_lua_block"])
+	}
+	if order["access_by_lua_block"] != "3" {
+		t.Errorf("access phase_order=%q, want 3", order["access_by_lua_block"])
+	}
+	if order["log_by_lua_block"] != "7" {
+		t.Errorf("log phase_order=%q, want 7", order["log_by_lua_block"])
+	}
+	// Textual order in the fixture: log(0) < access(1) < rewrite(2).
+	if chainIdx["log_by_lua_block"] != "0" || chainIdx["access_by_lua_block"] != "1" || chainIdx["rewrite_by_lua_block"] != "2" {
+		t.Errorf("chain_index mismatch: %v", chainIdx)
 	}
 }
 

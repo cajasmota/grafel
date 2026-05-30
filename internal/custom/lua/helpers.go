@@ -3,6 +3,7 @@
 package lua
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -10,6 +11,17 @@ import (
 
 func lineOf(source string, offset int) int {
 	return strings.Count(source[:offset], "\n") + 1
+}
+
+// luaColonParamRe matches an Express/Lapis-style `:name` colon path parameter.
+var luaColonParamRe = regexp.MustCompile(`:([A-Za-z_]\w*)`)
+
+// luaCanonicalPath normalises a Lapis/lua-resty-router path's `:name` colon
+// parameters to the canonical `{name}` form (e.g. `/users/:id` → `/users/{id}`),
+// matching the engine-level httproutes.Canonicalize convention. Literal nginx
+// paths (no colon segments) pass through unchanged.
+func luaCanonicalPath(raw string) string {
+	return luaColonParamRe.ReplaceAllString(raw, "{$1}")
 }
 
 func makeEntity(name, kind, subtype, filePath, language string, lineNum int) types.EntityRecord {
