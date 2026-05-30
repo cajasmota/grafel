@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/php/orms/doctrine_orm.yaml` | — |
-| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/orm_data.go` | Doctrine #[ORM\Column] attributes scanned forward to property names; association/FK/lazy/migration also extracted. |
+| Schema extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/php/orm_data.go` | Doctrine #[ORM\Column] attributes scanned forward to property names; association/FK/lazy/migration also extracted. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/orm_data.go` | ORM relation type attributes scanned (OneToMany/ManyToMany). |
-| Foreign key extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/orm_data.go` | #[ORM\JoinColumn] attributes scanned. |
-| Lazy loading recognition | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/orm_data.go` | fetch=LAZY / fetch='LAZY' annotation patterns scanned. |
-| Relationship extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/orm_data.go` | OneToMany/ManyToOne/ManyToMany/OneToOne Doctrine attributes scanned. |
+| Association extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/php/orm_data.go` | ORM relation type attributes scanned (OneToMany/ManyToMany). |
+| Foreign key extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/php/orm_data.go` | #[ORM\JoinColumn] attributes scanned. |
+| Lazy loading recognition | ✅ `full` | `2026-05-30` | — | `internal/custom/php/orm_data.go` | fetch=LAZY / fetch='LAZY' annotation patterns scanned. |
+| Relationship extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/php/orm_data.go` | OneToMany/ManyToOne/ManyToMany/OneToOne Doctrine attributes scanned. |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🟢 `partial` | — | — | `internal/custom/php/orm_data.go` | AbstractMigration subclasses + up/down methods scanned. |
+| Migration parsing | ✅ `full` | `2026-05-30` | — | `internal/custom/php/orm_data.go` | AbstractMigration subclasses + up/down methods scanned. |
 
 ## Provenance
 

@@ -100,7 +100,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟢 8/8 | |
 | [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟢 1/1 | |
 | [php](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟢 8/8 | |
-| [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟢 8/8 | |
+| [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ✅ 8/8 | |
 | [php](../by-language/php.md) | [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | ✅ 8/8 | |
 | [php](../by-language/php.md) | [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | 🟢 2/2 | |
 | [php](../by-language/php.md) | [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | 🟢 2/2 | |

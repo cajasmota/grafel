@@ -60,7 +60,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 |---|---|---|
 | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟢 1/1 | |
 | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟢 8/8 | |
-| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟢 8/8 | |
+| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ✅ 8/8 | |
 | [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | ✅ 8/8 | |
 | [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | 🟢 2/2 | |
 | [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | 🟢 2/2 | |

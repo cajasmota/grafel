@@ -81,8 +81,8 @@ class Product
 }
 `
 	ents := extract(t, "php_doctrine_orm_data", fi("Product.php", "php", src))
-	if !containsEntity(ents, "SCOPE.Pattern", "lazy:LAZY") {
-		t.Error("expected lazy:LAZY pattern entity")
+	if !containsEntity(ents, "SCOPE.Pattern", "fetch:LAZY") {
+		t.Error("expected fetch:LAZY pattern entity")
 	}
 }
 
@@ -120,6 +120,307 @@ func TestDoctrineNoMatch(t *testing.T) {
 	ents := extract(t, "php_doctrine_orm_data", fi("plain.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// ============================================================================
+// Doctrine deep extraction — entity classes, column types, targetEntity,
+// JoinColumn FK fields, EAGER/EXTRA_LAZY fetch, addSql migration SQL.
+// ============================================================================
+
+// TestDoctrineDeep_EntityClassAndColumnTypes verifies that the #[ORM\Entity]
+// attribute causes the class name to be emitted and that column type args are
+// captured on each property.
+func TestDoctrineDeep_EntityClassAndColumnTypes(t *testing.T) {
+	src := `<?php
+namespace App\Entity;
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity(repositoryClass: UserRepository::class)]
+class User
+{
+    #[ORM\Id]
+    #[ORM\Column(type: 'integer')]
+    private int $id;
+
+    #[ORM\Column(type: 'string', length: 255)]
+    private string $username;
+
+    #[ORM\Column(type: 'string', unique: true)]
+    private string $email;
+
+    #[ORM\Column(type: 'boolean')]
+    private bool $active;
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("User.php", "php", src))
+
+	// Entity class name must be emitted as SCOPE.Schema/entity.
+	if !containsEntity(ents, "SCOPE.Schema", "User") {
+		t.Error("expected User entity class (SCOPE.Schema/entity)")
+	}
+
+	// Each annotated property must appear as SCOPE.Schema/column.
+	for _, col := range []string{"id", "username", "email", "active"} {
+		if !containsEntity(ents, "SCOPE.Schema", col) {
+			t.Errorf("expected column entity %q", col)
+		}
+	}
+}
+
+// TestDoctrineDeep_AnnotationStyleEntityAndColumns verifies that the legacy
+// @ORM\Entity / @ORM\Column annotation syntax (Doctrine 2 / Symfony 4–5 style)
+// is handled identically to PHP8 attributes.
+func TestDoctrineDeep_AnnotationStyleEntityAndColumns(t *testing.T) {
+	src := `<?php
+/**
+ * @ORM\Entity(repositoryClass="App\Repository\PostRepository")
+ */
+class Post
+{
+    /**
+     * @ORM\Column(type="string", length=255)
+     */
+    private $title;
+
+    /**
+     * @ORM\Column(type="text")
+     */
+    private $body;
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("Post.php", "php", src))
+
+	if !containsEntity(ents, "SCOPE.Schema", "title") {
+		t.Error("expected title column from @ORM\\Column annotation")
+	}
+	if !containsEntity(ents, "SCOPE.Schema", "body") {
+		t.Error("expected body column from @ORM\\Column annotation")
+	}
+}
+
+// TestDoctrineDeep_AssociationWithTargetEntity verifies that all four relation
+// types are emitted with the target_entity property extracted from the attribute.
+func TestDoctrineDeep_AssociationWithTargetEntity(t *testing.T) {
+	src := `<?php
+#[ORM\Entity]
+class Post
+{
+    #[ORM\OneToMany(targetEntity: Comment::class, mappedBy: 'post', fetch: 'LAZY')]
+    private Collection $comments;
+
+    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'posts')]
+    private User $author;
+
+    #[ORM\ManyToMany(targetEntity: Tag::class)]
+    private Collection $tags;
+
+    #[ORM\OneToOne(targetEntity: Profile::class, cascade: ['persist'])]
+    private ?Profile $profile;
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("Post.php", "php", src))
+
+	// All four relation types must produce SCOPE.Component/relation entities.
+	for _, relType := range []string{"OneToMany", "ManyToOne", "ManyToMany", "OneToOne"} {
+		if !containsEntity(ents, "SCOPE.Component", "relation:"+relType) {
+			t.Errorf("expected relation:%s component", relType)
+		}
+	}
+}
+
+// TestDoctrineDeep_JoinColumnExactFields verifies that name= and
+// referencedColumnName= values are captured from #[ORM\JoinColumn].
+func TestDoctrineDeep_JoinColumnExactFields(t *testing.T) {
+	src := `<?php
+#[ORM\Entity]
+class Order
+{
+    #[ORM\ManyToOne(targetEntity: Customer::class)]
+    #[ORM\JoinColumn(name: 'customer_id', referencedColumnName: 'id')]
+    private Customer $customer;
+
+    #[ORM\ManyToOne(targetEntity: Address::class)]
+    #[ORM\JoinColumn(name: 'shipping_address_id', referencedColumnName: 'id', nullable: true)]
+    private ?Address $shippingAddress;
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("Order.php", "php", src))
+
+	// FK entities are named "fk:<column_name>" when name= is present.
+	if !containsEntity(ents, "SCOPE.Schema", "fk:customer_id") {
+		t.Error("expected fk:customer_id foreign_key entity from JoinColumn name=")
+	}
+	if !containsEntity(ents, "SCOPE.Schema", "fk:shipping_address_id") {
+		t.Error("expected fk:shipping_address_id foreign_key entity from JoinColumn name=")
+	}
+}
+
+// TestDoctrineDeep_JoinTable verifies that #[ORM\JoinTable] emits a
+// foreign_key entity for many-to-many pivot table definitions.
+func TestDoctrineDeep_JoinTable(t *testing.T) {
+	src := `<?php
+#[ORM\Entity]
+class Article
+{
+    #[ORM\ManyToMany(targetEntity: Tag::class)]
+    #[ORM\JoinTable(name: 'article_tags')]
+    private Collection $tags;
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("Article.php", "php", src))
+
+	if !containsEntity(ents, "SCOPE.Schema", "join_table") {
+		t.Error("expected join_table foreign_key entity from #[ORM\\JoinTable]")
+	}
+}
+
+// TestDoctrineDeep_FetchEager verifies that fetch: 'EAGER' is detected as
+// a lazy_loading pattern entity with fetch_mode=EAGER.
+func TestDoctrineDeep_FetchEager(t *testing.T) {
+	src := `<?php
+#[ORM\Entity]
+class Invoice
+{
+    #[ORM\OneToMany(targetEntity: InvoiceLine::class, mappedBy: 'invoice', fetch: 'EAGER')]
+    private Collection $lines;
+
+    #[ORM\ManyToMany(targetEntity: Tag::class, fetch: 'EXTRA_LAZY')]
+    private Collection $tags;
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("Invoice.php", "php", src))
+
+	if !containsEntity(ents, "SCOPE.Pattern", "fetch:EAGER") {
+		t.Error("expected fetch:EAGER lazy_loading pattern entity")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "fetch:EXTRA_LAZY") {
+		t.Error("expected fetch:EXTRA_LAZY lazy_loading pattern entity")
+	}
+}
+
+// TestDoctrineDeep_MigrationAddSqlContent verifies that $this->addSql(...)
+// calls in Doctrine migrations are extracted with the SQL string as an entity.
+func TestDoctrineDeep_MigrationAddSqlContent(t *testing.T) {
+	src := `<?php
+use Doctrine\Migrations\AbstractMigration;
+use Doctrine\DBAL\Schema\Schema;
+
+class Version20240115000000 extends AbstractMigration
+{
+    public function up(Schema $schema): void
+    {
+        $this->addSql('CREATE TABLE orders (id INT NOT NULL, customer_id INT NOT NULL)');
+        $this->addSql('ALTER TABLE orders ADD CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES customers (id)');
+    }
+
+    public function down(Schema $schema): void
+    {
+        $this->addSql('DROP TABLE orders');
+    }
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("Version20240115000000.php", "php", src))
+
+	// Migration class and methods.
+	if !containsEntity(ents, "SCOPE.Operation", "Version20240115000000") {
+		t.Error("expected Version20240115000000 migration class entity")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "migration:up") {
+		t.Error("expected migration:up step entity")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "migration:down") {
+		t.Error("expected migration:down step entity")
+	}
+
+	// SQL content entities: prefix "sql:" + first 64 chars of the SQL string.
+	found := false
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Operation" && e.Subtype == "migration_sql" &&
+			len(e.Name) > 4 && e.Name[:4] == "sql:" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected at least one migration_sql entity from $this->addSql(...)")
+	}
+}
+
+// TestDoctrineDeep_FullEntityFile exercises a realistic entity file combining
+// entity class, multiple column types, associations with targetEntity,
+// JoinColumn FK with name+referencedColumnName, and fetch modes — all in one
+// pass.  This is the integration test for the "TS/JS bar" requirement.
+func TestDoctrineDeep_FullEntityFile(t *testing.T) {
+	src := `<?php
+namespace App\Entity;
+
+use Doctrine\ORM\Mapping as ORM;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\Common\Collections\ArrayCollection;
+
+#[ORM\Entity(repositoryClass: OrderRepository::class)]
+class Order
+{
+    #[ORM\Id]
+    #[ORM\Column(type: 'integer')]
+    private int $id;
+
+    #[ORM\Column(type: 'string', length: 50)]
+    private string $status;
+
+    #[ORM\Column(type: 'decimal', precision: 10, scale: 2)]
+    private string $total;
+
+    #[ORM\ManyToOne(targetEntity: Customer::class, inversedBy: 'orders')]
+    #[ORM\JoinColumn(name: 'customer_id', referencedColumnName: 'id', nullable: false)]
+    private Customer $customer;
+
+    #[ORM\OneToMany(targetEntity: OrderItem::class, mappedBy: 'order', fetch: 'LAZY', cascade: ['persist'])]
+    private Collection $items;
+
+    #[ORM\ManyToMany(targetEntity: Coupon::class, fetch: 'EXTRA_LAZY')]
+    #[ORM\JoinTable(name: 'order_coupons')]
+    private Collection $coupons;
+}
+`
+	ents := extract(t, "php_doctrine_orm_data", fi("Order.php", "php", src))
+
+	// Entity class.
+	if !containsEntity(ents, "SCOPE.Schema", "Order") {
+		t.Error("expected Order entity class")
+	}
+
+	// Columns.
+	for _, col := range []string{"id", "status", "total"} {
+		if !containsEntity(ents, "SCOPE.Schema", col) {
+			t.Errorf("expected column %q", col)
+		}
+	}
+
+	// Relation types.
+	for _, rt := range []string{"ManyToOne", "OneToMany", "ManyToMany"} {
+		if !containsEntity(ents, "SCOPE.Component", "relation:"+rt) {
+			t.Errorf("expected relation:%s", rt)
+		}
+	}
+
+	// JoinColumn FK with exact name.
+	if !containsEntity(ents, "SCOPE.Schema", "fk:customer_id") {
+		t.Error("expected fk:customer_id from JoinColumn name=customer_id")
+	}
+
+	// JoinTable FK.
+	if !containsEntity(ents, "SCOPE.Schema", "join_table") {
+		t.Error("expected join_table from #[ORM\\JoinTable]")
+	}
+
+	// Fetch modes.
+	if !containsEntity(ents, "SCOPE.Pattern", "fetch:LAZY") {
+		t.Error("expected fetch:LAZY pattern")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "fetch:EXTRA_LAZY") {
+		t.Error("expected fetch:EXTRA_LAZY pattern")
 	}
 }
 

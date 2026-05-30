@@ -36279,36 +36279,36 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Doctrine #[ORM\\Column] attributes scanned forward to property names; association/FK/lazy/migration also extracted."
+            "notes": "Doctrine #[ORM\\Column] attributes scanned forward to property names; association/FK/lazy/migration also extracted.",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ORM relation type attributes scanned (OneToMany/ManyToMany)."
+            "notes": "ORM relation type attributes scanned (OneToMany/ManyToMany).",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "#[ORM\\JoinColumn] attributes scanned."
+            "notes": "#[ORM\\JoinColumn] attributes scanned.",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "fetch=LAZY / fetch='LAZY' annotation patterns scanned."
+            "notes": "fetch=LAZY / fetch='LAZY' annotation patterns scanned.",
+            "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "OneToMany/ManyToOne/ManyToMany/OneToOne Doctrine attributes scanned."
+            "notes": "OneToMany/ManyToOne/ManyToMany/OneToOne Doctrine attributes scanned.",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -36320,9 +36320,10 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
-            "notes": "AbstractMigration subclasses + up/down methods scanned."
+            "notes": "AbstractMigration subclasses + up/down methods scanned.",
+            "verified_at": "2026-05-30"
           }
         }
       }

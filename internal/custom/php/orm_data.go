@@ -64,12 +64,20 @@ type doctrineORMDataExtractor struct{}
 func (e *doctrineORMDataExtractor) Language() string { return "php_doctrine_orm_data" }
 
 var (
-	// doctrineColumnRe matches #[ORM\Column(type: 'string', ...)] or @ORM\Column(type="string")
-	// doctrineColumnWithPropRe matches #[ORM\Column(...)] followed by the
-	// property declaration on the next line, capturing the property name.
-	// Group 1 = property name.
-	doctrineColumnWithPropRe = regexp.MustCompile(
-		`(?s)(?:#\[ORM\\Column[^\]]*\]|@ORM\\Column\([^)]*\))\s*\n\s*(?:private|protected|public)\s+(?:[?]?\w+\s+)?\$(\w+)`)
+	// dctColumnAttrRe matches PHP8 attribute #[ORM\Column(...)] directly before the
+	// property declaration (whitespace/newlines only between attribute and property).
+	// Group 1 = attribute args string, Group 2 = property name.
+	dctColumnAttrRe = regexp.MustCompile(
+		`(?s)#\[ORM\\Column([^\]]*)\]\s*\n\s*(?:private|protected|public)\s+(?:[?]?\w+\s+)?\$(\w+)`)
+
+	// dctColumnAnnotRe matches docblock @ORM\Column(...) annotation followed by the
+	// closing */ and then the property declaration.
+	// Group 1 = annotation args string, Group 2 = property name.
+	dctColumnAnnotRe = regexp.MustCompile(
+		`(?s)@ORM\\Column(\([^)]*\))[^*]*\*/\s*\n\s*(?:private|protected|public)\s+(?:[?]?\w+\s+)?\$(\w+)`)
+
+	// dctColumnTypeRe extracts the type argument from Column args. Group 1 = type value.
+	dctColumnTypeRe = regexp.MustCompile(`\btype\s*[=:]\s*['"](\w+)['"]`)
 
 	// doctrineColumnRe is kept for gate detection only (no property extraction)
 	doctrineColumnRe = regexp.MustCompile(
@@ -83,17 +91,42 @@ var (
 	doctrineClassRe = regexp.MustCompile(
 		`(?m)class\s+(\w+)\b`)
 
-	// doctrineRelationRe detects ORM relationship attributes/annotations
-	doctrineRelationRe = regexp.MustCompile(
-		`(?m)(?:#\[ORM\\|@ORM\\)(OneToMany|ManyToOne|ManyToMany|OneToOne)\s*\(`)
+	// dctEntityWithClassRe matches #[ORM\Entity...] or @ORM\Entity... then looks ahead
+	// for the class declaration. Group 1 = class name.
+	dctEntityWithClassRe = regexp.MustCompile(
+		`(?s)(?:#\[ORM\\Entity[^\]]*\]|@ORM\\Entity\b[^\n]*\n(?:[^\n]*\n)*?)\s*class\s+(\w+)\b`)
 
-	// doctrineFKRe detects JoinColumn (foreign key) annotations/attributes
-	doctrineFKRe = regexp.MustCompile(
-		`(?m)(?:#\[ORM\\|@ORM\\)JoinColumn\s*\(`)
+	// dctRelationRe detects ORM relationship attributes/annotations and captures their args.
+	// Group 1 = relation type (OneToMany|ManyToOne|ManyToMany|OneToOne)
+	// Group 2 = attribute argument string (everything after the opening paren up to the
+	//           closing bracket/paren boundary — captured lazily).
+	dctRelationRe = regexp.MustCompile(
+		`(?s)(?:#\[ORM\\|@ORM\\)(OneToMany|ManyToOne|ManyToMany|OneToOne)\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)`)
 
-	// doctrineLazyRe detects fetch="LAZY" or fetch: 'LAZY' lazy-loading hints
-	doctrineLazyRe = regexp.MustCompile(
-		`(?m)fetch\s*[=:]\s*['"](LAZY|EXTRA_LAZY)['"]`)
+	// dctTargetEntityRe extracts targetEntity value from relation args.
+	// Matches targetEntity: Foo::class  or  targetEntity="Foo"  or  targetEntity='Foo'
+	// Group 1 = class/type name.
+	dctTargetEntityRe = regexp.MustCompile(
+		`\btargetEntity\s*[=:]\s*(?:(?:[\w\\]+\\)?(\w+)::class|['"](?:[\w\\]+\\)?(\w+)['"])`)
+
+	// dctJoinColumnRe detects JoinColumn (foreign key) with args. Group 1 = arg string.
+	dctJoinColumnRe = regexp.MustCompile(
+		`(?s)(?:#\[ORM\\|@ORM\\)JoinColumn\s*\(([^)]*)\)`)
+
+	// dctJoinColumnNameRe extracts name= from JoinColumn args. Group 1 = column name.
+	dctJoinColumnNameRe = regexp.MustCompile(`\bname\s*[=:]\s*['"](\w+)['"]`)
+
+	// dctJoinColumnRefRe extracts referencedColumnName= from JoinColumn args. Group 1 = referenced col.
+	dctJoinColumnRefRe = regexp.MustCompile(`\breferencedColumnName\s*[=:]\s*['"](\w+)['"]`)
+
+	// dctJoinTableRe detects JoinTable attributes (many-to-many pivot table FK)
+	dctJoinTableRe = regexp.MustCompile(
+		`(?m)(?:#\[ORM\\|@ORM\\)JoinTable\s*\(`)
+
+	// dctFetchRe detects fetch="LAZY"|"EAGER"|"EXTRA_LAZY" on associations.
+	// Group 1 = fetch mode value.
+	dctFetchRe = regexp.MustCompile(
+		`(?m)\bfetch\s*[=:]\s*['"]?(LAZY|EAGER|EXTRA_LAZY)['"]?`)
 
 	// doctrineMigrationClassRe detects Doctrine migration class pattern
 	doctrineMigrationClassRe = regexp.MustCompile(
@@ -102,6 +135,11 @@ var (
 	// doctrineMigrationMethodRe detects migration up/down methods
 	doctrineMigrationMethodRe = regexp.MustCompile(
 		`(?m)public\s+function\s+(up|down|preUp|preDown|postUp|postDown)\s*\(`)
+
+	// dctAddSqlRe extracts SQL passed to $this->addSql('...') in migrations.
+	// Group 1 = SQL string content.
+	dctAddSqlRe = regexp.MustCompile(
+		`(?m)\$this->addSql\(\s*['"]([^'"]+)['"]`)
 )
 
 func (e *doctrineORMDataExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -130,36 +168,106 @@ func (e *doctrineORMDataExtractor) Extract(ctx context.Context, file extractor.F
 		return nil, nil
 	}
 
-	// 1. Schema: #[ORM\Column] / @ORM\Column followed by property → SCOPE.Schema/column
-	// doctrineColumnWithPropRe captures the property name that follows the annotation.
-	for _, m := range doctrineColumnWithPropRe.FindAllStringSubmatchIndex(src, -1) {
-		colName := src[m[2]:m[3]]
-		ent := makeEntity(colName, "SCOPE.Schema", "column", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_COLUMN")
+	// 1a. Schema: #[ORM\Entity] / @ORM\Entity → emit entity class name → SCOPE.Schema/entity
+	for _, m := range dctEntityWithClassRe.FindAllStringSubmatchIndex(src, -1) {
+		className := src[m[2]:m[3]]
+		ent := makeEntity(className, "SCOPE.Schema", "entity", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_ENTITY")
 		add(ent)
+	}
+
+	// 1b. Schema: #[ORM\Column] attribute or @ORM\Column annotation followed by property.
+	// We use two separate regexes: one for PHP8 attributes, one for docblock annotations.
+	dctEmitColumn := func(argsStr, colName string, offset int) {
+		colType := ""
+		if tm := dctColumnTypeRe.FindStringSubmatch(argsStr); tm != nil {
+			colType = tm[1]
+		}
+		ent := makeEntity(colName, "SCOPE.Schema", "column", file.Path, file.Language, lineOf(src, offset))
+		props := []string{"framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_COLUMN"}
+		if colType != "" {
+			props = append(props, "column_type", colType)
+		}
+		setProps(&ent, props...)
+		add(ent)
+	}
+	// PHP8 attribute style: #[ORM\Column(...)] \n <visibility> $prop
+	for _, m := range dctColumnAttrRe.FindAllStringSubmatchIndex(src, -1) {
+		argsStr := src[m[2]:m[3]]
+		colName := src[m[4]:m[5]]
+		dctEmitColumn(argsStr, colName, m[0])
+	}
+	// Docblock annotation style: @ORM\Column(...) */ \n <visibility> $prop
+	for _, m := range dctColumnAnnotRe.FindAllStringSubmatchIndex(src, -1) {
+		argsStr := src[m[2]:m[3]]
+		colName := src[m[4]:m[5]]
+		dctEmitColumn(argsStr, colName, m[0])
 	}
 
 	// 2. Relationship: OneToMany/ManyToOne/ManyToMany/OneToOne → SCOPE.Component/relation
-	for _, m := range doctrineRelationRe.FindAllStringSubmatchIndex(src, -1) {
+	// Also extracts targetEntity class name from attribute args.
+	for _, m := range dctRelationRe.FindAllStringSubmatchIndex(src, -1) {
 		relType := src[m[2]:m[3]]
+		argsStr := ""
+		if m[4] >= 0 {
+			argsStr = src[m[4]:m[5]]
+		}
+		targetEntity := ""
+		if tm := dctTargetEntityRe.FindStringSubmatch(argsStr); tm != nil {
+			if tm[1] != "" {
+				targetEntity = tm[1]
+			} else {
+				targetEntity = tm[2]
+			}
+		}
 		ent := makeEntity("relation:"+relType, "SCOPE.Component", "relation", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_RELATION",
-			"relation_type", relType)
+		props := []string{
+			"framework", "doctrine",
+			"provenance", "INFERRED_FROM_DOCTRINE_RELATION",
+			"relation_type", relType,
+		}
+		if targetEntity != "" {
+			props = append(props, "target_entity", targetEntity)
+		}
+		setProps(&ent, props...)
 		add(ent)
 	}
 
-	// 3. Foreign key: JoinColumn → SCOPE.Schema/foreign_key
-	for _, m := range doctrineFKRe.FindAllStringIndex(src, -1) {
-		ent := makeEntity("join_column", "SCOPE.Schema", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_FK")
+	// 3a. Foreign key: JoinColumn → SCOPE.Schema/foreign_key
+	// Extracts name and referencedColumnName when present.
+	for _, m := range dctJoinColumnRe.FindAllStringSubmatchIndex(src, -1) {
+		argsStr := ""
+		if m[2] >= 0 {
+			argsStr = src[m[2]:m[3]]
+		}
+		fkName := "join_column"
+		if nm := dctJoinColumnNameRe.FindStringSubmatch(argsStr); nm != nil {
+			fkName = "fk:" + nm[1]
+		}
+		props := []string{"framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_JOIN_COLUMN"}
+		if nm := dctJoinColumnNameRe.FindStringSubmatch(argsStr); nm != nil {
+			props = append(props, "fk_column", nm[1])
+		}
+		if rm := dctJoinColumnRefRe.FindStringSubmatch(argsStr); rm != nil {
+			props = append(props, "referenced_column", rm[1])
+		}
+		ent := makeEntity(fkName, "SCOPE.Schema", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, props...)
 		add(ent)
 	}
 
-	// 4. Lazy loading recognition: fetch="LAZY" → SCOPE.Pattern
-	for _, m := range doctrineLazyRe.FindAllStringSubmatchIndex(src, -1) {
+	// 3b. Foreign key: JoinTable → SCOPE.Schema/foreign_key (many-to-many pivot table)
+	for _, m := range dctJoinTableRe.FindAllStringIndex(src, -1) {
+		ent := makeEntity("join_table", "SCOPE.Schema", "foreign_key", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_JOIN_TABLE")
+		add(ent)
+	}
+
+	// 4. Fetch mode recognition: fetch=LAZY|EAGER|EXTRA_LAZY → SCOPE.Pattern/lazy_loading
+	for _, m := range dctFetchRe.FindAllStringSubmatchIndex(src, -1) {
 		fetchMode := src[m[2]:m[3]]
-		ent := makeEntity("lazy:"+fetchMode, "SCOPE.Pattern", "lazy_loading", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_LAZY",
+		ent := makeEntity("fetch:"+fetchMode, "SCOPE.Pattern", "lazy_loading", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_FETCH",
 			"fetch_mode", fetchMode)
 		add(ent)
 	}
@@ -178,6 +286,20 @@ func (e *doctrineORMDataExtractor) Extract(ctx context.Context, file extractor.F
 		ent := makeEntity("migration:"+method, "SCOPE.Operation", "migration_step", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_MIGRATION_METHOD",
 			"migration_direction", method)
+		add(ent)
+	}
+
+	// 7. Migration SQL: $this->addSql('CREATE TABLE ...') → SCOPE.Operation/migration_sql
+	for _, m := range dctAddSqlRe.FindAllStringSubmatchIndex(src, -1) {
+		sql := src[m[2]:m[3]]
+		// Use first 64 chars as entity name suffix to keep names manageable.
+		sqlName := sql
+		if len(sqlName) > 64 {
+			sqlName = sqlName[:64]
+		}
+		ent := makeEntity("sql:"+sqlName, "SCOPE.Operation", "migration_sql", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "doctrine", "provenance", "INFERRED_FROM_DOCTRINE_ADD_SQL",
+			"sql", sql)
 		add(ent)
 	}
 
