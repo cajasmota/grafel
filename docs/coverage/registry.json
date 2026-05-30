@@ -43796,15 +43796,15 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/validation.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/ruby/validation.go","internal/custom/ruby/validation_deep.go","internal/custom/ruby/validation_deep_test.go"],
+            "notes": "Deep Rails dto_extraction: params.require(:model).permit(...) now emits per-field sp_field:\u003cparam\u003e:\u003cfield\u003e entities (scalar/array/nested) with permit_type prop. with_options blocks supported. Value-asserting tests in validation_deep_test.go assert exact param+field+permit_type. Closes #3340.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/validation.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/ruby/validation.go","internal/custom/ruby/validation_deep.go","internal/custom/ruby/validation_deep_test.go"],
+            "notes": "Deep Rails request_validation: validates :field, validators with full option capture emits railsval:\u003cfield\u003e:\u003cvalidator\u003e entities with validator_options prop. Classic validates_*_of with options → railsval_classic:\u003cmacro\u003e:\u003cfield\u003e. with_options blocks → railsval_wo:\u003cfield\u003e:\u003cvalidator\u003e with inherited_options. Value-asserting tests assert exact attribute+validator+options. Closes #3340.",
             "verified_at": "2026-05-30"
           }
         },

@@ -429,6 +429,10 @@ func (e *rubyValidationExtractor) Extract(ctx context.Context, file extractor.Fi
 		}
 	}
 
+	// Deep Rails extraction: per-validator rule entities + per-field strong params.
+	// Called after the heuristic passes so both entity sets coexist.
+	railsValDeepExtract(src, file, add)
+
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
 }
