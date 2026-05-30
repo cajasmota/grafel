@@ -637,7 +637,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	var qVec []float32
 	var qHave bool
 	for _, r := range repos {
-		bm25Hits := r.BM25.Search(question, 10)
+		bm25Hits := r.getBM25().Search(question, 10)
 		bm25HitsByRepo[r] = len(bm25Hits)
 		if r.Semantic != nil && r.Semantic.Len() > 0 {
 			if !qHave {

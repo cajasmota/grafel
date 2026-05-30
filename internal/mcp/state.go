@@ -19,6 +19,8 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -205,12 +207,22 @@ func (l CrossRepoLink) EffectiveKind() string {
 
 // LoadedRepo is one repo's graph plus index plus mtime tracking.
 //
-// LabelIndex and BM25 are rebuilt eagerly when the graph file mtime changes.
+// LabelIndex is rebuilt eagerly when the graph file content changes (it is a
+// cheap O(N) map build — ~2% of reload cost — and is read directly by many
+// tools, so keeping it eager avoids a wide getter migration). BM25 is the
+// heavy index (~85% of reload cost: it tokenizes every entity's name, path,
+// docstring and discriminators) and is built LAZILY on first search-tool use
+// via getBM25() (#3377), then cached until the next reload re-arms bm25Once.
 // The derived traversal indexes (Adjacency, CallsAdj, StepAdj, ByID,
-// TopKPageRank) are built LAZILY on first use via the getter methods and
-// cached until the next reload re-arms them (#3367) — see the field block
+// TopKPageRank) are likewise built LAZILY on first use via the getter methods
+// and cached until the next reload re-arms them (#3367) — see the field block
 // below. This keeps the cheap-call path (whoami / stats / feedback_event)
-// off the heavy O(R) adjacency scan and the iterative PageRank sort entirely.
+// off the heavy O(R) adjacency scan, the iterative PageRank sort, and the
+// BM25 tokenization entirely.
+//
+// #3377: reload also skips the reparse + LabelIndex rebuild when the graph.fb
+// content hash is unchanged (see contentHash) — mtime churn from a no-op
+// reindex no longer pays the parse cost.
 //
 // S8 (#2159): Reader is an mmap'd fbreader.Reader kept open for the
 // lifetime of the cached slot. MCP query paths that only need to
@@ -252,6 +264,7 @@ type LoadedRepo struct {
 	stepOnce     sync.Once
 	byIDOnce     sync.Once
 	pagerankOnce sync.Once
+	bm25Once     sync.Once                // #3377: BM25 built lazily on first search
 	adjacency    *adjacency               // in/out neighbor lists (#1656)
 	callsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
 	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
@@ -260,7 +273,16 @@ type LoadedRepo struct {
 
 	semMtime time.Time
 	mtime    time.Time
-	loadErr  string // populated when last reload failed; doc may be stale
+	// contentHash is the FNV-1a hash of the graph.fb bytes last parsed into
+	// Doc (#3377). The live indexer rewrites graph.fb on every reindex, which
+	// bumps the mtime even when the serialized content is byte-identical (a
+	// no-op reindex, a `touch`, or an unchanged re-emit). When the freshly
+	// stat'd file's hash matches contentHash we SKIP the reparse + LabelIndex
+	// rebuild entirely and only advance mtime — a freshness-safe shortcut
+	// because identical bytes carry identical graph state. Empty until the
+	// first successful load.
+	contentHash uint64
+	loadErr     string // populated when last reload failed; doc may be stale
 }
 
 // resetIndexes re-arms every lazy-index sync.Once and clears the cached
@@ -277,6 +299,8 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.stepOnce = sync.Once{}
 	lr.byIDOnce = sync.Once{}
 	lr.pagerankOnce = sync.Once{}
+	lr.bm25Once = sync.Once{}
+	lr.BM25 = nil
 	lr.adjacency = nil
 	lr.callsAdj = nil
 	lr.stepAdj = nil
@@ -306,6 +330,24 @@ func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 		lr.byID = m
 	})
 	return lr.byID
+}
+
+// getBM25 returns the per-repo BM25 index, building it on first search-tool
+// use (#3377). BM25 construction tokenizes every entity (name, file path,
+// docstring, discriminators) and dominates reload cost (~85%); deferring it
+// keeps the cheap-call path and reloads off it entirely. Built at most once
+// per reload via bm25Once; resetIndexes() re-arms it against the fresh Doc.
+// Returns nil for a repo with no Doc (caller's BM25.Search handles nil).
+func (lr *LoadedRepo) getBM25() *BM25Index {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.bm25Once.Do(func() {
+		if lr.Doc == nil {
+			return
+		}
+		lr.BM25 = BuildBM25(lr.Doc)
+	})
+	return lr.BM25
 }
 
 // getAdjacency returns the in/out neighbor index, building it on first use.
@@ -593,48 +635,66 @@ func (s *State) reloadLocked() (int, bool, error) {
 			fileMtime := time.Unix(0, modtimeNs)
 			stateDir := daemon.StateDirForRepo(rEntry.Path)
 			if !(fileMtime.Equal(lr.mtime) && lr.Doc != nil) {
-				doc, err := readDocumentFromDir(stateDir)
-				if err != nil {
-					lr.loadErr = err.Error()
-					continue
-				}
-				// S8 (#2159): close the previous reader before replacing it so
-				// we don't leak mmap fds across reloads.
-				if lr.Reader != nil {
-					_ = lr.Reader.Close()
-					lr.Reader = nil
-				}
-				lr.Doc = doc
-				lr.mtime = fileMtime
-				lr.loadErr = ""
-				lr.LabelIndex = BuildLabelIndex(doc)
-				lr.BM25 = BuildBM25(doc)
-				// Re-arm the lazy derived indexes (Adjacency / CallsAdj / StepAdj /
-				// ByID / TopKPageRank). They are NO LONGER built eagerly here — the
-				// live indexer rewrites graph.fb constantly, so an eager rebuild on
-				// every reload imposed a ~400ms floor (dominated by the iterative
-				// TopKPageRank) on every MCP call, including cheap tools that read
-				// none of them. Each index is now built on first use by its getter
-				// and cached until the next reload re-arms the Once here (#3367).
-				lr.resetIndexes()
-				// TESTS-edge count cached once per reload so archigraph_whoami can
-				// return it in O(1) without rescanning all relationships. This is a
-				// cheap O(R) count with no allocation, so it stays eager (#3325).
-				testsCount := 0
-				for i := range doc.Relationships {
-					if doc.Relationships[i].Kind == "TESTS" {
-						testsCount++
+				// #3377 content-hash skip: the live indexer rewrites graph.fb on
+				// every reindex, bumping mtime even when the bytes are identical
+				// (no-op reindex / touch / unchanged re-emit). Hash the file
+				// first; if it matches the bytes we last parsed, advance mtime
+				// and skip the (heavy) reparse + LabelIndex rebuild entirely.
+				// This is freshness-safe: identical bytes ⇒ identical graph.
+				newHash, hErr := hashGraphFile(lr.GraphFile)
+				if hErr == nil && lr.contentHash != 0 && newHash == lr.contentHash {
+					// Identical bytes — advance mtime, skip the heavy reparse.
+					// No reload counted: nothing observable changed.
+					lr.mtime = fileMtime
+				} else {
+					doc, err := readDocumentFromDir(stateDir)
+					if err != nil {
+						lr.loadErr = err.Error()
+						continue
 					}
+					// S8 (#2159): close the previous reader before replacing it so
+					// we don't leak mmap fds across reloads.
+					if lr.Reader != nil {
+						_ = lr.Reader.Close()
+						lr.Reader = nil
+					}
+					lr.Doc = doc
+					lr.mtime = fileMtime
+					lr.contentHash = newHash // 0 on hash failure → next reload re-parses
+					lr.loadErr = ""
+					lr.LabelIndex = BuildLabelIndex(doc)
+					// BM25 is NO LONGER built eagerly here (#3377). It tokenizes every
+					// entity (name, path, docstring, discriminators) and dominated
+					// reload cost (~85%); it is now built lazily on first search-tool
+					// use via getBM25() and cached until resetIndexes() re-arms it.
+					// Re-arm the lazy derived indexes (BM25 / Adjacency / CallsAdj /
+					// StepAdj / ByID / TopKPageRank). They are NOT built eagerly here —
+					// the live indexer rewrites graph.fb constantly, so an eager
+					// rebuild on every reload imposed a ~400ms floor (dominated by
+					// BM25 tokenization and the iterative TopKPageRank) on every MCP
+					// call, including cheap tools that read none of them. Each index
+					// is built on first use by its getter and cached until the next
+					// reload re-arms the Once here (#3367, #3377).
+					lr.resetIndexes()
+					// TESTS-edge count cached once per reload so archigraph_whoami can
+					// return it in O(1) without rescanning all relationships. This is a
+					// cheap O(R) count with no allocation, so it stays eager (#3325).
+					testsCount := 0
+					for i := range doc.Relationships {
+						if doc.Relationships[i].Kind == "TESTS" {
+							testsCount++
+						}
+					}
+					lr.TestsEdgeCount = testsCount
+					// S8 (#2159): open the mmap reader alongside the Document.
+					// Best-effort: failures leave Reader nil; callers fall back to
+					// doc.Entities / doc.Relationships.
+					fbPath := filepath.Join(stateDir, "graph.fb")
+					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
+						lr.Reader = rdr
+					}
+					reloaded++
 				}
-				lr.TestsEdgeCount = testsCount
-				// S8 (#2159): open the mmap reader alongside the Document.
-				// Best-effort: failures leave Reader nil; callers fall back to
-				// doc.Entities / doc.Relationships.
-				fbPath := filepath.Join(stateDir, "graph.fb")
-				if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
-					lr.Reader = rdr
-				}
-				reloaded++
 			}
 			// Refresh the semantic vector sidecar independently of the
 			// graph mtime — embeddings.bin may be written after the graph
@@ -728,8 +788,32 @@ func (s *State) Close() {
 // readDocumentFromDir loads a graph document from a state directory.
 // Delegates to graph.LoadGraphFromDir which prefers graph.fb over graph.json
 // (ADR-0016, issue #808).
-func readDocumentFromDir(stateDir string) (*graph.Document, error) {
+// readDocumentFromDir is a package var (not a plain func) so tests can wrap it
+// with a parse counter to assert the #3377 content-hash skip avoids reparsing.
+var readDocumentFromDir = func(stateDir string) (*graph.Document, error) {
 	return graph.LoadGraphFromDir(stateDir)
+}
+
+// hashGraphFile streams the graph file at path through FNV-1a (64-bit) and
+// returns the content hash (#3377). Used to detect no-op reindexes: when the
+// hash matches the bytes last parsed into Doc, reload skips the reparse +
+// LabelIndex rebuild. Streaming (io.Copy) avoids loading the whole file into a
+// heap buffer; FNV-1a is non-cryptographic and fast — collision risk on a
+// graph.fb is negligible for an in-process freshness check, and a (vanishingly
+// unlikely) collision degrades only to a missed reload that the next genuine
+// mtime+content change repairs. Returns a non-nil error on open/read failure,
+// in which case the caller treats content as changed and reparses.
+func hashGraphFile(path string) (uint64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	h := fnv.New64a()
+	if _, err := io.Copy(h, f); err != nil {
+		return 0, err
+	}
+	return h.Sum64(), nil
 }
 
 // readDocument loads a graph document from disk. It receives the
