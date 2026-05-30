@@ -826,6 +826,67 @@ records:
               functions: [TestTestsEdges_MultiHopViaHttpClient, TestMultiHop_UpvatePattern, TestSynthesiseRoutesToFromEndpoints_DRFPattern]
           issues_implemented: ["3051", "2987"]
           verified_at: "2026-05-29"
+      Uncategorized:
+        form_field_type_introspection:
+          # #3346: Django Form/ModelForm class bodies are scanned for field
+          # assignments (CharField, IntegerField, EmailField, …).  Each field
+          # emits a SCOPE.Schema/form_field entity with field_type + form_class
+          # properties.  A summary SCOPE.Schema/form_class entity lists all
+          # field_names/field_types on the class.  Module prefix stripped so
+          # "forms.CharField" records as "CharField".
+          status: full
+          symbols:
+            - file: internal/custom/python/django.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+              functions: [TestDjango_FormFieldTypeIntrospection, TestDjango_ModelFormFieldIntrospection]
+          issues_implemented: ["3346"]
+          verified_at: "2026-05-30"
+        serializer_method_field_inference:
+          # #3346: For each DRF serializer class, SerializerMethodField assignments
+          # are paired with their get_<field> getter methods.  The return type from
+          # the PEP-3107 annotation (-> str, -> bool, etc.) is extracted and stored
+          # as return_type on the SCOPE.Schema/serializer_field entity.  Works even
+          # when annotation is absent (return_type left blank).
+          status: full
+          symbols:
+            - file: internal/custom/python/django.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+              functions: [TestDRF_SerializerMethodField, TestDRF_SerializerMethodField_NoAnnotation]
+          issues_implemented: ["3346"]
+          verified_at: "2026-05-30"
+        middleware_settings_parser:
+          # #3346: MIDDLEWARE = [...] in settings.py (and MIDDLEWARE += [...] override
+          # files) is parsed.  All dotted middleware class paths are collected into a
+          # single SCOPE.Config/middleware_list entity whose middleware_list property
+          # holds the comma-separated list.  Handles multi-line bracket lists.
+          status: full
+          symbols:
+            - file: internal/custom/python/django.go
+              functions: [Extract, extractBalancedBrackets]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+              functions: [TestDjango_MiddlewareSettingsParser]
+          issues_implemented: ["3346"]
+          verified_at: "2026-05-30"
+        drf_default_auth_throttle_settings:
+          # #3346: REST_FRAMEWORK = { "DEFAULT_AUTHENTICATION_CLASSES": [...],
+          # "DEFAULT_THROTTLE_CLASSES": [...] } is parsed from Django settings files.
+          # Each key emits a SCOPE.Config/drf_setting entity listing the dotted class
+          # paths in the classes property.  Companion to the per-endpoint
+          # auth_coverage cell.
+          status: full
+          symbols:
+            - file: internal/custom/python/django.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+              functions: [TestDRF_DefaultAuthAndThrottleClasses]
+          issues_implemented: ["3346"]
+          verified_at: "2026-05-30"
 
   lang.python.framework.flask:
     capabilities:
@@ -923,6 +984,21 @@ records:
               functions: [Extract]
           issues_implemented: ["2977"]
           verified_at: "2026-05-29"
+      Uncategorized:
+        validate_on_submit_detection:
+          # #3346: Flask-WTF form.validate_on_submit() call sites are detected in
+          # route handler bodies.  Each distinct form variable emits a
+          # SCOPE.Pattern/form_submit entity with form_var property.  Multiple
+          # calls to the same variable in the same file are de-duplicated.
+          status: full
+          symbols:
+            - file: internal/custom/python/flask.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+              functions: [TestFlask_ValidateOnSubmit, TestFlask_ValidateOnSubmit_MultipleVars]
+          issues_implemented: ["3346"]
+          verified_at: "2026-05-30"
       Testing:
         tests_linkage:
           status: full
@@ -12700,6 +12776,26 @@ records:
             - file: internal/custom/python/dramatiq_routing_test.go
               functions: [TestDramatiq_TaskRouting_GoldenFixture, TestDramatiq_TaskRouting_DecoratorQueueName, TestDramatiq_TaskRouting_SendWithOptionsOverride, TestDramatiq_TaskRouting_NoQueueNameNoMarker]
           issues_implemented: ["3193"]
+          verified_at: "2026-05-30"
+
+  lang.python.framework.celery:
+    capabilities:
+      Uncategorized:
+        tests_edges_via_delay_apply:
+          # #3346: pytest test functions that call task.delay(), task.apply_async(),
+          # or task.apply() in their bodies receive TESTS → Task:<task_ref>
+          # relationship records.  The task reference is the variable name used at
+          # the call site (e.g. send_email.delay() → Task:send_email).  Only
+          # top-level test_* functions are scanned (not class methods — covered by
+          # the generic tests_linkage engine pass).
+          status: full
+          symbols:
+            - file: internal/custom/python/pytest.go
+              functions: [Extract, extractTestFuncBody]
+          tests:
+            - file: internal/custom/python/extractors_test.go
+              functions: [TestCelery_TestsEdges, TestCelery_TestsEdges_Apply, TestCelery_TestsEdges_NoFalsePositive]
+          issues_implemented: ["3346"]
           verified_at: "2026-05-30"
 
   lang.jsts.orm.knex:

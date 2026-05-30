@@ -126,6 +126,12 @@ subcategories:
       - trace_extraction
       - log_extraction
       - metric_extraction
+      - form_field_type_introspection
+      - serializer_method_field_inference
+      - middleware_settings_parser
+      - drf_default_auth_throttle_settings
+      - validate_on_submit_detection
+      - tests_edges_via_delay_apply
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction]
@@ -493,6 +499,7 @@ subcategories:
       - result_backend_binding
       - retry_policy_extraction
       - tests_linkage
+      - tests_edges_via_delay_apply
       - constant_propagation
       - env_fallback_recognition
       - import_resolution_quality

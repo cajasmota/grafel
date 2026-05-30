@@ -43,6 +43,11 @@ var (
 	flAppConfigAssignRe = regexp.MustCompile(`(?m)(\w+)\.config\s*\[\s*["']([A-Z_][A-Z0-9_]*)["']`)
 	flAppConfigFromRe   = regexp.MustCompile(`(?m)(\w+)\.config\.(from_object|from_envvar|from_pyfile|from_mapping)\s*\(`)
 	flCLICommandRe      = regexp.MustCompile(`(?m)@(\w+)\.cli\.command\s*\(\s*(?:["']([^"']*)["'])?\s*[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+
+	// Flask-WTF form.validate_on_submit() detection (issue #3346).
+	// Matches: if form.validate_on_submit(): or result = form.validate_on_submit()
+	// Captures the form variable name and the enclosing function if available.
+	flValidateOnSubmitRe = regexp.MustCompile(`(?m)\b(\w+)\.validate_on_submit\s*\(\s*\)`)
 )
 
 func (e *FlaskExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -186,6 +191,24 @@ func (e *FlaskExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		line := lineOf(source, idx[0])
 		out = append(out, entity(cmdName, "SCOPE.Operation", "function", file.Path, line,
 			map[string]string{"framework": "flask", "pattern_type": "cli_command", "func_name": funcName}))
+	}
+
+	// 13. Flask-WTF form.validate_on_submit() detection (issue #3346).
+	// De-duplicate: only emit one entity per distinct form variable per file.
+	seenVOS := map[string]bool{}
+	for _, idx := range allMatchesIndex(flValidateOnSubmitRe, source) {
+		formVar := source[idx[2]:idx[3]]
+		if seenVOS[formVar] {
+			continue
+		}
+		seenVOS[formVar] = true
+		line := lineOf(source, idx[0])
+		out = append(out, entity(formVar+".validate_on_submit", "SCOPE.Pattern", "form_submit", file.Path, line,
+			map[string]string{
+				"framework":    "flask",
+				"pattern_type": "validate_on_submit",
+				"form_var":     formVar,
+			}))
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(out)))

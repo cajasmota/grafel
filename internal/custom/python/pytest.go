@@ -12,6 +12,19 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+// extractTestFuncBody returns the body text of a function starting at bodyStart
+// (i.e. the byte offset just after the def line's colon). It stops at the next
+// top-level definition or EOF.
+func extractTestFuncBody(source string, bodyStart int) string {
+	rest := source[bodyStart:]
+	// Top-level code starts at indent 0 with non-whitespace.
+	nextToplevel := regexp.MustCompile(`(?m)^\S`).FindStringIndex(rest)
+	if nextToplevel != nil {
+		return rest[:nextToplevel[0]]
+	}
+	return rest
+}
+
 func init() {
 	extractor.Register("python_pytest", &PytestExtractor{})
 }
@@ -35,6 +48,11 @@ var (
 	ptFixtureAutouseRe = regexp.MustCompile(`autouse\s*=\s*(True|False)`)
 	ptParametrizeRe    = regexp.MustCompile(`@pytest\.mark\.parametrize\s*\(\s*["']([^"']+)["']`)
 	ptMarkCustomRe     = regexp.MustCompile(`@pytest\.mark\.(\w+)\s*(?:\([^)]*\))?`)
+
+	// Celery TESTS edges: task.delay() / task.apply() / task.apply_async() call
+	// sites inside test functions → TESTS edge from test to task (issue #3346).
+	ptCeleryCallRe = regexp.MustCompile(
+		`(?m)\b(\w+)\.(delay|apply_async|apply)\s*\(`)
 )
 
 var ptSkipMarks = map[string]bool{"fixture": true, "parametrize": true, "usefixtures": true}
@@ -148,7 +166,25 @@ func (e *PytestExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		if parametrized {
 			props["parametrized"] = "true"
 		}
-		out = append(out, entity(funcName, "SCOPE.Operation", "function", file.Path, line, props))
+		ent := entity(funcName, "SCOPE.Operation", "function", file.Path, line, props)
+
+		// Celery TESTS edges: scan this test body for .delay()/.apply_async()/.apply() call
+		// sites and emit a TESTS relationship from the test function to the task (issue #3346).
+		funcBody := extractTestFuncBody(source, idx[1])
+		for _, cIdx := range allMatchesIndex(ptCeleryCallRe, funcBody) {
+			taskRef := funcBody[cIdx[2]:cIdx[3]]
+			callKind := funcBody[cIdx[4]:cIdx[5]]
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				ToID: "Task:" + taskRef,
+				Kind: "TESTS",
+				Properties: map[string]string{
+					"framework": "celery",
+					"call_kind": callKind,
+				},
+			})
+		}
+
+		out = append(out, ent)
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(out)))

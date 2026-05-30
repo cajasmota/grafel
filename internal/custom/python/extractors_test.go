@@ -2779,15 +2779,15 @@ func TestMarshmallow_FullFixture(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"schema_AddressSchema":        false, // schema_class
-		"schema_UserSchema":           false, // schema_class
-		"schema_OrderSchema":          false, // schema_class
-		"nested_address":              false, // nested_field (AddressSchema)
-		"nested_orders":               false, // nested_field (OrderSchema, many)
-		"validate_validate_email":     false, // @validates("email")
+		"schema_AddressSchema":              false, // schema_class
+		"schema_UserSchema":                 false, // schema_class
+		"schema_OrderSchema":                false, // schema_class
+		"nested_address":                    false, // nested_field (AddressSchema)
+		"nested_orders":                     false, // nested_field (OrderSchema, many)
+		"validate_validate_email":           false, // @validates("email")
 		"validate_schema_validate_name_age": false, // @validates_schema
-		"coerce_make_user":            false, // @post_load
-		"coerce_normalize_amount":     false, // @pre_load
+		"coerce_make_user":                  false, // @post_load
+		"coerce_normalize_amount":           false, // @pre_load
 	}
 	for _, e := range ents {
 		if _, tracked := want[e.Name]; tracked {
@@ -3029,9 +3029,9 @@ func TestAttrs_Constraint_FullFixture(t *testing.T) {
 
 	// street/city use instance_of(str); status uses in_(); quantity uses and_().
 	want := map[string]bool{
-		"constraint_street": false, // instance_of(str)
-		"constraint_city":   false, // instance_of(str)
-		"constraint_status": false, // in_(["active", ...])
+		"constraint_street":   false, // instance_of(str)
+		"constraint_city":     false, // instance_of(str)
+		"constraint_status":   false, // in_(["active", ...])
 		"constraint_quantity": false, // and_(...)
 	}
 	for _, e := range ents {
@@ -3076,11 +3076,11 @@ func TestAttrs_FullFixture(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"schema_Address":          false, // @attr.s class
-		"schema_User":             false, // @attrs.define class
-		"schema_Order":            false, // @define class
-		"validate_validate_email": false, // @email.validator
-		"validate_validate_age":   false, // @age.validator
+		"schema_Address":           false, // @attr.s class
+		"schema_User":              false, // @attrs.define class
+		"schema_Order":             false, // @define class
+		"validate_validate_email":  false, // @email.validator
+		"validate_validate_age":    false, // @age.validator
 		"validate_validate_amount": false, // @amount.validator
 	}
 	for _, e := range ents {
@@ -3835,5 +3835,410 @@ func TestTortoiseRel_Fixture(t *testing.T) {
 	}
 	if revCount < 1 {
 		t.Errorf("expected >=1 reverse_relation entity, got %d", revCount)
+	}
+}
+
+// ============================================================================
+// Issue #3346 deepening tests
+// ============================================================================
+
+// ---- Django per-field Form type introspection ----
+
+// TestDjango_FormFieldTypeIntrospection verifies that CharField/IntegerField/etc.
+// assignments inside a Form or ModelForm class are extracted as form_field entities
+// with the correct field_type property (issue #3346).
+func TestDjango_FormFieldTypeIntrospection(t *testing.T) {
+	src := `from django import forms
+
+class ContactForm(forms.Form):
+    name = forms.CharField(max_length=100)
+    age = forms.IntegerField(min_value=0)
+    email = forms.EmailField(required=False)
+`
+	ents := extract(t, "python_django", src)
+
+	type fieldCheck struct {
+		name      string
+		fieldType string
+	}
+	want := []fieldCheck{
+		{"ContactForm.name", "CharField"},
+		{"ContactForm.age", "IntegerField"},
+		{"ContactForm.email", "EmailField"},
+	}
+	byName := map[string]extractResult{}
+	for _, e := range ents {
+		byName[e.Name] = e
+	}
+	for _, w := range want {
+		e, ok := byName[w.name]
+		if !ok {
+			t.Errorf("expected form_field entity %q, not found (got %v)", w.name, byName)
+			continue
+		}
+		if e.Props["pattern_type"] != "form_field" {
+			t.Errorf("%q: expected pattern_type=form_field, got %q", w.name, e.Props["pattern_type"])
+		}
+		if e.Props["field_type"] != w.fieldType {
+			t.Errorf("%q: expected field_type=%q, got %q", w.name, w.fieldType, e.Props["field_type"])
+		}
+	}
+
+	// form_class summary entity must also be present.
+	formClass, ok := byName["ContactForm"]
+	if !ok {
+		t.Fatal("expected form_class summary entity ContactForm")
+	}
+	if formClass.Props["pattern_type"] != "form_class" {
+		t.Errorf("ContactForm: expected pattern_type=form_class, got %q", formClass.Props["pattern_type"])
+	}
+	if !strings.Contains(formClass.Props["field_names"], "name") {
+		t.Errorf("ContactForm: expected field_names to contain 'name', got %q", formClass.Props["field_names"])
+	}
+}
+
+// TestDjango_ModelFormFieldIntrospection tests form_field extraction from a ModelForm.
+func TestDjango_ModelFormFieldIntrospection(t *testing.T) {
+	src := `from django import forms
+
+class UserProfileForm(forms.ModelForm):
+    username = forms.CharField(max_length=50)
+    birth_date = forms.DateField()
+`
+	ents := extract(t, "python_django", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "UserProfileForm.username" && e.Props["field_type"] == "CharField" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected UserProfileForm.username form_field with field_type=CharField")
+	}
+}
+
+// ---- Django MIDDLEWARE settings-list parser ----
+
+// TestDjango_MiddlewareSettingsParser verifies that MIDDLEWARE = [...] in settings.py
+// is extracted as a middleware_settings config entity with the list of middleware
+// dotted-paths (issue #3346).
+func TestDjango_MiddlewareSettingsParser(t *testing.T) {
+	src := `# Django settings
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "myapp.middleware.RequestLoggingMiddleware",
+]
+`
+	ents := extract(t, "python_django", src)
+	var mwEnt *extractResult
+	for i := range ents {
+		if ents[i].Props["pattern_type"] == "middleware_settings" {
+			mwEnt = &ents[i]
+			break
+		}
+	}
+	if mwEnt == nil {
+		t.Fatal("expected middleware_settings entity from MIDDLEWARE = [...]")
+	}
+	if mwEnt.Name != "MIDDLEWARE" {
+		t.Errorf("expected entity name MIDDLEWARE, got %q", mwEnt.Name)
+	}
+	if mwEnt.Kind != "SCOPE.Config" {
+		t.Errorf("expected kind SCOPE.Config, got %q", mwEnt.Kind)
+	}
+	mwList := mwEnt.Props["middleware_list"]
+	for _, expected := range []string{
+		"django.middleware.security.SecurityMiddleware",
+		"myapp.middleware.RequestLoggingMiddleware",
+	} {
+		if !strings.Contains(mwList, expected) {
+			t.Errorf("middleware_list missing %q; got %q", expected, mwList)
+		}
+	}
+}
+
+// ---- DRF SerializerMethodField return-type inference ----
+
+// TestDRF_SerializerMethodField verifies that a SerializerMethodField and its getter
+// method are extracted with the return type inferred from the annotation (issue #3346).
+func TestDRF_SerializerMethodField(t *testing.T) {
+	src := `from rest_framework import serializers
+
+class UserSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+    is_active = serializers.SerializerMethodField()
+
+    def get_full_name(self, obj) -> str:
+        return f"{obj.first_name} {obj.last_name}"
+
+    def get_is_active(self, obj) -> bool:
+        return obj.status == "active"
+`
+	ents := extract(t, "python_django", src)
+	byName := map[string]extractResult{}
+	for _, e := range ents {
+		byName[e.Name] = e
+	}
+	fnEnt, ok := byName["UserSerializer.full_name"]
+	if !ok {
+		t.Fatal("expected UserSerializer.full_name serializer_field entity")
+	}
+	if fnEnt.Props["pattern_type"] != "serializer_method_field" {
+		t.Errorf("expected pattern_type=serializer_method_field, got %q", fnEnt.Props["pattern_type"])
+	}
+	if fnEnt.Props["return_type"] != "str" {
+		t.Errorf("expected return_type=str, got %q", fnEnt.Props["return_type"])
+	}
+	if fnEnt.Props["getter"] != "get_full_name" {
+		t.Errorf("expected getter=get_full_name, got %q", fnEnt.Props["getter"])
+	}
+
+	iaEnt, ok := byName["UserSerializer.is_active"]
+	if !ok {
+		t.Fatal("expected UserSerializer.is_active serializer_field entity")
+	}
+	if iaEnt.Props["return_type"] != "bool" {
+		t.Errorf("expected return_type=bool, got %q", iaEnt.Props["return_type"])
+	}
+}
+
+// TestDRF_SerializerMethodField_NoAnnotation verifies extraction still works
+// when the getter method has no return type annotation.
+func TestDRF_SerializerMethodField_NoAnnotation(t *testing.T) {
+	src := `from rest_framework import serializers
+
+class OrderSerializer(serializers.ModelSerializer):
+    total_display = serializers.SerializerMethodField()
+
+    def get_total_display(self, obj):
+        return f"${obj.total:.2f}"
+`
+	ents := extract(t, "python_django", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "OrderSerializer.total_display" && e.Props["pattern_type"] == "serializer_method_field" {
+			found = true
+			// No return_type expected when annotation is absent.
+			if e.Props["return_type"] != "" {
+				t.Errorf("expected empty return_type for unannotated getter, got %q", e.Props["return_type"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected OrderSerializer.total_display entity even without return type annotation")
+	}
+}
+
+// ---- DRF DEFAULT_AUTHENTICATION_CLASSES / DEFAULT_THROTTLE_CLASSES ----
+
+// TestDRF_DefaultAuthAndThrottleClasses verifies that REST_FRAMEWORK = {...} in
+// settings is parsed to extract DEFAULT_AUTHENTICATION_CLASSES and
+// DEFAULT_THROTTLE_CLASSES as SCOPE.Config/drf_setting entities (issue #3346).
+func TestDRF_DefaultAuthAndThrottleClasses(t *testing.T) {
+	src := `REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+}
+`
+	ents := extract(t, "python_django", src)
+	byName := map[string]extractResult{}
+	for _, e := range ents {
+		byName[e.Name] = e
+	}
+	authEnt, ok := byName["DEFAULT_AUTHENTICATION_CLASSES"]
+	if !ok {
+		t.Fatal("expected DEFAULT_AUTHENTICATION_CLASSES drf_setting entity")
+	}
+	if authEnt.Props["setting_key"] != "DEFAULT_AUTHENTICATION_CLASSES" {
+		t.Errorf("setting_key mismatch: %q", authEnt.Props["setting_key"])
+	}
+	if !strings.Contains(authEnt.Props["classes"], "JWTAuthentication") {
+		t.Errorf("expected JWTAuthentication in classes, got %q", authEnt.Props["classes"])
+	}
+	if !strings.Contains(authEnt.Props["classes"], "SessionAuthentication") {
+		t.Errorf("expected SessionAuthentication in classes, got %q", authEnt.Props["classes"])
+	}
+
+	throttleEnt, ok := byName["DEFAULT_THROTTLE_CLASSES"]
+	if !ok {
+		t.Fatal("expected DEFAULT_THROTTLE_CLASSES drf_setting entity")
+	}
+	if !strings.Contains(throttleEnt.Props["classes"], "AnonRateThrottle") {
+		t.Errorf("expected AnonRateThrottle in classes, got %q", throttleEnt.Props["classes"])
+	}
+}
+
+// ---- Flask-WTF validate_on_submit() ----
+
+// TestFlask_ValidateOnSubmit verifies that form.validate_on_submit() call sites
+// are detected and emitted as SCOPE.Pattern/form_submit entities (issue #3346).
+func TestFlask_ValidateOnSubmit(t *testing.T) {
+	src := `from flask import render_template, redirect
+from flask_wtf import FlaskForm
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    form = LoginForm()
+    if form.validate_on_submit():
+        return redirect("/dashboard")
+    return render_template("login.html", form=form)
+`
+	ents := extract(t, "python_flask", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "validate_on_submit" && e.Props["form_var"] == "form" {
+			found = true
+			if e.Name != "form.validate_on_submit" {
+				t.Errorf("expected entity name 'form.validate_on_submit', got %q", e.Name)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected validate_on_submit entity for 'form.validate_on_submit()'")
+	}
+}
+
+// TestFlask_ValidateOnSubmit_MultipleVars verifies that multiple distinct form
+// variables in the same file each get their own entity, with deduplication for
+// repeated calls to the same variable.
+func TestFlask_ValidateOnSubmit_MultipleVars(t *testing.T) {
+	src := `@app.route("/register", methods=["GET", "POST"])
+def register():
+    reg_form = RegisterForm()
+    if reg_form.validate_on_submit():
+        pass
+    # second call same var — must not duplicate
+    if reg_form.validate_on_submit():
+        pass
+
+@app.route("/profile", methods=["POST"])
+def profile():
+    prof_form = ProfileForm()
+    if prof_form.validate_on_submit():
+        pass
+`
+	ents := extract(t, "python_flask", src)
+	votCount := 0
+	vars := map[string]bool{}
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "validate_on_submit" {
+			votCount++
+			vars[e.Props["form_var"]] = true
+		}
+	}
+	if votCount != 2 {
+		t.Fatalf("expected 2 distinct validate_on_submit entities (dedup same var), got %d", votCount)
+	}
+	if !vars["reg_form"] {
+		t.Error("expected entity for reg_form.validate_on_submit")
+	}
+	if !vars["prof_form"] {
+		t.Error("expected entity for prof_form.validate_on_submit")
+	}
+}
+
+// ---- Celery TESTS edges ----
+
+// TestCelery_TestsEdges verifies that a pytest test function calling task.delay() or
+// task.apply_async() emits a TESTS relationship to the task (issue #3346).
+func TestCelery_TestsEdges(t *testing.T) {
+	src := `import pytest
+from myapp.tasks import send_email, process_order
+
+def test_send_email_task():
+    result = send_email.delay("user@example.com", "Hello")
+    assert result is not None
+
+def test_process_order_task():
+    result = process_order.apply_async(args=[42], countdown=10)
+    assert result.id
+`
+	ents := extract(t, "python_pytest", src)
+	byName := map[string]extractResult{}
+	for _, e := range ents {
+		byName[e.Name] = e
+	}
+
+	sendTest, ok := byName["test_send_email_task"]
+	if !ok {
+		t.Fatal("expected entity test_send_email_task")
+	}
+	foundDelay := false
+	for _, r := range sendTest.Rels {
+		if r.Kind == "TESTS" && r.ToID == "Task:send_email" {
+			foundDelay = true
+		}
+	}
+	if !foundDelay {
+		t.Errorf("test_send_email_task: expected TESTS → Task:send_email (via .delay()), got rels: %+v", sendTest.Rels)
+	}
+
+	processTest, ok := byName["test_process_order_task"]
+	if !ok {
+		t.Fatal("expected entity test_process_order_task")
+	}
+	foundApply := false
+	for _, r := range processTest.Rels {
+		if r.Kind == "TESTS" && r.ToID == "Task:process_order" {
+			foundApply = true
+		}
+	}
+	if !foundApply {
+		t.Errorf("test_process_order_task: expected TESTS → Task:process_order (via .apply_async()), got rels: %+v", processTest.Rels)
+	}
+}
+
+// TestCelery_TestsEdges_Apply verifies task.apply() also produces a TESTS edge.
+func TestCelery_TestsEdges_Apply(t *testing.T) {
+	src := `def test_sync_task():
+    result = my_task.apply(args=[1, 2])
+    assert result.result == 3
+`
+	ents := extract(t, "python_pytest", src)
+	var testEnt *extractResult
+	for i := range ents {
+		if ents[i].Name == "test_sync_task" {
+			testEnt = &ents[i]
+			break
+		}
+	}
+	if testEnt == nil {
+		t.Fatal("expected entity test_sync_task")
+	}
+	found := false
+	for _, r := range testEnt.Rels {
+		if r.Kind == "TESTS" && r.ToID == "Task:my_task" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected TESTS → Task:my_task (via .apply()), got rels: %+v", testEnt.Rels)
+	}
+}
+
+// TestCelery_TestsEdges_NoFalsePositive verifies that non-task method calls like
+// obj.apply_async() where there is no known task reference do not emit bogus TESTS
+// edges, and that non-test functions are unaffected.
+func TestCelery_TestsEdges_NoFalsePositive(t *testing.T) {
+	// A helper function (not a test_* function) should not have TESTS edges.
+	src := `def helper_function():
+    result = my_task.delay(42)
+    return result
+`
+	ents := extract(t, "python_pytest", src)
+	// python_pytest only extracts test_* functions — helper_function is not extracted.
+	for _, e := range ents {
+		if e.Name == "helper_function" {
+			t.Fatalf("pytest extractor should not emit entity for non-test_ function")
+		}
 	}
 }

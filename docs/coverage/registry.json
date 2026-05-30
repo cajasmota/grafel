@@ -37630,6 +37630,13 @@
             "notes": "vulnerability_finding derives from taint_source+taint_sink co-occurrence (taint_flow.go); fires on all Python; partial for task queue context",
             "verified_at": "2026-05-29"
           }
+        },
+        "Uncategorized": {
+          "tests_edges_via_delay_apply": {
+            "status": "full",
+            "cites": ["internal/custom/python/extractors_test.go","internal/custom/python/pytest.go"],
+            "verified_at": "2026-05-30"
+          }
         }
       }
     },
@@ -38346,6 +38353,28 @@
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
             "issue": "3045",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Uncategorized": {
+          "drf_default_auth_throttle_settings": {
+            "status": "full",
+            "cites": ["internal/custom/python/django.go","internal/custom/python/extractors_test.go"],
+            "verified_at": "2026-05-30"
+          },
+          "form_field_type_introspection": {
+            "status": "full",
+            "cites": ["internal/custom/python/django.go","internal/custom/python/extractors_test.go"],
+            "verified_at": "2026-05-30"
+          },
+          "middleware_settings_parser": {
+            "status": "full",
+            "cites": ["internal/custom/python/django.go","internal/custom/python/extractors_test.go"],
+            "verified_at": "2026-05-30"
+          },
+          "serializer_method_field_inference": {
+            "status": "full",
+            "cites": ["internal/custom/python/django.go","internal/custom/python/extractors_test.go"],
+            "verified_at": "2026-05-30"
           }
         }
       },
@@ -39268,6 +39297,13 @@
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_python.go"],
             "issue": "3045",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Uncategorized": {
+          "validate_on_submit_detection": {
+            "status": "full",
+            "cites": ["internal/custom/python/extractors_test.go","internal/custom/python/flask.go"],
+            "verified_at": "2026-05-30"
           }
         }
       }

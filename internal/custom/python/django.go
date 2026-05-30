@@ -55,6 +55,35 @@ var (
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:(?:models\.)?(?:Manager|QuerySet)|BaseManager)[^)]*\)\s*:`)
 	djangoLoginRequiredRe = regexp.MustCompile(`(?m)@login_required\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 	djangoPermRequiredRe  = regexp.MustCompile(`(?m)@permission_required\s*\(\s*["']?([^)"']+)["']?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+
+	// Form / ModelForm field type introspection (issue #3346).
+	// Matches class Foo(forms.Form) / forms.ModelForm etc.
+	djangoFormClassBodyRe = regexp.MustCompile(
+		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:forms\.)?(?:ModelForm|Form|BaseForm)[^)]*\)\s*:`)
+	// field = CharField(...) / IntegerField(...) / etc. — 4-space indented body line.
+	djangoFormFieldRe = regexp.MustCompile(
+		`(?m)^\s{4,}(\w+)\s*=\s*([\w.]*(?:Char|Integer|Float|Decimal|Boolean|Date|DateTime|Time|Email|URL|Slug|UUID|IP|File|Image|Choice|Multiple|Typed|Null|Model|Combo|Hidden|Multi|Split|Regex|GenericIP|NullBoolean|Duration|Json|Float)Field)\s*\(`)
+
+	// MIDDLEWARE settings-list parser (issue #3346).
+	// Matches: MIDDLEWARE = [ "...", "..." ] across multiple lines.
+	djangoMiddlewareSettingRe = regexp.MustCompile(
+		`(?m)^MIDDLEWARE\s*(?:\+?=)\s*\[`)
+	djangoMiddlewareItemRe = regexp.MustCompile(`["']([A-Za-z][\w.]+)["']`)
+
+	// DRF SerializerMethodField return-type inference (issue #3346).
+	// class FooSerializer → field = SerializerMethodField() → def get_field(self) -> ReturnType
+	djangoDRFSMFRe = regexp.MustCompile(
+		`(?m)^\s{4,}(\w+)\s*=\s*(?:serializers\.)?SerializerMethodField\s*\(`)
+	djangoDRFSMFGetterRe = regexp.MustCompile(
+		`(?m)^\s{4,}def\s+(get_\w+)\s*\([^)]*\)\s*(?:->\s*([\w\[\], |]+?))?\s*:`)
+
+	// DRF DEFAULT_AUTHENTICATION_CLASSES / DEFAULT_THROTTLE_CLASSES (issue #3346).
+	// Matches REST_FRAMEWORK = { "DEFAULT_AUTHENTICATION_CLASSES": [...] }
+	djangoDRFRestFrameworkRe = regexp.MustCompile(
+		`(?ms)REST_FRAMEWORK\s*=\s*\{(.+?)\}`)
+	djangoDRFAuthClassesRe     = regexp.MustCompile(`["']DEFAULT_AUTHENTICATION_CLASSES["']\s*:\s*\[([^\]]*)\]`)
+	djangoDRFThrottleClassesRe = regexp.MustCompile(`["']DEFAULT_THROTTLE_CLASSES["']\s*:\s*\[([^\]]*)\]`)
+	djangoDRFClassItemRe       = regexp.MustCompile(`["']([A-Za-z][\w.]+)["']`)
 )
 
 func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -390,8 +419,163 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			map[string]string{"framework": "django", "pattern_type": "view_decorator", "decorator": "permission_required", "permission": permission, "auth_required": "true"}))
 	}
 
+	// 12. Form / ModelForm per-field type introspection (issue #3346).
+	for _, idx := range allMatchesIndex(djangoFormClassBodyRe, source) {
+		className := source[idx[2]:idx[3]]
+		classLine := lineOf(source, idx[0])
+		body := extractClassBody(source, idx[0])
+		var fieldNames, fieldTypes []string
+		for _, fIdx := range allMatchesIndex(djangoFormFieldRe, body) {
+			fieldName := body[fIdx[2]:fIdx[3]]
+			fieldType := body[fIdx[4]:fIdx[5]]
+			// strip module prefix (forms.CharField → CharField)
+			if dotPos := strings.LastIndex(fieldType, "."); dotPos >= 0 {
+				fieldType = fieldType[dotPos+1:]
+			}
+			fieldNames = append(fieldNames, fieldName)
+			fieldTypes = append(fieldTypes, fieldType)
+			fieldLine := classLine + strings.Count(body[:fIdx[0]], "\n")
+			out = append(out, entity(className+"."+fieldName, "SCOPE.Schema", "form_field", file.Path, fieldLine,
+				map[string]string{
+					"framework":    "django",
+					"pattern_type": "form_field",
+					"form_class":   className,
+					"field_name":   fieldName,
+					"field_type":   fieldType,
+				}))
+		}
+		if len(fieldNames) > 0 {
+			out = append(out, entity(className, "SCOPE.Schema", "form_class", file.Path, classLine,
+				map[string]string{
+					"framework":    "django",
+					"pattern_type": "form_class",
+					"field_names":  strings.Join(fieldNames, ","),
+					"field_types":  strings.Join(fieldTypes, ","),
+				}))
+		}
+	}
+
+	// 13. MIDDLEWARE settings-list parser (issue #3346).
+	// Only fires when the file contains a top-level MIDDLEWARE = [...] assignment
+	// (typically settings.py or its per-environment override).
+	if loc := djangoMiddlewareSettingRe.FindStringIndex(source); loc != nil {
+		// Extract from the opening bracket to the first matching close bracket.
+		openBracket := loc[1] - 1 // position of '['
+		listBody := extractBalancedBrackets(source, openBracket)
+		line := lineOf(source, loc[0])
+		items := djangoMiddlewareItemRe.FindAllStringSubmatch(listBody, -1)
+		var paths []string
+		for _, m := range items {
+			paths = append(paths, m[1])
+		}
+		if len(paths) > 0 {
+			out = append(out, entity("MIDDLEWARE", "SCOPE.Config", "middleware_list", file.Path, line,
+				map[string]string{
+					"framework":       "django",
+					"pattern_type":    "middleware_settings",
+					"middleware_list": strings.Join(paths, ","),
+				}))
+		}
+	}
+
+	// 14. DRF SerializerMethodField return-type inference (issue #3346).
+	for _, idx := range allMatchesIndex(djangoDRFSerializerRe, source) {
+		className := source[idx[2]:idx[3]]
+		classLine := lineOf(source, idx[0])
+		body := extractClassBody(source, idx[0])
+		// Build map: field_name → getter_name for SMF fields.
+		smfFields := map[string]bool{}
+		for _, fIdx := range allMatchesIndex(djangoDRFSMFRe, body) {
+			smfFields[body[fIdx[2]:fIdx[3]]] = true
+		}
+		if len(smfFields) == 0 {
+			continue
+		}
+		// Match getter methods and infer return type from annotation.
+		for _, gIdx := range allMatchesIndex(djangoDRFSMFGetterRe, body) {
+			getterName := body[gIdx[2]:gIdx[3]] // e.g. "get_full_name"
+			// Field name is getterName without the "get_" prefix.
+			fieldName := strings.TrimPrefix(getterName, "get_")
+			if !smfFields[fieldName] {
+				continue
+			}
+			returnType := ""
+			if gIdx[4] != -1 {
+				returnType = strings.TrimSpace(body[gIdx[4]:gIdx[5]])
+			}
+			methodLine := classLine + strings.Count(body[:gIdx[0]], "\n")
+			props := map[string]string{
+				"framework":    "drf",
+				"pattern_type": "serializer_method_field",
+				"serializer":   className,
+				"field_name":   fieldName,
+				"getter":       getterName,
+			}
+			if returnType != "" {
+				props["return_type"] = returnType
+			}
+			out = append(out, entity(className+"."+fieldName, "SCOPE.Schema", "serializer_field", file.Path, methodLine, props))
+		}
+	}
+
+	// 15. DRF DEFAULT_AUTHENTICATION_CLASSES / DEFAULT_THROTTLE_CLASSES (issue #3346).
+	// Parses REST_FRAMEWORK = { ... } in Django settings files.
+	if rfIdx := djangoDRFRestFrameworkRe.FindStringSubmatchIndex(source); rfIdx != nil {
+		rfBlock := source[rfIdx[2]:rfIdx[3]]
+		line := lineOf(source, rfIdx[0])
+		if am := djangoDRFAuthClassesRe.FindStringSubmatch(rfBlock); am != nil {
+			items := djangoDRFClassItemRe.FindAllStringSubmatch(am[1], -1)
+			var classes []string
+			for _, m := range items {
+				classes = append(classes, m[1])
+			}
+			if len(classes) > 0 {
+				out = append(out, entity("DEFAULT_AUTHENTICATION_CLASSES", "SCOPE.Config", "drf_setting", file.Path, line,
+					map[string]string{
+						"framework":    "drf",
+						"pattern_type": "drf_setting",
+						"setting_key":  "DEFAULT_AUTHENTICATION_CLASSES",
+						"classes":      strings.Join(classes, ","),
+					}))
+			}
+		}
+		if tm := djangoDRFThrottleClassesRe.FindStringSubmatch(rfBlock); tm != nil {
+			items := djangoDRFClassItemRe.FindAllStringSubmatch(tm[1], -1)
+			var classes []string
+			for _, m := range items {
+				classes = append(classes, m[1])
+			}
+			if len(classes) > 0 {
+				out = append(out, entity("DEFAULT_THROTTLE_CLASSES", "SCOPE.Config", "drf_setting", file.Path, line,
+					map[string]string{
+						"framework":    "drf",
+						"pattern_type": "drf_setting",
+						"setting_key":  "DEFAULT_THROTTLE_CLASSES",
+						"classes":      strings.Join(classes, ","),
+					}))
+			}
+		}
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
+}
+
+// extractBalancedBrackets returns the content of a [...] list starting at openPos.
+func extractBalancedBrackets(source string, openPos int) string {
+	depth := 0
+	for i := openPos; i < len(source); i++ {
+		switch source[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return source[openPos+1 : i]
+			}
+		}
+	}
+	return ""
 }
 
 // isOnlyWhitespaceAndComments returns true if text contains only whitespace and
