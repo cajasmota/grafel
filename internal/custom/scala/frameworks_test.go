@@ -1,6 +1,7 @@
 package scala_test
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -526,6 +527,195 @@ case class UserResponse(id: Long, name: String)
 	}
 	if !found {
 		t.Error("expected dto entity from case class")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// dto_extraction — VALUE-ASSERTING: fields, types, Option nullability, circe
+// codec attribution, and @JsonKey wire-name overrides (issue #3454).
+// ---------------------------------------------------------------------------
+
+func TestFrameworksDTOFieldsAndNullability(t *testing.T) {
+	src := `
+import io.circe.generic.semiauto._
+case class CreateUserRequest(
+  name: String,
+  email: String,
+  age: Int,
+  nickname: Option[String]
+)
+object CreateUserRequest {
+  implicit val dec = deriveDecoder[CreateUserRequest]
+}
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Dto.scala", "scala", src))
+	got := dumpEntities(ents)
+
+	// Parent DTO carries the full field shape, nullability, and codec.
+	dto, ok := findBySubtype(ents, "dto", "CreateUserRequest")
+	if !ok {
+		t.Fatalf("expected dto CreateUserRequest; got:%s", got)
+	}
+	if dto.Props["field_count"] != "4" {
+		t.Errorf("expected field_count=4, got %q", dto.Props["field_count"])
+	}
+	if dto.Props["nullable_fields"] != "nickname" {
+		t.Errorf("expected nullable_fields=nickname, got %q", dto.Props["nullable_fields"])
+	}
+	if dto.Props["codec"] != "circe" {
+		t.Errorf("expected codec=circe (deriveDecoder), got %q", dto.Props["codec"])
+	}
+
+	// A specific field entity records its exact type + nullability.
+	nick, ok := findBySubtype(ents, "dto_field", "dto_field:CreateUserRequest.nickname")
+	if !ok {
+		t.Fatalf("expected dto_field for nickname; got:%s", got)
+	}
+	if nick.Props["field_type"] != "Option[String]" {
+		t.Errorf("expected nickname field_type=Option[String], got %q", nick.Props["field_type"])
+	}
+	if nick.Props["nullable"] != "true" {
+		t.Errorf("expected nickname nullable=true, got %q", nick.Props["nullable"])
+	}
+
+	age, ok := findBySubtype(ents, "dto_field", "dto_field:CreateUserRequest.age")
+	if !ok {
+		t.Fatalf("expected dto_field for age; got:%s", got)
+	}
+	if age.Props["field_type"] != "Int" {
+		t.Errorf("expected age field_type=Int, got %q", age.Props["field_type"])
+	}
+	if age.Props["nullable"] != "false" {
+		t.Errorf("expected age nullable=false, got %q", age.Props["nullable"])
+	}
+}
+
+func TestFrameworksDTOWireNameAndPlayCodec(t *testing.T) {
+	src := `
+import play.api.libs.json._
+case class Account(
+  @JsonKey("user_name") userName: String,
+  balance: Long
+)
+object Account { implicit val fmt = Json.format[Account] }
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Account.scala", "scala", src))
+	got := dumpEntities(ents)
+
+	dto, ok := findBySubtype(ents, "dto", "Account")
+	if !ok {
+		t.Fatalf("expected dto Account; got:%s", got)
+	}
+	if dto.Props["codec"] != "play-json" {
+		t.Errorf("expected codec=play-json (Json.format[Account]), got %q", dto.Props["codec"])
+	}
+	if dto.Props["wire_overrides"] != "userName=user_name" {
+		t.Errorf("expected wire_overrides=userName=user_name, got %q", dto.Props["wire_overrides"])
+	}
+
+	field, ok := findBySubtype(ents, "dto_field", "dto_field:Account.userName")
+	if !ok {
+		t.Fatalf("expected dto_field for userName; got:%s", got)
+	}
+	if field.Props["wire_name"] != "user_name" {
+		t.Errorf("expected userName wire_name=user_name, got %q", field.Props["wire_name"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// request_validation — VALUE-ASSERTING: refined, cats Validated, accord,
+// octopus. Each asserts the SPECIFIC field + constraint (issue #3454).
+// ---------------------------------------------------------------------------
+
+func TestFrameworksValidationRefined(t *testing.T) {
+	src := `
+import eu.timepit.refined._
+import eu.timepit.refined.string.MatchesRegex
+case class SignupRequest(
+  email: String Refined MatchesRegex["^.+@.+$"],
+  age: Int Refined Positive,
+  bio: Refined[String, NonEmpty]
+)
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Signup.scala", "scala", src))
+	got := dumpEntities(ents)
+
+	email, ok := findBySubtype(ents, "request_validation", "validate:refined:email")
+	if !ok {
+		t.Fatalf("expected refined validation for email; got:%s", got)
+	}
+	if !strings.HasPrefix(email.Props["constraint"], "MatchesRegex") {
+		t.Errorf("expected email constraint MatchesRegex..., got %q", email.Props["constraint"])
+	}
+
+	age, ok := findBySubtype(ents, "request_validation", "validate:refined:age")
+	if !ok {
+		t.Fatalf("expected refined validation for age; got:%s", got)
+	}
+	if age.Props["constraint"] != "Positive" {
+		t.Errorf("expected age constraint Positive, got %q", age.Props["constraint"])
+	}
+
+	bio, ok := findBySubtype(ents, "request_validation", "validate:refined:bio")
+	if !ok {
+		t.Fatalf("expected refined validation for bio; got:%s", got)
+	}
+	if bio.Props["constraint"] != "NonEmpty" {
+		t.Errorf("expected bio constraint NonEmpty, got %q", bio.Props["constraint"])
+	}
+}
+
+func TestFrameworksValidationAccord(t *testing.T) {
+	src := `
+import com.wix.accord._
+import com.wix.accord.dsl._
+implicit val userValidator = validator[User] { user =>
+  user.name is notEmpty
+  user.age should be >= 18
+}
+`
+	ents := extract(t, "custom_scala_frameworks", fi("UserValidator.scala", "scala", src))
+	got := dumpEntities(ents)
+
+	name, ok := findBySubtype(ents, "request_validation", "validate:accord:name")
+	if !ok {
+		t.Fatalf("expected accord validation for name; got:%s", got)
+	}
+	if name.Props["constraint"] != "notEmpty" {
+		t.Errorf("expected name constraint notEmpty, got %q", name.Props["constraint"])
+	}
+	if name.Props["dto"] != "User" {
+		t.Errorf("expected accord dto=User, got %q", name.Props["dto"])
+	}
+
+	age, ok := findBySubtype(ents, "request_validation", "validate:accord:age")
+	if !ok {
+		t.Fatalf("expected accord validation for age; got:%s", got)
+	}
+	if !strings.Contains(age.Props["constraint"], ">= 18") {
+		t.Errorf("expected age constraint to contain '>= 18', got %q", age.Props["constraint"])
+	}
+}
+
+func TestFrameworksValidationCatsValidated(t *testing.T) {
+	src := `
+import cats.data.ValidatedNel
+import cats.syntax.validated._
+def validateEmail(s: String): ValidatedNel[String, String] = ???
+def validateAge(a: Int): Validated[String, Int] = ???
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Validators.scala", "scala", src))
+	got := dumpEntities(ents)
+
+	email, ok := findBySubtype(ents, "request_validation", "validate:cats-validated:email")
+	if !ok {
+		t.Fatalf("expected cats-validated validation for email; got:%s", got)
+	}
+	if email.Props["validator_fn"] != "validateEmail" {
+		t.Errorf("expected validator_fn=validateEmail, got %q", email.Props["validator_fn"])
+	}
+	if _, ok := findBySubtype(ents, "request_validation", "validate:cats-validated:age"); !ok {
+		t.Errorf("expected cats-validated validation for age; got:%s", got)
 	}
 }
 

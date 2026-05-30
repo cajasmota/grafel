@@ -47668,17 +47668,15 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level request validation: refined predicate types (String Refined NonEmpty, Int Refined Positive, MatchesRegex[...], Refined[T,P]) captured as field+constraint; cats Validated/ValidatedNel validators (validator fn + inferred field); accord (validator[T]{ p.field is notEmpty }) per-clause field+predicate; octopus .rule(_.field,...). Each request_validation entity records the specific field + constraint. Refined constraints are field-co-located. Coarse framework directive signal (entity(as[T])/jsonOf[T]/decode[T]) retained. File-local: validators in a separate file from the DTO are not linked.",
             "verified_at": "2026-05-30"
           }
         },
@@ -47947,17 +47945,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "notes": "Field-level constraints captured when present: refined types, cats Validated, accord (field+predicate), octopus. Coarse framework directive signal (params()/request.params/@NotEmpty/MessageSerializer) retained. Partial: this stack commonly validates via separate validator objects or JSR-303-style annotations resolved cross-file/at-runtime, which the file-local extractor cannot link to the originating DTO/endpoint.",
             "verified_at": "2026-05-30"
           }
         },
@@ -48488,17 +48485,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "notes": "Field-level constraints captured when present: refined types, cats Validated, accord (field+predicate), octopus. Coarse framework directive signal (params()/request.params/@NotEmpty/MessageSerializer) retained. Partial: this stack commonly validates via separate validator objects or JSR-303-style annotations resolved cross-file/at-runtime, which the file-local extractor cannot link to the originating DTO/endpoint.",
             "verified_at": "2026-05-30"
           }
         },
@@ -48774,17 +48770,15 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level request validation: refined predicate types (String Refined NonEmpty, Int Refined Positive, MatchesRegex[...], Refined[T,P]) captured as field+constraint; cats Validated/ValidatedNel validators (validator fn + inferred field); accord (validator[T]{ p.field is notEmpty }) per-clause field+predicate; octopus .rule(_.field,...). Each request_validation entity records the specific field + constraint. Refined constraints are field-co-located. Coarse framework directive signal (entity(as[T])/jsonOf[T]/decode[T]) retained. File-local: validators in a separate file from the DTO are not linked.",
             "verified_at": "2026-05-30"
           }
         },
@@ -49051,17 +49045,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "notes": "Field-level constraints captured when present: refined types, cats Validated, accord (field+predicate), octopus. Coarse framework directive signal (params()/request.params/@NotEmpty/MessageSerializer) retained. Partial: this stack commonly validates via separate validator objects or JSR-303-style annotations resolved cross-file/at-runtime, which the file-local extractor cannot link to the originating DTO/endpoint.",
             "verified_at": "2026-05-30"
           }
         },
@@ -49547,17 +49540,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "notes": "Field-level constraints captured when present: refined types, cats Validated, accord (field+predicate), octopus. Coarse framework directive signal (params()/request.params/@NotEmpty/MessageSerializer) retained. Partial: this stack commonly validates via separate validator objects or JSR-303-style annotations resolved cross-file/at-runtime, which the file-local extractor cannot link to the originating DTO/endpoint.",
             "verified_at": "2026-05-30"
           }
         },
@@ -49824,17 +49816,15 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "Field-level request validation: refined predicate types (String Refined NonEmpty, Int Refined Positive, MatchesRegex[...], Refined[T,P]) captured as field+constraint; cats Validated/ValidatedNel validators (validator fn + inferred field); accord (validator[T]{ p.field is notEmpty }) per-clause field+predicate; octopus .rule(_.field,...). Each request_validation entity records the specific field + constraint. Refined constraints are field-co-located. Coarse framework directive signal (entity(as[T])/jsonOf[T]/decode[T]) retained. File-local: validators in a separate file from the DTO are not linked.",
             "verified_at": "2026-05-30"
           }
         },

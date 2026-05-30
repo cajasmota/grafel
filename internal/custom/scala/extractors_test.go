@@ -37,6 +37,17 @@ type entitySummary struct {
 	Props               map[string]string
 }
 
+// findBySubtype returns the first entity matching subtype+name (and its props),
+// or (entitySummary{}, false) when none match. Used by value-asserting tests.
+func findBySubtype(ents []entitySummary, subtype, name string) (entitySummary, bool) {
+	for _, e := range ents {
+		if e.Subtype == subtype && e.Name == name {
+			return e, true
+		}
+	}
+	return entitySummary{}, false
+}
+
 func containsEntity(ents []entitySummary, kind, name string) bool {
 	for _, e := range ents {
 		if e.Kind == kind && e.Name == name {
