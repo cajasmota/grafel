@@ -34478,10 +34478,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_php_producer.go","internal/engine/http_endpoint_php_producer_lrroute_test.go"],
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {

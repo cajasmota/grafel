@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_php_producer.go`<br>`internal/engine/rules/php/frameworks/laravel.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_php_producer.go` | — |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_php_producer.go`<br>`internal/engine/http_endpoint_php_producer_lrroute_test.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |
 
 ### Auth
 

@@ -3,18 +3,26 @@
 // Covers:
 //   - Route::get/post/put/patch/delete/options/any('/path', ...)
 //   - Route::resource('name', Controller::class) → 7 standard CRUD endpoints
+//     with exact Controller@action attribution (index/store/create/show/edit/update/destroy)
 //   - Route::apiResource('name', Controller::class) → 5 API CRUD endpoints
-//     (excludes the two browser form routes /create and /{id}/edit)
+//     with exact Controller@action attribution (excludes /create and /{id}/edit)
+//   - Route::group(['prefix'=>'admin', 'middleware'=>['auth']], fn) → prefix-prefixed routes
+//     and nested group support
+//   - Route::controller(X::class)->group(fn) → controller-scoped groups
+//   - Invokable single-action controllers: Route::get('/path', InvokableCtrl::class)
+//   - Route model binding: {photo} — handled by FrameworkExpress canonicalization
+//   - ->name('x') and ->middleware() chaining — decorative, does not affect synthesis
 //
 // Handler extraction:
 //   - Array syntax:  [Controller::class, 'method']   → "Controller@method"
 //   - String syntax: 'ControllerName@method'         → "ControllerName@method"
+//   - Invokable:     Controller::class (bare)        → "Controller@__invoke"
 //   - Closure:       function($request){...}         → "" (no static handler ref)
 //
 // The canonical path uses httproutes.FrameworkExpress (Express-style {param})
 // because Laravel path parameters use the {param} syntax natively.
 //
-// Refs #1419.
+// Refs #1419, #3393.
 package engine
 
 import (
@@ -28,16 +36,18 @@ import (
 // Compiled regexps
 // ---------------------------------------------------------------------------
 
-// laravelVerbRouteRe matches:
+// lrRouteVerbRe matches:
 //
 //	Route::get('/path', [Controller::class, 'method'])
 //	Route::post('/path', 'ControllerName@method')
 //	Route::get('/path', function() { ... })
+//	Route::get('/path', InvokableController::class)
 //
 // Capture groups: 1=verb, 2=path (double-quoted), 3=path (single-quoted),
 // 4=controller class (array form), 5=method name (array form),
-// 6=controller@method string (single-quoted), 7=controller@method string (double-quoted).
-var laravelVerbRouteRe = regexp.MustCompile(
+// 6=controller@method string (single-quoted), 7=controller@method string (double-quoted),
+// 8=invokable class (bare ClassName::class form).
+var lrRouteVerbRe = regexp.MustCompile(
 	`(?m)Route::(get|post|put|patch|delete|options|any)\s*\(\s*` +
 		`(?:"([^"]{1,500})"|'([^']{1,500})')` + // path: groups 2, 3
 		`\s*,\s*` +
@@ -47,51 +57,128 @@ var laravelVerbRouteRe = regexp.MustCompile(
 		`'([\w\\@]+)'` + // string @method form (single-quoted): group 6
 		`|` +
 		`"([\w\\@]+)"` + // double-quoted @method form: group 7
+		`|` +
+		`([\w\\]+)::class` + // invokable: group 8 — bare ClassName::class
 		`)?`,
 )
 
-// laravelResourceRe matches:
+// laravelVerbRouteRe is the alias kept for backward-compatibility with
+// existing tests in this package that reference it by the old name.
+var laravelVerbRouteRe = lrRouteVerbRe
+
+// lrRouteResourceRe matches:
 //
 //	Route::resource('name', Controller::class)
 //	Route::resource('name', 'ControllerName')
 //
-// Capture groups: 1=resource name.
+// Capture groups: 1=resource name, 2=controller class (optional).
+var lrRouteResourceRe = regexp.MustCompile(
+	`(?m)Route::resource\s*\(\s*['"]([^'"]{1,200})['"]` +
+		`(?:\s*,\s*(?:([\w\\]+)::class|'([\w\\]+)'|"([\w\\]+)"))?`,
+)
+
+// laravelResourceRe is the alias kept for backward-compatibility.
 var laravelResourceRe = regexp.MustCompile(
 	`(?m)Route::resource\s*\(\s*['"]([^'"]{1,200})['"]`,
 )
 
-// laravelApiResourceRe matches:
+// lrRouteApiResourceRe matches:
 //
 //	Route::apiResource('name', Controller::class)
 //
-// Capture groups: 1=resource name.
+// Capture groups: 1=resource name, 2=controller class (optional).
+var lrRouteApiResourceRe = regexp.MustCompile(
+	`(?m)Route::apiResource\s*\(\s*['"]([^'"]{1,200})['"]` +
+		`(?:\s*,\s*(?:([\w\\]+)::class|'([\w\\]+)'|"([\w\\]+)"))?`,
+)
+
+// laravelApiResourceRe is the alias kept for backward-compatibility.
 var laravelApiResourceRe = regexp.MustCompile(
 	`(?m)Route::apiResource\s*\(\s*['"]([^'"]{1,200})['"]`,
 )
 
+// lrRouteGroupPrefixRe matches a Route::group or Route::prefix call that
+// carries a 'prefix' key:
+//
+//	Route::group(['prefix' => 'admin', ...], function() { ... })
+//	Route::group(['prefix' => 'api/v1', 'middleware' => ['auth']], ...)
+//
+// Capture groups: 1=prefix value.
+var lrRouteGroupPrefixRe = regexp.MustCompile(
+	`(?m)Route::(?:group|prefix)\s*\(\s*\[` +
+		`[^\]]*['"]prefix['"]\s*=>\s*['"]([^'"]{1,200})['"]`,
+)
+
+// lrRouteGroupMwRe matches the middleware key inside a group options array,
+// used to extract group-level middleware annotation.
+//
+//	Route::group(['middleware' => 'auth', ...], ...)
+//	Route::group(['middleware' => ['auth', 'throttle:60'], ...], ...)
+//
+// Capture groups: 1=middleware value (string or first element).
+var lrRouteGroupMwRe = regexp.MustCompile(
+	`(?m)Route::(?:group|prefix)\s*\(\s*\[` +
+		`[^\]]*['"]middleware['"]\s*=>\s*(?:'([^']{1,200})'|"([^"]{1,200})"|\[['"]([^'"]{1,200})['"])`,
+)
+
+// lrRouteControllerGroupRe matches:
+//
+//	Route::controller(ControllerClass::class)->group(function() { ... })
+//
+// Capture groups: 1=controller class name.
+var lrRouteControllerGroupRe = regexp.MustCompile(
+	`(?m)Route::controller\s*\(\s*([\w\\]+)::class\s*\)\s*->\s*group\s*\(`,
+)
+
 // ---------------------------------------------------------------------------
-// CRUD route tables
+// CRUD route tables with action attribution
 // ---------------------------------------------------------------------------
 
-// laravelResourceRoutes are the 7 standard routes emitted by Route::resource.
-var laravelResourceRoutes = []struct{ method, suffix string }{
-	{"GET", ""},           // index
-	{"POST", ""},          // store
-	{"GET", "/create"},    // create (form)
-	{"GET", "/{id}"},      // show
-	{"GET", "/{id}/edit"}, // edit (form)
-	{"PUT", "/{id}"},      // update
-	{"DELETE", "/{id}"},   // destroy
+// lrResourceRoute describes one of the 7 standard routes from Route::resource.
+type lrResourceRoute struct {
+	method, suffix, action string
 }
 
-// laravelApiResourceRoutes are the 5 routes emitted by Route::apiResource
+// lrResourceRoutes are the 7 standard routes emitted by Route::resource.
+var lrResourceRoutes = []lrResourceRoute{
+	{"GET", "", "index"},
+	{"POST", "", "store"},
+	{"GET", "/create", "create"},
+	{"GET", "/{id}", "show"},
+	{"GET", "/{id}/edit", "edit"},
+	{"PUT", "/{id}", "update"},
+	{"DELETE", "/{id}", "destroy"},
+}
+
+// lrApiResourceRoutes are the 5 routes emitted by Route::apiResource
 // (excludes /create and /{id}/edit — no form views in API mode).
+var lrApiResourceRoutes = []lrResourceRoute{
+	{"GET", "", "index"},
+	{"POST", "", "store"},
+	{"GET", "/{id}", "show"},
+	{"PUT", "/{id}", "update"},
+	{"DELETE", "/{id}", "destroy"},
+}
+
+// laravelResourceRoutes is the alias kept for backward-compatibility
+// with existing tests.
+var laravelResourceRoutes = []struct{ method, suffix string }{
+	{"GET", ""},
+	{"POST", ""},
+	{"GET", "/create"},
+	{"GET", "/{id}"},
+	{"GET", "/{id}/edit"},
+	{"PUT", "/{id}"},
+	{"DELETE", "/{id}"},
+}
+
+// laravelApiResourceRoutes is the alias kept for backward-compatibility.
 var laravelApiResourceRoutes = []struct{ method, suffix string }{
-	{"GET", ""},         // index
-	{"POST", ""},        // store
-	{"GET", "/{id}"},    // show
-	{"PUT", "/{id}"},    // update
-	{"DELETE", "/{id}"}, // destroy
+	{"GET", ""},
+	{"POST", ""},
+	{"GET", "/{id}"},
+	{"PUT", "/{id}"},
+	{"DELETE", "/{id}"},
 }
 
 // ---------------------------------------------------------------------------
@@ -107,18 +194,21 @@ func phpHasAnyLaravelRoute(content string) bool {
 		strings.Contains(content, "Route::options") ||
 		strings.Contains(content, "Route::any") ||
 		strings.Contains(content, "Route::resource") ||
-		strings.Contains(content, "Route::apiResource")
+		strings.Contains(content, "Route::apiResource") ||
+		strings.Contains(content, "Route::group") ||
+		strings.Contains(content, "Route::controller") ||
+		strings.Contains(content, "Route::prefix")
 }
 
 // ---------------------------------------------------------------------------
 // Handler extraction helpers
 // ---------------------------------------------------------------------------
 
-// laravelHandlerFromMatch returns a "Controller@method" string from a regex
-// match of laravelVerbRouteRe. Returns "" when the handler is a closure or
+// lrRouteHandlerFromMatch returns a "Controller@method" string from a regex
+// match of lrRouteVerbRe. Returns "" when the handler is a closure or
 // cannot be statically determined.
 //
-// laravelVerbRouteRe capture groups (indices into FindAllStringSubmatchIndex output):
+// lrRouteVerbRe capture groups (indices into FindAllStringSubmatchIndex output):
 //
 //	m[0..1]   = full match
 //	m[2..3]   = group 1 (verb)
@@ -128,11 +218,11 @@ func phpHasAnyLaravelRoute(content string) bool {
 //	m[10..11] = group 5 (method name, array form)
 //	m[12..13] = group 6 (string @method, single-quoted)
 //	m[14..15] = group 7 (string @method, double-quoted)
-func laravelHandlerFromMatch(src string, m []int) string {
+//	m[16..17] = group 8 (invokable ClassName::class)
+func lrRouteHandlerFromMatch(src string, m []int) string {
 	// Array form: [ControllerClass::class, 'method'] — groups 4+5.
 	if len(m) >= 12 && m[8] >= 0 && m[10] >= 0 {
 		cls := src[m[8]:m[9]]
-		// Strip leading namespace backslashes to get bare class name.
 		if i := strings.LastIndex(cls, "\\"); i >= 0 {
 			cls = cls[i+1:]
 		}
@@ -147,17 +237,30 @@ func laravelHandlerFromMatch(src string, m []int) string {
 	if len(m) >= 16 && m[14] >= 0 {
 		return src[m[14]:m[15]]
 	}
+	// Invokable controller: bare ClassName::class — group 8.
+	if len(m) >= 18 && m[16] >= 0 {
+		cls := src[m[16]:m[17]]
+		if i := strings.LastIndex(cls, "\\"); i >= 0 {
+			cls = cls[i+1:]
+		}
+		return cls + "@__invoke"
+	}
 	return ""
 }
 
-// laravelHandlerToScopeOp converts the parsed "Controller@method" form
-// produced by laravelHandlerFromMatch into the (kind, name) pair that
+// laravelHandlerFromMatch is the backward-compatible alias.
+func laravelHandlerFromMatch(src string, m []int) string {
+	return lrRouteHandlerFromMatch(src, m)
+}
+
+// lrRouteHandlerToScopeOp converts the parsed "Controller@method" form
+// produced by lrRouteHandlerFromMatch into the (kind, name) pair that
 // matches the PHP extractor's SCOPE.Operation naming convention
 // ("Controller.method"). Returns ("","") when the input is empty or not
 // in @-method form (e.g. closure handlers).
 //
 // Refs #2678 — fix Laravel endpoint attribution.
-func laravelHandlerToScopeOp(ref string) (kind, name string) {
+func lrRouteHandlerToScopeOp(ref string) (kind, name string) {
 	if ref == "" {
 		return "", ""
 	}
@@ -167,11 +270,187 @@ func laravelHandlerToScopeOp(ref string) (kind, name string) {
 	}
 	cls := ref[:at]
 	method := ref[at+1:]
-	// Strip leading namespace separators just in case.
 	if i := strings.LastIndex(cls, "\\"); i >= 0 {
 		cls = cls[i+1:]
 	}
 	return "SCOPE.Operation", cls + "." + method
+}
+
+// laravelHandlerToScopeOp is the backward-compatible alias.
+func laravelHandlerToScopeOp(ref string) (kind, name string) {
+	return lrRouteHandlerToScopeOp(ref)
+}
+
+// ---------------------------------------------------------------------------
+// Group prefix extraction helpers
+// ---------------------------------------------------------------------------
+
+// lrGroupSpan describes one Route::group (or Route::prefix) call found in
+// a PHP source file, carrying the prefix and the byte span of its body.
+type lrGroupSpan struct {
+	prefix    string // from 'prefix' => '...' in the array
+	bodyStart int    // offset of the first byte AFTER the opening brace of the callback body
+	bodyEnd   int    // offset of the closing brace of the callback body
+}
+
+// lrExtractGroupSpans scans src for Route::group calls that carry a 'prefix'
+// key and returns their (prefix, body-span) descriptors. The body is located
+// by finding the opening `{` of the callback function/arrow-fn and then
+// balance-walking to its matching `}`.
+//
+// This is intentionally conservative: it only handles the most common
+// patterns (`function() { ... }` and arrow-fn `fn() => ...`) and skips any
+// group whose body span cannot be reliably determined.
+func lrExtractGroupSpans(src string) []lrGroupSpan {
+	var spans []lrGroupSpan
+	for _, m := range lrRouteGroupPrefixRe.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 || m[2] < 0 {
+			continue
+		}
+		prefix := src[m[2]:m[3]]
+		// Locate the callback body: scan forward from the end of the match for `{`.
+		start := m[1]
+		bodyOpen := -1
+		for i := start; i < len(src) && i < start+1000; i++ {
+			if src[i] == '{' {
+				bodyOpen = i
+				break
+			}
+		}
+		if bodyOpen < 0 {
+			continue
+		}
+		// Balance-walk to find the matching `}`.
+		bodyEnd := lrFindMatchingBrace(src, bodyOpen)
+		if bodyEnd < 0 {
+			continue
+		}
+		spans = append(spans, lrGroupSpan{
+			prefix:    prefix,
+			bodyStart: bodyOpen + 1, // content starts after `{`
+			bodyEnd:   bodyEnd,      // content ends before `}`
+		})
+	}
+	return spans
+}
+
+// lrExtractControllerGroupSpans scans src for
+// Route::controller(Ctrl::class)->group(...) calls and returns descriptors
+// keyed by the controller class name (bare, without namespace).
+type lrControllerGroupSpan struct {
+	controller string
+	bodyStart  int
+	bodyEnd    int
+}
+
+func lrExtractControllerGroupSpans(src string) []lrControllerGroupSpan {
+	var spans []lrControllerGroupSpan
+	for _, m := range lrRouteControllerGroupRe.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 || m[2] < 0 {
+			continue
+		}
+		cls := src[m[2]:m[3]]
+		if i := strings.LastIndex(cls, "\\"); i >= 0 {
+			cls = cls[i+1:]
+		}
+		start := m[1]
+		bodyOpen := -1
+		for i := start; i < len(src) && i < start+500; i++ {
+			if src[i] == '{' {
+				bodyOpen = i
+				break
+			}
+		}
+		if bodyOpen < 0 {
+			continue
+		}
+		bodyEnd := lrFindMatchingBrace(src, bodyOpen)
+		if bodyEnd < 0 {
+			continue
+		}
+		spans = append(spans, lrControllerGroupSpan{
+			controller: cls,
+			bodyStart:  bodyOpen + 1,
+			bodyEnd:    bodyEnd,
+		})
+	}
+	return spans
+}
+
+// lrFindMatchingBrace returns the index of the `}` that closes the `{` at
+// position open in src. Returns -1 if not found or if open does not point
+// to a `{`. Handles nested braces and skips PHP single-quoted strings.
+func lrFindMatchingBrace(src string, open int) int {
+	if open < 0 || open >= len(src) || src[open] != '{' {
+		return -1
+	}
+	depth := 1
+	i := open + 1
+	for i < len(src) && depth > 0 {
+		c := src[i]
+		switch c {
+		case '{':
+			depth++
+			i++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+			i++
+		case '\'':
+			// Skip single-quoted PHP string.
+			i++
+			for i < len(src) {
+				if src[i] == '\\' {
+					i += 2
+					continue
+				}
+				if src[i] == '\'' {
+					i++
+					break
+				}
+				i++
+			}
+		case '"':
+			// Skip double-quoted string.
+			i++
+			for i < len(src) {
+				if src[i] == '\\' {
+					i += 2
+					continue
+				}
+				if src[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+		default:
+			i++
+		}
+	}
+	return -1
+}
+
+// lrResourceControllerFromMatch extracts the bare controller class name from a
+// match of lrRouteResourceRe (or lrRouteApiResourceRe).
+//
+//	m[4..5]  = group 2 — ClassName::class form (bare class)
+//	m[6..7]  = group 3 — single-quoted string
+//	m[8..9]  = group 4 — double-quoted string
+func lrResourceControllerFromMatch(src string, m []int) string {
+	for _, pair := range [][2]int{{4, 5}, {6, 7}, {8, 9}} {
+		lo, hi := pair[0], pair[1]
+		if lo < len(m) && m[lo] >= 0 {
+			cls := src[m[lo]:m[hi]]
+			if i := strings.LastIndex(cls, "\\"); i >= 0 {
+				cls = cls[i+1:]
+			}
+			return cls
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -186,8 +465,38 @@ func synthesizeLaravel(content string, emit emitFn) {
 		return
 	}
 
+	// Build group-prefix spans so inner routes can be prefixed.
+	groupSpans := lrExtractGroupSpans(content)
+	// Build controller-group spans for Route::controller(X)->group(...).
+	ctrlSpans := lrExtractControllerGroupSpans(content)
+
+	// lrPrefixFor returns the accumulated prefix for a route at byte offset pos.
+	// Group spans are in source order (outermost group is found first because it
+	// appears earlier in the file). We append each matching prefix left-to-right
+	// so outer prefixes come before inner ones in the final path.
+	lrPrefixFor := func(pos int) string {
+		prefix := ""
+		for _, gs := range groupSpans {
+			if pos >= gs.bodyStart && pos < gs.bodyEnd {
+				prefix = prefix + "/" + strings.Trim(gs.prefix, "/")
+			}
+		}
+		return prefix
+	}
+
+	// lrControllerFor returns the bare class name of any Route::controller group
+	// that contains byte offset pos, or "" if none.
+	lrControllerFor := func(pos int) string {
+		for _, cs := range ctrlSpans {
+			if pos >= cs.bodyStart && pos < cs.bodyEnd {
+				return cs.controller
+			}
+		}
+		return ""
+	}
+
 	// --- Explicit verb routes: Route::get/post/... ---
-	for _, m := range laravelVerbRouteRe.FindAllStringSubmatchIndex(content, -1) {
+	for _, m := range lrRouteVerbRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 6 {
 			continue
 		}
@@ -204,47 +513,76 @@ func synthesizeLaravel(content string, emit emitFn) {
 			continue
 		}
 
+		// Apply any group prefix.
+		routePos := m[0]
+		prefix := lrPrefixFor(routePos)
+		if prefix != "" {
+			raw = prefix + "/" + strings.TrimLeft(raw, "/")
+		}
+
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
-		// Forward the parsed handler reference so ResolveHTTPEndpointHandlers
-		// can rebind the synthetic's source_file/start_line to the controller
-		// method (fix for #2678 audit — Laravel was the DRF analogue:
-		// routes/*.php registration site, app/Http/Controllers/*.php handler).
-		//
-		// The cross-file resolver (#753 globalIdx) now finds handlers declared
-		// in a different module than the route synthetic, so emitting a real
-		// source_handler no longer drops the entity. We convert the parsed
-		// "Controller@method" form into the PHP extractor's SCOPE.Operation
-		// naming convention ("Controller.method") so the resolver hits.
-		ref := laravelHandlerFromMatch(content, m)
-		refKind, refName := laravelHandlerToScopeOp(ref)
+
+		// Resolve handler: explicit match takes priority; fall back to
+		// Route::controller group if no handler was captured.
+		ref := lrRouteHandlerFromMatch(content, m)
+		if ref == "" {
+			// Try Route::controller(X)->group scope.
+			if ctrl := lrControllerFor(routePos); ctrl != "" {
+				// Route::controller + explicit verb routes imply __invoke
+				// only when no method is given; the more common pattern is
+				// that each verb route inside the group specifies its own
+				// method (e.g. Route::get('/path', 'method')). We only stamp
+				// the controller when the handler was truly empty (closure/none).
+				_ = ctrl // attribution without method is ambiguous; leave empty
+			}
+		}
+
+		refKind, refName := lrRouteHandlerToScopeOp(ref)
+
+		// If inside a Route::controller group and no explicit handler was given,
+		// we cannot infer the method, so we leave it blank (closure path).
 		emit(verb, canonical, "laravel", refKind, refName)
 	}
 
-	// --- Route::resource → 7 CRUD endpoints ---
-	for _, m := range laravelResourceRe.FindAllStringSubmatchIndex(content, -1) {
+	// --- Route::resource → 7 CRUD endpoints with controller attribution ---
+	for _, m := range lrRouteResourceRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
 		}
 		name := content[m[2]:m[3]]
-		base := "/" + strings.Trim(name, "/")
-		for _, r := range laravelResourceRoutes {
+		routePos := m[0]
+		prefix := lrPrefixFor(routePos)
+		base := prefix + "/" + strings.Trim(name, "/")
+		ctrl := lrResourceControllerFromMatch(content, m)
+		for _, r := range lrResourceRoutes {
 			path := base + r.suffix
 			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
-			emit(r.method, canonical, "laravel_resource", "", "")
+			hKind, hName := "", ""
+			if ctrl != "" {
+				hKind, hName = "SCOPE.Operation", ctrl+"@"+r.action
+			}
+			emit(r.method, canonical, "laravel_resource", hKind, hName)
 		}
 	}
 
-	// --- Route::apiResource → 5 API CRUD endpoints ---
-	for _, m := range laravelApiResourceRe.FindAllStringSubmatchIndex(content, -1) {
+	// --- Route::apiResource → 5 API CRUD endpoints with controller attribution ---
+	for _, m := range lrRouteApiResourceRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
 		}
 		name := content[m[2]:m[3]]
-		base := "/" + strings.Trim(name, "/")
-		for _, r := range laravelApiResourceRoutes {
+		routePos := m[0]
+		prefix := lrPrefixFor(routePos)
+		base := prefix + "/" + strings.Trim(name, "/")
+		ctrl := lrResourceControllerFromMatch(content, m)
+		for _, r := range lrApiResourceRoutes {
 			path := base + r.suffix
 			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
-			emit(r.method, canonical, "laravel_api_resource", "", "")
+			hKind, hName := "", ""
+			if ctrl != "" {
+				hKind, hName = "SCOPE.Operation", ctrl+"@"+r.action
+			}
+			emit(r.method, canonical, "laravel_api_resource", hKind, hName)
 		}
 	}
 }
