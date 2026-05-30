@@ -50,7 +50,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | 🟢 `partial` | `2026-05-29` | — | `internal/extractors/java/java.go` | Framework-blind Java extractor emits enum_declaration nodes for all Java frameworks including Play (#3178). |
 | Interface extraction | 🟢 `partial` | `2026-05-29` | — | `internal/extractors/java/java.go` | Framework-blind Java extractor emits interface_declaration nodes for all Java frameworks including Play (#3178). |
-| Type alias extraction | 🔴 `missing` | — | — | — | — |
+| Type alias extraction | — `not_applicable` | — | — | — | Java has no type-alias syntax; all other Java frameworks are not_applicable for this cell |
 
 ### Lifecycle
 
@@ -82,7 +82,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
 | Reachability analysis | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
 | Request shape extraction | 🟢 `partial` | — | 3090 | `internal/custom/java/play_routes.go` | — |
-| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | 🔴 `missing` | — | 3256 | — | Genuine build: Play Java uses play.mvc.Results.ok()/badRequest()/created() patterns rather than Spring ResponseEntity; payload_shapes_java.go does not detect Play-specific result patterns; requires dedicated Play response-shape regex |
 | Sanitizer recognition | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
 | Schema drift detection | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | Framework-blind payload shapes sniffer fires for all Java sources; no Play-specific gate required (#3178). |
 | Taint sink detection | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |

@@ -30,7 +30,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | DTO extraction | 🟢 `partial` | `2026-05-30` | 3191 | `internal/custom/java/struts_dto_test.go`<br>`internal/custom/java/struts_routes.go`<br>`testdata/fixtures/sources/java/struts/StrutsDtoFixture.java` | Detects Struts 1 ActionForm subclasses (incl. Validator/Dyna variants) and Struts 2 action field-binding (ActionSupport/Action/ModelDriven). Emits SCOPE.Schema DTO entities, SCOPE.Field bound fields from public OGNL setters (skipping framework plumbing), BINDS_INPUT relationships, and BINDS_MODEL for ModelDriven<T>. Heuristic regex over setters / extends-clauses, hence partial |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | 🔴 `missing` | — | 3256 | — | Genuine build: Struts 2 uses validate() method override on ActionSupport (and Struts 1 ActionForm.validate()) for request validation, not JAX-RS/Spring annotation patterns; no extractor currently detects this pattern |
 
 ### Middleware
 
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Tests linkage | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/java/junit5.go` | struts, struts2, apache-struts keys included in junit5Frameworks map in junit5.go; test-class detection fires for JUnit 5 @Test methods and Struts Test Plugin patterns |
 
 ### Type System
 

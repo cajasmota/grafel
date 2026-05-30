@@ -15227,12 +15227,16 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
+            "status": "missing",
+            "issue": "3256",
+            "notes": "Genuine build: Android Context propagation (getContext()/getActivity()/requireContext() usage) not yet extracted; requires new regex patterns in android.go"
           }
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing"
+            "status": "missing",
+            "issue": "3256",
+            "notes": "Genuine build: Android deep-link intent-filter patterns (\u003cintent-filter\u003e with BROWSE action + android:scheme/android:host in AndroidManifest.xml, @NavDeepLink annotations) not yet extracted"
           },
           "navigation_extraction": {
             "status": "partial",
@@ -15261,7 +15265,10 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT comparisons as platform-branch control-flow sites; same extractor delivers Platform.platform_branching partial (#3188); the branch control-flow site entity mirrors the Data Flow.branch_conditions surface for Android",
+            "verified_at": "2026-05-30"
           },
           "state_management": {
             "status": "partial",
@@ -15271,18 +15278,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/java/java.go"],
+            "notes": "Framework-blind Java extractor emits enum_declaration nodes for all Java frameworks including Android SDK/Jetpack; same as gwt/vaadin (partial)",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/java/java.go"],
+            "notes": "Framework-blind Java extractor emits interface_declaration nodes for all Java frameworks including Android SDK/Jetpack; same as gwt/vaadin (partial)",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Java has no type-alias syntax; all other Java frameworks are not_applicable for this cell"
           }
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Android SDK/Jetpack uses LiveData/StateFlow observer patterns rather than React-style useState setters; state_setter_emission is a React/JSX-paradigm capability that does not apply; gomobile (Go) is also not_applicable for the same reason"
           }
         },
         "Testing": {
@@ -15374,8 +15389,8 @@
             "issue": "3154"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Android SDK/Jetpack are mobile client frameworks with no server-side HTTP handlers; schema drift detection requires a producer-consumer HTTP endpoint pair; request_shape_extraction and response_shape_extraction are also not_applicable for these records"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -15409,12 +15424,16 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
+            "status": "missing",
+            "issue": "3256",
+            "notes": "Genuine build: Android Context propagation not yet extracted; requires new regex patterns in android.go"
           }
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing"
+            "status": "missing",
+            "issue": "3256",
+            "notes": "Genuine build: Android deep-link intent-filter patterns not yet extracted; same build as android-jetpack"
           },
           "navigation_extraction": {
             "status": "partial",
@@ -15443,7 +15462,10 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/android.go"],
+            "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT comparisons as platform-branch control-flow sites; same extractor delivers Platform.platform_branching partial (#3188); the branch control-flow site entity mirrors the Data Flow.branch_conditions surface for Android",
+            "verified_at": "2026-05-30"
           },
           "state_management": {
             "status": "partial",
@@ -15453,18 +15475,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/java/java.go"],
+            "notes": "Framework-blind Java extractor emits enum_declaration nodes for all Java frameworks including Android SDK/Jetpack; same as gwt/vaadin (partial)",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/extractors/java/java.go"],
+            "notes": "Framework-blind Java extractor emits interface_declaration nodes for all Java frameworks including Android SDK/Jetpack; same as gwt/vaadin (partial)",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Java has no type-alias syntax; all other Java frameworks are not_applicable for this cell"
           }
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Android SDK uses LiveData/observer patterns rather than React-style useState setters; state_setter_emission is a React/JSX-paradigm capability that does not apply"
           }
         },
         "Testing": {
@@ -15556,8 +15586,8 @@
             "issue": "3154"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Android SDK is a mobile client framework with no server-side HTTP handlers; schema drift detection requires a producer-consumer HTTP endpoint pair; request_shape_extraction and response_shape_extraction are also not_applicable for this record"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -15881,7 +15911,8 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "GWT compiles Java to client-side JS but uses Java idioms with no mobile platform-discriminating branches; branch_conditions is a mobile/platform-conditional UI paradigm that does not apply; state_management and prop_extraction are also not_applicable for GWT"
           },
           "data_fetching": {
             "status": "partial",
@@ -17896,7 +17927,8 @@
             "verified_at": "2026-05-29"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Java has no type-alias syntax; all other Java frameworks are not_applicable for this cell"
           }
         },
         "Lifecycle": {
@@ -17994,7 +18026,8 @@
           },
           "response_shape_extraction": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "3256",
+            "notes": "Genuine build: Play Java uses play.mvc.Results.ok()/badRequest()/created() patterns rather than Spring ResponseEntity; payload_shapes_java.go does not detect Play-specific result patterns; requires dedicated Play response-shape regex"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -18996,7 +19029,8 @@
           },
           "request_validation": {
             "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "issue": "3256",
+            "notes": "Genuine build: Struts 2 uses validate() method override on ActionSupport (and Struts 1 ActionForm.validate()) for request validation, not JAX-RS/Spring annotation patterns; no extractor currently detects this pattern"
           }
         },
         "Middleware": {
@@ -19010,8 +19044,11 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/junit5.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "struts, struts2, apache-struts keys included in junit5Frameworks map in junit5.go; test-class detection fires for JUnit 5 @Test methods and Struts Test Plugin patterns",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -19249,7 +19286,8 @@
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Vaadin is a server-side Java UI framework with no mobile platform-discriminating branches; branch_conditions is a mobile/platform-conditional UI paradigm that does not apply; state_management and prop_extraction are also not_applicable for Vaadin"
           },
           "data_fetching": {
             "status": "partial",
