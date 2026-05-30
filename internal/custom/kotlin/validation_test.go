@@ -140,11 +140,25 @@ func TestValidationWrongLanguage(t *testing.T) {
 	}
 }
 
-func TestValidationNoMatch(t *testing.T) {
+func TestValidationPlainDataClassEmitsDTOOnly(t *testing.T) {
+	// A plain data class (no validation annotations) is still a DTO: dto_extraction
+	// must emit the schema with its properties, but no request_validation rules.
 	src := `data class User(val name: String, val age: Int)`
 	ents := extract(t, "custom_kotlin_validation", fi("User.kt", "kotlin", src))
-	if len(ents) != 0 {
-		t.Errorf("expected no entities for plain data class, got %d", len(ents))
+	if !containsEntity(ents, "SCOPE.Schema", "User") {
+		t.Fatal("expected User DTO schema entity for plain data class")
+	}
+	for _, e := range ents {
+		if e.Subtype == "request_validation" {
+			t.Errorf("plain data class should not emit request_validation, got %q", e.Name)
+		}
+	}
+	dto := findEntity(ents, "SCOPE.Schema", "User")
+	if dto.Props["prop.name.type"] != "String" {
+		t.Errorf("expected name:String, got %q", dto.Props["prop.name.type"])
+	}
+	if dto.Props["prop.age.type"] != "Int" {
+		t.Errorf("expected age:Int, got %q", dto.Props["prop.age.type"])
 	}
 }
 
@@ -152,5 +166,154 @@ func TestValidationEmptyFile(t *testing.T) {
 	ents := extract(t, "custom_kotlin_validation", fi("Empty.kt", "kotlin", ""))
 	if len(ents) != 0 {
 		t.Errorf("empty file should return no entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Deep value-asserting tests (TS/JS bar): specific field + constraint + bound.
+// ---------------------------------------------------------------------------
+
+// request_validation: per-field rule with the SPECIFIC field name, constraint
+// kind and parsed bound — not mere annotation presence.
+func TestValidationBeanRulesFieldConstraintBounds(t *testing.T) {
+	src := `
+data class CreateUserRequest(
+    @field:NotBlank val name: String,
+    @field:Size(min = 1, max = 20) val username: String,
+    @field:Email val email: String,
+    @field:Min(18) val age: Int,
+    @field:Pattern(regexp = "\\d{10}") val phone: String
+)
+`
+	ents := extract(t, "custom_kotlin_validation", fi("CreateUserRequest.kt", "kotlin", src))
+
+	// email: @Email on the email field
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:CreateUserRequest.email:Email"); e == nil {
+		t.Error("expected email -> @Email rule")
+	} else if e.Props["field_name"] != "email" || e.Props["constraint"] != "Email" {
+		t.Errorf("email rule props wrong: %+v", e.Props)
+	}
+
+	// name: Size(min=1,max=20) bound capture on username
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:CreateUserRequest.username:Size"); e == nil {
+		t.Error("expected username -> Size rule")
+	} else if e.Props["min"] != "1" || e.Props["max"] != "20" {
+		t.Errorf("expected Size(min=1,max=20), got min=%q max=%q", e.Props["min"], e.Props["max"])
+	}
+
+	// Min(18) value bound on age
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:CreateUserRequest.age:Min"); e == nil {
+		t.Error("expected age -> Min rule")
+	} else if e.Props["value"] != "18" {
+		t.Errorf("expected Min value=18, got %q", e.Props["value"])
+	}
+
+	// Pattern(regexp=...) on phone
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:CreateUserRequest.phone:Pattern"); e == nil {
+		t.Error("expected phone -> Pattern rule")
+	} else if e.Props["regexp"] != `\\d{10}` {
+		// Kotlin source contains the escaped form `\\d{10}`; the extractor
+		// reports the literal token verbatim.
+		t.Errorf("expected Pattern regexp=\\\\d{10}, got %q", e.Props["regexp"])
+	}
+
+	// NotBlank on name
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:CreateUserRequest.name:NotBlank"); e == nil {
+		t.Error("expected name -> NotBlank rule")
+	}
+}
+
+// dto_extraction: property name + type + nullability + wire-name override.
+func TestValidationDTOPropertyShape(t *testing.T) {
+	src := `
+@Serializable
+data class AddressDto(
+    @SerialName("street_name") val streetName: String,
+    val unit: String? = null,
+    @JsonProperty("zip") val zipCode: String,
+    val country: String = "US"
+)
+`
+	ents := extract(t, "custom_kotlin_validation", fi("AddressDto.kt", "kotlin", src))
+	dto := findEntity(ents, "SCOPE.Schema", "AddressDto")
+	if dto == nil {
+		t.Fatal("expected AddressDto DTO schema")
+	}
+	// kotlinx-serialization @SerialName wire override
+	if dto.Props["prop.streetName.wire_name"] != "street_name" {
+		t.Errorf("expected streetName wire_name=street_name, got %q", dto.Props["prop.streetName.wire_name"])
+	}
+	// nullability: String?
+	if dto.Props["prop.unit.nullable"] != "true" {
+		t.Errorf("expected unit nullable=true, got %q", dto.Props["prop.unit.nullable"])
+	}
+	if dto.Props["prop.streetName.nullable"] != "false" {
+		t.Errorf("expected streetName nullable=false, got %q", dto.Props["prop.streetName.nullable"])
+	}
+	// Jackson @JsonProperty wire override
+	if dto.Props["prop.zipCode.wire_name"] != "zip" {
+		t.Errorf("expected zipCode wire_name=zip, got %q", dto.Props["prop.zipCode.wire_name"])
+	}
+	// default capture
+	if dto.Props["prop.country.default"] != `"US"` {
+		t.Errorf("expected country default=\"US\", got %q", dto.Props["prop.country.default"])
+	}
+	if dto.Props["prop.country.type"] != "String" {
+		t.Errorf("expected country type=String, got %q", dto.Props["prop.country.type"])
+	}
+}
+
+// konform DSL: Validation<Foo> { Foo::bar { minLength(1) } } — specific field +
+// constraint + bound, not len>0.
+func TestValidationKonformDSL(t *testing.T) {
+	src := `
+val userValidation = Validation<UserDto> {
+    UserDto::name {
+        minLength(1)
+        maxLength(20)
+    }
+    UserDto::email {
+        pattern(".+@.+")
+    }
+}
+`
+	ents := extract(t, "custom_kotlin_validation", fi("UserValidation.kt", "kotlin", src))
+
+	if !containsEntity(ents, "SCOPE.Schema", "UserDto") {
+		t.Error("expected UserDto DTO schema from konform Validation<UserDto>")
+	}
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:UserDto.name:minLength"); e == nil {
+		t.Error("expected name -> minLength rule")
+	} else if e.Props["bound"] != "1" || e.Props["field_name"] != "name" {
+		t.Errorf("expected minLength bound=1 field=name, got %+v", e.Props)
+	}
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:UserDto.name:maxLength"); e == nil {
+		t.Error("expected name -> maxLength rule")
+	} else if e.Props["bound"] != "20" {
+		t.Errorf("expected maxLength bound=20, got %q", e.Props["bound"])
+	}
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:UserDto.email:pattern"); e == nil {
+		t.Error("expected email -> pattern rule")
+	} else if e.Props["bound"] != ".+@.+" {
+		t.Errorf("expected pattern bound=.+@.+, got %q", e.Props["bound"])
+	}
+}
+
+// Bare (non-field:) bean annotations still attribute to the right field.
+func TestValidationBareBeanAnnotationField(t *testing.T) {
+	src := `
+data class LoginRequest(
+    @NotNull val username: String,
+    @Size(max = 64) val password: String
+)
+`
+	ents := extract(t, "custom_kotlin_validation", fi("LoginRequest.kt", "kotlin", src))
+	if e := findEntity(ents, "SCOPE.Pattern", "validation:rule:LoginRequest.password:Size"); e == nil {
+		t.Error("expected password -> Size rule")
+	} else if e.Props["max"] != "64" {
+		t.Errorf("expected Size max=64, got %q", e.Props["max"])
+	}
+	if findEntity(ents, "SCOPE.Pattern", "validation:rule:LoginRequest.username:NotNull") == nil {
+		t.Error("expected username -> NotNull rule")
 	}
 }
