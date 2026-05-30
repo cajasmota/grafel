@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/observability.go` | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/observability.go`<br>`internal/custom/ruby/observability_test.go` | Detects Rails.logger.{debug,info,warn,error,fatal}, logger.tagged tagged-block, ActiveSupport::TaggedLogging.new, lograge require+config. Import/call-site heuristic; no cross-file dataflow. Stays partial. |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/observability.go`<br>`internal/custom/ruby/observability_test.go` | Detects Yabeda.configure block + Yabeda.counter/gauge/histogram call-sites, prometheus-client Counter/Gauge/Histogram, Datadog::Statsd.new + call-sites, StatsD gem. Import/call-site heuristic; no cross-file dataflow. Stays partial. |
+| Trace extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/observability.go`<br>`internal/custom/ruby/observability_test.go` | Detects ActiveSupport::Notifications.instrument+subscribe event names, OpenTelemetry in_span, ddtrace/Datadog::Tracing.trace, Skylight.instrument, OpenTracing. Import/call-site heuristic; no cross-file dataflow. Stays partial. |
 
 ### Data
 

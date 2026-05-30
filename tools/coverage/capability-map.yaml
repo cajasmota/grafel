@@ -6405,6 +6405,48 @@ records:
             - file: internal/custom/ruby/middleware_test.go
           issues_implemented: ["3282"]
           verified_at: "2026-05-30"
+      Observability:
+        log_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/ruby/observability.go
+              functions: [extractRubyLogging, extractRailsObsLogging]
+          tests:
+            - file: internal/custom/ruby/observability_test.go
+          issues_implemented: ["3282", "3343"]
+          notes: >
+            Detects Rails.logger.{debug,info,warn,error,fatal}, logger.tagged tagged-block,
+            ActiveSupport::TaggedLogging.new, lograge require+config, SemanticLogger, stdlib
+            Logger.new. Import/call-site heuristic; no cross-file dataflow binding logger
+            instance to handler. Stays partial.
+          verified_at: "2026-05-30"
+        metric_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/ruby/observability.go
+              functions: [extractRubyMetrics, extractRailsObsMetrics]
+          tests:
+            - file: internal/custom/ruby/observability_test.go
+          issues_implemented: ["3282", "3343"]
+          notes: >
+            Detects Yabeda.configure block + Yabeda.counter/gauge/histogram call-sites,
+            prometheus-client Counter/Gauge/Histogram, Datadog::Statsd.new + call-sites,
+            StatsD gem. Import/call-site heuristic; no cross-file dataflow. Stays partial.
+          verified_at: "2026-05-30"
+        trace_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/ruby/observability.go
+              functions: [extractRubyTracing, extractRailsObsTracing]
+          tests:
+            - file: internal/custom/ruby/observability_test.go
+          issues_implemented: ["3282", "3343"]
+          notes: >
+            Detects ActiveSupport::Notifications.instrument+subscribe event names,
+            OpenTelemetry::SDK configure + tracer.in_span, ddtrace/Datadog::Tracing.trace,
+            Skylight.instrument, OpenTracing. Import/call-site heuristic; no cross-file
+            dataflow binding tracer to exporter. Stays partial.
+          verified_at: "2026-05-30"
 
   lang.php.framework.laravel:
     capabilities:

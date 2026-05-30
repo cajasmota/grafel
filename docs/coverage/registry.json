@@ -43842,20 +43842,23 @@
         "Observability": {
           "log_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/ruby/observability.go"],
+            "cites": ["internal/custom/ruby/observability.go","internal/custom/ruby/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Rails.logger.{debug,info,warn,error,fatal}, logger.tagged tagged-block, ActiveSupport::TaggedLogging.new, lograge require+config. Import/call-site heuristic; no cross-file dataflow. Stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/ruby/observability.go"],
+            "cites": ["internal/custom/ruby/observability.go","internal/custom/ruby/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Yabeda.configure block + Yabeda.counter/gauge/histogram call-sites, prometheus-client Counter/Gauge/Histogram, Datadog::Statsd.new + call-sites, StatsD gem. Import/call-site heuristic; no cross-file dataflow. Stays partial.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/ruby/observability.go"],
+            "cites": ["internal/custom/ruby/observability.go","internal/custom/ruby/observability_test.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Detects ActiveSupport::Notifications.instrument+subscribe event names, OpenTelemetry in_span, ddtrace/Datadog::Tracing.trace, Skylight.instrument, OpenTracing. Import/call-site heuristic; no cross-file dataflow. Stays partial.",
             "verified_at": "2026-05-30"
           }
         },
