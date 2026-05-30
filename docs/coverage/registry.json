@@ -43151,9 +43151,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/routes.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/ruby/grape_deep.go"],
             "verified_at": "2026-05-30"
           }
         },
@@ -43166,15 +43165,13 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/validation.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/ruby/grape_deep.go","internal/custom/ruby/validation.go"],
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/validation.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/ruby/grape_deep.go","internal/custom/ruby/validation.go"],
             "verified_at": "2026-05-30"
           }
         },

@@ -27,7 +27,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [Cuba](../detail/lang.ruby.framework.cuba.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [Grape](../detail/lang.ruby.framework.grape.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Grape](../detail/lang.ruby.framework.grape.md) | ✅ 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Roda](../detail/lang.ruby.framework.roda.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |

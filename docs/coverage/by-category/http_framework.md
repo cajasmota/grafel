@@ -98,7 +98,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | ✅ 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
