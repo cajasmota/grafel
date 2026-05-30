@@ -33443,66 +33443,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -33527,8 +33553,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -33551,8 +33579,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -33560,8 +33590,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -33602,8 +33634,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -33632,66 +33666,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -33716,8 +33776,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -33740,8 +33802,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -33749,8 +33813,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -33791,8 +33857,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -33821,66 +33889,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -33905,8 +33999,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -33929,8 +34025,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -33938,8 +34036,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -33980,8 +34080,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -34010,66 +34112,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -34094,8 +34222,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -34118,8 +34248,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -34127,8 +34259,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -34169,8 +34303,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -34199,66 +34335,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -34283,8 +34445,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -34307,8 +34471,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -34316,8 +34482,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "partial",
@@ -34358,8 +34526,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -34378,72 +34548,102 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Lumen app-\u003eget/post/router-\u003emethod routes extracted; endpoint synthesis via regex route parsing"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Lumen controller string patterns (Controller@method) extracted alongside routes"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -34468,8 +34668,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -34492,8 +34694,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -34501,8 +34705,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -34543,8 +34749,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -34573,66 +34781,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -34657,8 +34891,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -34681,8 +34917,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -34690,8 +34928,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -34732,8 +34972,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -34752,72 +34994,102 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Phalcon app-\u003eget/post/router-\u003emethod routes and group prefixes extracted"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Phalcon controller class detection alongside route definitions"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -34842,8 +35114,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -34866,8 +35140,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -34875,8 +35151,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -34917,8 +35195,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -34947,66 +35227,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -35031,8 +35337,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -35055,8 +35363,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -35064,8 +35374,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -35106,8 +35418,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -35136,66 +35450,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -35220,8 +35560,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -35244,8 +35586,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -35253,8 +35597,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -35295,8 +35641,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -35325,66 +35673,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -35409,8 +35783,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -35433,8 +35809,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -35442,8 +35820,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -35484,8 +35864,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -35514,66 +35896,92 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Log::*/error_log/Monolog calls detected via regex and template pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "StatsD/Prometheus/Datadog metric calls detected via regex"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/php/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry/Jaeger/Zipkin/DDTrace tracing calls detected via regex"
           }
         },
         "Substrate": {
@@ -35598,8 +36006,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP def-use sniffer registered in substrate; flows through language-agnostic def_use_pass"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -35622,8 +36032,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/php/php.go","internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; PHP namespace_use_declaration edges emitted by tree-sitter extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -35631,8 +36043,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/effect_sinks_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
             "status": "full",
@@ -35673,8 +36087,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/template_pattern_php.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "PHP template-pattern sniffer registered; covers i18n trans(), log literals, SQL strings"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -50162,10 +50578,14 @@
       "label": "composer.json",
       "capabilities": {
         "lockfile_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/cross/manifest/extractor.go"],
+          "notes": "composer.lock parsed via parseComposerLock: packages/packages-dev arrays emitting locked deps with resolved versions"
         },
         "manifest_parsing": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/cross/manifest/extractor.go"],
+          "notes": "composer.json parsed via parseComposerJSON: require/require-dev maps emitting runtime and dev deps with version constraints"
         }
       }
     },

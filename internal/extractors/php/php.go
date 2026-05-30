@@ -3,6 +3,7 @@
 // Extracted entities:
 //   - class_declaration     → Kind="SCOPE.Component", Subtype="class"
 //   - interface_declaration → Kind="SCOPE.Component", Subtype="interface"
+//   - enum_declaration      → Kind="SCOPE.Schema", Subtype="enum"  (PHP 8.1+)
 //   - method_declaration    → Kind="SCOPE.Operation", Subtype="method"
 //   - function_definition   → Kind="SCOPE.Operation", Subtype="function"
 //   - namespace_definition       → IMPORTS relationship (file → own namespace)
@@ -13,6 +14,10 @@
 //   - member_call_expression    $obj->method()
 //   - scoped_call_expression    Foo::m() / self::m() / parent::m()
 //   - object_creation_expression  new Foo()  (CALLS Foo, constructor edge)
+//
+// PHP 8.1 enums are extracted as SCOPE.Schema/enum, mirroring the Python and
+// TypeScript enum_extraction convention so cross-stack type queries join on
+// the same kind/subtype taxonomy.
 //
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
@@ -128,6 +133,15 @@ func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *
 			*out = append(*out, rec)
 		}
 
+	case "enum_declaration":
+		// PHP 8.1+ backed and pure enums.
+		// Tree-sitter grammar node: enum_declaration with a `name` field.
+		// Members are emitted as a comma-separated list in the Properties
+		// "enum_members" key so downstream type queries can surface them.
+		if rec, ok := buildEnum(node, file); ok {
+			*out = append(*out, rec)
+		}
+
 	case "method_declaration":
 		if rec, ok := buildOperation(node, file, "method"); ok {
 			bareName := rec.Name
@@ -198,6 +212,57 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 		EnrichmentRequired: false,
 	}
 	tagEloquent(&rec, node, file.Content, file.Path)
+	return rec, true
+}
+
+// buildEnum creates a SCOPE.Schema/enum entity for PHP 8.1+ enum_declaration
+// nodes. Backed enums (enum Status: string) and pure enums are both handled.
+// Case names are collected into the "enum_members" property (comma-separated).
+func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	name := childFieldText(node, "name", file.Content)
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+
+	// Collect enum case names from the declaration body.
+	var members []string
+	body := node.ChildByFieldName("body")
+	if body == nil {
+		// Fallback: scan direct children for the declaration_list node.
+		for i := range node.ChildCount() {
+			ch := node.Child(int(i))
+			if ch.Type() == "declaration_list" || ch.Type() == "enum_declaration_list" {
+				body = ch
+				break
+			}
+		}
+	}
+	if body != nil {
+		for i := range body.ChildCount() {
+			ch := body.Child(int(i))
+			if ch.Type() == "enum_case" {
+				if n := childFieldText(ch, "name", file.Content); n != "" {
+					members = append(members, n)
+				}
+			}
+		}
+	}
+
+	rec := types.EntityRecord{
+		Name:               name,
+		Kind:               "SCOPE.Schema",
+		Subtype:            "enum",
+		SourceFile:         file.Path,
+		Language:           "php",
+		StartLine:          int(node.StartPoint().Row) + 1,
+		EndLine:            int(node.EndPoint().Row) + 1,
+		EnrichmentRequired: false,
+		Properties: map[string]string{
+			"pattern_type": "enum",
+			"enum_members": strings.Join(members, ","),
+		},
+	}
+	rec.ID = rec.ComputeID()
 	return rec, true
 }
 

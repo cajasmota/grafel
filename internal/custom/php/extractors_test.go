@@ -222,3 +222,291 @@ func TestEloquentNoMatch(t *testing.T) {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// PHP Type System (enum / interface / class / type_alias)
+// ---------------------------------------------------------------------------
+
+func TestPHPTypeSystemEnum(t *testing.T) {
+	src := `<?php
+enum Status: string {
+    case Active = 'active';
+    case Inactive = 'inactive';
+}
+enum Color { case Red; case Green; }
+`
+	ents := extract(t, "custom_php_typesystem", fi("Status.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Schema", "Status") {
+		t.Error("expected Status enum entity")
+	}
+	if !containsEntity(ents, "SCOPE.Schema", "Color") {
+		t.Error("expected Color enum entity")
+	}
+}
+
+func TestPHPTypeSystemInterface(t *testing.T) {
+	src := `<?php
+interface Serializable {
+    public function serialize(): string;
+}
+`
+	ents := extract(t, "custom_php_typesystem", fi("Serializable.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Component", "Serializable") {
+		t.Error("expected Serializable interface entity")
+	}
+}
+
+func TestPHPTypeSystemTypeAlias(t *testing.T) {
+	src := `<?php
+/**
+ * @phpstan-type UserId int
+ * @psalm-type Status = 'active'|'inactive'
+ */
+class UserRepo {}
+`
+	ents := extract(t, "custom_php_typesystem", fi("UserRepo.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Schema", "UserId") {
+		t.Error("expected UserId type alias entity")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PHP Observability
+// ---------------------------------------------------------------------------
+
+func TestPHPObservabilityLog(t *testing.T) {
+	src := `<?php
+Log::info('user logged in', ['user_id' => $id]);
+error_log('Something went wrong');
+`
+	ents := extract(t, "custom_php_observability", fi("auth.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Config", "php:logging") {
+		t.Error("expected php:logging observability entity")
+	}
+}
+
+func TestPHPObservabilityNoMatch(t *testing.T) {
+	src := `<?php $x = 42;`
+	ents := extract(t, "custom_php_observability", fi("plain.php", "php", src))
+	if len(ents) != 0 {
+		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CakePHP
+// ---------------------------------------------------------------------------
+
+func TestCakePHPRoute(t *testing.T) {
+	src := `<?php
+$routes->connect('/articles', ['controller' => 'Articles', 'action' => 'index']);
+$routes->get('/users', ['controller' => 'Users', 'action' => 'index']);
+$routes->resources('Products');
+`
+	ents := extract(t, "custom_php_cakephp", fi("routes.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/articles") {
+		t.Error("expected /articles route")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "resource:Products") {
+		t.Error("expected resource:Products pattern")
+	}
+}
+
+func TestCakePHPMiddleware(t *testing.T) {
+	src := `<?php
+$middlewareQueue->add(new AuthenticationMiddleware($this));
+$middlewareQueue->add(new CsrfProtectionMiddleware());
+`
+	ents := extract(t, "custom_php_cakephp", fi("Application.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "middleware:AuthenticationMiddleware") {
+		t.Error("expected AuthenticationMiddleware pattern")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CodeIgniter
+// ---------------------------------------------------------------------------
+
+func TestCodeIgniterRoute(t *testing.T) {
+	src := `<?php
+$routes->get('/users', 'UserController::index');
+$routes->post('/users', 'UserController::create');
+$routes->resource('products');
+`
+	ents := extract(t, "custom_php_codeigniter", fi("Routes.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/users") {
+		t.Error("expected /users route")
+	}
+}
+
+func TestCodeIgniterFilter(t *testing.T) {
+	src := `<?php
+class AuthFilter implements FilterInterface {
+    public function before(RequestInterface $request, $arguments = null) {}
+}
+`
+	ents := extract(t, "custom_php_codeigniter", fi("AuthFilter.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "filter:AuthFilter") {
+		t.Error("expected filter:AuthFilter pattern")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Lumen
+// ---------------------------------------------------------------------------
+
+func TestLumenRoute(t *testing.T) {
+	src := `<?php
+$app->get('/users', 'UserController@index');
+$router->post('/auth/login', 'AuthController@login');
+`
+	ents := extract(t, "custom_php_lumen", fi("web.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/users") {
+		t.Error("expected /users route")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Slim
+// ---------------------------------------------------------------------------
+
+func TestSlimRoute(t *testing.T) {
+	src := `<?php
+$app->get('/hello/{name}', function (Request $request, Response $response, $args) {
+    return $response;
+});
+$app->post('/api/users', UserController::class . ':create');
+`
+	ents := extract(t, "custom_php_slim", fi("routes.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/hello/{name}") {
+		t.Error("expected /hello/{name} route")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// WordPress
+// ---------------------------------------------------------------------------
+
+func TestWordPressRestRoute(t *testing.T) {
+	src := `<?php
+register_rest_route('myplugin/v1', '/author/(?P<id>\d+)', [
+    'methods' => 'GET',
+    'callback' => 'my_awesome_func',
+]);
+`
+	ents := extract(t, "custom_php_wordpress", fi("rest-api.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/myplugin/v1/author/(?P<id>\\d+)") {
+		// WordPress REST route: namespace + path joined
+		found := false
+		for _, e := range ents {
+			if e.Kind == "SCOPE.Operation" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected a SCOPE.Operation endpoint from register_rest_route")
+		}
+	}
+}
+
+func TestWordPressAction(t *testing.T) {
+	src := `<?php
+add_action('init', 'my_init_function');
+add_action('wp_enqueue_scripts', 'enqueue_styles');
+`
+	ents := extract(t, "custom_php_wordpress", fi("plugin.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "action:init") {
+		t.Error("expected action:init hook pattern")
+	}
+}
+
+func TestWordPressCapability(t *testing.T) {
+	src := `<?php
+if (!current_user_can('manage_options')) { wp_die('Unauthorized'); }
+`
+	ents := extract(t, "custom_php_wordpress", fi("admin.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "capability:manage_options") {
+		t.Error("expected capability:manage_options auth pattern")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Yii
+// ---------------------------------------------------------------------------
+
+func TestYiiController(t *testing.T) {
+	src := `<?php
+class UserController extends Controller {
+    public function actionIndex() {}
+}
+`
+	ents := extract(t, "custom_php_yii", fi("UserController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Component", "UserController") {
+		t.Error("expected UserController component")
+	}
+}
+
+func TestYiiFilter(t *testing.T) {
+	src := `<?php
+class AuthFilter extends ActionFilter {
+    public function beforeAction($action) { return parent::beforeAction($action); }
+}
+`
+	ents := extract(t, "custom_php_yii", fi("AuthFilter.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "filter:AuthFilter") {
+		t.Error("expected filter:AuthFilter pattern")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phalcon
+// ---------------------------------------------------------------------------
+
+func TestPhalconRoute(t *testing.T) {
+	src := `<?php
+$app->get('/api/robots', function() use ($app) {
+    return 'hello';
+});
+$app->post('/api/robots/add', RobotsController::class);
+`
+	ents := extract(t, "custom_php_phalcon", fi("routes.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/api/robots") {
+		t.Error("expected /api/robots route")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Laminas
+// ---------------------------------------------------------------------------
+
+func TestLaminasRoute(t *testing.T) {
+	src := `<?php
+return [
+    'routes' => [
+        'home' => [
+            'type' => Literal::class,
+            'options' => [
+                'route' => '/home',
+            ],
+        ],
+    ],
+];
+`
+	ents := extract(t, "custom_php_laminas", fi("module.config.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/home") {
+		t.Error("expected /home route")
+	}
+}
+
+func TestLaminasMiddleware(t *testing.T) {
+	src := `<?php
+class AuthMiddleware implements MiddlewareInterface {
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface {}
+}
+`
+	ents := extract(t, "custom_php_laminas", fi("AuthMiddleware.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "middleware:AuthMiddleware") {
+		t.Error("expected middleware:AuthMiddleware pattern")
+	}
+}

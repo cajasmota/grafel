@@ -1059,3 +1059,98 @@ func TestCMake_NotManifest(t *testing.T) {
 		t.Errorf("expected 0 entities for non-manifest filename, got %d", len(records))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// composer.json / composer.lock
+// ---------------------------------------------------------------------------
+
+func TestComposerJSON_Dependencies(t *testing.T) {
+	src := `{
+  "require": {
+    "laravel/framework": "^10.0",
+    "guzzlehttp/guzzle": "^7.2"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.1",
+    "nunomaduro/collision": "^7.0"
+  }
+}`
+	records := runExtract(t, "composer.json", src)
+	deps := depEntities(records)
+	byName := map[string]string{}
+	for _, d := range deps {
+		byName[d.Name] = d.Properties["dependency_kind"]
+	}
+	if byName["laravel/framework"] != "runtime" {
+		t.Errorf("expected laravel/framework runtime dep, got %q", byName["laravel/framework"])
+	}
+	if byName["phpunit/phpunit"] != "dev" {
+		t.Errorf("expected phpunit/phpunit dev dep, got %q", byName["phpunit/phpunit"])
+	}
+	if _, ok := byName["guzzlehttp/guzzle"]; !ok {
+		t.Error("expected guzzlehttp/guzzle dep")
+	}
+}
+
+func TestComposerJSON_SkipsPHPRuntime(t *testing.T) {
+	src := `{
+  "require": {
+    "php": "^8.1",
+    "ext-mbstring": "*",
+    "symfony/console": "^6.3"
+  }
+}`
+	records := runExtract(t, "composer.json", src)
+	deps := depEntities(records)
+	for _, d := range deps {
+		if d.Name == "php" || d.Name == "ext-mbstring" {
+			t.Errorf("should not emit entity for %q (PHP runtime constraint)", d.Name)
+		}
+	}
+	byName := map[string]bool{}
+	for _, d := range deps {
+		byName[d.Name] = true
+	}
+	if !byName["symfony/console"] {
+		t.Error("expected symfony/console dep")
+	}
+}
+
+func TestComposerLock_Packages(t *testing.T) {
+	src := `{
+  "_readme": ["This file is @generated automatically"],
+  "packages": [
+    {"name": "laravel/framework", "version": "v10.48.0"},
+    {"name": "guzzlehttp/guzzle", "version": "7.8.1"}
+  ],
+  "packages-dev": [
+    {"name": "phpunit/phpunit", "version": "10.5.0"}
+  ]
+}`
+	records := runExtract(t, "composer.lock", src)
+	deps := depEntities(records)
+	byName := map[string]string{}
+	for _, d := range deps {
+		byName[d.Name] = d.Properties["dependency_kind"]
+	}
+	if byName["laravel/framework"] != "locked" {
+		t.Errorf("expected laravel/framework locked dep, got %q", byName["laravel/framework"])
+	}
+	if byName["phpunit/phpunit"] != "locked" {
+		t.Errorf("expected phpunit/phpunit locked dev dep, got %q", byName["phpunit/phpunit"])
+	}
+	if _, ok := byName["guzzlehttp/guzzle"]; !ok {
+		t.Error("expected guzzlehttp/guzzle dep")
+	}
+}
+
+func TestComposerJSON_PackageManager(t *testing.T) {
+	src := `{"require": {"slim/slim": "^4.0"}}`
+	records := runExtract(t, "composer.json", src)
+	for _, r := range records {
+		pm := r.Properties["package_manager"]
+		if pm != "" && pm != "composer" {
+			t.Errorf("package_manager=%q want composer", pm)
+		}
+	}
+}

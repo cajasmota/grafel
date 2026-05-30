@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Lockfile parsing | 🔴 `missing` | — | — | — | — |
-| Manifest parsing | 🔴 `missing` | — | — | — | — |
+| Lockfile parsing | ✅ `full` | — | — | `internal/extractors/cross/manifest/extractor.go` | composer.lock parsed via parseComposerLock: packages/packages-dev arrays emitting locked deps with resolved versions |
+| Manifest parsing | ✅ `full` | — | — | `internal/extractors/cross/manifest/extractor.go` | composer.json parsed via parseComposerJSON: require/require-dev maps emitting runtime and dev deps with version constraints |
 
 ## Provenance
 

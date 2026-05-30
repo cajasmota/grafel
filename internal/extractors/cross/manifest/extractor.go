@@ -23,6 +23,8 @@
 //   - conanfile.txt        (conan) — [requires] section
 //   - conanfile.py         (conan) — requires list in ConanFile class
 //   - vcpkg.json           (vcpkg) — dependencies array
+//   - composer.json        (composer — PHP manifest_parsing, require/require-dev)
+//   - composer.lock        (composer — PHP lockfile_parsing, packages/packages-dev)
 //
 // Entity kind: "SCOPE.Component"
 // Relationships emitted: DEPENDS_ON(kind=external_dependency)
@@ -126,6 +128,9 @@ var exactManifestNames = map[string]bool{
 	"conanfile.txt":  true,
 	"conanfile.py":   true,
 	"vcpkg.json":     true,
+	// PHP / Composer
+	"composer.json": true,
+	"composer.lock": true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -169,6 +174,9 @@ func detectPackageManager(filePath string) string {
 		"conanfile.txt":  "conan",
 		"conanfile.py":   "conan",
 		"vcpkg.json":     "vcpkg",
+		// PHP / Composer
+		"composer.json": "composer",
+		"composer.lock": "composer",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -1335,6 +1343,73 @@ func parseNugetLockJSON(source string) []dep {
 }
 
 // ---------------------------------------------------------------------------
+// Parser: composer.json (PHP/Composer manifest)
+// ---------------------------------------------------------------------------
+//
+// Parses the top-level "require" and "require-dev" maps.
+// Version constraints are kept verbatim (e.g. "^1.0", "~2.3", "1.2.3").
+func parseComposerJSON(source string) []dep {
+	var raw struct {
+		Require    map[string]string `json:"require"`
+		RequireDev map[string]string `json:"require-dev"`
+	}
+	if err := json.Unmarshal([]byte(source), &raw); err != nil {
+		return nil
+	}
+	var out []dep
+	for name, ver := range raw.Require {
+		// Skip the PHP runtime version constraint itself.
+		if name == "php" || strings.HasPrefix(name, "ext-") {
+			continue
+		}
+		out = append(out, dep{name: name, version: ver, isDev: false, kind: "runtime"})
+	}
+	for name, ver := range raw.RequireDev {
+		if name == "php" || strings.HasPrefix(name, "ext-") {
+			continue
+		}
+		out = append(out, dep{name: name, version: ver, isDev: true, kind: "dev"})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: composer.lock (PHP/Composer lockfile)
+// ---------------------------------------------------------------------------
+//
+// Parses the top-level "packages" (runtime) and "packages-dev" arrays.
+// Each entry has at least "name" and "version".
+func parseComposerLock(source string) []dep {
+	var raw struct {
+		Packages []struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		} `json:"packages"`
+		PackagesDev []struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		} `json:"packages-dev"`
+	}
+	if err := json.Unmarshal([]byte(source), &raw); err != nil {
+		return nil
+	}
+	var out []dep
+	for _, p := range raw.Packages {
+		if p.Name == "" {
+			continue
+		}
+		out = append(out, dep{name: p.Name, version: p.Version, isDev: false, kind: "locked"})
+	}
+	for _, p := range raw.PackagesDev {
+		if p.Name == "" {
+			continue
+		}
+		out = append(out, dep{name: p.Name, version: p.Version, isDev: true, kind: "locked"})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 
 type parserFn func(source string) []dep
 
@@ -1362,6 +1437,9 @@ var parsers = map[string]parserFn{
 	"conanfile.txt":  parseConanfileTxt,
 	"conanfile.py":   parseConanfilePy,
 	"vcpkg.json":     parseVcpkgJSON,
+	// PHP / Composer
+	"composer.json": parseComposerJSON,
+	"composer.lock": parseComposerLock,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {
