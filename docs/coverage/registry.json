@@ -32431,100 +32431,134 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/lua/routing.go"],
+            "notes": "Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only."
           },
           "handler_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/routing.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only."
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/routing.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for Lapis app:get/post/put/delete/patch/match() routes and respond_to() verb tables. Partial: no AST; handler identity is syntactic only."
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/auth.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for resty.jwt verify/decode, ngx.req.get_headers Authorization, access_by_lua_block gates, Lapis session/before_filter auth, and Kong :access() handlers."
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for ngx.req.get_post/uri_args, cjson.decode DTOs, lapis.validate/check_params/capture_errors, and resty.jsonschema schema validation."
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for ngx.req.get_post/uri_args, cjson.decode DTOs, lapis.validate/check_params/capture_errors, and resty.jsonschema schema validation."
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/middleware.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for Lapis before_filter/app:before/app:after/error_handler patterns and lapis.flow pipeline."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static enum_extraction. LuaLS/EmmyLua annotations (---@type, ---@class) are optional and not common in Lapis/OpenResty codebases."
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static interface_extraction. LuaLS/EmmyLua annotations (---@type, ---@class) are optional and not common in Lapis/OpenResty codebases."
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static type_alias_extraction. LuaLS/EmmyLua annotations (---@type, ---@class) are optional and not common in Lapis/OpenResty codebases."
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static type_extraction. LuaLS/EmmyLua annotations (---@type, ---@class) are optional and not common in Lapis/OpenResty codebases."
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/testing.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for busted describe/it/hooks/assertions/spies, luaunit testXxx methods, lapis.spec integration test patterns, and Kong spec.helpers. Partial: full TESTS-edge linkage requires multi-hop HTTP engine pass."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor covering log_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor covering metric_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor covering trace_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
           }
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/types/confidence.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Confidence scores are stamped on Lua entities via the language-agnostic effect propagation pass. Partial: no Lua-specific effect sinks file; confidence derived from CALLS edges and taint sniffer matches."
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/lua.go"],
+            "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "db_effect": {
             "status": "not_applicable"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Dead-code detection via the reachability pass using Lua entry points. Partial: depends on quality of entry-point detection; global functions always marked as exports."
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua def-use sniffer (local/bare assignments, function attribution via nearest function header) feeds the intra-procedural reaching-definitions pass. Partial: no SSA-phi precision."
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/lua.go"],
+            "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "fs_effect": {
             "status": "not_applicable"
@@ -32533,55 +32567,76 @@
             "status": "not_applicable"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/lua/lua.go","internal/links/constant_propagation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua extractor emits IMPORTS edges for require() calls with local_name/source_module/import_kind properties. Cross-file resolution via constant propagation pass. Partial: no module path search-path resolution."
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC pass over IMPORTS edges. Lua extractor emits IMPORTS edges for require() calls, feeding the cycle detector. Partial: cross-repo cycles not tracked."
           },
           "mutation_effect": {
             "status": "not_applicable"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass: functions with no effects stamped as pure. Lua functions flow through the pass via entity graph. Partial: no Lua-specific effect sinks file yet (effects inferred from CALLS edges only)."
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua entry-point sniffer (shebang/main/busted/love/openresty-init/kong-init) feeds the language-agnostic BFS reachability pass. Partial: framework-handler reachability via HTTP edges only."
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua template-pattern sniffer detects ngx.log literals (log_format), i18n.translate/i18n() keys (i18n), and SQL verb string literals (sql). Feeds the language-agnostic catalog pass."
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           }
         }
       }
@@ -32595,100 +32650,134 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/lua/routing.go"],
+            "notes": "Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic."
           },
           "handler_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/routing.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic."
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/routing.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for OpenResty nginx location blocks, ngx.var.uri path matching, and content_by_lua_block directives. Partial: nginx.conf parsing is heuristic."
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/auth.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for resty.jwt verify/decode, ngx.req.get_headers Authorization, access_by_lua_block gates, and Kong :access() handlers."
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for ngx.req.get_post/uri_args, ngx.req.read_body, cjson.decode, ngx.exit(400) guards, and resty.jsonschema schema validation."
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for ngx.req.get_post/uri_args, ngx.req.read_body, cjson.decode, ngx.exit(400) guards, and resty.jsonschema schema validation."
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/middleware.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for OpenResty nginx phase directives: rewrite_by_lua_block, access_by_lua_block, header_filter_by_lua_block, body_filter_by_lua_block, log_by_lua_block, init_by_lua_block. Also Kong plugin handler phases."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static enum_extraction. LuaLS/EmmyLua annotations are not common in OpenResty codebases."
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static interface_extraction. LuaLS/EmmyLua annotations are not common in OpenResty codebases."
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static type_alias_extraction. LuaLS/EmmyLua annotations are not common in OpenResty codebases."
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; no static type_extraction. LuaLS/EmmyLua annotations are not common in OpenResty codebases."
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/testing.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor for busted/luaunit test patterns and Kong spec.helpers. Partial: full TESTS-edge linkage requires multi-hop HTTP engine pass."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor covering log_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor covering metric_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/lua/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extractor covering trace_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
           }
         },
         "Substrate": {
           "confidence_overlay": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/types/confidence.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Confidence scores are stamped on Lua entities via the language-agnostic effect propagation pass. Partial: no Lua-specific effect sinks file; confidence derived from CALLS edges and taint sniffer matches."
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/lua.go"],
+            "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "db_effect": {
             "status": "not_applicable"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Dead-code detection via the reachability pass using Lua entry points. Partial: depends on quality of entry-point detection; global functions always marked as exports."
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua def-use sniffer (local/bare assignments, function attribution via nearest function header) feeds the intra-procedural reaching-definitions pass. Partial: no SSA-phi precision."
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/lua.go"],
+            "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "fs_effect": {
             "status": "not_applicable"
@@ -32697,55 +32786,76 @@
             "status": "not_applicable"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/lua/lua.go","internal/links/constant_propagation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua extractor emits IMPORTS edges for require() calls with local_name/source_module/import_kind properties. Cross-file resolution via constant propagation pass. Partial: no module path search-path resolution."
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC pass over IMPORTS edges. Lua extractor emits IMPORTS edges for require() calls, feeding the cycle detector. Partial: cross-repo cycles not tracked."
           },
           "mutation_effect": {
             "status": "not_applicable"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass: functions with no effects stamped as pure. Lua functions flow through the pass via entity graph. Partial: no Lua-specific effect sinks file yet (effects inferred from CALLS edges only)."
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua entry-point sniffer (shebang/main/busted/love/openresty-init/kong-init) feeds the language-agnostic BFS reachability pass. Partial: framework-handler reachability via HTTP edges only."
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/lua/lua.go"],
+            "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua template-pattern sniffer detects ngx.log literals (log_format), i18n.translate/i18n() keys (i18n), and SQL verb string literals (sql). Feeds the language-agnostic catalog pass."
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_lua.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Lua taint sniffer: sources=ngx.req.get_post/uri_args/body_data/headers/ngx.var.*/cjson.decode/params.*; sinks=db:query-concat/os.execute/io.popen/io.open/ngx.say/load; sanitizers=ngx.quote_sql_str/ngx.escape_uri/lapis.db.escape_literal/cjson.encode. Partial: no cross-function dataflow."
           }
         }
       }

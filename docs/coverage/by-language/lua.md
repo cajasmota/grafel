@@ -24,7 +24,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Backend HTTP
 
-| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|---|---|
-| [Lapis](../detail/lang.lua.framework.lapis.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/17 | 🔴 0/6 | |
-| [OpenResty](../detail/lang.lua.framework.openresty.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/17 | 🔴 0/6 | |
+| Name | Routing | Auth | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|
+| [Lapis](../detail/lang.lua.framework.lapis.md) | 🟢 3/3 | 🟢 1/1 | 🟢 1/1 | 🟢 14/14 | 🟢 6/6 | |
+| [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟢 3/3 | 🟢 1/1 | 🟢 1/1 | 🟢 14/14 | 🟢 6/6 | |
