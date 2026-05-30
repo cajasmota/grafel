@@ -1,10 +1,8 @@
 package elixir_test
 
 import (
-	"context"
 	"testing"
 
-	extreg "github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
 
 	_ "github.com/cajasmota/archigraph/internal/custom/elixir"
@@ -12,18 +10,6 @@ import (
 
 // extractFull returns the full EntityRecord set (with Properties) so tests can
 // assert exact field + validator + bound/regex values — the TS/JS bar.
-func extractFull(t *testing.T, name string, file extreg.FileInput) []types.EntityRecord {
-	t.Helper()
-	e, ok := extreg.Get(name)
-	if !ok {
-		t.Fatalf("extractor %q not registered", name)
-	}
-	ents, err := e.Extract(context.Background(), file)
-	if err != nil {
-		t.Fatalf("extract error: %v", err)
-	}
-	return ents
-}
 
 // findByName returns the first entity with the given Name, or nil.
 func findByName(ents []types.EntityRecord, name string) *types.EntityRecord {
@@ -35,8 +21,8 @@ func findByName(ents []types.EntityRecord, name string) *types.EntityRecord {
 	return nil
 }
 
-// assertProp fails unless entity `name` exists and has property key=want.
-func assertProp(t *testing.T, ents []types.EntityRecord, name, key, want string) {
+// assertValProp fails unless entity `name` exists and has property key=want.
+func assertValProp(t *testing.T, ents []types.EntityRecord, name, key, want string) {
 	t.Helper()
 	e := findByName(ents, name)
 	if e == nil {
@@ -74,15 +60,15 @@ end
 	ents := extractFull(t, "custom_elixir_ecto", fi("user.ex", "elixir", src))
 
 	// Each cast field becomes its own DTO entity with cast_type + field props.
-	assertProp(t, ents, "ecto_cast_field:name", "field", "name")
-	assertProp(t, ents, "ecto_cast_field:name", "cast_type", "scalar")
-	assertProp(t, ents, "ecto_cast_field:email", "field", "email")
-	assertProp(t, ents, "ecto_cast_field:age", "field", "age")
+	assertValProp(t, ents, "ecto_cast_field:name", "field", "name")
+	assertValProp(t, ents, "ecto_cast_field:name", "cast_type", "scalar")
+	assertValProp(t, ents, "ecto_cast_field:email", "field", "email")
+	assertValProp(t, ents, "ecto_cast_field:age", "field", "age")
 
 	// DTO fields are enriched with their declared schema type.
-	assertProp(t, ents, "ecto_cast_field:name", "field_type", "string")
-	assertProp(t, ents, "ecto_cast_field:email", "field_type", "string")
-	assertProp(t, ents, "ecto_cast_field:age", "field_type", "integer")
+	assertValProp(t, ents, "ecto_cast_field:name", "field_type", "string")
+	assertValProp(t, ents, "ecto_cast_field:email", "field_type", "string")
+	assertValProp(t, ents, "ecto_cast_field:age", "field_type", "integer")
 
 	// Subtype identifies the DTO capability.
 	if e := findByName(ents, "ecto_cast_field:name"); e == nil || e.Subtype != "dto_extraction" {
@@ -115,35 +101,35 @@ end
 	ents := extractFull(t, "custom_elixir_ecto", fi("user.ex", "elixir", src))
 
 	// validate_required → one entity per field, validator=required.
-	assertProp(t, ents, "ecto_val:name:required", "validator", "required")
-	assertProp(t, ents, "ecto_val:name:required", "field", "name")
-	assertProp(t, ents, "ecto_val:email:required", "field", "email")
+	assertValProp(t, ents, "ecto_val:name:required", "validator", "required")
+	assertValProp(t, ents, "ecto_val:name:required", "field", "name")
+	assertValProp(t, ents, "ecto_val:email:required", "field", "email")
 
 	// validate_format(:email, ~r/@/) — exact regex literal captured.
-	assertProp(t, ents, "ecto_val:email:format", "field", "email")
-	assertProp(t, ents, "ecto_val:email:format", "validator", "format")
-	assertProp(t, ents, "ecto_val:email:format", "regex", "~r/@/")
+	assertValProp(t, ents, "ecto_val:email:format", "field", "email")
+	assertValProp(t, ents, "ecto_val:email:format", "validator", "format")
+	assertValProp(t, ents, "ecto_val:email:format", "regex", "~r/@/")
 
 	// validate_length(:name, min: 1, max: 20) — exact bounds, NOT len>0.
-	assertProp(t, ents, "ecto_val:name:length", "field", "name")
-	assertProp(t, ents, "ecto_val:name:length", "bound", "min:1,max:20")
+	assertValProp(t, ents, "ecto_val:name:length", "field", "name")
+	assertValProp(t, ents, "ecto_val:name:length", "bound", "min:1,max:20")
 
 	// validate_number(:age, greater_than: 0) — exact bound.
-	assertProp(t, ents, "ecto_val:age:number", "field", "age")
-	assertProp(t, ents, "ecto_val:age:number", "bound", "greater_than:0")
+	assertValProp(t, ents, "ecto_val:age:number", "field", "age")
+	assertValProp(t, ents, "ecto_val:age:number", "bound", "greater_than:0")
 
 	// validate_inclusion(:role, [...]) — set captured.
-	assertProp(t, ents, "ecto_val:role:inclusion", "field", "role")
-	assertProp(t, ents, "ecto_val:role:inclusion", "validator", "inclusion")
-	assertProp(t, ents, "ecto_val:role:inclusion", "bound", `["admin", "user"]`)
+	assertValProp(t, ents, "ecto_val:role:inclusion", "field", "role")
+	assertValProp(t, ents, "ecto_val:role:inclusion", "validator", "inclusion")
+	assertValProp(t, ents, "ecto_val:role:inclusion", "bound", `["admin", "user"]`)
 
 	// unique_constraint(:email) → ecto_val:email:unique_constraint.
-	assertProp(t, ents, "ecto_val:email:unique_constraint", "field", "email")
-	assertProp(t, ents, "ecto_val:email:unique_constraint", "validator", "unique_constraint")
+	assertValProp(t, ents, "ecto_val:email:unique_constraint", "field", "email")
+	assertValProp(t, ents, "ecto_val:email:unique_constraint", "validator", "unique_constraint")
 
 	// foreign_key_constraint(:org_id).
-	assertProp(t, ents, "ecto_val:org_id:foreign_key_constraint", "field", "org_id")
-	assertProp(t, ents, "ecto_val:org_id:foreign_key_constraint", "validator", "foreign_key_constraint")
+	assertValProp(t, ents, "ecto_val:org_id:foreign_key_constraint", "field", "org_id")
+	assertValProp(t, ents, "ecto_val:org_id:foreign_key_constraint", "validator", "foreign_key_constraint")
 
 	// Subtype identifies the request_validation capability.
 	if e := findByName(ents, "ecto_val:email:format"); e == nil || e.Subtype != "request_validation" {
@@ -168,9 +154,9 @@ end
 	ents := extractFull(t, "custom_elixir_ecto", fi("user.ex", "elixir", src))
 
 	// validate_required with a single bare symbol (not a list).
-	assertProp(t, ents, "ecto_val:password:required", "field", "password")
+	assertValProp(t, ents, "ecto_val:password:required", "field", "password")
 	// validate_confirmation(:password).
-	assertProp(t, ents, "ecto_val:password:confirmation", "validator", "confirmation")
+	assertValProp(t, ents, "ecto_val:password:confirmation", "validator", "confirmation")
 	// validate_acceptance(:terms).
-	assertProp(t, ents, "ecto_val:terms:acceptance", "validator", "acceptance")
+	assertValProp(t, ents, "ecto_val:terms:acceptance", "validator", "acceptance")
 }
