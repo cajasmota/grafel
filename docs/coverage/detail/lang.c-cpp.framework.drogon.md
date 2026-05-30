@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3280 | `internal/custom/cpp/drogon_routes.go` | — |
-| Handler attribution | 🟢 `partial` | `2026-05-30` | 3280 | `internal/custom/cpp/drogon_routes.go` | — |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/drogon_routes.go` | Path strings extracted from ADD_METHOD_TO/METHOD_ADD/registerHandler; partial = regex heuristic |
+| Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/drogon_routes.go` | — |
+| Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/drogon_routes.go` | — |
+| Route extraction | ✅ `full` | — | — | `internal/custom/cpp/drogon_routes.go` | Path strings extracted from ADD_METHOD_TO/METHOD_ADD/registerHandler; partial = regex heuristic |
 
 ### Auth
 

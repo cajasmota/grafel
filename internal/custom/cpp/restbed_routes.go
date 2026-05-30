@@ -97,6 +97,8 @@ func (e *restbedExtractor) Extract(ctx context.Context, file extractor.FileInput
 		path := varPaths[varName]
 		if path == "" {
 			path = "<" + varName + ">"
+		} else {
+			path = cppNormalizeRoutePath(path)
 		}
 		name := verb + " " + path
 		if seen[name] {

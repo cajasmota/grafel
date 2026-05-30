@@ -119,7 +119,7 @@ func (e *pistacheExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	// 1. Routes::Get(router, "/path", handler)
 	for _, m := range rePistacheStaticRoute.FindAllStringSubmatchIndex(src, -1) {
 		verb := strings.ToUpper(src[m[2]:m[3]])
-		path := src[m[4]:m[5]]
+		path := cppNormalizeRoutePath(src[m[4]:m[5]])
 		handlerExpr := src[m[6]:m[7]]
 		handler := pistacheHandler(handlerExpr)
 
@@ -139,7 +139,7 @@ func (e *pistacheExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	// 2. router.get("/path", handler)
 	for _, m := range rePistacheInstanceRoute.FindAllStringSubmatchIndex(src, -1) {
 		verb := strings.ToUpper(src[m[2]:m[3]])
-		path := src[m[4]:m[5]]
+		path := cppNormalizeRoutePath(src[m[4]:m[5]])
 		handlerExpr := src[m[6]:m[7]]
 		handler := pistacheHandler(handlerExpr)
 

@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/cpp/restinio_routes.go` | SCOPE.Operation entities from RESTinio router method calls; partial = regex |
-| Handler attribution | 🟢 `partial` | — | — | `internal/custom/cpp/restinio_routes.go` | Handler names extracted from RESTinio router calls; partial = regex |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/restinio_routes.go` | Paths from router->http_get/post/etc and add_handler; partial = regex heuristic |
+| Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | SCOPE.Operation entities from RESTinio router method calls; partial = regex |
+| Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | Handler names extracted from RESTinio router calls; partial = regex |
+| Route extraction | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | Paths from router->http_get/post/etc and add_handler; partial = regex heuristic |
 
 ### Auth
 

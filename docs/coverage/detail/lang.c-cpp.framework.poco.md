@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/cpp/poco_routes.go` | SCOPE.Operation entities from POCO handler registration; partial = regex |
-| Handler attribution | 🟢 `partial` | — | — | `internal/custom/cpp/poco_routes.go` | Handler class names extracted from addHandler<T> and server.addHandler; partial = regex |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/poco_routes.go` | Paths from addHandler<T>/router.add/server.addHandler; partial = regex heuristic |
+| Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | SCOPE.Operation entities from POCO handler registration; partial = regex |
+| Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | Handler class names extracted from addHandler<T> and server.addHandler; partial = regex |
+| Route extraction | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | Paths from addHandler<T>/router.add/server.addHandler; partial = regex heuristic |
 
 ### Auth
 

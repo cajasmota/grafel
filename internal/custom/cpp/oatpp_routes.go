@@ -75,7 +75,7 @@ func (e *oatppExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 
 	for _, m := range reOatppEndpoint.FindAllStringSubmatchIndex(src, -1) {
 		verb := strings.ToUpper(strings.TrimSpace(src[m[2]:m[3]]))
-		path := strings.TrimSpace(src[m[4]:m[5]])
+		path := cppNormalizeRoutePath(strings.TrimSpace(src[m[4]:m[5]]))
 		handler := strings.TrimSpace(src[m[6]:m[7]])
 		name := verb + " " + path
 		if seen[name] {

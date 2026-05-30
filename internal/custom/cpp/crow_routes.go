@@ -129,6 +129,7 @@ func (e *crowExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		handler := strings.TrimLeft(handlerRaw, "&")
 
 		methods := crowVerbs(methodsRaw)
+		path = cppNormalizeRoutePath(path)
 		name := methods + " " + path
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent,

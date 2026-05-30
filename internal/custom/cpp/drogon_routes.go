@@ -117,7 +117,7 @@ func (e *drogonExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	// 1. ADD_METHOD_TO(Controller::method, "/path", Get[, Post...])
 	for _, m := range reDrogonAddMethodTo.FindAllStringSubmatchIndex(src, -1) {
 		handler := src[m[2]:m[3]]
-		path := src[m[4]:m[5]]
+		path := cppNormalizeRoutePath(src[m[4]:m[5]])
 		methods := drogonVerbs(src[m[6]:m[7]])
 		name := methods + " " + path
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
@@ -135,7 +135,7 @@ func (e *drogonExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	// 2. METHOD_ADD(Controller, "/path", Get)
 	for _, m := range reDrogonMethodAdd.FindAllStringSubmatchIndex(src, -1) {
 		handler := src[m[2]:m[3]]
-		path := src[m[4]:m[5]]
+		path := cppNormalizeRoutePath(src[m[4]:m[5]])
 		methods := drogonVerbs(src[m[6]:m[7]])
 		name := methods + " " + path
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
@@ -152,7 +152,7 @@ func (e *drogonExtractor) Extract(ctx context.Context, file extractor.FileInput)
 
 	// 3. app().registerHandler("/path", handler, {Get, Post})
 	for _, m := range reDrogonRegisterHandler.FindAllStringSubmatchIndex(src, -1) {
-		path := src[m[2]:m[3]]
+		path := cppNormalizeRoutePath(src[m[2]:m[3]])
 		handler := src[m[4]:m[5]]
 		methods := drogonVerbs(src[m[6]:m[7]])
 		name := methods + " " + path

@@ -25,12 +25,15 @@ func extract(t *testing.T, name string, file extreg.FileInput) []entitySummary {
 	}
 	var out []entitySummary
 	for _, ent := range ents {
-		out = append(out, entitySummary{Kind: ent.Kind, Subtype: ent.Subtype, Name: ent.Name})
+		out = append(out, entitySummary{Kind: ent.Kind, Subtype: ent.Subtype, Name: ent.Name, Props: ent.Properties})
 	}
 	return out
 }
 
-type entitySummary struct{ Kind, Subtype, Name string }
+type entitySummary struct {
+	Kind, Subtype, Name string
+	Props               map[string]string
+}
 
 func containsEntity(ents []entitySummary, kind, name string) bool {
 	for _, e := range ents {
@@ -39,6 +42,41 @@ func containsEntity(ents []entitySummary, kind, name string) bool {
 		}
 	}
 	return false
+}
+
+// findEndpoint returns the SCOPE.Operation entity whose Name equals the given
+// "VERB /path" string, or nil if no such endpoint was extracted. Used by the
+// value-asserting routing tests to inspect handler_name / route_path / etc.
+func findEndpoint(ents []entitySummary, name string) *entitySummary {
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Operation" && ents[i].Name == name {
+			return &ents[i]
+		}
+	}
+	return nil
+}
+
+// assertEndpoint asserts that an endpoint with name "verb path" exists and that
+// its route_path, http_method, and handler_name properties match exactly. This
+// is the TS/JS bar for proving (verb, path, handler) attribution — not len>0.
+func assertEndpoint(t *testing.T, ents []entitySummary, verb, path, handler string) {
+	t.Helper()
+	name := verb + " " + path
+	ep := findEndpoint(ents, name)
+	if ep == nil {
+		t.Fatalf("expected endpoint %q, got %v", name, ents)
+	}
+	if got := ep.Props["http_method"]; got != verb {
+		t.Errorf("endpoint %q: http_method = %q, want %q", name, got, verb)
+	}
+	if got := ep.Props["route_path"]; got != path {
+		t.Errorf("endpoint %q: route_path = %q, want %q", name, got, path)
+	}
+	if handler != "" {
+		if got := ep.Props["handler_name"]; got != handler {
+			t.Errorf("endpoint %q: handler_name = %q, want %q", name, got, handler)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------

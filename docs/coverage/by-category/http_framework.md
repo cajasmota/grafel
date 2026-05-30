@@ -14,14 +14,14 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C/C++](../by-language/c-cpp.md) | [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [C/C++](../by-language/c-cpp.md) | [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [C/C++](../by-language/c-cpp.md) | [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [C/C++](../by-language/c-cpp.md) | [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [C/C++](../by-language/c-cpp.md) | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Crow](../detail/lang.c-cpp.framework.crow.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ✅ 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [C/C++](../by-language/c-cpp.md) | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [C/C++](../by-language/c-cpp.md) | [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [C/C++](../by-language/c-cpp.md) | [libevent](../detail/lang.c-cpp.framework.libevent.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [C/C++](../by-language/c-cpp.md) | [libuv](../detail/lang.c-cpp.framework.libuv.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |

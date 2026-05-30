@@ -176,9 +176,8 @@ func TestPistacheStaticPost(t *testing.T) {
 func TestPistacheStaticDelete(t *testing.T) {
 	src := `Routes::Delete(router, "/api/users/:id", Routes::bind(&UserHandler::deleteUser));`
 	ents := extract(t, "custom_cpp_pistache", fi("server.cpp", "cpp", src))
-	if !containsEntity(ents, "SCOPE.Operation", "DELETE /api/users/:id") {
-		t.Errorf("expected DELETE /api/users/:id endpoint, got %v", ents)
-	}
+	// :id is normalised to the canonical {id} form.
+	assertEndpoint(t, ents, "DELETE", "/api/users/{id}", "UserHandler::deleteUser")
 }
 
 func TestPistacheStaticAny(t *testing.T) {

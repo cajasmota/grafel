@@ -86,7 +86,7 @@ func (e *pocoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 	// Template-style handler registration
 	for _, m := range rePocoAddHandlerTemplate.FindAllStringSubmatchIndex(src, -1) {
 		handler := strings.TrimSpace(src[m[2]:m[3]])
-		path := strings.TrimSpace(src[m[4]:m[5]])
+		path := cppNormalizeRoutePath(strings.TrimSpace(src[m[4]:m[5]]))
 		name := "ANY " + path
 		if seen[name] {
 			continue
@@ -106,7 +106,7 @@ func (e *pocoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 	// Router.add() with explicit verb
 	for _, m := range rePocoRouterAdd.FindAllStringSubmatchIndex(src, -1) {
 		verb := strings.ToUpper(strings.TrimSpace(src[m[2]:m[3]]))
-		path := strings.TrimSpace(src[m[4]:m[5]])
+		path := cppNormalizeRoutePath(strings.TrimSpace(src[m[4]:m[5]]))
 		name := verb + " " + path
 		if seen[name] {
 			continue
@@ -125,7 +125,7 @@ func (e *pocoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 
 	// server.addHandler(path, handler)
 	for _, m := range rePocoServerAddHandler.FindAllStringSubmatchIndex(src, -1) {
-		path := strings.TrimSpace(src[m[2]:m[3]])
+		path := cppNormalizeRoutePath(strings.TrimSpace(src[m[2]:m[3]]))
 		handler := strings.TrimSpace(src[m[4]:m[5]])
 		// Trim trailing noise (e.g. trailing ")") from handler
 		if idx := strings.IndexAny(handler, " \t\r\n,)"); idx > 0 {

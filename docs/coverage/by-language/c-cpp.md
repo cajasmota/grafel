@@ -29,14 +29,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ✅ 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ✅ 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [libevent](../detail/lang.c-cpp.framework.libevent.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [libuv](../detail/lang.c-cpp.framework.libuv.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |

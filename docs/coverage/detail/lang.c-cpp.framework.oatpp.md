@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/cpp/oatpp_routes.go` | SCOPE.Operation entities emitted from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex |
-| Handler attribution | 🟢 `partial` | — | — | `internal/custom/cpp/oatpp_routes.go` | Handler names extracted from ENDPOINT macro third arg; partial = regex heuristic |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/oatpp_routes.go` | Path strings from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex heuristic |
+| Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | SCOPE.Operation entities emitted from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex |
+| Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | Handler names extracted from ENDPOINT macro third arg; partial = regex heuristic |
+| Route extraction | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | Path strings from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex heuristic |
 
 ### Auth
 

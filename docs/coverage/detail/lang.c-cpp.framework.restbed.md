@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/cpp/restbed_routes.go` | SCOPE.Operation entities from Restbed Resource registration; partial = regex |
-| Handler attribution | 🟢 `partial` | — | — | `internal/custom/cpp/restbed_routes.go` | Handler names from set_method_handler third arg; partial = regex |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/restbed_routes.go` | Paths from Resource set_path/set_method_handler; partial = regex + same-file var correlation |
+| Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | SCOPE.Operation entities from Restbed Resource registration; partial = regex |
+| Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | Handler names from set_method_handler third arg; partial = regex |
+| Route extraction | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | Paths from Resource set_path/set_method_handler; partial = regex + same-file var correlation |
 
 ### Auth
 

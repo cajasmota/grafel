@@ -90,7 +90,7 @@ func (e *restinioExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	// http_<verb>(path, handler) style
 	for _, m := range reRestinioHTTPMethod.FindAllStringSubmatchIndex(src, -1) {
 		methodName := strings.TrimSpace(src[m[2]:m[3]])
-		path := strings.TrimSpace(src[m[4]:m[5]])
+		path := cppNormalizeRoutePath(strings.TrimSpace(src[m[4]:m[5]]))
 		handler := strings.TrimSpace(src[m[6]:m[7]])
 		if idx := strings.IndexAny(handler, " \t\r\n,)"); idx > 0 {
 			handler = handler[:idx]
@@ -118,7 +118,7 @@ func (e *restinioExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	// add_handler(VERB, path, handler) style
 	for _, m := range reRestinioAddHandler.FindAllStringSubmatchIndex(src, -1) {
 		verb := strings.ToUpper(strings.TrimSpace(src[m[2]:m[3]]))
-		path := strings.TrimSpace(src[m[4]:m[5]])
+		path := cppNormalizeRoutePath(strings.TrimSpace(src[m[4]:m[5]]))
 		handler := strings.TrimSpace(src[m[6]:m[7]])
 		if idx := strings.IndexAny(handler, " \t\r\n,)"); idx > 0 {
 			handler = handler[:idx]

@@ -91,7 +91,7 @@ func (e *cppRestSDKExtractor) Extract(ctx context.Context, file extractor.FileIn
 	listenerPaths := make(map[string]string)
 	for _, m := range reCppRestListenerInit.FindAllStringSubmatchIndex(src, -1) {
 		varName := src[m[2]:m[3]]
-		urlPath := src[m[4]:m[5]]
+		urlPath := cppNormalizeRoutePath(src[m[4]:m[5]])
 		listenerPaths[varName] = urlPath
 	}
 

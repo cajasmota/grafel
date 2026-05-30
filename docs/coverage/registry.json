@@ -2570,21 +2570,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/cpprestsdk_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/cpprestsdk_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/cpprestsdk_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Path strings extracted from http_listener init + support() calls; partial = regex heuristic"
           }
         },
@@ -2786,21 +2783,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/crow_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/crow_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/crow_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Path strings extracted from CROW_ROUTE/CROW_BP_ROUTE macros; partial = regex heuristic"
           }
         },
@@ -3002,21 +2996,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/drogon_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/drogon_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/drogon_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Path strings extracted from ADD_METHOD_TO/METHOD_ADD/registerHandler; partial = regex heuristic"
           }
         },
@@ -3830,19 +3821,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/oatpp_routes.go"],
             "notes": "SCOPE.Operation entities emitted from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/oatpp_routes.go"],
             "notes": "Handler names extracted from ENDPOINT macro third arg; partial = regex heuristic"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/oatpp_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Path strings from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex heuristic"
           }
         },
@@ -4044,21 +4034,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/pistache_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/pistache_routes.go"],
-            "issue": "3280",
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/pistache_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Path strings extracted from Routes::Get/Post/etc and router.get; partial = regex heuristic"
           }
         },
@@ -4260,19 +4247,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/poco_routes.go"],
             "notes": "SCOPE.Operation entities from POCO handler registration; partial = regex"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/poco_routes.go"],
             "notes": "Handler class names extracted from addHandler\u003cT\u003e and server.addHandler; partial = regex"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/poco_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Paths from addHandler\u003cT\u003e/router.add/server.addHandler; partial = regex heuristic"
           }
         },
@@ -4659,19 +4645,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/restbed_routes.go"],
             "notes": "SCOPE.Operation entities from Restbed Resource registration; partial = regex"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/restbed_routes.go"],
             "notes": "Handler names from set_method_handler third arg; partial = regex"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/restbed_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Paths from Resource set_path/set_method_handler; partial = regex + same-file var correlation"
           }
         },
@@ -4873,19 +4858,18 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/restinio_routes.go"],
             "notes": "SCOPE.Operation entities from RESTinio router method calls; partial = regex"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/restinio_routes.go"],
             "notes": "Handler names extracted from RESTinio router calls; partial = regex"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/restinio_routes.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Paths from router-\u003ehttp_get/post/etc and add_handler; partial = regex heuristic"
           }
         },
