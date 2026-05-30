@@ -258,6 +258,21 @@ type LoadedRepo struct {
 	byID         map[string]*graph.Entity // entity ID -> entity (#1656)
 	topKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
 
+	// sidecar persistence (#3368). On the first derived-index access after a
+	// reload, sidecarOnce loads + validates the on-disk graph-indexes sidecar
+	// against the current graph.fb identity exactly once. The adjacency / CALLS /
+	// STEP / TopKPageRank getters below then DESERIALIZE from the sidecar (when
+	// valid) instead of rebuilding from Doc. sidecar is nil when the file is
+	// absent / stale / mismatched — the getters fall back to build-from-Doc.
+	// resetIndexes() re-arms sidecarOnce on every reload. All accessed under
+	// idxMu (the same lock the getters already hold).
+	sidecarOnce sync.Once
+	sidecar     *loadedSidecar
+	// idxBuiltFromDoc counts derived indexes that were built from Doc (i.e. NOT
+	// served from the sidecar) since the last reset. Tests assert it stays 0 when
+	// a valid sidecar is present, proving the getters deserialize, not rebuild.
+	idxBuiltFromDoc int
+
 	semMtime time.Time
 	mtime    time.Time
 	loadErr  string // populated when last reload failed; doc may be stale
@@ -282,6 +297,45 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.stepAdj = nil
 	lr.byID = nil
 	lr.topKPageRank = nil
+	// #3368: re-arm sidecar load so the next access re-validates against the
+	// freshly-written graph.fb. A sidecar loaded for the OLD Doc must never leak
+	// into the new one — the identity hash would reject it on reload, but we also
+	// clear the cached pointer to avoid serving stale neighbor lists.
+	lr.sidecarOnce = sync.Once{}
+	lr.sidecar = nil
+	lr.idxBuiltFromDoc = 0
+}
+
+// sidecarConsumeEnabled gates whether the lazy getters CONSUME the on-disk
+// sidecar (#3368). The sidecar is always WRITTEN by the indexer (cheap, and
+// useful for external tooling + future formats), but consuming it is OFF by
+// default: benchmarking on this branch showed that, once #3370 made index builds
+// lazy and PageRank is precomputed at index time, reconstructing the four
+// derived indexes from the sidecar is ~1.5x SLOWER than rebuilding them from the
+// already-resident Document (the Doc is structured in RAM; the sidecar adds I/O +
+// identity-hash + varint-decode that build-from-Doc avoids). Enabling consumption
+// would regress first-use latency, so it is opt-in via
+// ARCHIGRAPH_MCP_USE_INDEX_SIDECAR=1 for measurement/experimentation. See the
+// BenchmarkFirstUse_* pair and the #3368 PR notes for the numbers. When/if a
+// faster reconstruction (e.g. mmap'd index-typed FlatBuffer) lands, flip the
+// default. Evaluated once and cached so the hot getter path stays branch-cheap.
+var sidecarConsumeEnabled = os.Getenv("ARCHIGRAPH_MCP_USE_INDEX_SIDECAR") == "1"
+
+// loadSidecarLocked loads + validates the on-disk index sidecar exactly once
+// per reload. Caller MUST hold idxMu (every getter does). Returns the validated
+// sidecar, or nil when consumption is disabled / the file is absent / stale /
+// mismatched / unreadable — in which case the caller builds from Doc. The
+// graph.fb identity check lives in loadValidSidecar; a mismatch is a plain miss.
+func (lr *LoadedRepo) loadSidecarLocked() *loadedSidecar {
+	lr.sidecarOnce.Do(func() {
+		if !sidecarConsumeEnabled || lr.GraphFile == "" || lr.Doc == nil {
+			return
+		}
+		stateDir := filepath.Dir(lr.GraphFile)
+		sc, _ := loadValidSidecar(stateDir, lr.Doc)
+		lr.sidecar = sc // nil on any miss; getters fall back to build-from-Doc
+	})
+	return lr.sidecar
 }
 
 // getByID returns the entity-ID → *Entity map, building it on first use.
@@ -313,10 +367,15 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.adjOnce.Do(func() {
+		if sc := lr.loadSidecarLocked(); sc != nil {
+			lr.adjacency = sc.adj // #3368: reconstructed from sidecar, no rebuild
+			return
+		}
 		if lr.Doc == nil {
 			lr.adjacency = &adjacency{out: map[string][]edge{}, in: map[string][]edge{}}
 			return
 		}
+		lr.idxBuiltFromDoc++
 		lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
 	})
 	return lr.adjacency
@@ -327,10 +386,15 @@ func (lr *LoadedRepo) getCallsAdj() map[string][]string {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.callsOnce.Do(func() {
+		if sc := lr.loadSidecarLocked(); sc != nil {
+			lr.callsAdj = sc.callsAdj // #3368: reconstructed from sidecar, no rebuild
+			return
+		}
 		if lr.Doc == nil {
 			lr.callsAdj = map[string][]string{}
 			return
 		}
+		lr.idxBuiltFromDoc++
 		lr.callsAdj = buildCallsAdjacency(lr.Doc)
 	})
 	return lr.callsAdj
@@ -341,10 +405,15 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.stepOnce.Do(func() {
+		if sc := lr.loadSidecarLocked(); sc != nil {
+			lr.stepAdj = sc.stepAdj // #3368: reconstructed from sidecar, no rebuild
+			return
+		}
 		if lr.Doc == nil {
 			lr.stepAdj = map[string][]stepEdge{}
 			return
 		}
+		lr.idxBuiltFromDoc++
 		lr.stepAdj = buildStepAdjacency(lr.Doc)
 	})
 	return lr.stepAdj
@@ -357,6 +426,11 @@ func (lr *LoadedRepo) getTopKPageRank() []string {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.pagerankOnce.Do(func() {
+		if sc := lr.loadSidecarLocked(); sc != nil {
+			lr.topKPageRank = sc.topKPageRank // #3368: reconstructed from sidecar, no rebuild
+			return
+		}
+		lr.idxBuiltFromDoc++
 		lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
 	})
 	return lr.topKPageRank

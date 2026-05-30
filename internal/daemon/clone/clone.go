@@ -64,6 +64,12 @@ var sidecarFiles = []string{
 	"graph-stats.json",
 	"enrichment-candidates.json",
 	"repair.json",
+	// #3368: the derived-index sidecar. Copied so a freshly-cloned ref starts
+	// with SOMETHING on disk; it is then regenerated against the rewritten
+	// graph.fb by cfg.WriteIndexSidecar (the copied one has a stale identity
+	// hash and would be rejected on load). Listed here so cleanup removes it on
+	// any abort after the copy.
+	"graph-indexes.bin",
 }
 
 // Result is returned by TryClone. It describes whether the clone path
@@ -91,6 +97,15 @@ type Config struct {
 	//
 	// Required. If nil, TryClone always returns Result{Done:false}.
 	ReExtractFiles func(repoPath string, changedFiles []string, base *graph.Document) (*graph.Document, error)
+
+	// WriteIndexSidecar regenerates the derived-index sidecar (#3368) for the
+	// just-written graph.fb in stateDir, stamped with that file's identity hash.
+	// Optional: when nil, the clone path leaves the (stale-hash) copied sidecar
+	// in place — the MCP loader rejects it and falls back to build-from-Doc, so
+	// correctness holds either way; wiring this callback only restores the
+	// load≠rebuild fast path for cloned refs. Invoked after the final graph.fb
+	// write; failures are logged, never fatal.
+	WriteIndexSidecar func(stateDir, repoTag string, doc *graph.Document) error
 }
 
 // TryClone attempts the clone-from-parent optimisation for (repoPath, newRef).
@@ -234,6 +249,18 @@ func TryClone(repoPath, newRef string, cfg Config) (Result, error) {
 	if err := fbwriter.WriteAtomic(newGraphFB, doc); err != nil {
 		cleanup()
 		return abort(fmt.Sprintf("write graph.fb: %v", err))
+	}
+
+	// #3368: regenerate the derived-index sidecar against the rewritten graph.fb
+	// so the cloned ref loads its indexes by deserialize, not rebuild. The
+	// sidecar copied from the parent in step 2 has a stale identity hash (we just
+	// rewrote graph.fb with new metadata + re-extracted entities) and would be
+	// rejected on load — overwrite it with a matching-hash one. Best-effort:
+	// failure only forfeits the fast path, never blocks the clone.
+	if cfg.WriteIndexSidecar != nil {
+		if serr := cfg.WriteIndexSidecar(newRefDir, slug, doc); serr != nil {
+			logger.Warn("clone-from-parent: index sidecar regen failed", "repo", slug, "ref", newRef, "err", serr)
+		}
 	}
 
 	took := time.Since(t0)

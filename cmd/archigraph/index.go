@@ -38,6 +38,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
 	"github.com/cajasmota/archigraph/internal/install/detect"
+	"github.com/cajasmota/archigraph/internal/mcp"
 	"github.com/cajasmota/archigraph/internal/module"
 	"github.com/cajasmota/archigraph/internal/progress"
 	"github.com/cajasmota/archigraph/internal/resolve"
@@ -452,6 +453,17 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			// propagates below.
 		} else {
 			fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", fbPath)
+			// #3368: persist the derived traversal indexes (adjacency / CALLS /
+			// STEP / TopKPageRank) into a graph-indexes.bin sidecar next to
+			// graph.fb, stamped with the graph.fb content hash so a stale sidecar
+			// is never served. The MCP lazy getters can reconstruct from it
+			// instead of rebuilding from the Document (consumption gated by
+			// ARCHIGRAPH_MCP_USE_INDEX_SIDECAR — see internal/mcp). Non-fatal: a
+			// missing/failed sidecar only leaves the build-from-Doc path in place.
+			stateDir := filepath.Dir(outPath)
+			if serr := mcp.WriteIndexSidecar(stateDir, repoTag, doc); serr != nil {
+				fmt.Fprintf(os.Stderr, "archigraph: graph-indexes sidecar: %v\n", serr)
+			}
 		}
 
 		if idx.exportJSON {

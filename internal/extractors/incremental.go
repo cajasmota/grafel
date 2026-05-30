@@ -463,6 +463,18 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		return fallback(t0, "write-graph-fb: "+writeErr.Error())
 	}
 
+	// #3368: the derived-index sidecar (graph-indexes.bin) written by the last
+	// full index is now stale — its identity hash no longer matches the graph.fb
+	// we just rewrote. The MCP loader already rejects a hash-mismatched sidecar
+	// and rebuilds from Doc, so leaving it would be correct but wasteful (a
+	// pointless read+hash on every cold load until the next full index). Remove
+	// it so the loader takes the clean build-from-Doc miss path immediately. We
+	// deliberately do NOT regenerate it here: that would require importing the
+	// heavy internal/mcp index-build code into the extractor hot path. The next
+	// full index (cmd/archigraph Index) rewrites a valid sidecar. GOAL 2 of
+	// #3368 (in-memory adjacency patching for these small reindexes) is backlogged.
+	_ = os.Remove(filepath.Join(stateDir, "graph-indexes.bin"))
+
 	// --- Step 9: update manifest ---
 	diff.UpdateManifest(absRepo, allFiles, manifest)
 	if saveErr := diff.SaveManifest(stateDir, absRepo, manifest); saveErr != nil {
