@@ -27,13 +27,41 @@
 //     - $group:  the `_id` expression + accumulator field names
 //     - $facet:  the named sub-pipeline keys
 //
-// HONEST LIMIT: only INLINE array literals are parsed. A pipeline built
-// dynamically (passed as a variable, assembled by `.push()`, or spread from
-// another array) is left unresolved — we never fabricate stages we cannot
-// see. The receiver resolution is likewise local: `Model.aggregate(...)`
-// uses the capitalised model name, `db.collection('c').aggregate(...)` uses
-// the collection-string argument; an aggregate on an unrecognised receiver
-// shape is skipped.
+// RESOLUTION (#3440 asks 2-JS + 3): the pipeline argument is resolved in three
+// shapes, in priority order:
+//
+//  1. INLINE array literal — `.aggregate([ {$lookup...}, ... ])`. Parsed in
+//     place (the original #3426 behaviour).
+//
+//  2. VARIABLE-bound (ask 2-JS) — `.aggregate(pipeline)` where `pipeline` is
+//     a bare identifier. We follow the single same-function-scope binding
+//     `const pipeline = [ ... ]` (also `let` / `var`) whose initializer is an
+//     array literal, then parse it exactly as if it were inline. If the
+//     binding is not found in the same function scope, or its initializer is
+//     not a literal array (e.g. `= stages`, `= buildPipeline()`), it is left
+//     unresolved — honest, no fabrication.
+//
+//  3. BUILDER `.build()` (ask 3) — `.aggregate(builder.build())` /
+//     `.aggregate(b.build())` where `builder` is constructed via a fluent
+//     chain `new AggregationBuilder().match({...}).lookup({ from, ... })...`.
+//     We resolve the builder variable to its construction chain in the same
+//     function scope (or accept an inline `new X()....build()` one-liner),
+//     walk the chained `.match()/.lookup()/.group()/...` method calls, and
+//     emit one stage entity per method (`.match`→$match, `.lookup`→$lookup,
+//     `.group`→$group, `.unwind`→$unwind, `.project`→$project, `.sort`→$sort,
+//     `.limit`→$limit, `.skip`→$skip, `.addFields`→$addFields,
+//     `.graphLookup`→$graphLookup, `.facet`→$facet) plus a JOINS_COLLECTION
+//     edge for every `.lookup({from})` / `.graphLookup({from})`. This is the
+//     idiomatic NestJS / Papr pattern.
+//
+// HONEST LIMIT: resolution is statically local to the enclosing function. A
+// pipeline assembled across files, built behind a conditional, mutated by
+// `.push()`, or spread from another array is captured only to the extent it is
+// statically present — we never fabricate stages or joins we cannot see. The
+// receiver resolution is likewise local: `Model.aggregate(...)` uses the
+// capitalised model name, `db.collection('c').aggregate(...)` uses the
+// collection-string argument; an aggregate on an unrecognised receiver shape
+// is skipped.
 package engine
 
 import (
@@ -55,6 +83,25 @@ var mongoAggStageEntityKind = string(types.EntityKindDataAccess)
 // mongoAggJoinEdgeKind is the cross-collection join edge emitted for
 // $lookup / $graphLookup.
 var mongoAggJoinEdgeKind = string(types.RelationshipKindJoinsCollection)
+
+// mongoAggBuilderNameRe matches a constructed aggregation builder, e.g.
+// `new AggregationBuilder()`, `new AggBuilder()`, `new PaprAggregationBuilder()`.
+// The class name must end in "AggregationBuilder" or "AggBuilder" (case
+// preserved) so we don't treat arbitrary builders (QueryBuilder, FormBuilder)
+// as aggregation pipelines.
+var mongoAggBuilderNameRe = regexp.MustCompile(
+	`\bnew\s+[\w$]*(?:Agg|Aggregation)Builder\b`,
+)
+
+// mentionsMongoAggBuilder reports whether the source plausibly uses the fluent
+// aggregation-builder pattern: a `new …AggregationBuilder()` / `…AggBuilder()`
+// construction together with a terminating `.build()`. Both signals must be
+// present so a file that merely imports a builder type but never builds a
+// pipeline is not scanned.
+func mentionsMongoAggBuilder(src string) bool {
+	return mongoAggBuildCallRe.MatchString(src) &&
+		mongoAggBuilderNameRe.MatchString(src)
+}
 
 // mongoAggCallRe locates `.aggregate(` call sites whose first argument opens
 // an inline array literal. Two receiver shapes are recognised:
@@ -93,101 +140,172 @@ func scanJSMongoAggregation(
 	emitJoin func(rel types.RelationshipRecord),
 ) {
 	// Gate: only run where a mongo surface is plausible. Reuse the same
-	// signals the existing detectors use (mongoose OR native driver), so we
-	// don't scan arbitrary `.aggregate(` chains (e.g. RxJS, lodash/fp).
-	if !mentionsMongooseSequelize(src) && !mentionsMongoDriver(src) {
+	// signals the existing detectors use (mongoose OR native driver), plus the
+	// aggregation-builder signal (ask 3) — the NestJS/Papr builder pattern can
+	// live in a file that names neither mongoose nor the native driver. This
+	// keeps us off arbitrary `.aggregate(` chains (e.g. RxJS, lodash/fp) while
+	// still reaching builder-produced pipelines.
+	if !mentionsMongooseSequelize(src) && !mentionsMongoDriver(src) &&
+		!mentionsMongoAggBuilder(src) {
 		return
 	}
 
 	for _, loc := range mongoAggCallRe.FindAllStringIndex(src, -1) {
 		openParen := loc[1] - 1 // index of '('
-		// Resolve the aggregating collection/model from the receiver.
+		// Resolve the aggregating collection/model from the receiver. The
+		// strict resolver only accepts a `.collection('c')` chain or a
+		// capitalised model — the authoritative collection shapes used by the
+		// inline path.
 		coll := mongoAggResolveReceiver(src, loc[0])
-		if coll == "" {
-			continue
-		}
-		// The first argument must open an inline array literal `[`.
-		arrStart := mongoAggSkipToArray(src, openParen)
-		if arrStart < 0 {
-			continue // dynamic pipeline (variable / spread) — honest skip.
-		}
-		stages := mongoAggSplitStages(src, arrStart)
-		if len(stages) == 0 {
-			continue
-		}
 		caller := enclosingFuncAt(funcs, loc[0])
 		callLine := lineOfOffset(src, loc[0])
+		// The function scope window bounds variable/builder resolution so we
+		// never pick up a binding from an unrelated function.
+		scope := mongoAggScopeOf(src, funcs, loc[0])
 
-		for idx, st := range stages {
-			op := mongoAggFirstKey(st)
-			if op == "" {
-				continue
-			}
-			props := map[string]string{
-				"pattern_type": mongoAggPatternType,
-				"collection":   coll,
-				"stage_index":  itoa(idx),
-				"stage":        op,
-			}
-			if caller != "" {
-				props["caller"] = caller
-			}
-
-			switch op {
-			case "$lookup":
-				lk := mongoAggParseLookup(st)
-				if lk.from != "" {
-					props["from"] = lk.from
-					if lk.localField != "" {
-						props["local_field"] = lk.localField
-					}
-					if lk.foreignField != "" {
-						props["foreign_field"] = lk.foreignField
-					}
-					if lk.as != "" {
-						props["as"] = lk.as
-					}
-					emitJoin(mongoAggJoinEdge(coll, lk, "lookup"))
-				}
-			case "$graphLookup":
-				lk := mongoAggParseLookup(st)
-				if lk.from != "" {
-					props["from"] = lk.from
-					if lk.as != "" {
-						props["as"] = lk.as
-					}
-					emitJoin(mongoAggJoinEdge(coll, lk, "graphLookup"))
-				}
-			case "$group":
-				id, accs := mongoAggParseGroup(st)
-				if id != "" {
-					props["group_id"] = id
-				}
-				if accs != "" {
-					props["accumulators"] = accs
-				}
-			case "$facet":
-				if keys := mongoAggParseFacetKeys(st); keys != "" {
-					props["facets"] = keys
+		// 1. INLINE array literal — `.aggregate([ ... ])`. Requires the strict
+		//    collection/model receiver (the authoritative shape).
+		if arrStart := mongoAggSkipToArray(src, openParen); arrStart >= 0 {
+			if coll != "" {
+				if stages := mongoAggSplitStages(src, arrStart); len(stages) > 0 {
+					mongoAggEmitStages(stages, coll, caller, callLine, path, lang,
+						emitStage, emitJoin)
 				}
 			}
-
-			name := fmt.Sprintf("%s.aggregate#%d %s", coll, idx, op)
-			emitStage(types.EntityRecord{
-				Name:       name,
-				Kind:       mongoAggStageEntityKind,
-				Subtype:    op,
-				SourceFile: path,
-				StartLine:  callLine,
-				EndLine:    callLine,
-				Language:   lang,
-				Properties: props,
-
-				EnrichmentRequired: false,
-				EnrichmentStatus:   types.StatusPending,
-				QualityScore:       0.8,
-			})
+			continue
 		}
+
+		// The first argument is not an inline array. Recover the argument text
+		// up to the matching `)` so we can classify it as a variable or a
+		// `.build()` builder expression.
+		arg := mongoAggFirstArg(src, openParen)
+		if arg == "" {
+			continue
+		}
+
+		// The builder / variable paths frequently aggregate on a lowercase
+		// repository or runner (`repo.aggregate(...)`, `this.collection.…`),
+		// which the strict resolver rejects. Fall back to the bare receiver
+		// identifier so we still anchor the stages and — crucially — emit the
+		// join's authoritative `to` side. The `from` collection in the JOIN
+		// edge is what the migration needs; the receiver is best-effort.
+		recv := coll
+		if recv == "" {
+			recv = mongoAggReceiverIdent(src, loc[0])
+		}
+		if recv == "" {
+			continue
+		}
+
+		// 3. BUILDER `.build()` — `.aggregate(<chain>.build())` (inline) or
+		//    `.aggregate(builder.build())` (resolve builder var in scope).
+		if mongoAggBuildCallRe.MatchString(arg) {
+			if chain := mongoAggResolveBuilderChain(src, scope, arg); chain != "" {
+				if stages := mongoAggBuilderStages(chain); len(stages) > 0 {
+					mongoAggEmitStages(stages, recv, caller, callLine, path, lang,
+						emitStage, emitJoin)
+				}
+			}
+			continue
+		}
+
+		// 2. VARIABLE-bound — `.aggregate(pipeline)` (bare identifier).
+		if ident := mongoAggBareIdent(arg); ident != "" {
+			if arrStart := mongoAggResolveArrayBinding(src, scope, ident); arrStart >= 0 {
+				if stages := mongoAggSplitStages(src, arrStart); len(stages) > 0 {
+					mongoAggEmitStages(stages, recv, caller, callLine, path, lang,
+						emitStage, emitJoin)
+				}
+			}
+			continue
+		}
+		// Anything else (call expression, spread, member access) is left
+		// unresolved — honest skip.
+	}
+}
+
+// mongoAggEmitStages emits one SCOPE.DataAccess stage entity per parsed stage
+// substring, plus a JOINS_COLLECTION edge for each $lookup / $graphLookup. It
+// is shared by all three resolution paths (inline, variable-bound, builder) so
+// stage-property extraction and join emission are identical regardless of how
+// the pipeline was recovered.
+func mongoAggEmitStages(
+	stages []string,
+	coll, caller string,
+	callLine int,
+	path, lang string,
+	emitStage func(ent types.EntityRecord),
+	emitJoin func(rel types.RelationshipRecord),
+) {
+	for idx, st := range stages {
+		op := mongoAggFirstKey(st)
+		if op == "" {
+			continue
+		}
+		props := map[string]string{
+			"pattern_type": mongoAggPatternType,
+			"collection":   coll,
+			"stage_index":  itoa(idx),
+			"stage":        op,
+		}
+		if caller != "" {
+			props["caller"] = caller
+		}
+
+		switch op {
+		case "$lookup":
+			lk := mongoAggParseLookup(st)
+			if lk.from != "" {
+				props["from"] = lk.from
+				if lk.localField != "" {
+					props["local_field"] = lk.localField
+				}
+				if lk.foreignField != "" {
+					props["foreign_field"] = lk.foreignField
+				}
+				if lk.as != "" {
+					props["as"] = lk.as
+				}
+				emitJoin(mongoAggJoinEdge(coll, lk, "lookup"))
+			}
+		case "$graphLookup":
+			lk := mongoAggParseLookup(st)
+			if lk.from != "" {
+				props["from"] = lk.from
+				if lk.as != "" {
+					props["as"] = lk.as
+				}
+				emitJoin(mongoAggJoinEdge(coll, lk, "graphLookup"))
+			}
+		case "$group":
+			id, accs := mongoAggParseGroup(st)
+			if id != "" {
+				props["group_id"] = id
+			}
+			if accs != "" {
+				props["accumulators"] = accs
+			}
+		case "$facet":
+			if keys := mongoAggParseFacetKeys(st); keys != "" {
+				props["facets"] = keys
+			}
+		}
+
+		name := fmt.Sprintf("%s.aggregate#%d %s", coll, idx, op)
+		emitStage(types.EntityRecord{
+			Name:       name,
+			Kind:       mongoAggStageEntityKind,
+			Subtype:    op,
+			SourceFile: path,
+			StartLine:  callLine,
+			EndLine:    callLine,
+			Language:   lang,
+			Properties: props,
+
+			EnrichmentRequired: false,
+			EnrichmentStatus:   types.StatusPending,
+			QualityScore:       0.8,
+		})
 	}
 }
 
@@ -215,6 +333,26 @@ func mongoAggResolveReceiver(src string, dotPos int) string {
 	// dotPos points at the '.', so scan the identifier ending at dotPos.
 	if mm := mongoAggModelRe.FindStringSubmatch(src[winStart:dotPos]); mm != nil {
 		return mm[1]
+	}
+	return ""
+}
+
+// mongoAggReceiverIdentRe pulls the final identifier of the receiver chain
+// directly before `.aggregate` (e.g. `repo` from `this.repo`, `coll` from
+// `db.coll`). Used as a best-effort anchor for the builder / variable paths
+// where the receiver is a lowercase repository/runner the strict resolver
+// rejects.
+var mongoAggReceiverIdentRe = regexp.MustCompile(`([A-Za-z_$][\w$]*)\s*$`)
+
+// mongoAggReceiverIdent returns the bare receiver identifier immediately
+// preceding the `.aggregate` token at `dotPos`, or "" if none is present.
+func mongoAggReceiverIdent(src string, dotPos int) string {
+	winStart := dotPos - 120
+	if winStart < 0 {
+		winStart = 0
+	}
+	if m := mongoAggReceiverIdentRe.FindStringSubmatch(src[winStart:dotPos]); m != nil {
+		return m[1]
 	}
 	return ""
 }
@@ -635,4 +773,381 @@ func mongoAggCollapseWS(s string) string {
 		prevSpace = false
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// ---------------------------------------------------------------------------
+// #3440 ask 2-JS (variable-bound) + ask 3 (builder) resolution helpers.
+// ---------------------------------------------------------------------------
+
+// mongoAggScope is the [start,end) byte range of the function enclosing an
+// aggregate call site. Variable/builder binding lookups are confined to this
+// window so a binding from an unrelated function is never followed.
+type mongoAggScope struct {
+	start int
+	end   int
+}
+
+// mongoAggScopeOf returns the source range of the function enclosing `pos`.
+// funcSpan only records each function's START offset, so the scope END is
+// approximated as the start of the NEXT function declaration (or end of file).
+// This is intentionally coarse — same as enclosingFuncAt's attribution model —
+// and is sufficient to keep binding resolution function-local for the flat,
+// one-function-per-handler shapes this pass targets. When `pos` precedes the
+// first recorded function, the scope is the whole file.
+func mongoAggScopeOf(src string, funcs []funcSpan, pos int) mongoAggScope {
+	start := 0
+	end := len(src)
+	for i, f := range funcs {
+		if f.offset > pos {
+			// First function declared after pos bounds the scope end.
+			end = f.offset
+			break
+		}
+		start = f.offset
+		// Tentatively, the scope ends at the next function (updated above if
+		// that next function is itself after pos).
+		if i+1 < len(funcs) {
+			end = funcs[i+1].offset
+		} else {
+			end = len(src)
+		}
+	}
+	return mongoAggScope{start: start, end: end}
+}
+
+// mongoAggFirstArg returns the trimmed text of the first argument of a call,
+// given the index of its `(`. It scans to the matching `)` (string- and
+// depth-aware) and returns everything up to the first top-level comma or the
+// closing paren. Returns "" if the call is unterminated.
+func mongoAggFirstArg(src string, openParen int) string {
+	if openParen >= len(src) || src[openParen] != '(' {
+		return ""
+	}
+	depthParen := 0
+	depthBrace := 0
+	depthBracket := 0
+	inStr := byte(0)
+	start := openParen + 1
+	for i := openParen; i < len(src); i++ {
+		c := src[i]
+		if inStr != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == inStr {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			inStr = c
+		case '(':
+			depthParen++
+		case ')':
+			depthParen--
+			if depthParen == 0 {
+				return strings.TrimSpace(src[start:i])
+			}
+		case '{':
+			depthBrace++
+		case '}':
+			depthBrace--
+		case '[':
+			depthBracket++
+		case ']':
+			depthBracket--
+		case ',':
+			if depthParen == 1 && depthBrace == 0 && depthBracket == 0 {
+				return strings.TrimSpace(src[start:i])
+			}
+		}
+	}
+	return ""
+}
+
+// mongoAggIdentRe matches a bare JS identifier (the whole string).
+var mongoAggIdentRe = regexp.MustCompile(`^[A-Za-z_$][\w$]*$`)
+
+// mongoAggBareIdent returns `arg` if it is a single bare identifier (a
+// variable reference like `pipeline`), else "". Member accesses, calls, array
+// literals, and spreads are rejected.
+func mongoAggBareIdent(arg string) string {
+	if mongoAggIdentRe.MatchString(arg) {
+		return arg
+	}
+	return ""
+}
+
+// mongoAggResolveArrayBinding finds, within the function scope, the binding
+// `const|let|var <ident> = [` and returns the byte index of that `[` (in the
+// full `src`) so the existing stage splitter can parse it. Returns -1 if there
+// is no such binding in scope or its initializer is not an array literal
+// (e.g. `const pipeline = stages;` or `= buildPipeline()`), which is the
+// honest-unresolved case. The last in-scope binding wins (closest assignment
+// before the call is the common single-binding case).
+func mongoAggResolveArrayBinding(src string, scope mongoAggScope, ident string) int {
+	re := regexp.MustCompile(
+		`(?:^|[^\w$])(?:const|let|var)\s+` + regexp.QuoteMeta(ident) + `\s*=\s*\[`,
+	)
+	region := src[scope.start:scope.end]
+	locs := re.FindAllStringIndex(region, -1)
+	if len(locs) == 0 {
+		return -1
+	}
+	// Take the last binding; its `[` is the final byte of the match.
+	last := locs[len(locs)-1]
+	return scope.start + last[1] - 1
+}
+
+// mongoAggBuildCallRe detects a `.build()` terminator on the aggregate
+// argument — the signature of the builder pattern (ask 3).
+var mongoAggBuildCallRe = regexp.MustCompile(`\.build\s*\(\s*\)`)
+
+// mongoAggBuilderVarRe captures the receiver identifier of a `<ident>.build()`
+// call when the argument is a bare `builder.build()` (not an inline chain).
+var mongoAggBuilderVarRe = regexp.MustCompile(`^([A-Za-z_$][\w$]*)\.build\s*\(\s*\)$`)
+
+// mongoAggResolveBuilderChain returns the fluent construction chain text whose
+// `.build()` produces the aggregate argument.
+//
+//   - Inline one-liner — `new AggBuilder().match({...}).lookup({...}).build()`
+//     passed directly: the arg itself is the chain.
+//   - Variable form — `builder.build()`: resolve `builder` to its construction
+//     statement `const builder = new AggBuilder().match(...)...` within the
+//     function scope and return that chain.
+//
+// Returns "" when the builder variable cannot be resolved to a construction
+// chain in the same scope (e.g. it is built in another function or behind a
+// branch) — honest-unresolved, no fabrication.
+func mongoAggResolveBuilderChain(src string, scope mongoAggScope, arg string) string {
+	// Inline chain: the argument already contains the `new ...().build()`.
+	if m := mongoAggBuilderVarRe.FindStringSubmatch(arg); m != nil {
+		ident := m[1]
+		return mongoAggBuilderBindingChain(src, scope, ident)
+	}
+	// Otherwise the arg is itself a chain ending in .build(); strip the
+	// trailing `.build()` and use the rest as the chain.
+	return mongoAggStripBuild(arg)
+}
+
+// mongoAggBuilderBindingChain finds `const|let|var <ident> = <chain>;` in scope
+// and returns the chain text (initializer), or "" if absent. The initializer
+// runs from `=` to the statement terminator (`;` or newline) at top level.
+func mongoAggBuilderBindingChain(src string, scope mongoAggScope, ident string) string {
+	re := regexp.MustCompile(
+		`(?:^|[^\w$])(?:const|let|var)\s+` + regexp.QuoteMeta(ident) + `\s*=\s*`,
+	)
+	region := src[scope.start:scope.end]
+	locs := re.FindAllStringIndex(region, -1)
+	if len(locs) == 0 {
+		return ""
+	}
+	last := locs[len(locs)-1]
+	init := mongoAggInitializer(region, last[1])
+	return strings.TrimSpace(init)
+}
+
+// mongoAggInitializer returns the right-hand side of an assignment starting at
+// `from` up to the top-level statement terminator (`;` or unbraced newline),
+// string- and depth-aware so chained calls spanning multiple lines are kept
+// whole.
+func mongoAggInitializer(region string, from int) string {
+	depthParen, depthBrace, depthBracket := 0, 0, 0
+	inStr := byte(0)
+	for i := from; i < len(region); i++ {
+		c := region[i]
+		if inStr != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == inStr {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			inStr = c
+		case '(':
+			depthParen++
+		case ')':
+			depthParen--
+		case '{':
+			depthBrace++
+		case '}':
+			depthBrace--
+		case '[':
+			depthBracket++
+		case ']':
+			depthBracket--
+		case ';':
+			if depthParen == 0 && depthBrace == 0 && depthBracket == 0 {
+				return region[from:i]
+			}
+		case '\n':
+			// A newline terminates the statement only at top level AND when we
+			// are not mid-chain (next non-space char is not `.`). This lets a
+			// fluent chain break across lines while still ending plain stmts.
+			if depthParen == 0 && depthBrace == 0 && depthBracket == 0 {
+				if !mongoAggNextIsDot(region, i+1) {
+					return region[from:i]
+				}
+			}
+		}
+	}
+	return region[from:]
+}
+
+// mongoAggNextIsDot reports whether the next non-whitespace character at or
+// after `i` is a `.` (chain continuation).
+func mongoAggNextIsDot(s string, i int) bool {
+	for i < len(s) {
+		c := s[i]
+		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			i++
+			continue
+		}
+		return c == '.'
+	}
+	return false
+}
+
+// mongoAggStripBuild removes a trailing `.build()` (and any whitespace) from a
+// builder chain expression.
+func mongoAggStripBuild(chain string) string {
+	loc := mongoAggBuildCallRe.FindStringIndex(chain)
+	if loc == nil {
+		return ""
+	}
+	return strings.TrimSpace(chain[:loc[0]])
+}
+
+// mongoAggBuilderMethodOp maps a fluent builder method name to its MongoDB
+// pipeline stage operator. Only methods that correspond 1:1 to a pipeline
+// stage are recognised; an unknown method (e.g. `.options(...)`) is skipped so
+// it does not appear as a fabricated stage.
+func mongoAggBuilderMethodOp(method string) string {
+	switch method {
+	case "match":
+		return "$match"
+	case "lookup":
+		return "$lookup"
+	case "graphLookup":
+		return "$graphLookup"
+	case "group":
+		return "$group"
+	case "unwind":
+		return "$unwind"
+	case "project":
+		return "$project"
+	case "sort":
+		return "$sort"
+	case "limit":
+		return "$limit"
+	case "skip":
+		return "$skip"
+	case "addFields", "set":
+		return "$addFields"
+	case "facet":
+		return "$facet"
+	case "count":
+		return "$count"
+	case "replaceRoot":
+		return "$replaceRoot"
+	case "sample":
+		return "$sample"
+	}
+	return ""
+}
+
+// mongoAggBuilderStages walks a fluent builder chain (with the trailing
+// `.build()` already stripped) and synthesises pipeline-stage substrings in
+// `{ $op: <arg> }` form — the SAME shape the inline-array splitter produces —
+// so mongoAggEmitStages can extract `$lookup` join fields, `$group` ids, etc.
+// uniformly. Each recognised top-level `.method(arg)` becomes one stage, in
+// call order. Methods that do not map to a pipeline stage are skipped (not
+// fabricated). The scan is string- and depth-aware so a `.method(` token
+// appearing INSIDE an argument object (or string) is never mistaken for a
+// top-level chained call.
+func mongoAggBuilderStages(chain string) []string {
+	var stages []string
+	inStr := byte(0)
+	depthParen, depthBrace, depthBracket := 0, 0, 0
+	for i := 0; i < len(chain); i++ {
+		c := chain[i]
+		if inStr != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == inStr {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			inStr = c
+			continue
+		case '{':
+			depthBrace++
+			continue
+		case '}':
+			depthBrace--
+			continue
+		case '[':
+			depthBracket++
+			continue
+		case ']':
+			depthBracket--
+			continue
+		case '(':
+			depthParen++
+			continue
+		case ')':
+			depthParen--
+			continue
+		}
+		// Only consider a `.method(` at the top level of the chain.
+		if c != '.' || depthParen != 0 || depthBrace != 0 || depthBracket != 0 {
+			continue
+		}
+		// Parse the method identifier following the dot.
+		j := i + 1
+		nameStart := j
+		for j < len(chain) && isMongoIdentChar(chain[j]) {
+			j++
+		}
+		method := chain[nameStart:j]
+		// Skip whitespace to the expected `(`.
+		k := j
+		for k < len(chain) && (chain[k] == ' ' || chain[k] == '\t' || chain[k] == '\n' || chain[k] == '\r') {
+			k++
+		}
+		if k >= len(chain) || chain[k] != '(' {
+			continue
+		}
+		op := mongoAggBuilderMethodOp(method)
+		if op != "" {
+			arg := mongoAggFirstArg(chain, k)
+			stages = append(stages, "{ "+op+": "+arg+" }")
+		}
+		// Resume scanning at the method's `(` (k) so the main loop counts its
+		// depth via the normal `(`/`)` cases. We jump i forward past the
+		// already-consumed identifier+whitespace, but NOT past the paren — that
+		// keeps depthParen balanced so a `.method(` token nested inside this
+		// argument is correctly guarded out. `i = k-1` because the loop's i++
+		// lands on k (the `(`) next iteration.
+		i = k - 1
+	}
+	return stages
+}
+
+// isMongoIdentChar reports whether c can appear in a JS identifier.
+func isMongoIdentChar(c byte) bool {
+	return c == '_' || c == '$' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
