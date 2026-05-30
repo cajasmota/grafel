@@ -143,6 +143,87 @@ var (
 	reDataMapperAssociation = regexp.MustCompile(
 		`(?m)^\s*(has\s+\d+|has\s+n|belongs_to)\s+:([a-z_]+)`,
 	)
+
+	// ---------------------------------------------------------------------------
+	// Lazy loading recognition — AR
+	// ---------------------------------------------------------------------------
+
+	// AR eager loading markers: includes / preload / eager_load
+	// e.g.  User.includes(:posts, :comments).where(active: true)
+	//       Order.eager_load(:line_items).preload(:customer)
+	reARIncludes = regexp.MustCompile(
+		`(?m)\.(includes|preload|eager_load)\s*\(\s*:([a-z_]+)`,
+	)
+
+	// AR lazy-association access: user.posts  (not intercepted here; marker via
+	// presence of association macros without includes — we flag the association
+	// as lazy by detecting has_many / has_one without a default scope override).
+	// We emit one lazy_marker entity per file that has associations but no
+	// eager-load call, as a documentation entity.
+	reARLazyMarker = regexp.MustCompile(
+		`(?m)^\s*(has_many|has_one|belongs_to)\s+:([a-z_]+)`,
+	)
+
+	// ---------------------------------------------------------------------------
+	// Sequel migrations
+	// ---------------------------------------------------------------------------
+
+	// Sequel.migration { change { ... } }
+	reSequelMigration = regexp.MustCompile(
+		`(?m)\bSequel\.migration\b`,
+	)
+
+	// DB.create_table :name do / DB.alter_table :name do
+	reSequelDBOp = regexp.MustCompile(
+		`(?m)\bDB\.(create_table|alter_table|drop_table)\s+:([a-z_]+)`,
+	)
+
+	// Sequel add_column :name, type
+	reSequelAddColumn = regexp.MustCompile(
+		`(?m)^\s*add_column\s+:([a-z_]+),\s*([A-Za-z:]+)`,
+	)
+
+	// ---------------------------------------------------------------------------
+	// DataMapper migrations (dm-migrations gem)
+	// ---------------------------------------------------------------------------
+
+	// DataMapper::Migration.new / migration(1, :name) do
+	reDataMapperMigration = regexp.MustCompile(
+		`(?m)\bDataMapper::Migration\b|^\s*migration\s*\(\s*\d+`,
+	)
+
+	// modify_table / create_table in dm-migrations
+	reDataMapperMigTable = regexp.MustCompile(
+		`(?m)^\s*(create_table|modify_table|drop_table)\s+:([a-z_]+)`,
+	)
+
+	// add_column :table, :col, :type (dm-migrations)
+	reDataMapperMigColumn = regexp.MustCompile(
+		`(?m)^\s*add_column\s+:([a-z_]+),\s*:([a-z_]+),\s*:([a-z_]+)`,
+	)
+
+	// ---------------------------------------------------------------------------
+	// ROM-rb migrations
+	// ---------------------------------------------------------------------------
+
+	// ROM::SQL::Migration / ROM.container(:sql) migration block
+	reROMMigration = regexp.MustCompile(
+		`(?m)\bROM::SQL::Migration\b|Sequel\.migration\b`,
+	)
+
+	// ---------------------------------------------------------------------------
+	// Mongoid associations + lazy loading
+	// ---------------------------------------------------------------------------
+
+	// Mongoid has_many / belongs_to / has_one / has_and_belongs_to_many
+	reMongoidAssociation = regexp.MustCompile(
+		`(?m)^\s*(has_many|belongs_to|has_one|has_and_belongs_to_many|embeds_many|embeds_one|embedded_in)\s+:([a-z_]+)`,
+	)
+
+	// Mongoid eager loading: includes(:assoc) on a Mongoid criteria
+	reMongoidIncludes = regexp.MustCompile(
+		`(?m)\.(includes|eager_load)\s*\(\s*:([a-z_]+)`,
+	)
 )
 
 // ---------------------------------------------------------------------------
@@ -364,6 +445,47 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 	}
 
 	// -------------------------------------------------------------------------
+	// 3b. ActiveRecord lazy loading recognition.
+	//     Detect eager-load calls (includes/preload/eager_load) as explicit
+	//     eager markers. The presence of association macros without eager load
+	//     implies lazy loading (AR default).
+	// -------------------------------------------------------------------------
+	if !isSchemaFile && !isMigrationFile {
+		// Eager loading markers.
+		for _, m := range reARIncludes.FindAllStringSubmatchIndex(src, -1) {
+			eagerType := src[m[2]:m[3]]
+			assocName := src[m[4]:m[5]]
+			name := "ar_eager:" + eagerType + ":" + assocName
+			ent := makeEntity(name, "SCOPE.Pattern", "lazy_marker", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "activerecord",
+				"provenance", "INFERRED_FROM_AR_EAGER_LOAD",
+				"eager_type", eagerType,
+				"association_name", assocName,
+				"loading_strategy", "eager",
+			)
+			add(ent)
+		}
+
+		// Lazy loading: any has_many / has_one / belongs_to without eager override
+		// implies AR lazy default. Emit one marker per association.
+		for _, m := range reARLazyMarker.FindAllStringSubmatchIndex(src, -1) {
+			assocType := src[m[2]:m[3]]
+			assocName := src[m[4]:m[5]]
+			name := "ar_lazy:" + assocType + ":" + assocName
+			ent := makeEntity(name, "SCOPE.Pattern", "lazy_marker", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "activerecord",
+				"provenance", "INFERRED_FROM_AR_LAZY_ASSOCIATION",
+				"association_type", assocType,
+				"association_name", assocName,
+				"loading_strategy", "lazy",
+			)
+			add(ent)
+		}
+	}
+
+	// -------------------------------------------------------------------------
 	// 4. ROM (rom-rb) — Relation subclasses and associations.
 	//    Heuristic: file references ROM or rom- in content.
 	// -------------------------------------------------------------------------
@@ -452,6 +574,227 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 				"provenance", "INFERRED_FROM_DM_ASSOCIATION",
 				"association_type", assocType,
 				"association_name", assocName,
+			)
+			add(ent)
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// 7. Mongoid — associations (has_many, belongs_to, embeds_*) + lazy loading.
+	//    Heuristic: file contains Mongoid::Document or field :...
+	//    Note: routes.go already emits Mongoid field schema entities; this
+	//    section adds the association + lazy-loading coverage cells.
+	// -------------------------------------------------------------------------
+	if strings.Contains(src, "Mongoid::Document") || strings.Contains(src, "Mongoid::") {
+		for _, m := range reMongoidAssociation.FindAllStringSubmatchIndex(src, -1) {
+			assocType := src[m[2]:m[3]]
+			assocName := src[m[4]:m[5]]
+			name := fmt.Sprintf("mongoid_assoc:%s:%s", assocType, assocName)
+			ent := makeEntity(name, "SCOPE.Pattern", "relation", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "mongoid",
+				"provenance", "INFERRED_FROM_MONGOID_ASSOCIATION",
+				"association_type", assocType,
+				"association_name", assocName,
+			)
+			add(ent)
+		}
+
+		// Eager load markers.
+		for _, m := range reMongoidIncludes.FindAllStringSubmatchIndex(src, -1) {
+			eagerType := src[m[2]:m[3]]
+			assocName := src[m[4]:m[5]]
+			name := "mongoid_eager:" + eagerType + ":" + assocName
+			ent := makeEntity(name, "SCOPE.Pattern", "lazy_marker", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "mongoid",
+				"provenance", "INFERRED_FROM_MONGOID_EAGER_LOAD",
+				"eager_type", eagerType,
+				"association_name", assocName,
+				"loading_strategy", "eager",
+			)
+			add(ent)
+		}
+
+		// Lazy loading: Mongoid associations are lazy by default. Emit a marker
+		// per association (mirrors AR section 3b).
+		for _, m := range reMongoidAssociation.FindAllStringSubmatchIndex(src, -1) {
+			assocType := src[m[2]:m[3]]
+			assocName := src[m[4]:m[5]]
+			name := "mongoid_lazy:" + assocType + ":" + assocName
+			ent := makeEntity(name, "SCOPE.Pattern", "lazy_marker", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "mongoid",
+				"provenance", "INFERRED_FROM_MONGOID_LAZY_ASSOCIATION",
+				"association_type", assocType,
+				"association_name", assocName,
+				"loading_strategy", "lazy",
+			)
+			add(ent)
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// 8. Sequel migrations.
+	//    Detect Sequel.migration blocks and DB DDL operations.
+	// -------------------------------------------------------------------------
+	isSequelMigFile := strings.Contains(path, "db/migrate/") ||
+		strings.Contains(path, "migrations/") ||
+		strings.HasSuffix(path, "_migration.rb")
+
+	if reSequelMigration.MatchString(src) || (isSequelMigFile && strings.Contains(src, "Sequel")) {
+		// Sequel.migration marker.
+		if loc := reSequelMigration.FindStringIndex(src); loc != nil {
+			ent := makeEntity("sequel_migration", "SCOPE.Schema", "migration", file.Path, file.Language, lineOf(src, loc[0]))
+			setProps(&ent,
+				"framework", "sequel",
+				"provenance", "INFERRED_FROM_SEQUEL_MIGRATION",
+			)
+			add(ent)
+		}
+
+		// DB.create_table / alter_table / drop_table
+		for _, m := range reSequelDBOp.FindAllStringSubmatchIndex(src, -1) {
+			op := src[m[2]:m[3]]
+			tableName := src[m[4]:m[5]]
+			name := fmt.Sprintf("sequel_mig_%s:%s", op, tableName)
+			ent := makeEntity(name, "SCOPE.Schema", "migration", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "sequel",
+				"provenance", "INFERRED_FROM_SEQUEL_DB_OP",
+				"ddl_operation", op,
+				"table_name", tableName,
+			)
+			add(ent)
+		}
+
+		// add_column inside Sequel migration.
+		for _, m := range reSequelAddColumn.FindAllStringSubmatchIndex(src, -1) {
+			colName := src[m[2]:m[3]]
+			colType := src[m[4]:m[5]]
+			name := "sequel_mig_add_col:" + colName
+			ent := makeEntity(name, "SCOPE.Schema", "migration", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "sequel",
+				"provenance", "INFERRED_FROM_SEQUEL_MIGRATION_ADD_COLUMN",
+				"column_name", colName,
+				"column_type", colType,
+				"ddl_operation", "add_column",
+			)
+			add(ent)
+		}
+	}
+
+	// Sequel lazy loading: any many_to_one / one_to_many / many_to_many
+	// associations are lazy by default (Sequel::Model behaviour).
+	if strings.Contains(src, "Sequel::Model") || strings.Contains(src, "sequel") {
+		for _, m := range reSequelAssociation.FindAllStringSubmatchIndex(src, -1) {
+			assocType := src[m[2]:m[3]]
+			assocName := src[m[4]:m[5]]
+			name := "sequel_lazy:" + assocType + ":" + assocName
+			ent := makeEntity(name, "SCOPE.Pattern", "lazy_marker", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "sequel",
+				"provenance", "INFERRED_FROM_SEQUEL_LAZY_ASSOCIATION",
+				"association_type", assocType,
+				"association_name", assocName,
+				"loading_strategy", "lazy",
+			)
+			add(ent)
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// 9. DataMapper migrations (dm-migrations).
+	// -------------------------------------------------------------------------
+	if reDataMapperMigration.MatchString(src) {
+		if loc := reDataMapperMigration.FindStringIndex(src); loc != nil {
+			ent := makeEntity("dm_migration", "SCOPE.Schema", "migration", file.Path, file.Language, lineOf(src, loc[0]))
+			setProps(&ent,
+				"framework", "datamapper",
+				"provenance", "INFERRED_FROM_DM_MIGRATION",
+			)
+			add(ent)
+		}
+
+		for _, m := range reDataMapperMigTable.FindAllStringSubmatchIndex(src, -1) {
+			op := src[m[2]:m[3]]
+			tableName := src[m[4]:m[5]]
+			name := fmt.Sprintf("dm_mig_%s:%s", op, tableName)
+			ent := makeEntity(name, "SCOPE.Schema", "migration", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "datamapper",
+				"provenance", "INFERRED_FROM_DM_MIGRATION_TABLE",
+				"ddl_operation", op,
+				"table_name", tableName,
+			)
+			add(ent)
+		}
+
+		for _, m := range reDataMapperMigColumn.FindAllStringSubmatchIndex(src, -1) {
+			tableName := src[m[2]:m[3]]
+			colName := src[m[4]:m[5]]
+			colType := src[m[6]:m[7]]
+			name := fmt.Sprintf("dm_mig_add_col:%s.%s", tableName, colName)
+			ent := makeEntity(name, "SCOPE.Schema", "migration", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "datamapper",
+				"provenance", "INFERRED_FROM_DM_MIGRATION_COLUMN",
+				"table_name", tableName,
+				"column_name", colName,
+				"column_type", colType,
+				"ddl_operation", "add_column",
+			)
+			add(ent)
+		}
+	}
+
+	// DataMapper lazy loading: all DataMapper associations are lazy by default.
+	if reDataMapperResource.MatchString(src) {
+		for _, m := range reDataMapperAssociation.FindAllStringSubmatchIndex(src, -1) {
+			assocType := strings.TrimSpace(src[m[2]:m[3]])
+			assocName := src[m[4]:m[5]]
+			name := "dm_lazy:" + assocType + ":" + assocName
+			ent := makeEntity(name, "SCOPE.Pattern", "lazy_marker", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "datamapper",
+				"provenance", "INFERRED_FROM_DM_LAZY_ASSOCIATION",
+				"association_type", assocType,
+				"association_name", assocName,
+				"loading_strategy", "lazy",
+			)
+			add(ent)
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// 10. ROM-rb migrations (use Sequel.migration underneath ROM).
+	// -------------------------------------------------------------------------
+	if (strings.Contains(src, "ROM::") || strings.Contains(src, "ROM.container")) &&
+		reROMMigration.MatchString(src) {
+		if loc := reROMMigration.FindStringIndex(src); loc != nil {
+			ent := makeEntity("rom_migration", "SCOPE.Schema", "migration", file.Path, file.Language, lineOf(src, loc[0]))
+			setProps(&ent,
+				"framework", "rom-rb",
+				"provenance", "INFERRED_FROM_ROM_MIGRATION",
+			)
+			add(ent)
+		}
+	}
+
+	// ROM-rb lazy loading: associations are lazy by default.
+	if strings.Contains(src, "ROM::") || strings.Contains(src, "ROM.container") {
+		for _, m := range reROMAssociation.FindAllStringSubmatchIndex(src, -1) {
+			assocType := src[m[2]:m[3]]
+			assocName := src[m[4]:m[5]]
+			name := "rom_lazy:" + assocType + ":" + assocName
+			ent := makeEntity(name, "SCOPE.Pattern", "lazy_marker", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent,
+				"framework", "rom-rb",
+				"provenance", "INFERRED_FROM_ROM_LAZY_ASSOCIATION",
+				"association_type", assocType,
+				"association_name", assocName,
+				"loading_strategy", "lazy",
 			)
 			add(ent)
 		}

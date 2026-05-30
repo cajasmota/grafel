@@ -22,10 +22,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/ruby/activerecord.go` | Mongoid has_many, belongs_to, has_one, has_and_belongs_to_many, embeds_many, embeds_one, embedded_in. Part of #3282. |
 | Foreign key extraction | — `not_applicable` | — | — | — | Mongoid uses document references, not relational foreign keys |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Lazy loading recognition | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/ruby/activerecord.go` | Mongoid associations are lazy by default; includes/eager_load markers detected. Part of #3282. |
+| Relationship extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/ruby/activerecord.go` | Mongoid has_many, belongs_to, embeds_many, embeds_one relationship macros. Part of #3282. |
 
 ### Queries
 

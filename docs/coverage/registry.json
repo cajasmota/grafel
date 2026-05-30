@@ -41234,10 +41234,14 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/cuba_routing.go"],
+            "notes": "Cuba on 'path' string segments and :param parametric routing tree synthesis. Part of #3282."
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/cuba_routing.go"],
+            "notes": "Cuba on get/post/put/patch/delete verb handler attribution. Part of #3282."
           },
           "route_extraction": {
             "status": "partial",
@@ -41269,7 +41273,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/middleware.go"],
+            "notes": "Rack use and Cuba before/after blocks. Part of #3282."
           }
         },
         "Type System": {
@@ -41490,8 +41496,10 @@
             "notes": "Ruby is dynamically typed — no type keyword (duck typing idiom)"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/dry_types.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "dry-types Types::*, dry-struct attribute schemas, dry-schema/dry-validation contracts. Part of #3282."
           }
         },
         "Testing": {
@@ -41681,7 +41689,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/middleware.go"],
+            "notes": "Rack use, Rails before/after_action, Grape before/after hooks, Sinatra before/after blocks, Roda plugins, Cuba before/after. Part of #3282."
           }
         },
         "Type System": {
@@ -41889,7 +41899,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/middleware.go"],
+            "notes": "Rack use via Hanami::Application, config.middleware.use. Part of #3282."
           }
         },
         "Type System": {
@@ -42097,7 +42109,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/middleware.go"],
+            "notes": "Rack use, config.middleware.use, Padrino before/after blocks. Part of #3282."
           }
         },
         "Type System": {
@@ -42305,7 +42319,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/middleware.go"]
           }
         },
         "Type System": {
@@ -42513,7 +42528,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/middleware.go"],
+            "notes": "Roda plugin :name declarations and Rack use. Part of #3282."
           }
         },
         "Type System": {
@@ -42721,7 +42738,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/middleware.go"],
+            "notes": "Sinatra before/after blocks, before '/path' do path filters, Rack use. Part of #3282."
           }
         },
         "Type System": {
@@ -42912,8 +42931,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "AR includes/preload/eager_load eager markers + lazy defaults from has_many/has_one/belongs_to. Part of #3282."
           },
           "relationship_extraction": {
             "status": "partial",
@@ -42968,8 +42989,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DataMapper associations (has n, belongs_to) are lazy by default. Part of #3282."
           },
           "relationship_extraction": {
             "status": "partial",
@@ -42986,7 +43009,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "notes": "DataMapper::Migration / migration(n, :name) blocks, create_table/add_column via dm-migrations. Part of #3282."
           }
         }
       }
@@ -43013,20 +43038,26 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Mongoid has_many, belongs_to, has_one, has_and_belongs_to_many, embeds_many, embeds_one, embedded_in. Part of #3282."
           },
           "foreign_key_extraction": {
             "status": "not_applicable",
             "notes": "Mongoid uses document references, not relational foreign keys"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Mongoid associations are lazy by default; includes/eager_load markers detected. Part of #3282."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Mongoid has_many, belongs_to, embeds_many, embeds_one relationship macros. Part of #3282."
           }
         },
         "Queries": {
@@ -43075,8 +43106,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ROM-rb associations (has_many, belongs_to) are lazy by default. Part of #3282."
           },
           "relationship_extraction": {
             "status": "partial",
@@ -43093,7 +43126,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "notes": "ROM-rb uses Sequel.migration underneath; migration block detection covers this. Part of #3282."
           }
         }
       }
@@ -43130,8 +43165,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Sequel many_to_one/one_to_many/many_to_many associations are lazy by default. Part of #3282."
           },
           "relationship_extraction": {
             "status": "partial",
@@ -43148,7 +43185,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "notes": "Sequel.migration, DB.create_table/alter_table, add_column inside Sequel migration blocks. Part of #3282."
           }
         }
       }

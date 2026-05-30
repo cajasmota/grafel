@@ -375,7 +375,207 @@ end
 }
 
 // ---------------------------------------------------------------------------
-// 7. Empty / non-Ruby file → no entities
+// 7. ActiveRecord lazy loading recognition
+// ---------------------------------------------------------------------------
+
+func TestARLazyLoading_EagerLoadMarkers(t *testing.T) {
+	src := `
+class PostsController < ApplicationController
+  def index
+    @posts = Post.includes(:author, :comments).where(published: true)
+    @orders = Order.preload(:customer).eager_load(:line_items)
+  end
+end
+`
+	ents := arExtract(t, "app/controllers/posts_controller.rb", src)
+
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "ar_eager:includes:author") {
+		t.Error("expected ar_eager:includes:author lazy_marker entity")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "ar_eager:preload:customer") {
+		t.Error("expected ar_eager:preload:customer lazy_marker entity")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "ar_eager:eager_load:line_items") {
+		t.Error("expected ar_eager:eager_load:line_items lazy_marker entity")
+	}
+}
+
+func TestARLazyLoading_LazyAssociationMarkers(t *testing.T) {
+	src := `
+class Post < ApplicationRecord
+  belongs_to :author
+  has_many :comments
+  has_one :featured_image
+end
+`
+	ents := arExtract(t, "app/models/post.rb", src)
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "ar_lazy:belongs_to:author") {
+		t.Error("expected ar_lazy:belongs_to:author lazy_marker")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "ar_lazy:has_many:comments") {
+		t.Error("expected ar_lazy:has_many:comments lazy_marker")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "ar_lazy:has_one:featured_image") {
+		t.Error("expected ar_lazy:has_one:featured_image lazy_marker")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 8. Mongoid associations + lazy loading
+// ---------------------------------------------------------------------------
+
+func TestMongoidAssociations(t *testing.T) {
+	src := `
+class Article
+  include Mongoid::Document
+
+  belongs_to :user
+  has_many :comments
+  embeds_many :tags
+  has_and_belongs_to_many :categories
+end
+`
+	ents := arExtract(t, "app/models/article.rb", src)
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "relation", "mongoid_assoc:belongs_to:user") {
+		t.Error("expected mongoid_assoc:belongs_to:user relation entity")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "relation", "mongoid_assoc:has_many:comments") {
+		t.Error("expected mongoid_assoc:has_many:comments relation entity")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "relation", "mongoid_assoc:embeds_many:tags") {
+		t.Error("expected mongoid_assoc:embeds_many:tags relation entity")
+	}
+}
+
+func TestMongoidLazyLoading(t *testing.T) {
+	src := `
+class Post
+  include Mongoid::Document
+
+  has_many :comments
+  belongs_to :author
+end
+`
+	ents := arExtract(t, "app/models/post.rb", src)
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "mongoid_lazy:has_many:comments") {
+		t.Error("expected mongoid_lazy:has_many:comments lazy_marker")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "mongoid_lazy:belongs_to:author") {
+		t.Error("expected mongoid_lazy:belongs_to:author lazy_marker")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 9. Sequel migrations
+// ---------------------------------------------------------------------------
+
+func TestSequelMigration(t *testing.T) {
+	src := `
+Sequel.migration do
+  change do
+    create_table :users do
+      primary_key :id
+      String :name, null: false
+    end
+  end
+end
+`
+	ents := arExtract(t, "db/migrations/001_create_users.rb", src)
+	if !containsEntitySubtype(ents, "SCOPE.Schema", "migration", "sequel_migration") {
+		t.Error("expected sequel_migration schema entity")
+	}
+}
+
+func TestSequelLazyLoading(t *testing.T) {
+	src := `
+class Post < Sequel::Model
+  many_to_one :author
+  one_to_many :comments
+end
+`
+	ents := arExtract(t, "app/models/post.rb", src)
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "sequel_lazy:many_to_one:author") {
+		t.Error("expected sequel_lazy:many_to_one:author lazy_marker")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "sequel_lazy:one_to_many:comments") {
+		t.Error("expected sequel_lazy:one_to_many:comments lazy_marker")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 10. DataMapper migrations
+// ---------------------------------------------------------------------------
+
+func TestDataMapperMigration(t *testing.T) {
+	src := `
+migration(1, :create_users) do
+  up do
+    create_table :users do
+      column :id,   Integer, serial: true
+      column :name, String,  length: 255
+    end
+  end
+  down do
+    drop_table :users
+  end
+end
+`
+	ents := arExtract(t, "db/migrate/001_create_users.rb", src)
+	if !containsEntitySubtype(ents, "SCOPE.Schema", "migration", "dm_migration") {
+		t.Error("expected dm_migration schema entity")
+	}
+}
+
+func TestDataMapperLazyLoading(t *testing.T) {
+	src := `
+class User
+  include DataMapper::Resource
+
+  has n, :posts
+  belongs_to :group
+end
+`
+	ents := arExtract(t, "app/models/user.rb", src)
+	foundLazy := false
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Pattern" && e.Subtype == "lazy_marker" {
+			foundLazy = true
+			break
+		}
+	}
+	if !foundLazy {
+		t.Error("expected at least one DataMapper lazy_marker entity")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 11. ROM-rb lazy loading + migration
+// ---------------------------------------------------------------------------
+
+func TestROMLazyLoading(t *testing.T) {
+	src := `
+module Relations
+  class Users < ROM::Relation[:sql]
+    schema(:users, infer: true) do
+      associations do
+        has_many :posts
+        belongs_to :account
+      end
+    end
+  end
+end
+`
+	ents := arExtract(t, "app/relations/users.rb", src)
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "rom_lazy:has_many:posts") {
+		t.Error("expected rom_lazy:has_many:posts lazy_marker")
+	}
+	if !containsEntitySubtype(ents, "SCOPE.Pattern", "lazy_marker", "rom_lazy:belongs_to:account") {
+		t.Error("expected rom_lazy:belongs_to:account lazy_marker")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 12. Empty / non-Ruby file → no entities
 // ---------------------------------------------------------------------------
 
 func TestARNoMatch_EmptyFile(t *testing.T) {
