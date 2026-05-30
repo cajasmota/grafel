@@ -42,10 +42,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/cpp/extractor.go` | — |
-| Interface extraction | — `not_applicable` | — | — | — | C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction) |
-| Type alias extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/type_alias.go` | typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution |
-| Type extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/cpp/extractor.go` | — |
+| Enum extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/cpp/extractor.go` | Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type |
+| Interface extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/cpp/extractor.go` | Abstract class (pure-virtual methods) and C++20 concept extraction |
+| Type alias extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/type_alias.go` | typedef (incl. function-pointer), using-alias, and alias templates |
+| Type extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/cpp/extractor.go` | class/struct/union with data members (name/type/access), base-class inheritance, abstract detection |
 
 ### Testing
 

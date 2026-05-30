@@ -1993,24 +1993,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -2197,24 +2201,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -2401,24 +2409,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -2614,24 +2626,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -2827,24 +2843,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -3040,24 +3060,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -3244,24 +3268,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -3448,24 +3476,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -3652,24 +3684,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -3864,24 +3900,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -4077,24 +4117,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -4290,24 +4334,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -4499,17 +4547,22 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/extractors/cpp/extractor.go"]
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           }
         },
         "Lifecycle": {
@@ -4688,24 +4741,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -4900,24 +4957,28 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "Scoped/unscoped enums with enumerator names, explicit values, and fixed underlying type",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "not_applicable",
-            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "Abstract class (pure-virtual methods) and C++20 concept extraction",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/type_alias.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
+            "notes": "typedef (incl. function-pointer), using-alias, and alias templates",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/extractors/cpp/extractor.go"],
-            "issue": "backfill:dictionary-completeness"
+            "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
