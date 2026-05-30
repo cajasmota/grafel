@@ -418,12 +418,18 @@ func findFollowingPyDef(src string, offset int) string {
 // the file during tests — callers pass the source-file path so that fixtures
 // work without a filesystem sidecar.
 func resolveServerlessYMLName(sourcePath, handlerSymbol string) string {
-	// In tests (and when no serverless.yml is present) we fall back to the
-	// handler symbol as the logical name. Real deployments should register the
-	// serverless.yml topology via the deployment_topology_extractor which already
-	// captures `functions.<logicalName>.handler` entries. The #927 EventBridge
-	// pass will wire that index together. For now, handler symbol == logical name.
+	// #3519 — the serverless.yml topology pass (serverless_framework_edges.go)
+	// populates serverlessYMLHandlerIndex with handler-symbol → logical-function
+	// -name mappings as manifests are parsed. When the manifest for this handler
+	// has already been processed in the run, return the logical name so the
+	// code-side synthetic collapses onto the same aws-lambda:<logical> node the
+	// manifest emitted. Otherwise fall back to the handler symbol (the prior
+	// behaviour) — safe because the symbol is still a stable cross-side key when
+	// no manifest is present.
 	_ = sourcePath
+	if logical, ok := serverlessYMLHandlerIndex[handlerSymbol]; ok && logical != "" {
+		return logical
+	}
 	return handlerSymbol
 }
 

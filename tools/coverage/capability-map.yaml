@@ -15848,3 +15848,28 @@ records:
             - file: internal/extractors/cpp/typesystem_test.go
           issues_implemented: ["3491"]
           verified_at: "2026-05-31"
+
+  infra.iac.serverless-framework:
+    capabilities:
+      dependency_attribution:
+        status: full
+        symbols:
+          - file: internal/engine/serverless_framework_edges.go
+            functions: [applyServerlessFrameworkEdges, handlerSymbol]
+          - file: internal/engine/serverless_edges.go
+            functions: [resolveServerlessYMLName]
+        tests:
+          - file: internal/engine/serverless_framework_edges_test.go
+        issues_implemented: ["3519"]
+        verified_at: "2026-05-30"
+      resource_extraction:
+        status: full
+        symbols:
+          - file: internal/engine/serverless_framework_edges.go
+            functions: [applyServerlessFrameworkEdges, isServerlessFrameworkFile]
+          - file: internal/engine/serverless_framework_parse.go
+            functions: [parseServerlessYML, parseFunctionsBlock, parseEventsBlock]
+        tests:
+          - file: internal/engine/serverless_framework_edges_test.go
+        issues_implemented: ["3519"]
+        verified_at: "2026-05-30"

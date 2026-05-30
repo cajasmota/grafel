@@ -1370,14 +1370,14 @@
       "label": "Serverless Framework",
       "capabilities": {
         "dependency_attribution": {
-          "status": "partial",
-          "cites": ["internal/engine/serverless_edges.go"],
-          "verified_at": "2026-05-28"
+          "status": "full",
+          "cites": ["internal/engine/serverless_edges.go","internal/engine/serverless_framework_edges.go"],
+          "verified_at": "2026-05-30"
         },
         "resource_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/serverless_edges.go"],
-          "verified_at": "2026-05-28"
+          "status": "full",
+          "cites": ["internal/engine/serverless_framework_edges.go","internal/engine/serverless_framework_parse.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },

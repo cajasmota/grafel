@@ -660,6 +660,18 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// them without new linker code. Append-only — cannot regress surrounding passes.
 	// Lays groundwork for #927 EventBridge (Lambda synthetics as anchor targets).
 	applyPass(applyServerlessEdges)
+	// Serverless Framework (serverless.yml) topology extraction (#3519, epic
+	// #3512). Parses a serverless.yml manifest and emits first-class graph
+	// entities/edges: functions.<name> → SCOPE.ServerlessFunction (keyed
+	// aws-lambda:<name>, collapsing with the code-side handler synthetics from
+	// applyServerlessEdges); http/httpApi events → http_endpoint_definition +
+	// SERVES; sqs/sns/stream/kinesis events → queue/topic + TRIGGERS; schedule
+	// events → SCOPE.ScheduledJob + TRIGGERS; functions.<name>.handler →
+	// HANDLES edge to the resolved code symbol. Also populates
+	// serverlessYMLHandlerIndex so resolveServerlessYMLName performs the real
+	// topology join (previously a #927-deferred stub). Append-only — cannot
+	// regress surrounding passes. resources: is left to the CFN pass.
+	applyPass(applyServerlessFrameworkEdges)
 	// Workflow orchestration edges (#934). Emits SCOPE.Workflow, SCOPE.Activity,
 	// and SCOPE.StateMachine entities plus STARTS_WORKFLOW, EXECUTES_ACTIVITY,
 	// and STEPFUNCTION_STEP_INVOKES edges for Temporal (Python, Go, Java, Node),
