@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 198 records · **C/C++**: 19 · **C#**: 15 · **elixir**: 13 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 15 · **lua**: 2 · **php**: 12 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 12 · **swift**: 1
+**Total**: 199 records · **C/C++**: 19 · **C#**: 15 · **elixir**: 13 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 15 · **lua**: 2 · **php**: 13 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 12 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -84,6 +84,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [php](../by-language/php.md) | [Symfony](../detail/lang.php.framework.symfony.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [php](../by-language/php.md) | [WordPress](../detail/lang.php.framework.wordpress.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [php](../by-language/php.md) | [Yii](../detail/lang.php.framework.yii.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [php](../by-language/php.md) | [graphql-php](../detail/lang.php.framework.graphql-php.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 1/7 | |
 | [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |

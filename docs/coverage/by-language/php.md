@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # php
 
-**Frameworks**: 12 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
+**Frameworks**: 13 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -38,6 +38,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Symfony](../detail/lang.php.framework.symfony.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [WordPress](../detail/lang.php.framework.wordpress.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Yii](../detail/lang.php.framework.yii.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [graphql-php](../detail/lang.php.framework.graphql-php.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 1/7 | |
 
 
 ## Tools
