@@ -227,6 +227,37 @@ var stopwords = map[string]bool{
 	// Laravel RefreshDatabase / HTTP test lifecycle helpers
 	"refreshdatabase": true, "seeddatabase": true, "withoutexceptionhandling": true,
 	"withheaders": true, "actingas": true, "withtoken": true, "be": true,
+	// Scala — ScalaTest / specs2 / MUnit / ZIO Test assertion & matcher helpers
+	// (#3457). These are test-harness identifiers and must never surface as the
+	// tested production subject. directCallRE captures the paren-call forms
+	// (assert(…), assertResult(…), assertTrue(…)); the infix matcher forms
+	// (`x shouldBe y`, `x must_== y`) are included defensively for the dotted
+	// `x.shouldBe(y)` style. Lower-cased (resolver lowercases before lookup).
+	"assertresult": true, "assertthrows_scala": true,
+	"assertcompiles": true, "assertdoesnotcompile": true, "asserttypeerror": true,
+	// ScalaTest matchers (Matchers / MustMatchers): infix + dotted forms.
+	// (shouldbe/shouldmatch/shouldcontain/shouldnotbe already covered by the
+	// Kotlin kotest matcher block above.)
+	"shouldequal": true, "should_be": true,
+	"mustbe": true, "mustequal": true, "must_==": true, "must_be": true,
+	"mustmatch": true, "mustcontain": true,
+	"mustnotbe": true, "shouldreturn": true,
+	"shouldhave": true, "musthave": true,
+	// specs2 matchers (`x must beEqualTo(y)`, `x mustEqual y`, `x === y`).
+	"mustequalto": true, "beequalto": true, "beequalto_": true,
+	"mustbeequaltoignoringcase": true, "bnull": true, "benull": true,
+	"besome": true, "benone": true, "beleft": true, "beright": true,
+	"betrue": true, "befalse": true, "throwa": true, "throwan": true,
+	"contain_": true, "haveclass": true, "havesize": true,
+	// MUnit assertion helpers (assertEquals/assertNotEquals already covered by
+	// the generic assert* / assertequals entries; add the MUnit-specific ones).
+	"assertnoexception": true, "interceptmessage": true, "intercept": true,
+	"assertequalsdouble": true, "assertequalsfloat": true,
+	// ZIO Test assertions (assertTrue covered above; add the operator forms).
+	"assertz": true, "assertcompletes": true, "assertcompleteszio": true,
+	"equalto": true, "isleft": true, "isright": true, "issome": true, "isnone": true,
+	"issubtype": true, "haskey": true, "hasfield": true, "isgreaterthan": true,
+	"islessthan": true,
 	// Common language keywords that end up in call-like positions
 	"if": true, "for": true, "while": true, "switch": true, "return": true,
 	"func": true, "def": true, "class": true, "struct": true, "new": true,
