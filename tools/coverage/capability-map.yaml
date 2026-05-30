@@ -6604,6 +6604,2063 @@ records:
               functions: [runTaintFlowPass, computeFindings]
           issues_implemented: ["2773"]
           verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Routing:
+        route_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/axum.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/extractors_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Middleware:
+        middleware_coverage:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/axum.go
+              functions: [Extract]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Validation:
+        dto_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/axum.go
+              functions: [Extract]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.actix:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Routing:
+        route_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/actix_web.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/extractors_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Middleware:
+        middleware_coverage:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/actix_web.go
+              functions: [Extract]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Validation:
+        dto_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/actix_web.go
+              functions: [Extract]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.gotham:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.hyper:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.poem:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.rocket:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Routing:
+        route_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/rocket.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/extractors_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.salvo:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.tide:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.tower:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.warp:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["2762"]
+          verified_at: "2026-05-28"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        taint_source_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        taint_sink_detection:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        sanitizer_recognition:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        vulnerability_finding:
+          status: partial
+          symbols:
+            - file: internal/substrate/taint_sites_rust.go
+              functions: [sniffTaintRust]
+            - file: internal/links/taint_flow.go
+              functions: [runTaintFlowPass, computeFindings]
+          issues_implemented: ["2773"]
+          verified_at: "2026-05-28"
+        def_use_chain_extraction:
+          status: partial
+          symbols:
+            - file: internal/links/def_use_pass.go
+              functions: [runDefUsePass, formatDefUseSummary]
+            - file: internal/substrate/def_use.go
+            - file: internal/substrate/def_use_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        module_cycle_detection:
+          status: partial
+          symbols:
+            - file: internal/links/module_cycle_pass.go
+              functions: [runModuleCyclePass, strongConnect]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        pure_function_tagging:
+          status: partial
+          symbols:
+            - file: internal/links/pure_function_pass.go
+              functions: [runPureFunctionPass]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        template_pattern_catalog:
+          status: partial
+          symbols:
+            - file: internal/links/template_pattern_pass.go
+              functions: [runTemplatePatternPass]
+            - file: internal/substrate/template_pattern.go
+            - file: internal/substrate/template_pattern_rust.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Type System:
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        type_extraction:
+          status: partial
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [Extract]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Testing:
+        tests_linkage:
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectRustTest]
+            - file: internal/engine/tests_edges.go
+              functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestRust_TestAttribute]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+
+  lang.rust.framework.tauri:
+    capabilities:
+      Substrate:
+        constant_propagation:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        env_fallback_recognition:
+          status: full
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        import_resolution_quality:
+          status: partial
+          symbols:
+            - file: internal/substrate/rust.go
+              functions: [sniffRust]
+            - file: internal/links/constant_propagation.go
+              functions: [indexFileForLookup]
+          issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+        reachability_analysis:
+          status: full
+          symbols:
+            - file: internal/substrate/entry_points_rust.go
+              functions: [sniffRustEntryPoints]
+            - file: internal/substrate/entry_points.go
+              functions: [RegisterEntryPoints, EntryPointSnifferFor]
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        dead_code_detection:
+          status: full
+          symbols:
+            - file: internal/links/reachability.go
+              functions: [runReachabilityPass, isCodeBearing]
+            - file: internal/mcp/dead_code.go
+              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+          issues_implemented: ["2767"]
+          verified_at: "2026-05-28"
+        db_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust, appendRustMatches]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass, stampEffectProperties]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        http_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        fs_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+        mutation_effect:
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_rust.go
+              functions: [sniffEffectsRust]
+            - file: internal/links/effect_propagation.go
+              functions: [runEffectPropagationPass]
+          issues_implemented: ["2765"]
+          verified_at: "2026-05-28"
+
+  test.criterion:
+    capabilities:
+      target_extraction:
+        # criterion benchmark detection: [[bench]] section in Cargo.toml,
+        # criterion_group!/criterion_main! macros, and benches/ directory
+        # are all recorded in internal/engine/rules/rust/test_patterns.yaml.
+        status: partial
+        symbols:
+          - file: internal/engine/rules/rust/test_patterns.yaml
+          - file: internal/extractors/cross/testmap/frameworks.go
+            functions: [detectRustTest]
+        issues_implemented: ["3268"]
+        verified_at: "2026-05-30"
+      dependency_graph:
+        # tests_edges.go propagates TESTS edges from test functions to the
+        # production entities they exercise; criterion benches are treated
+        # as test-bearing files via the rust_test sniffer path.
+        status: partial
+        symbols:
+          - file: internal/engine/tests_edges.go
+            functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          - file: internal/engine/rules/rust/test_patterns.yaml
+        issues_implemented: ["3268"]
+        verified_at: "2026-05-30"
+
+  test.mockall:
+    capabilities:
+      target_extraction:
+        # mockall detection: use mockall:: import markers and #[automock]
+        # attribute patterns registered in internal/engine/rules/rust/test_patterns.yaml.
+        status: partial
+        symbols:
+          - file: internal/engine/rules/rust/test_patterns.yaml
+          - file: internal/extractors/cross/testmap/frameworks.go
+            functions: [detectRustTest]
+        issues_implemented: ["3268"]
+        verified_at: "2026-05-30"
+      dependency_graph:
+        # tests_edges.go propagates TESTS edges from test functions that use
+        # mockall mocks to the production entities under test.
+        status: partial
+        symbols:
+          - file: internal/engine/tests_edges.go
+            functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          - file: internal/engine/rules/rust/test_patterns.yaml
+        issues_implemented: ["3268"]
+        verified_at: "2026-05-30"
+
+  test.proptest:
+    capabilities:
+      target_extraction:
+        # proptest detection: proptest! macro block and use proptest:: import
+        # markers registered in internal/engine/rules/rust/test_patterns.yaml.
+        status: partial
+        symbols:
+          - file: internal/engine/rules/rust/test_patterns.yaml
+          - file: internal/extractors/cross/testmap/frameworks.go
+            functions: [detectRustTest]
+        issues_implemented: ["3268"]
+        verified_at: "2026-05-30"
+      dependency_graph:
+        # tests_edges.go propagates TESTS edges from proptest property-based
+        # test functions to the production entities they exercise.
+        status: partial
+        symbols:
+          - file: internal/engine/tests_edges.go
+            functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
+          - file: internal/engine/rules/rust/test_patterns.yaml
+        issues_implemented: ["3268"]
+        verified_at: "2026-05-30"
 
   lang.csharp.orm.efcore:
     capabilities:
