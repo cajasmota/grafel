@@ -316,6 +316,63 @@ var stopwords = map[string]bool{
 	"luaunit.run": true, "lu.assertequals": true, "lu.asserttrue": true,
 	"lu.assertfalse": true, "lu.assertnil": true, "lu.assertnotnil": true,
 	"lu.run": true, "luaunit.assertalmostequals": true,
+	// C/C++ — gtest / catch2 / doctest / boost.test / cppunit / cpputest
+	// assertion and harness macros (#3495). These are test-harness identifiers
+	// and must never surface as the tested production subject. directCallRE
+	// captures the macro name before its `(`. Lower-cased (resolver lowercases
+	// before lookup).
+	//
+	// gtest / gmock:
+	"expect_eq": true, "expect_ne": true, "expect_lt": true, "expect_le": true,
+	"expect_gt": true, "expect_ge": true, "expect_true": true, "expect_false": true,
+	"expect_streq": true, "expect_strne": true, "expect_strcaseeq": true,
+	"expect_float_eq": true, "expect_double_eq": true, "expect_near": true,
+	"expect_throw": true, "expect_no_throw": true, "expect_any_throw": true,
+	"expect_death": true, "expect_nonfatal_failure": true, "expect_call": true,
+	"assert_lt": true, "assert_le": true,
+	"assert_gt": true, "assert_ge": true, "assert_true": true, "assert_false": true,
+	"assert_streq": true, "assert_strne": true, "assert_strcaseeq": true,
+	"assert_float_eq": true, "assert_double_eq": true, "assert_near": true,
+	"assert_throw": true, "assert_no_throw": true, "assert_any_throw": true,
+	"assert_death": true, "succeed": true, "on_call": true,
+	// catch2 / doctest (`require`/`check` are already stop-worded as keywords
+	// above; `capture` and `then` are covered by the MockK / Lua blocks):
+	"require_false": true, "require_throws": true,
+	"require_throws_as": true, "require_throws_with": true, "require_nothrow": true,
+	"check_false": true, "check_throws": true, "check_throws_as": true,
+	"check_throws_with": true, "check_nothrow": true,
+	"require_that": true, "check_that": true,
+	"section": true, "scenario": true, "given": true, "when": true,
+	"and_given": true, "and_when": true, "and_then": true, "info": true, "warn": true,
+	"succeed_catch": true, "fail_catch": true,
+	"doctest_check": true, "check_eq": true, "check_ne": true, "check_lt": true,
+	"check_le": true, "check_gt": true, "check_ge": true,
+	"require_eq": true, "require_ne": true, "subcase": true,
+	"message": true, "warn_eq": true, "warn_ne": true,
+	// boost.test:
+	"boost_check": true, "boost_require": true, "boost_check_equal": true,
+	"boost_require_equal": true, "boost_check_ne": true, "boost_require_ne": true,
+	"boost_check_lt": true, "boost_check_le": true, "boost_check_gt": true,
+	"boost_check_ge": true, "boost_check_close": true, "boost_check_close_fraction": true,
+	"boost_check_small": true, "boost_check_throw": true, "boost_require_throw": true,
+	"boost_check_no_throw": true, "boost_require_no_throw": true,
+	"boost_check_message": true, "boost_check_equal_collections": true,
+	"boost_error": true, "boost_fail": true, "boost_warn": true, "boost_test": true,
+	"boost_check_predicate": true, "boost_test_message": true,
+	// cppunit:
+	"cppunit_assert": true, "cppunit_assert_equal": true,
+	"cppunit_assert_equal_message": true, "cppunit_assert_message": true,
+	"cppunit_assert_doubles_equal": true, "cppunit_assert_throw": true,
+	"cppunit_assert_no_throw": true, "cppunit_fail": true, "cppunit_test": true,
+	"cppunit_test_suite": true, "cppunit_test_suite_end": true,
+	"cppunit_test_suite_registration": true,
+	// cpputest (`check_false` covered by the catch2 block above):
+	"check_equal": true, "check_true": true,
+	"check_text": true, "longs_equal": true, "unsigned_longs_equal": true,
+	"bytes_equal": true, "pointers_equal": true, "doubles_equal": true,
+	"strcmp_equal": true, "strcmp_nocase_equal": true, "strncmp_equal": true,
+	"strcmp_contains": true, "test_exit": true, "fail_test": true,
+	"mock": true, "mock_c": true, "checkequal": true,
 	// Common language keywords that end up in call-like positions
 	"if": true, "for": true, "while": true, "switch": true, "return": true,
 	"func": true, "def": true, "class": true, "struct": true, "new": true,

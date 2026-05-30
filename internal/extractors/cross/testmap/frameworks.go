@@ -55,6 +55,15 @@ var importCallRE = regexp.MustCompile(
 	`(?mi)\b(?:require|import)\s*\(\s*["']([\w@][\w\-./:]*)["']\s*\)`,
 )
 
+// includeTokenRE captures C/C++ preprocessor includes in both bracket and quote
+// forms: `#include <gtest/gtest.h>` and `#include "catch.hpp"`. The captured
+// token (e.g. "gtest/gtest.h") is added to the import set so the C/C++ test
+// frameworks can be selected by their header path the same way other languages
+// match on import statements. (#3495)
+var includeTokenRE = regexp.MustCompile(
+	`(?m)^\s*#\s*include\s+[<"]([\w@][\w\-./:]*)[>"]`,
+)
+
 // extractImportTokens returns the lower-cased set of import tokens in source.
 func extractImportTokens(source string) map[string]bool {
 	out := map[string]bool{}
@@ -74,6 +83,11 @@ func extractImportTokens(source string) map[string]bool {
 		}
 	}
 	for _, m := range importCallRE.FindAllStringSubmatch(source, -1) {
+		if len(m) >= 2 {
+			add(m[1])
+		}
+	}
+	for _, m := range includeTokenRE.FindAllStringSubmatch(source, -1) {
 		if len(m) >= 2 {
 			add(m[1])
 		}
@@ -2088,6 +2102,73 @@ var frameworkOrder = []frameworkEntry{
 			regexp.MustCompile(`/tests?/.*\.lua$`),
 		},
 		detect: detectLuaunit,
+	},
+	// ---------------------------------------------------------------------
+	// C/C++ — gtest, catch2, doctest, boost.test, cppunit, cpputest (#3495).
+	//
+	// Ordering matters because several frameworks share macro surfaces:
+	//   - gtest TEST(a,b) and cpputest TEST(a,b) are identical → both gated on
+	//     framework-specific import headers (gtest.h vs CppUTest/TestHarness.h)
+	//     so the right detector is selected by #include, not by the macro.
+	//   - catch2 and doctest share TEST_CASE("name") → catch2 is listed first;
+	//     a doctest file with a doctest.h include is routed to doctest by its
+	//     import hint, otherwise the shared detector (detectCatch2) handles both.
+	//
+	// All C/C++ entries are IMPORT-HINT gated (the #include directive, captured
+	// by importTokenRE as a `<dir/file.h>` token) so plain .cpp/.h source files
+	// are never mis-classified as tests. No filename convention is reliable
+	// across C/C++ projects (tests live in foo_test.cpp, test_foo.cpp,
+	// FooTest.cpp, tests/foo.cpp …), so filename/path hints are added as a
+	// secondary signal only.
+	{
+		name: "gtest",
+		importHints: []string{
+			"gtest/gtest.h", "gtest/gtest", "gtest", "gmock/gmock.h", "gmock/gmock", "gmock",
+		},
+		// No filename hints: gtest, catch2 and cpputest all use *_test.cpp, so a
+		// filename match would shadow the import-correct framework (selectFramework
+		// returns the first match and does not retry). Detection is #include-gated.
+		detect: detectGTest,
+	},
+	{
+		name: "cpputest",
+		importHints: []string{
+			"cpputest/testharness.h", "cpputest/testharness", "cpputest",
+			"cpputest/commandlinetestrunner.h",
+		},
+		detect: detectCppUTest,
+	},
+	{
+		name: "doctest",
+		importHints: []string{
+			"doctest/doctest.h", "doctest/doctest", "doctest.h", "doctest",
+		},
+		detect: detectCatch2,
+	},
+	{
+		name: "catch2",
+		importHints: []string{
+			"catch2/catch_test_macros.hpp", "catch2/catch_all.hpp", "catch2/catch.hpp",
+			"catch2/catch", "catch2", "catch.hpp",
+		},
+		// Import-gated for the same reason as gtest above.
+		detect: detectCatch2,
+	},
+	{
+		name: "boost-test",
+		importHints: []string{
+			"boost/test/unit_test.hpp", "boost/test/included/unit_test.hpp",
+			"boost/test/auto_unit_test.hpp", "boost/test",
+		},
+		detect: detectBoostTest,
+	},
+	{
+		name: "cppunit",
+		importHints: []string{
+			"cppunit/testfixture.h", "cppunit/extensions/helpermacros.h",
+			"cppunit/testcase.h", "cppunit/ui/text/testrunner.h", "cppunit",
+		},
+		detect: detectCppUnit,
 	},
 }
 

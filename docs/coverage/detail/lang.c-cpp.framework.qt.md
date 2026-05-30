@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | — | `internal/substrate/entry_points_c_cpp.go` | — |
+| Tests linkage | ✅ `full` | `2026-05-30` | — | `internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/frameworks_cpp.go`<br>`internal/extractors/cross/testmap/resolver.go` | gtest (TEST/TEST_F/TEST_P), catch2 + doctest (TEST_CASE/SECTION), boost.test (BOOST_AUTO_TEST_CASE/BOOST_FIXTURE_TEST_CASE), cppunit (CPPUNIT_TEST + void Class::testX bodies, inline and out-of-line), and cpputest (TEST(group,name)) registered in the shared testmap extractor: each case emits a TESTS edge to the production symbol via direct-call resolution (high), suite/fixture/group subject fallback (medium, Test/Fixture affix stripped), and *_test/test_*/FooTest naming convention (low). #include <...> headers feed framework selection; EXPECT_*/ASSERT_*/CHECK/REQUIRE/BOOST_CHECK/CPPUNIT_ASSERT/STRCMP_EQUAL assertion macros stop-worded. |
 
 ### Substrate
 

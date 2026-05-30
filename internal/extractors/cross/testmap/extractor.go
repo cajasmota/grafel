@@ -259,6 +259,31 @@ func productionFileFromTestPath(filePath string) (prodFile, prodSymbol string) {
 			prodStem := stem[:len(stem)-len("_test")]
 			return path.Join(dir, prodStem+".lua"), prodStem
 		}
+	case ".cpp", ".cc", ".cxx", ".c", ".hpp", ".hxx", ".h":
+		// C/C++ test files (#3495). Common conventions, in priority order:
+		//   foo_test.cpp / foo_unittest.cpp → foo.cpp   (gtest / catch2)
+		//   test_foo.cpp                    → foo.cpp
+		//   FooTest.cpp / FooTests.cpp      → Foo.cpp    (cppunit / boost)
+		// The subject guess is the bare stem (C/C++ free functions and classes
+		// are not consistently cased), which the resolver's byLocation lookup
+		// matches against the production file's symbols.
+		switch {
+		case strings.HasSuffix(lowerStem, "_unittest"):
+			prodStem := stem[:len(stem)-len("_unittest")]
+			return path.Join(dir, prodStem+ext), prodStem
+		case strings.HasSuffix(lowerStem, "_test"):
+			prodStem := stem[:len(stem)-len("_test")]
+			return path.Join(dir, prodStem+ext), prodStem
+		case strings.HasPrefix(lowerStem, "test_"):
+			prodStem := stem[len("test_"):]
+			return path.Join(dir, prodStem+ext), prodStem
+		case strings.HasSuffix(stem, "Tests") && len(stem) > len("Tests"):
+			prodStem := stem[:len(stem)-len("Tests")]
+			return path.Join(dir, prodStem+ext), prodStem
+		case strings.HasSuffix(stem, "Test") && len(stem) > len("Test"):
+			prodStem := stem[:len(stem)-len("Test")]
+			return path.Join(dir, prodStem+ext), prodStem
+		}
 	case ".rs":
 		// no standard filename convention for Rust tests — leave empty
 	case ".php":
