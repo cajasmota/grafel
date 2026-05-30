@@ -8985,26 +8985,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9033,26 +9033,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9081,26 +9081,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9129,26 +9129,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9177,26 +9177,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9225,26 +9225,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9273,26 +9273,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9321,26 +9321,26 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver has no association/relationship concept; Ecto handles associations independently."
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Foreign key awareness lives in Ecto schema layer, not the raw driver."
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
           }
         },
         "Queries": {
@@ -9376,66 +9376,86 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Absinthe GraphQL types/fields serve as route-equivalents; field resolvers extracted via engine YAML detection markers"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_elixir.go"],
+            "notes": "Absinthe middleware/context-based auth tracked via conn.params taint sources; Phoenix.Token.verify recognised"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "GraphQL resolver params captured via params map access patterns in payload sniffer"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto.Changeset validate_* patterns recognised; Absinthe has built-in type coercion not statically tracked"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml","internal/substrate/taint_sites_elixir.go"],
+            "notes": "Absinthe.Middleware.* module uses detected via engine YAML; plug pipeline middleware tracked via taint substrate"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Elixir atoms serve as enum-like values; Absinthe enum() schema not statically extracted"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback + @behaviour + defprotocol extracted; Absinthe interfaces not yet parsed as distinct cap"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type alias forms extracted"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@spec declarations extracted; Absinthe type objects (object/input/enum) not yet separately parsed"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe entry-points recognised; Absinthe.ConnTest helpers not traced to resolvers"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.* calls captured via elixir template-pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": ":telemetry.execute convention-based; no dedicated Absinthe metric extractor"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "OpenTelemetry spans not statically extractable in Absinthe"
           }
         },
         "Substrate": {
@@ -9460,8 +9480,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -9484,8 +9506,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -9493,8 +9517,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -9535,8 +9561,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -9565,66 +9593,84 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/elixir/frameworks/ash_framework.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ash resources + AshPhoenix router integration detected via engine YAML; resource actions serve as route equivalents"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Ash framework auth is delegated to AshAuthentication extension (separate lib); core Ash has no built-in auth layer"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ash attribute/argument declarations map to DTO fields; payload sniffer captures params patterns"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ash built-in validations + Ecto.Changeset fallback tracked as sanitisers"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Ash is a resource/action framework without HTTP middleware; middleware layer handled by Plug/Phoenix integration"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Elixir atoms; Ash :atom_type enums not statically extracted"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback + @behaviour extracted; Ash Api/Resource behaviours captured"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type alias forms extracted"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@spec declarations extracted; Ash :attribute type declarations not yet separately parsed"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe entry-points recognised"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.* literal calls captured"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": ":telemetry convention; no dedicated extractor"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "OpenTelemetry spans not statically extractable"
           }
         },
         "Substrate": {
@@ -9649,8 +9695,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -9673,8 +9721,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -9682,8 +9732,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -9724,8 +9776,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -9744,72 +9798,87 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Bandit has no endpoint/route concept; it is a transport adapter"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml","internal/substrate/entry_points_elixir.go"],
+            "notes": "Bandit delegates to Plug-compatible handlers; Plug.call/2 attribution tracked via entry-point sniffer"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Bandit is a low-level HTTP server (replaces Cowboy); routing belongs to Phoenix/Plug layer above it"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Bandit is a transport layer with no auth concept; auth handled by Plug/Phoenix above"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Bandit has no DTO layer; data handling is in the Plug/Phoenix application above"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Bandit has no request validation; that layer is above in Plug/Phoenix"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Bandit is a raw HTTP/2 server with no middleware pipeline; pipeline is Plug-layer concern"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Elixir atoms; no dedicated enum type"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback + @behaviour extracted; Bandit implements Plug behaviour"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type alias forms extracted"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@spec declarations in Bandit source files extracted"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe entry-points recognised"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.* calls captured"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": ":telemetry convention; no dedicated extractor"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "OpenTelemetry spans not statically extractable"
           }
         },
         "Substrate": {
@@ -9834,8 +9903,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -9858,8 +9929,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -9867,8 +9940,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -9909,8 +9984,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -9929,72 +10006,91 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "notes": "Cowboy handler init/handle callbacks recognised as framework_lifecycle entry-points"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "notes": "init/2 and handle/2 callbacks recognised as framework_lifecycle; cowboy_handler behaviour tracked via @behaviour"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Cowboy dispatch routes specified as match patterns; detection via engine YAML markers"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Cowboy is a raw HTTP server with no built-in auth; auth is application concern"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Cowboy handles raw HTTP frames; no DTO layer"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No request validation in Cowboy; delegated to application layer"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_elixir.go"],
+            "notes": "Cowboy middleware defined via stream_handlers; taint substrate tracks conn access patterns"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No enum keyword in Elixir"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback + @behaviour (cowboy_handler etc) extracted"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type alias forms extracted"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@spec extracted from Cowboy handler modules"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe entry-points recognised"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.* calls captured"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": ":telemetry convention; no dedicated extractor"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "OpenTelemetry spans not statically extractable"
           }
         },
         "Substrate": {
@@ -10019,8 +10115,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -10043,8 +10141,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -10052,8 +10152,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -10094,8 +10196,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -10122,8 +10226,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Nerves is an embedded/IoT firmware framework; no HTTP routing concept. NervesHub is separate."
           }
         },
         "Auth": {
@@ -10133,12 +10237,12 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Nerves has no DTO concept; firmware interactions are hardware-protocol based"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No web request/validation layer in Nerves core"
           }
         },
         "Middleware": {
@@ -10148,40 +10252,50 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No enum keyword in Elixir"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback + @behaviour (GenServer/Supervisor) extracted for Nerves components"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type alias forms extracted"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@spec declarations in Nerves system modules extracted"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe entry-points recognised; Nerves hardware tests via emulation not traced"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.* calls captured"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Nerves metrics are hardware/system telemetry; not statically extractable"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No distributed tracing in Nerves embedded firmware context"
           }
         },
         "Substrate": {
@@ -10206,8 +10320,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -10230,8 +10346,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -10239,8 +10357,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -10281,8 +10401,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -10309,8 +10431,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Oban is a background job processor; no HTTP routing. Jobs are enqueued via Oban.insert/2."
           }
         },
         "Auth": {
@@ -10320,12 +10442,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Oban.Worker perform/1 receives %{args: map()} map; perform callback arg destructuring captured via payload sniffer"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto.Changeset validate_* used in Oban job changesets tracked as sanitisers"
           }
         },
         "Middleware": {
@@ -10335,40 +10461,50 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No enum keyword in Elixir; Oban job states are atoms"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback (perform/1, new/1, max_attempts/0 etc) extracted from Oban.Worker behaviour"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type alias forms extracted"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@spec declarations in Oban worker modules extracted"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe entry-points recognised; Oban.Testing module helpers not traced"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.* calls captured"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Oban emits :telemetry events; no dedicated extractor"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "OpenTelemetry spans not statically extractable"
           }
         },
         "Substrate": {
@@ -10393,8 +10529,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -10417,8 +10555,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -10426,8 +10566,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -10468,8 +10610,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -10498,66 +10642,86 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go","internal/engine/phoenix_routes.go","internal/engine/rules/elixir/frameworks/phoenix.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "phoenixExtractor extracts HTTP verbs (get/post/put/patch/delete), resources CRUD expansion (8 routes), live routes; scope blocks captured as SCOPE.Pattern"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/engine/rules/elixir/frameworks/phoenix.yaml","internal/substrate/taint_sites_elixir.go"],
+            "notes": "Phoenix.Token.verify and Plug.Crypto.MessageVerifier tracked as sanitisers; conn.params sources tracked; Guardian-style pattern in taint sinks"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go","internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto changesets (cast+validate_required) capture DTO field lists; payload shape sniffer collects cast allow-lists as request shapes"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go","internal/substrate/taint_sites_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto.Changeset validate_required/validate_format/validate_length tracked as sanitisers in taint substrate; changeset extractor emits SCOPE.Operation"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go","internal/substrate/taint_sites_elixir.go"],
+            "notes": "Phoenix pipeline/plug declarations extracted by phoenixExtractor; Plug.Conn flow tracked via taint substrate"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Elixir has no enum keyword; atoms serve as discriminants but are not declared types. Static atom-set extraction not implemented."
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback declarations in behaviour modules extracted; defprotocol extracted as SCOPE.Component/interface; @behaviour attrs mark implementing modules"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@typep/@opaque declarations extracted as SCOPE.Schema/type entities; @spec annotations captured"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe macros recognised as TestEntry entry-points; ConnCase/ChannelCase helpers in Phoenix not yet attributed to specific routes"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.debug/info/warn/error with string literals captured as log_format template patterns via elixir template sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Telemetry event calls are convention-based (:telemetry.execute/3); no dedicated extractor. Covered at framework level by Phoenix.Telemetry integration."
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "OpenTelemetry / :telemetry spans not statically extractable without runtime context. No dedicated elixir trace extractor."
           }
         },
         "Substrate": {
@@ -10582,8 +10746,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -10606,8 +10772,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -10615,8 +10783,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "partial",
@@ -10657,8 +10827,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -10677,57 +10849,80 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go"],
+            "notes": "phoenixExtractor recognises use Phoenix.LiveView and use Phoenix.LiveComponent; emits SCOPE.UIComponent/component per module"
           },
           "hook_recognition": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go"],
+            "notes": "Mount/handle_event/handle_info/handle_params/render callbacks recognised as SCOPE.Operation/function by phoenixExtractor"
           }
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_elixir.go","internal/substrate/payload_shapes_elixir.go"],
+            "notes": "Ecto Repo.all/get/preload calls in mount/handle_params recognised as db_read effects; payload shape sniffer captures loaded fields"
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "LiveView has no client/server hydration boundary concept distinct from its socket lifecycle; all rendering is server-side via render/1"
           },
           "server_components": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go"],
+            "notes": "use Phoenix.LiveComponent modules extracted as SCOPE.UIComponent/component with server-rendered semantics"
           }
         },
         "Routing": {
           "route_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go","internal/engine/phoenix_routes.go"],
+            "notes": "live/1 macro routes extracted as SCOPE.Operation/endpoint with route_type=live; scope context preserved"
           },
           "router_pattern": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go"],
+            "notes": "Phoenix scope blocks extracted as SCOPE.Pattern/scope; pipeline declarations as SCOPE.Pattern; live_session not yet separately tracked"
           }
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Phoenix LiveView is server-rendered; no static site generation. Dead-letter for this framework."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "No enum keyword in Elixir; atom discriminants not statically enumerable as declared sets"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "notes": "@callback + @behaviour attrs extracted; defprotocol → SCOPE.Component/interface"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "notes": "@type Name :: OtherType simple alias forms extracted"
           }
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/phoenix.go","internal/substrate/effect_sinks_elixir.go"],
+            "notes": "socket.assigns updates tracked through handle_event/handle_params; Agent.update/GenServer.cast in mutation effect sniffer"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "notes": "ExUnit test/describe macros recognised as TestEntry entry-points; PhoenixLiveViewTest uses conn.dispatch flows not yet traced"
           }
         },
         "Substrate": {
@@ -10752,8 +10947,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -10776,8 +10973,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -10785,8 +10984,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -10794,12 +10995,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Payload shape sniffer collects handle_event/handle_params parameter destructuring patterns as request shapes"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto field declarations and json() response bodies captured as response shapes; LiveView assigns not typed statically"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -10807,8 +11012,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Payload drift pass compares producer/consumer shapes across LiveView event call sites"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -10821,8 +11028,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -10841,72 +11050,96 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/plug.go"],
+            "notes": "use Plug.Router module extracted; match routes synthesised as SCOPE.Operation/endpoint per verb+path"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/plug.go"],
+            "notes": "def call(conn, opts) implementation captured as SCOPE.Operation/plug_impl per module"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/plug.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "plugExtractor extracts get/post/put/patch/delete/match routes from Plug.Router modules; forward/2 captured"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/plug.go","internal/substrate/taint_sites_elixir.go"],
+            "notes": "Plug.Crypto.MessageVerifier.verify + Phoenix.Token.verify tracked as sanitisers; conn.params taint sources; plug :authenticate patterns extracted"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "conn.params destructuring and Map.get(params,...) field access extracted via payload shape sniffer"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/taint_sites_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto.Changeset cast/validate_* tracked as sanitisers; Plug.Crypto.MessageVerifier.verify recognised"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/plug.go"],
+            "notes": "plug :name / plug Module steps extracted as SCOPE.Pattern/middleware from Plug.Router and Plug.Builder modules"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "No enum keyword in Elixir; atom discriminants not statically enumerable"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@callback + @behaviour (including @behaviour Plug) extracted; defprotocol as interface"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type Name :: Target alias forms extracted as SCOPE.Schema/type_alias"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@type/@typep/@opaque declarations extracted as SCOPE.Schema/type entities"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/entry_points_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "ExUnit test/describe macros recognised as TestEntry; Plug.Test.conn helpers not yet traced to routes"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.* calls with string literals captured via elixir template-pattern sniffer"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": ":telemetry.execute convention-based; no dedicated extractor"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "OpenTelemetry spans not statically extractable"
           }
         },
         "Substrate": {
@@ -10931,8 +11164,10 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -10955,8 +11190,10 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "partial",
@@ -10964,8 +11201,10 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
             "status": "full",
@@ -11006,8 +11245,10 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -11031,26 +11272,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go","internal/extractors/elixir/elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "schema \"table_name\" do blocks extracted as SCOPE.Schema; tree-sitter extractor also emits schema entities; field :name, :type declarations captured"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "has_one/has_many/many_to_many association macros extracted as SCOPE.Component with association_type+association_name properties"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "belongs_to associations extracted; Ecto implies FK via belongs_to :field, Schema; explicit foreign_key option not yet parsed"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Ecto has no lazy loading; all associations must be explicitly preloaded via Repo.preload/2. Not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto association macros (has_one/has_many/belongs_to/many_to_many) extracted; relationship type preserved in properties"
           }
         },
         "Queries": {
@@ -11062,7 +11311,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked"
           }
         }
       }
@@ -11081,26 +11332,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go","internal/extractors/elixir/elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "schema \"table_name\" do blocks extracted as SCOPE.Schema; tree-sitter extractor also emits schema entities; field :name, :type declarations captured"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "has_one/has_many/many_to_many association macros extracted as SCOPE.Component with association_type+association_name properties"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "belongs_to associations extracted; Ecto implies FK via belongs_to :field, Schema; explicit foreign_key option not yet parsed"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Ecto has no lazy loading; all associations must be explicitly preloaded via Repo.preload/2. Not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ecto association macros (has_one/has_many/belongs_to/many_to_many) extracted; relationship type preserved in properties"
           }
         },
         "Queries": {
@@ -11112,7 +11371,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked"
           }
         }
       }

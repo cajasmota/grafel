@@ -32,16 +32,16 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C#](../by-language/csharp.md) | [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🟢 1/1 | |
 | [C#](../by-language/csharp.md) | [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🟢 1/1 | |
 | [C#](../by-language/csharp.md) | [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟢 1/1 | |
-| [elixir](../by-language/elixir.md) | [Ecto](../detail/lang.elixir.orm.ecto.md) | 🟡 2/8 | |
-| [elixir](../by-language/elixir.md) | [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🟡 1/6 | |
-| [elixir](../by-language/elixir.md) | [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🟡 1/6 | |
-| [elixir](../by-language/elixir.md) | [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🟡 1/6 | |
-| [elixir](../by-language/elixir.md) | [Redix](../detail/lang.elixir.driver.redix.md) | 🟡 1/6 | |
-| [elixir](../by-language/elixir.md) | [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | 🟡 1/6 | |
-| [elixir](../by-language/elixir.md) | [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🟡 1/6 | |
-| [elixir](../by-language/elixir.md) | [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | 🟡 2/8 | |
-| [elixir](../by-language/elixir.md) | [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | 🟡 1/6 | |
-| [elixir](../by-language/elixir.md) | [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | 🟡 1/6 | |
+| [elixir](../by-language/elixir.md) | [Ecto](../detail/lang.elixir.orm.ecto.md) | 🟢 7/7 | |
+| [elixir](../by-language/elixir.md) | [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🟢 1/1 | |
+| [elixir](../by-language/elixir.md) | [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🟢 1/1 | |
+| [elixir](../by-language/elixir.md) | [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🟢 1/1 | |
+| [elixir](../by-language/elixir.md) | [Redix](../detail/lang.elixir.driver.redix.md) | 🟢 1/1 | |
+| [elixir](../by-language/elixir.md) | [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | 🟢 1/1 | |
+| [elixir](../by-language/elixir.md) | [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🟢 1/1 | |
+| [elixir](../by-language/elixir.md) | [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | 🟢 7/7 | |
+| [elixir](../by-language/elixir.md) | [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | 🟢 1/1 | |
+| [elixir](../by-language/elixir.md) | [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | 🟢 1/1 | |
 | [go](../by-language/go.md) | [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | 🟢 3/3 | |
 | [go](../by-language/go.md) | [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟢 8/8 | |
 | [go](../by-language/go.md) | [GORM](../detail/lang.go.orm.gorm.md) | 🟢 8/8 | |
