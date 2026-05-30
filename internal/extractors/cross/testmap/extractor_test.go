@@ -2008,3 +2008,153 @@ func TestIssue3173_Jest_EmitsTESTSEdge(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Go HTTP handler→test edge resolution (#3348 tests_linkage deepening).
+//
+// Go HTTP tests commonly call handlers directly via:
+//   handler.ServeHTTP(w, r)    — net/http Handler interface
+//   router.ServeHTTP(w, r)     — gin.Engine / chi.Mux / echo.Echo / mux.Router
+//   h.ServeHTTP(w, r)          — any Handler variable
+//
+// The directCallRE in resolver.go already matches `recv.ServeHTTP(` as a
+// high-confidence call since ServeHTTP is not a stopword. These tests verify
+// the end-to-end path: the handler dispatch call in the test body is surfaced
+// as a TESTS edge targeting the handler symbol.
+// ---------------------------------------------------------------------------
+
+func TestGoHTTPHandler_ServeHTTPDirectCall(t *testing.T) {
+	// handler.ServeHTTP(w, r) — direct net/http handler invocation.
+	src := `package handlers_test
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestUsersHandler(t *testing.T) {
+	handler := NewUsersHandler(nil)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/users", nil)
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("got %d want 200", w.Code)
+	}
+}
+`
+	recs := runExtract(t, "handlers/users_test.go", "go", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected >=1 entity")
+	}
+	// handler.ServeHTTP should be resolved as a high-confidence call
+	// (direct method call, not a stopword).
+	found := false
+	for _, r := range recs {
+		tested := r.Properties["tested_function"]
+		if tested == "handler.ServeHTTP" || tested == "NewUsersHandler" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected handler.ServeHTTP or NewUsersHandler as tested_function; entities: %+v", recs)
+	}
+}
+
+func TestGoHTTPHandler_RouterServeHTTP(t *testing.T) {
+	// router.ServeHTTP(w, r) — common pattern for gin/chi/echo/mux tests.
+	src := `package api_test
+
+import (
+	"net/http/httptest"
+	"testing"
+	"github.com/go-chi/chi/v5"
+)
+
+func TestOrdersRouter(t *testing.T) {
+	router := chi.NewRouter()
+	router.Get("/orders", listOrders)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/orders", nil)
+	router.ServeHTTP(w, r)
+}
+`
+	recs := runExtract(t, "api/router_test.go", "go", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected >=1 entity for router-based test")
+	}
+	// router.ServeHTTP must appear as a TESTS edge target (tested production call).
+	// Note: buildCollapsedEntity picks the alphabetically-first high-confidence call
+	// as the primary tested_function property, so we check the TESTS edges rather
+	// than the top-level property to verify ServeHTTP is surfaced.
+	found := false
+	for _, r := range recs {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "TESTS" && rel.Properties["tested"] == "router.ServeHTTP" {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected router.ServeHTTP TESTS edge; entities=%+v", recs)
+	}
+}
+
+func TestGoHTTPHandler_ServeHTTPPrecedesStopwords(t *testing.T) {
+	// Ensure ServeHTTP is not accidentally filtered by the stopword list.
+	src := `package svc_test
+
+import "testing"
+
+func TestMyHandler(t *testing.T) {
+	h := &MyHandler{}
+	t.Log("starting")
+	w := newRecorder()
+	r := newRequest("POST", "/do", nil)
+	h.ServeHTTP(w, r)
+}
+`
+	recs := runExtract(t, "svc_test.go", "go", src)
+	found := false
+	for _, r := range recs {
+		if r.Properties["tested_function"] == "h.ServeHTTP" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ServeHTTP should not be filtered by stopwords; entities=%+v", recs)
+	}
+}
+
+// TestGoHTTPHandlerNames_Extraction proves that goHTTPHandlerNames correctly
+// extracts the set of handler-receiver names from a Go test source (value-
+// asserting unit test for the regex helper added in #3348).
+func TestGoHTTPHandlerNames_Extraction(t *testing.T) {
+	src := `package x
+func TestFoo(t *testing.T) {
+	router.ServeHTTP(w, r)
+	h.ServeHTTP(w, r)
+	handler.ServeHTTP(w, r)
+	t.Log("done")
+}
+`
+	names := goHTTPHandlerNames(src)
+	wantSet := map[string]bool{"router": false, "h": false, "handler": false}
+	for _, n := range names {
+		if _, ok := wantSet[n]; ok {
+			wantSet[n] = true
+		}
+	}
+	for name, found := range wantSet {
+		if !found {
+			t.Errorf("goHTTPHandlerNames: missing handler receiver %q; got %v", name, names)
+		}
+	}
+	if len(names) != 3 {
+		t.Errorf("expected 3 unique receivers, got %d: %v", len(names), names)
+	}
+}

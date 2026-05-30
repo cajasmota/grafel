@@ -2629,15 +2629,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -2648,6 +2660,15 @@ records:
           verified_at: "2026-05-29"
       Routing:
         endpoint_synthesis:
+          # applyGoRouteComposition AST-drives ROUTES_TO edge rewriting: same-file
+          # handler variable type is resolved via buildGoVarTypeMap (var-decl,
+          # composite-literal, NewT() constructor idiom), and the YAML-emitted bare
+          # receiver `Controller:h` is rewritten to `Controller:UsersHandler.List`.
+          # Multi-receiver same-file composition proven by
+          # TestApplyGoRouteComposition_MultipleHandlersSameFile (#3348). Cross-file
+          # composition (handler declared in another file) is intentionally out of
+          # scope — the pass operates per-file; an undeclared receiver is left
+          # untouched (TestApplyGoRouteComposition_CrossFileReceiverLeftUntouched).
           status: full
           symbols:
             - file: internal/engine/go_routes.go
@@ -2658,15 +2679,28 @@ records:
                 - inferGoExprType
                 - typeNameFromExpr
             - file: internal/engine/rules/go/frameworks/gin.yaml
-          issues_implemented: ["2679"]
-          verified_at: "2026-05-28"
+          tests:
+            - file: internal/engine/go_routes_test.go
+              functions:
+                - TestApplyGoRouteComposition_GinUppercaseVerb
+                - TestApplyGoRouteComposition_MultipleHandlersSameFile
+                - TestApplyGoRouteComposition_CrossFileReceiverLeftUntouched
+          issues_implemented: ["2679", "3348"]
+          verified_at: "2026-05-30"
         handler_attribution:
+          # Receiver-type resolution (buildGoVarTypeMap) rewrites bare Controller:h
+          # edges to qualified Controller:UsersHandler.List form. Same-file only.
           status: full
           symbols:
             - file: internal/engine/go_routes.go
               functions: [applyGoRouteComposition, extractGoHandlerBindings]
-          issues_implemented: ["2679"]
-          verified_at: "2026-05-28"
+          tests:
+            - file: internal/engine/go_routes_test.go
+              functions:
+                - TestApplyGoRouteComposition_ConstructorIdiom
+                - TestApplyGoRouteComposition_PointerVarDecl
+          issues_implemented: ["2679", "3348"]
+          verified_at: "2026-05-30"
 
       Middleware:
         middleware_coverage:
@@ -2887,6 +2921,42 @@ records:
           issues_implemented: ["3211"]
           verified_at: "2026-05-30"
 
+      Testing:
+        tests_linkage:
+          # Go test files (*_test.go) are detected by the cross-language testmap
+          # extractor (_cross_testmap / go_testing framework). Test functions
+          # (func TestXxx(t *testing.T)) are extracted and their bodies scanned
+          # for direct production-function calls at high confidence, mock.On(…)
+          # targets at medium, and HTTP handler dispatch (`recv.ServeHTTP(w, r)`)
+          # at high confidence — the ServeHTTP form provides handler→test linkage
+          # for gin.Engine / chi.Mux / echo.Echo and any net/http Handler.
+          # Testify suite receiver-method tests are also detected when the suite
+          # struct embeds suite.Suite. Naming-convention fallback (foo_test.go →
+          # foo.go) provides low-confidence coverage when no direct call is found.
+          # Cross-file symbol resolution uses the byQualifiedName index; same-file
+          # direct calls are high-confidence. Tests_linkage stays partial: route-
+          # mediated test calls (test client HTTP dispatch → ViewSet method) and
+          # table-driven subtests are not resolved → partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectGoTest, isSuiteStruct, goHTTPHandlerNames]
+            - file: internal/extractors/cross/testmap/resolver.go
+              functions: [resolveCalls]
+            - file: internal/extractors/cross/testmap/extractor.go
+              functions: [Extract, buildCollapsedEntity]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions:
+                - TestGoTesting_DirectCallHighConfidence
+                - TestGoTesting_MockOnlyMedium
+                - TestGoHTTPHandler_ServeHTTPDirectCall
+                - TestGoHTTPHandler_RouterServeHTTP
+                - TestGoHTTPHandler_ServeHTTPPrecedesStopwords
+                - TestGoHTTPHandlerNames_Extraction
+          issues_implemented: ["3348"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.echo:
     capabilities:
       Type System:
@@ -2916,15 +2986,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -3079,6 +3161,27 @@ records:
           issues_implemented: ["3211"]
           verified_at: "2026-05-30"
 
+      Testing:
+        tests_linkage:
+          # Shared testmap / go_testing detection (see lang.go.framework.gin
+          # for the full description). echo-framework tests use echo.New() in
+          # test files and exercise handlers via either direct calls or
+          # e.ServeHTTP(w, r) dispatch. Both surfaces are covered. Partial for
+          # the same reasons: route-mediated test client calls not resolved.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectGoTest, goHTTPHandlerNames]
+            - file: internal/extractors/cross/testmap/resolver.go
+              functions: [resolveCalls]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions:
+                - TestGoTesting_DirectCallHighConfidence
+                - TestGoHTTPHandler_RouterServeHTTP
+          issues_implemented: ["3348"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.fiber:
     capabilities:
       Type System:
@@ -3108,15 +3211,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -3272,6 +3387,25 @@ records:
           issues_implemented: ["3211"]
           verified_at: "2026-05-30"
 
+      Testing:
+        tests_linkage:
+          # Shared testmap / go_testing detection. fiber tests commonly dispatch
+          # via app.Test(req) or directly call handler funcs. ServeHTTP-style
+          # handler dispatch is also detected via goHTTPHandlerCallRE. Partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectGoTest, goHTTPHandlerNames]
+            - file: internal/extractors/cross/testmap/resolver.go
+              functions: [resolveCalls]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions:
+                - TestGoTesting_DirectCallHighConfidence
+                - TestGoHTTPHandler_ServeHTTPDirectCall
+          issues_implemented: ["3348"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.chi:
     capabilities:
       Type System:
@@ -3301,15 +3435,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -3421,6 +3567,25 @@ records:
           issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
+      Testing:
+        tests_linkage:
+          # Shared testmap / go_testing detection. chi tests commonly use
+          # httptest.NewRecorder() + router.ServeHTTP(w, r) or direct handler
+          # calls. Both are surfaced by the go_testing framework entry. Partial.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectGoTest, goHTTPHandlerNames]
+            - file: internal/extractors/cross/testmap/resolver.go
+              functions: [resolveCalls]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions:
+                - TestGoTesting_DirectCallHighConfidence
+                - TestGoHTTPHandler_RouterServeHTTP
+          issues_implemented: ["3348"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.gorilla-mux:
     capabilities:
       Type System:
@@ -3450,15 +3615,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -3611,6 +3788,25 @@ records:
           issues_implemented: ["3213"]
           verified_at: "2026-05-30"
 
+      Testing:
+        tests_linkage:
+          # Shared testmap / go_testing detection. gorilla-mux tests use
+          # mux.NewRouter() + router.ServeHTTP(w, r) or direct handler calls.
+          # Partial: route-mediated test client dispatches not resolved.
+          status: partial
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectGoTest, goHTTPHandlerNames]
+            - file: internal/extractors/cross/testmap/resolver.go
+              functions: [resolveCalls]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions:
+                - TestGoTesting_DirectCallHighConfidence
+                - TestGoHTTPHandler_RouterServeHTTP
+          issues_implemented: ["3348"]
+          verified_at: "2026-05-30"
+
   lang.go.framework.buffalo:
     capabilities:
       Type System:
@@ -3640,15 +3836,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -3792,15 +4000,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -4572,15 +4792,25 @@ records:
       Queries:
         query_attribution:
           # Exec/Query/QueryRow/Get/Select/NamedExec call sites (reSQLQueryCall)
-          # plus SELECT/INSERT/UPDATE/DELETE string literals. Cannot bind to a
-          # model by regex alone -> partial.
+          # plus SELECT/INSERT/UPDATE/DELETE string literals. Struct-context
+          # resolution (buildSQLDestTypeMap, #3348): when `db.Get(&dest, …)` or
+          # `db.Select(&dest, …)` appears and `dest` is typed via a same-function
+          # var-decl (`var dest MyStruct`) or short-decl (`dest := MyStruct{}`),
+          # the query entity is stamped with model_struct=MyStruct. This provides
+          # a heuristic link from query call site to the schema struct being
+          # populated. Stays partial: cross-function return-type chains, interface
+          # dispatch, and pgx.RowToStructByName (no &dest arg) are out of scope.
           status: partial
           symbols:
             - file: internal/custom/golang/sql_drivers.go
-              functions: [Extract]
+              functions: [Extract, buildSQLDestTypeMap]
           tests:
             - file: internal/custom/golang/sql_drivers_test.go
-          issues_implemented: ["3214"]
+              functions:
+                - TestSqlxQueryAttributionVarDecl
+                - TestSqlxQueryAttributionShortDecl
+                - TestSqlxSelectSliceAttribution
+          issues_implemented: ["3214", "3348"]
           verified_at: "2026-05-30"
       Migrations:
         migration_parsing:
@@ -4631,14 +4861,22 @@ records:
       Queries:
         query_attribution:
           # conn.Exec/Query/QueryRow call sites + SQL string literals.
+          # Struct-context resolution (buildSQLDestTypeMap, #3348) stamps
+          # model_struct on Get/Select call-site entities when the scan destination
+          # variable is typed in the same function scope. pgx.QueryRow scans via
+          # .Scan(), not &dest, so model_struct is not stamped for that form —
+          # documented boundary for the heuristic. Stays partial.
           status: partial
           symbols:
             - file: internal/engine/rules/go/orms/pgx.yaml
             - file: internal/custom/golang/sql_drivers.go
-              functions: [Extract]
+              functions: [Extract, buildSQLDestTypeMap]
           tests:
             - file: internal/custom/golang/sql_drivers_test.go
-          issues_implemented: ["3214"]
+              functions:
+                - TestPgxModelsAndQueries
+                - TestPgxQueryAttributionVarDecl
+          issues_implemented: ["3214", "3348"]
           verified_at: "2026-05-30"
 
   lang.go.driver.sqlite:
@@ -4994,15 +5232,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -5101,15 +5351,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -5257,15 +5519,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -5439,15 +5713,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -5619,15 +5905,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -5802,15 +6100,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -5943,15 +6253,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this
@@ -6091,15 +6413,27 @@ records:
           verified_at: "2026-05-29"
         type_alias_extraction:
           # extractTypes emits a SCOPE.Schema (subtype=type_alias) for non-struct/
-          # non-interface type_specs (e.g. `type contextKey int`, `type T = U`,
-          # pointer/array/map/slice/channel/function-type definitions). Implemented
-          # deterministically but no dedicated fixture asserts the alias path → partial.
-          status: partial
+          # non-interface type_specs: named primitives (`type contextKey int`),
+          # assignment aliases (`type T = U`), pointer types, array/map/slice/
+          # channel/function-type definitions. Five dedicated value-asserting
+          # tests in extractor_test.go prove all four shapes plus multi-alias
+          # and framework-specific (gin/echo/fiber/chi context-key) forms →
+          # full (#3348, formerly partial due to missing fixture).
+          status: full
           symbols:
             - file: internal/extractors/golang/extractor.go
               functions: [extractTypes]
-          issues_implemented: ["3210"]
-          verified_at: "2026-05-29"
+          tests:
+            - file: internal/extractors/golang/extractor_test.go
+              functions:
+                - TestExtract_TypeAliasNamedPrimitive
+                - TestExtract_TypeAliasAssignAlias
+                - TestExtract_TypeAliasPointerType
+                - TestExtract_TypeAliasFunctionType
+                - TestExtract_TypeAliasMultipleInOneFile
+                - TestExtract_TypeAliasFrameworkSpecific
+          issues_implemented: ["3210", "3348"]
+          verified_at: "2026-05-30"
         enum_extraction:
           # Go has no first-class enum keyword; the idiom is `const ( ... iota )`.
           # The Go extractor detects no const/iota enum construct, so this

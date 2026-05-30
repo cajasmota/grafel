@@ -1484,15 +1484,72 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 		count := int(typeDecl.ChildCount())
 		for i := 0; i < count; i++ {
 			typeSpec := typeDecl.Child(i)
-			if typeSpec.Type() != "type_spec" {
+			// Go tree-sitter grammar represents two kinds of type declarations:
+			//   type_spec   — `type T U`      (type definition / named type)
+			//   type_alias  — `type T = U`    (alias declaration, Go 1.9+)
+			// Both carry the same field structure for our purposes (a name
+			// node and a type body), but in the type_alias form the first
+			// non-punctuation child is the name and the child after "=" is
+			// the underlying type. We handle both shapes below.
+			specNodeType := typeSpec.Type()
+			if specNodeType != "type_spec" && specNodeType != "type_alias" {
 				continue
 			}
 
 			nameNode := typeSpec.ChildByFieldName("name")
 			if nameNode == nil {
-				continue
+				// type_alias nodes may not expose "name" by field name in older
+				// grammar versions — fall back to the first type_identifier child.
+				specCount0 := int(typeSpec.ChildCount())
+				for j := 0; j < specCount0; j++ {
+					ch := typeSpec.Child(j)
+					if ch.Type() == "type_identifier" {
+						nameNode = ch
+						break
+					}
+				}
+				if nameNode == nil {
+					continue
+				}
 			}
 			name := nodeText(nameNode, src)
+
+			// For a type_alias (`type T = U`), the AST node IS the alias;
+			// emit directly as type_alias without further subtype detection.
+			if specNodeType == "type_alias" {
+				// Find the underlying type node (the child after "=").
+				var aliasBody *sitter.Node
+				specCount0 := int(typeSpec.ChildCount())
+				for j := 0; j < specCount0; j++ {
+					ch := typeSpec.Child(j)
+					if ch == nameNode || ch.Type() == "=" {
+						continue
+					}
+					aliasBody = ch
+					break
+				}
+				startLine, endLine := nodeLines(typeSpec)
+				baseType := ""
+				if aliasBody != nil {
+					baseType = nodeText(aliasBody, src)
+				}
+				signature := fmt.Sprintf("type %s = %s", name, baseType)
+				rec := types.EntityRecord{
+					Name:               name,
+					Kind:               "SCOPE.Schema",
+					Subtype:            "type_alias",
+					SourceFile:         filePath,
+					StartLine:          startLine,
+					EndLine:            endLine,
+					Language:           "go",
+					Signature:          signature,
+					QualityScore:       1.0,
+					Metadata:           map[string]interface{}{"subtype": "type_alias"},
+					EnrichmentRequired: false,
+				}
+				records = append(records, rec)
+				continue
+			}
 
 			// Determine entity type: look for struct_type or interface_type child.
 			var entitySubtype string
@@ -1628,8 +1685,20 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 // types.
 func collectDeclaredTypeNames(root *sitter.Node, src []byte) map[string]bool {
 	names := make(map[string]bool)
-	for _, spec := range findAll(root, "type_spec") {
+	// Collect both type_spec (named type) and type_alias (assignment alias)
+	// so DEPENDS_ON edges can reference either form.
+	for _, spec := range findAll(root, "type_spec", "type_alias") {
 		name := spec.ChildByFieldName("name")
+		if name == nil {
+			// Fallback: first type_identifier child.
+			for j := 0; j < int(spec.ChildCount()); j++ {
+				ch := spec.Child(j)
+				if ch.Type() == "type_identifier" {
+					name = ch
+					break
+				}
+			}
+		}
 		if name == nil {
 			continue
 		}

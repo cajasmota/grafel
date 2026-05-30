@@ -149,3 +149,169 @@ func hasKindSubtype(ents []entitySummary, kind, subtype string) bool {
 	}
 	return false
 }
+
+// ---------------------------------------------------------------------------
+// query_attribution struct-context resolution (#3348 deepening).
+//
+// Validates that buildSQLDestTypeMap extracts the destination struct type from
+// var-decl and short-decl forms, and that the extraction pipeline stamps
+// model_struct on the emitted query-call entity when a Get/Select call's
+// destination variable maps to a known struct type.
+// ---------------------------------------------------------------------------
+
+func sqlDriversExtractFull(t *testing.T, file extreg.FileInput) []fullEntity {
+	t.Helper()
+	e, ok := extreg.Get("custom_go_sql_drivers")
+	if !ok {
+		t.Fatal("custom_go_sql_drivers not registered")
+	}
+	ents, err := e.Extract(context.Background(), file)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	out := make([]fullEntity, 0, len(ents))
+	for _, ent := range ents {
+		out = append(out, fullEntity{Kind: ent.Kind, Name: ent.Name, Props: ent.Properties})
+	}
+	return out
+}
+
+func TestSqlxQueryAttributionVarDecl(t *testing.T) {
+	// `var u User` → db.Get(&u, …) should stamp model_struct=User.
+	src := `package x
+
+import "github.com/jmoiron/sqlx"
+
+type User struct {
+	ID   int    ` + "`db:\"id\"`" + `
+	Name string ` + "`db:\"name\"`" + `
+}
+
+func getUser(db *sqlx.DB, id int) (User, error) {
+	var u User
+	err := db.Get(&u, "SELECT id, name FROM users WHERE id = $1", id)
+	return u, err
+}
+`
+	ents := sqlDriversExtractFull(t, fi("repo.go", "go", src))
+	var queryEnt *fullEntity
+	for i := range ents {
+		if ents[i].Props["query_type"] == "call" && ents[i].Props["call_verb"] == "Get" {
+			queryEnt = &ents[i]
+			break
+		}
+	}
+	if queryEnt == nil {
+		t.Fatalf("expected a Get query-call entity; entities: %+v", ents)
+	}
+	if queryEnt.Props["model_struct"] != "User" {
+		t.Errorf("model_struct=%q, want User (var-decl form)", queryEnt.Props["model_struct"])
+	}
+}
+
+func TestSqlxQueryAttributionShortDecl(t *testing.T) {
+	// `u := User{}` → db.Get(&u, …) should stamp model_struct=User.
+	src := `package x
+
+import "github.com/jmoiron/sqlx"
+
+type Product struct {
+	ID    int    ` + "`db:\"id\"`" + `
+	Price float64 ` + "`db:\"price\"`" + `
+}
+
+func fetchProduct(db *sqlx.DB, id int) (Product, error) {
+	u := Product{}
+	err := db.Get(&u, "SELECT id, price FROM products WHERE id = $1", id)
+	return u, err
+}
+`
+	ents := sqlDriversExtractFull(t, fi("repo.go", "go", src))
+	var queryEnt *fullEntity
+	for i := range ents {
+		if ents[i].Props["query_type"] == "call" && ents[i].Props["call_verb"] == "Get" {
+			queryEnt = &ents[i]
+			break
+		}
+	}
+	if queryEnt == nil {
+		t.Fatalf("expected a Get query-call entity; entities: %+v", ents)
+	}
+	if queryEnt.Props["model_struct"] != "Product" {
+		t.Errorf("model_struct=%q, want Product (short-decl form)", queryEnt.Props["model_struct"])
+	}
+}
+
+func TestPgxQueryAttributionVarDecl(t *testing.T) {
+	// pgx: `var p Product` → conn.QueryRow(&p, …) should stamp model_struct=Product.
+	src := `package x
+
+import (
+	"context"
+	"github.com/jackc/pgx/v5"
+)
+
+type Product struct {
+	ID  int    ` + "`db:\"id\"`" + `
+	SKU string ` + "`db:\"sku\"`" + `
+}
+
+func getProduct(ctx context.Context, conn *pgx.Conn, id int) (Product, error) {
+	var p Product
+	err := conn.QueryRow(ctx, "SELECT id, sku FROM products WHERE id = $1", id).Scan(&p.ID, &p.SKU)
+	return p, err
+}
+`
+	ents := sqlDriversExtractFull(t, fi("repo.go", "go", src))
+	// pgx.QueryRow is surfaced via the reSQLQueryCall pattern (QueryRow verb).
+	var queryEnt *fullEntity
+	for i := range ents {
+		if ents[i].Props["query_type"] == "call" && ents[i].Props["call_verb"] == "QueryRow" {
+			queryEnt = &ents[i]
+			break
+		}
+	}
+	if queryEnt == nil {
+		t.Fatalf("expected a QueryRow query-call entity; entities: %+v", ents)
+	}
+	// model_struct is stamped by the reSQLGetCallWithDest path; for QueryRow
+	// the pattern requires `&dest` as the second arg. QueryRow passes ctx + sql,
+	// not &dest, so model_struct stays empty — honest partial.
+	// This test documents the boundary: we assert no panic and a well-formed entity.
+	if queryEnt.Kind != "SCOPE.Operation" {
+		t.Errorf("Kind=%q, want SCOPE.Operation", queryEnt.Kind)
+	}
+}
+
+func TestSqlxSelectSliceAttribution(t *testing.T) {
+	// `var users []User` → db.Select(&users, …) should stamp model_struct=User
+	// (slice type stripped by buildSQLDestTypeMap).
+	src := `package x
+
+import "github.com/jmoiron/sqlx"
+
+type User struct {
+	ID int ` + "`db:\"id\"`" + `
+}
+
+func listUsers(db *sqlx.DB) ([]User, error) {
+	var users []User
+	err := db.Select(&users, "SELECT id FROM users")
+	return users, err
+}
+`
+	ents := sqlDriversExtractFull(t, fi("repo.go", "go", src))
+	var queryEnt *fullEntity
+	for i := range ents {
+		if ents[i].Props["query_type"] == "call" && ents[i].Props["call_verb"] == "Select" {
+			queryEnt = &ents[i]
+			break
+		}
+	}
+	if queryEnt == nil {
+		t.Fatalf("expected a Select query-call entity; entities: %+v", ents)
+	}
+	if queryEnt.Props["model_struct"] != "User" {
+		t.Errorf("model_struct=%q, want User (slice var-decl form)", queryEnt.Props["model_struct"])
+	}
+}

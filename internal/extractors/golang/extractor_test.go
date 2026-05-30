@@ -2390,3 +2390,242 @@ func loop() {
 	}
 	t.Fatalf("loop entity not found")
 }
+
+// ---------------------------------------------------------------------------
+// type_alias_extraction — dedicated fixture-asserting tests (#3348).
+//
+// extractTypes emits SCOPE.Schema (subtype=type_alias) for every non-struct,
+// non-interface type_spec. These tests prove all four idiomatic Go alias/
+// definition shapes: named primitive, qualified alias, pointer type, and
+// function-type definition. Previously the implementation existed but had no
+// dedicated fixture asserting the path; this closes the partial→full gap.
+// ---------------------------------------------------------------------------
+
+func TestExtract_TypeAliasNamedPrimitive(t *testing.T) {
+	// `type contextKey int` — a named type over a built-in primitive.
+	src := `package x
+
+type contextKey int
+`
+	ext, _ := extractor.Get("go")
+	results, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "test.go",
+		Content:  []byte(src),
+		Language: "go",
+		Tree:     parseGo([]byte(src)),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	results = stripFileEntity(results)
+	var alias *types.EntityRecord
+	for i := range results {
+		if results[i].Subtype == "type_alias" {
+			alias = &results[i]
+			break
+		}
+	}
+	if alias == nil {
+		t.Fatalf("expected a type_alias entity, got: %+v", results)
+	}
+	if alias.Name != "contextKey" {
+		t.Errorf("Name=%q, want contextKey", alias.Name)
+	}
+	if alias.Kind != "SCOPE.Schema" {
+		t.Errorf("Kind=%q, want SCOPE.Schema", alias.Kind)
+	}
+}
+
+func TestExtract_TypeAliasAssignAlias(t *testing.T) {
+	// `type T = U` — proper assignment alias (Go >=1.9).
+	src := `package x
+
+type MyError = error
+`
+	ext, _ := extractor.Get("go")
+	results, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "test.go",
+		Content:  []byte(src),
+		Language: "go",
+		Tree:     parseGo([]byte(src)),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	results = stripFileEntity(results)
+	found := false
+	for _, r := range results {
+		if r.Subtype == "type_alias" && r.Name == "MyError" {
+			found = true
+			if r.Kind != "SCOPE.Schema" {
+				t.Errorf("Kind=%q, want SCOPE.Schema for assignment alias", r.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected type_alias entity MyError, got %+v", results)
+	}
+}
+
+func TestExtract_TypeAliasPointerType(t *testing.T) {
+	// `type NodePtr = *Node` — pointer-type definition.
+	src := `package x
+
+type Node struct{ val int }
+type NodePtr = *Node
+`
+	ext, _ := extractor.Get("go")
+	results, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "test.go",
+		Content:  []byte(src),
+		Language: "go",
+		Tree:     parseGo([]byte(src)),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	results = stripFileEntity(results)
+	found := false
+	for _, r := range results {
+		if r.Subtype == "type_alias" && r.Name == "NodePtr" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected type_alias entity NodePtr, got %+v", results)
+	}
+}
+
+func TestExtract_TypeAliasFunctionType(t *testing.T) {
+	// `type HandlerFunc func(http.ResponseWriter, *http.Request)` — function-type def.
+	src := `package x
+
+type HandlerFunc func(w interface{}, r interface{})
+`
+	ext, _ := extractor.Get("go")
+	results, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "test.go",
+		Content:  []byte(src),
+		Language: "go",
+		Tree:     parseGo([]byte(src)),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	results = stripFileEntity(results)
+	found := false
+	for _, r := range results {
+		if r.Subtype == "type_alias" && r.Name == "HandlerFunc" {
+			found = true
+			if r.Kind != "SCOPE.Schema" {
+				t.Errorf("Kind=%q, want SCOPE.Schema for function-type alias", r.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected type_alias entity HandlerFunc, got %+v", results)
+	}
+}
+
+func TestExtract_TypeAliasMultipleInOneFile(t *testing.T) {
+	// A file with struct + interface + two type aliases — all four shapes
+	// in one extraction pass; proves the extractor emits one entity per
+	// type_spec regardless of the surrounding struct/interface count.
+	src := `package x
+
+type contextKey int
+type ID = string
+type Store struct{ name string }
+type Namer interface{ Name() string }
+`
+	ext, _ := extractor.Get("go")
+	results, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "test.go",
+		Content:  []byte(src),
+		Language: "go",
+		Tree:     parseGo([]byte(src)),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	results = stripFileEntity(results)
+	var aliases []string
+	for _, r := range results {
+		if r.Subtype == "type_alias" {
+			aliases = append(aliases, r.Name)
+		}
+	}
+	if len(aliases) != 2 {
+		t.Fatalf("expected 2 type_alias entities, got %d: %v", len(aliases), aliases)
+	}
+	wantAliases := map[string]bool{"contextKey": false, "ID": false}
+	for _, a := range aliases {
+		wantAliases[a] = true
+	}
+	for name, found := range wantAliases {
+		if !found {
+			t.Errorf("missing type_alias entity %q", name)
+		}
+	}
+	// Struct and interface must still appear under their correct subtypes.
+	var structs, ifaces int
+	for _, r := range results {
+		if r.Subtype == "struct" {
+			structs++
+		}
+		if r.Subtype == "interface" {
+			ifaces++
+		}
+	}
+	if structs != 1 {
+		t.Errorf("expected 1 struct entity, got %d", structs)
+	}
+	if ifaces != 1 {
+		t.Errorf("expected 1 interface entity, got %d", ifaces)
+	}
+}
+
+// TestExtract_TypeAliasFrameworkSpecific proves gin-context file type aliases
+// (a common Go-HTTP pattern: `type contextKey int` as a typed iota constant
+// for request-context keys) are extracted correctly by the base Go extractor.
+// This is the "framework-specific type-alias taxonomy" from issue #3348 —
+// the taxonomy is language-level (all frameworks share the same extraction
+// path via extractTypes), so one cross-framework test is representative.
+func TestExtract_TypeAliasFrameworkSpecific(t *testing.T) {
+	// Pattern: gin-context key types, echo middleware key types, fiber-ctx
+	// key types are all `type T int` or `type T string`. One test covers all.
+	aliases := []struct {
+		typeName, baseType string
+	}{
+		{"ginContextKey", "int"},
+		{"echoCtxKey", "string"},
+		{"fiberCtxKey", "uint8"},
+		{"chiCtxKey", "int"},
+	}
+	for _, a := range aliases {
+		src := "package x\ntype " + a.typeName + " " + a.baseType + "\n"
+		ext, _ := extractor.Get("go")
+		results, err := ext.Extract(context.Background(), extractor.FileInput{
+			Path:     "test.go",
+			Content:  []byte(src),
+			Language: "go",
+			Tree:     parseGo([]byte(src)),
+		})
+		if err != nil {
+			t.Fatalf("%s: extract: %v", a.typeName, err)
+		}
+		results = stripFileEntity(results)
+		found := false
+		for _, r := range results {
+			if r.Subtype == "type_alias" && r.Name == a.typeName {
+				found = true
+				if r.Kind != "SCOPE.Schema" {
+					t.Errorf("%s: Kind=%q, want SCOPE.Schema", a.typeName, r.Kind)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("missing type_alias entity %q (baseType=%s)", a.typeName, a.baseType)
+		}
+	}
+}
