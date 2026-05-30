@@ -3587,3 +3587,139 @@ func TestFoo(t *testing.T) {
 		t.Errorf("expected 3 unique receivers, got %d: %v", len(names), names)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Elixir — ExUnit / StreamData  (deep linkage, #3473)
+// ---------------------------------------------------------------------------
+
+// TestElixir_ExUnit_Framework asserts an ExUnit test file is attributed to the
+// exunit framework via the `use ExUnit.Case` import hint.
+func TestElixir_ExUnit_Framework(t *testing.T) {
+	src := `defmodule FooTest do
+  use ExUnit.Case
+
+  test "computes the answer" do
+    assert Foo.compute() == 42
+  end
+end`
+	recs := runExtract(t, "test/foo_test.exs", "elixir", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected elixir entities")
+	}
+	if recs[0].Properties["test_framework"] != "exunit" {
+		t.Errorf("framework=%q, want exunit", recs[0].Properties["test_framework"])
+	}
+}
+
+// TestElixir_ExUnit_DirectCall asserts an ExUnit `test "…" do` leaf whose body
+// directly calls a production function emits a high-confidence TESTS edge to
+// that SPECIFIC symbol (the `assert` macro wrapper is stop-worded and must not
+// surface as the tested target). Value-asserting test->target edge.
+func TestElixir_ExUnit_DirectCall(t *testing.T) {
+	src := `defmodule MyApp.UserServiceTest do
+  use ExUnit.Case
+
+  test "registers a new user" do
+    assert UserService.register("alice") == :ok
+  end
+end`
+	recs := runExtract(t, "test/my_app/user_service_test.exs", "elixir", src)
+	if !hasEdgeAny(recs, "it_registers_a_new_user", "UserService.register") {
+		t.Fatalf("expected TESTS edge to UserService.register; recs=%+v", recs)
+	}
+	// The assert macro must NOT be a tested target.
+	if hasEdgeAny(recs, "it_registers_a_new_user", "assert") {
+		t.Errorf("assert macro must be stop-worded, not a tested target")
+	}
+}
+
+// TestElixir_ExUnit_Describe asserts a `describe` group containing a nested
+// `test` leaf is captured (the balanced do/end body walk descends into the
+// describe block) and the inner leaf links to its production call.
+func TestElixir_ExUnit_Describe(t *testing.T) {
+	src := `defmodule AccountsTest do
+  use ExUnit.Case
+
+  describe "create_user/1" do
+    test "persists the user" do
+      Accounts.create_user(%{name: "bob"})
+    end
+  end
+end`
+	recs := runExtract(t, "test/accounts_test.exs", "elixir", src)
+	if !hasEdgeAny(recs, "it_persists_the_user", "Accounts.create_user") {
+		t.Fatalf("expected TESTS edge to Accounts.create_user; recs=%+v", recs)
+	}
+}
+
+// TestElixir_ExUnit_NamingConvention asserts a leaf with NO direct production
+// call still emits a subject-derived TESTS edge from the test module name
+// (FooTest → Foo) at medium confidence.
+func TestElixir_ExUnit_NamingConvention(t *testing.T) {
+	src := `defmodule CalculatorTest do
+  use ExUnit.Case
+
+  test "is defined" do
+    assert true
+  end
+end`
+	recs := runExtract(t, "test/calculator_test.exs", "elixir", src)
+	if !hasEdgeAny(recs, "it_is_defined", "Calculator") {
+		t.Fatalf("expected naming-convention TESTS edge to Calculator; recs=%+v", recs)
+	}
+}
+
+// TestElixir_StreamData_Property asserts a StreamData `property "…" do` leaf is
+// attributed to the streamdata framework and links to the production call in
+// its body (the `check all` generator DSL and `assert` macro are stop-worded).
+func TestElixir_StreamData_Property(t *testing.T) {
+	src := `defmodule SerializerTest do
+  use ExUnit.Case
+  use ExUnitProperties
+
+  property "round-trips any term" do
+    check all term <- term() do
+      assert Serializer.decode(Serializer.encode(term)) == term
+    end
+  end
+end`
+	recs := runExtract(t, "test/serializer_test.exs", "elixir", src)
+	if recs[0].Properties["test_framework"] != "streamdata" {
+		t.Errorf("framework=%q, want streamdata", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_round_trips_any_term", "Serializer.encode") {
+		t.Fatalf("expected TESTS edge to Serializer.encode; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_round_trips_any_term", "check") {
+		t.Errorf("check all generator DSL must be stop-worded")
+	}
+	if hasEdgeAny(recs, "it_round_trips_any_term", "assert") {
+		t.Errorf("assert macro must be stop-worded")
+	}
+}
+
+// TestElixir_ExUnit_RefuteStopword asserts the refute/assert_raise family is
+// stop-worded so the harness macros never masquerade as the tested subject.
+func TestElixir_ExUnit_RefuteStopword(t *testing.T) {
+	src := `defmodule GuardTest do
+  use ExUnit.Case
+
+  test "rejects invalid input" do
+    refute Guard.valid?(input)
+    assert_raise ArgumentError, fn -> Guard.parse("") end
+  end
+end`
+	recs := runExtract(t, "test/guard_test.exs", "elixir", src)
+	// Guard.parse(...) is a direct production call (inside the assert_raise
+	// thunk) and must surface as a high-confidence TESTS edge even though the
+	// assert_raise macro wrapping it is stop-worded.
+	if !hasEdgeAny(recs, "it_rejects_invalid_input", "Guard.parse") {
+		t.Fatalf("expected TESTS edge to Guard.parse; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_rejects_invalid_input", "refute") {
+		t.Errorf("refute must be stop-worded")
+	}
+	if hasEdgeAny(recs, "it_rejects_invalid_input", "assert_raise") {
+		t.Errorf("assert_raise must be stop-worded")
+	}
+}

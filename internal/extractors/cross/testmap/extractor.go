@@ -259,6 +259,23 @@ func productionFileFromTestPath(filePath string) (prodFile, prodSymbol string) {
 				return path.Join(dir, prodStem+".swift"), prodStem
 			}
 		}
+	case ".exs":
+		// Elixir/ExUnit: foo_test.exs → foo.ex. Mix projects mirror the test/
+		// tree under lib/ (test/my_app/foo_test.exs → lib/my_app/foo.ex), so when
+		// the path contains a /test/ segment we redirect it to /lib/; otherwise we
+		// keep the same directory. The symbol guess is the CamelCase module name
+		// derived from the stem (foo_bar → FooBar), mirroring the Rails camel rule.
+		if strings.HasSuffix(lowerStem, "_test") {
+			prodStem := stem[:len(stem)-len("_test")]
+			normPath := "/" + filepath.ToSlash(filePath)
+			if testIdx := strings.Index(normPath, "/test/"); testIdx >= 0 {
+				prefix := strings.TrimPrefix(normPath[:testIdx], "/")
+				rel := normPath[testIdx+len("/test/"):]
+				relDir := path.Dir(rel)
+				return path.Join(prefix, "lib", relDir, prodStem+".ex"), railsTestCamelCase(prodStem)
+			}
+			return path.Join(dir, prodStem+".ex"), railsTestCamelCase(prodStem)
+		}
 	}
 	return "", ""
 }

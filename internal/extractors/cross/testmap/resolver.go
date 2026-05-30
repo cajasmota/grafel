@@ -258,6 +258,31 @@ var stopwords = map[string]bool{
 	"equalto": true, "isleft": true, "isright": true, "issome": true, "isnone": true,
 	"issubtype": true, "haskey": true, "hasfield": true, "isgreaterthan": true,
 	"islessthan": true,
+	// Elixir — ExUnit assertion/lifecycle macros and StreamData property-test
+	// DSL (#3473). These are test-harness identifiers and must never surface as
+	// the tested production subject. `assert` is already covered by the generic
+	// pytest block above. directCallRE captures the paren-call and bare-macro
+	// forms (assert_raise(...), refute foo(), assert_received :msg). Lower-cased
+	// (the resolver lowercases before lookup).
+	"refute": true, "assert_raise": true, "refute_raise": true,
+	"assert_received": true, "refute_received": true,
+	"assert_receive": true, "refute_receive": true,
+	"assert_in_delta": true, "refute_in_delta": true,
+	"assert_in_epsilon": true, "refute_in_epsilon": true,
+	"catch_throw": true, "catch_exit": true, "catch_error": true,
+	"flunk": true,
+	// ExUnit lifecycle / case DSL — setup, callbacks, tags. (`describe` is
+	// already covered by the generic Jest/Mocha block above.)
+	"setup": true, "setup_all": true, "on_exit": true, "start_supervised": true,
+	"start_supervised!": true,
+	// StreamData property-test DSL — `check all x <- gen`, generators, and the
+	// `member_of`/`one_of`/`constant`/`map`/`bind`/`filter` combinators are
+	// generator builders, not the production subject under test. (`check` is a
+	// directCall-captured bare ident; `assert_raises` covered above.)
+	"check_all": true, "gen": true, "member_of": true,
+	"one_of": true, "constant": true, "integer": true, "binary": true,
+	"list_of": true, "map_of": true, "fixed_list": true,
+	"bind": true, "filter": true, "frequency": true, "tuple": true,
 	// Common language keywords that end up in call-like positions
 	"if": true, "for": true, "while": true, "switch": true, "return": true,
 	"func": true, "def": true, "class": true, "struct": true, "new": true,

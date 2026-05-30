@@ -9558,10 +9558,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe entry-points recognised; Absinthe.ConnTest helpers not traced to resolvers"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -9774,10 +9774,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe entry-points recognised"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -9983,10 +9983,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe entry-points recognised"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -10196,10 +10196,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe entry-points recognised"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -10402,10 +10402,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe entry-points recognised; Nerves hardware tests via emulation not traced"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -10612,10 +10612,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe entry-points recognised; Oban.Testing module helpers not traced"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -10830,10 +10830,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe macros recognised as TestEntry entry-points; ConnCase/ChannelCase helpers in Phoenix not yet attributed to specific routes"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -11053,9 +11053,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "notes": "ExUnit test/describe macros recognised as TestEntry entry-points; PhoenixLiveViewTest uses conn.dispatch flows not yet traced"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -11254,10 +11255,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/substrate/entry_points_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "ExUnit test/describe macros recognised as TestEntry; Plug.Test.conn helpers not yet traced to routes"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage: ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name (MyApp.UserServiceTest-\u003eUserService) + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/assert_received/assert_in_delta/catch_throw) + check-all generator DSL. Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges (UserService.register, Accounts.create_user, Serializer.encode, Guard.parse). Closes #3473.",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
@@ -52012,8 +52013,8 @@
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/engine/rules/elixir/test_patterns.yaml","internal/engine/tests_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/elixir/test_patterns.yaml","internal/engine/tests_edges.go","internal/extractors/cross/testmap/frameworks.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },
@@ -52467,10 +52468,16 @@
       "label": "StreamData (property tests)",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+          "notes": "Deep testmap StreamData property tests emit TESTS edges via cross/testmap extractor (#3473).",
+          "verified_at": "2026-05-30"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+          "notes": "Deep testmap StreamData property-test extraction: property \"...\" do leaves with subject-from-module-name + body call resolution (#3473).",
+          "verified_at": "2026-05-30"
         }
       }
     },
