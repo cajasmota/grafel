@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/elixir/ecto.go`<br>`internal/substrate/payload_shapes_elixir.go` | Ecto changesets (cast+validate_required) capture DTO field lists; payload shape sniffer collects cast allow-lists as request shapes |
-| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/elixir/ecto.go`<br>`internal/substrate/taint_sites_elixir.go` | Ecto.Changeset validate_required/validate_format/validate_length tracked as sanitisers in taint substrate; changeset extractor emits SCOPE.Operation |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/elixir/ecto.go`<br>`internal/custom/elixir/ecto_validation.go`<br>`internal/custom/elixir/ecto_validation_test.go` | Deep Ecto cast (DTO) extraction: cast(attrs, [:name, :email, :age]) emits per-field ecto_cast_field:<field> entities (SCOPE.Pattern/dto_extraction) with field + cast_type props, enriched with declared schema field_type. Phoenix request params are validated via Ecto changesets. Value-asserting tests in ecto_validation_test.go assert exact field+type. Closes #3470. |
+| Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/elixir/ecto.go`<br>`internal/custom/elixir/ecto_validation.go`<br>`internal/custom/elixir/ecto_validation_test.go` | Deep Ecto changeset request_validation: per-field validate_required/validate_format/validate_length/validate_number/validate_inclusion/exclusion/subset/validate_confirmation/validate_acceptance + unique/foreign_key/check_constraint emit ecto_val:<field>:<validator> entities (SCOPE.Pattern/request_validation) capturing exact field + validator + bound/regex (e.g. email format ~r/@/, name length min:1,max:20, age number greater_than:0). Value-asserting tests assert exact field+validation+bound. Closes #3470. |
 
 ### Middleware
 

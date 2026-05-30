@@ -10778,16 +10778,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/elixir/ecto.go","internal/substrate/payload_shapes_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Ecto changesets (cast+validate_required) capture DTO field lists; payload shape sniffer collects cast allow-lists as request shapes"
+            "status": "full",
+            "cites": ["internal/custom/elixir/ecto.go","internal/custom/elixir/ecto_validation.go","internal/custom/elixir/ecto_validation_test.go"],
+            "notes": "Deep Ecto cast (DTO) extraction: cast(attrs, [:name, :email, :age]) emits per-field ecto_cast_field:\u003cfield\u003e entities (SCOPE.Pattern/dto_extraction) with field + cast_type props, enriched with declared schema field_type. Phoenix request params are validated via Ecto changesets. Value-asserting tests in ecto_validation_test.go assert exact field+type. Closes #3470.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/elixir/ecto.go","internal/substrate/taint_sites_elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Ecto.Changeset validate_required/validate_format/validate_length tracked as sanitisers in taint substrate; changeset extractor emits SCOPE.Operation"
+            "status": "full",
+            "cites": ["internal/custom/elixir/ecto.go","internal/custom/elixir/ecto_validation.go","internal/custom/elixir/ecto_validation_test.go"],
+            "notes": "Deep Ecto changeset request_validation: per-field validate_required/validate_format/validate_length/validate_number/validate_inclusion/exclusion/subset/validate_confirmation/validate_acceptance + unique/foreign_key/check_constraint emit ecto_val:\u003cfield\u003e:\u003cvalidator\u003e entities (SCOPE.Pattern/request_validation) capturing exact field + validator + bound/regex (e.g. email format ~r/@/, name length min:1,max:20, age number greater_than:0). Value-asserting tests assert exact field+validation+bound. Closes #3470.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
