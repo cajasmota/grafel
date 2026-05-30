@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Route extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/engine/rules/scala/frameworks/play_framework.yaml` | Play conf/routes file parsed by rePlayRoute regex (GET/POST/etc path controller.action); controller class patterns in play_framework.yaml. File-local. |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/routing.go` | Play conf/routes file parsed by rePlayRoute regex (GET/POST/etc path controller.action); controller class patterns in play_framework.yaml. File-local. |
 | Router pattern | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/engine/rules/scala/frameworks/play_framework.yaml` | Play reverse routing (routes.reverse*, Routes.) detected by rePlayRouterPattern. play_framework.yaml contains route file_conventions. |
 
 ### Build

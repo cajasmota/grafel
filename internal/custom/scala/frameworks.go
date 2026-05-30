@@ -83,27 +83,33 @@ func (e *scalaFrameworksExtractor) Language() string { return "custom_scala_fram
 // ---------------------------------------------------------------------------
 
 var (
+	// Akka-HTTP path directive capturing the FULL path expression (string
+	// literals AND positional PathMatcher tokens), e.g.
+	//   path("users" / LongNumber / "posts")
+	// Group 1 = inner expression up to the matching close paren (paren-free,
+	// which is the common case; nested matcher calls are handled by the
+	// dedicated matcher walker in routing.go).
 	reAkkaPathDirective = regexp.MustCompile(
-		`\b(?:pathPrefix|path|pathEnd)\s*\(\s*"([^"]+)"`)
+		`\b(?:path|pathEnd|pathPrefix|rawPathPrefix)\s*\(\s*("(?:[^"]*)"(?:\s*/\s*[^){]+?)?|[A-Za-z_]\w*(?:\s*/\s*[^){]+?)?)\s*\)`)
 
 	// Akka-HTTP positional context: find positions of pathPrefix/path directives and
 	// HTTP method directives, then associate each method with nearest enclosing path context.
+	// Both capture the full path EXPRESSION (literals + matchers) for canonicalisation.
 	reAkkaFwPathPrefix = regexp.MustCompile(
-		`\bpathPrefix\s*\(\s*"([^"]+)"`)
+		`\bpathPrefix\s*\(\s*("(?:[^"]*)"(?:\s*/\s*[^){]+?)?|[A-Za-z_]\w*(?:\s*/\s*[^){]+?)?)\s*\)`)
 
 	reAkkaFwPathSeg = regexp.MustCompile(
-		`\bpath\s*\(\s*"([^"]+)"`)
+		`\bpath\s*\(\s*("(?:[^"]*)"(?:\s*/\s*[^){]+?)?|[A-Za-z_]\w*(?:\s*/\s*[^){]+?)?)\s*\)`)
 
 	reAkkaMethodDir = regexp.MustCompile(
 		`\b(get|post|put|delete|patch|head|options)\s*\{`)
 
-	// http4s: case GET -> Root / "seg1" / "seg2" => ...
-	// Captures: group1=method, then remainder is Root-path segments
+	// http4s: case GET -> Root / "seg1" / Var(id) / "seg2" => ...
+	// Group 1 = method, group 2 = the full segment expression after Root (string
+	// literals AND named extractor vars). The expression is canonicalised by
+	// canonicalScalaPathExpr which handles LongVar(id) / IntVar / UUIDVar / etc.
 	reHttp4sRoute = regexp.MustCompile(
-		`\bcase\s+(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*->\s*Root((?:\s*/\s*"[^"]*")*)\s*=>`)
-
-	// http4s: extract each "segment" from a Root / "seg1" / "seg2" chain
-	reHttp4sPathSeg = regexp.MustCompile(`"([^"]+)"`)
+		`\bcase\s+(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*->\s*Root((?:\s*/\s*[^=]+?)?)\s*=>`)
 
 	// Scalatra: get("/path") { ... }
 	reScalatraRoute = regexp.MustCompile(
@@ -113,13 +119,15 @@ var (
 	reCaskRoute = regexp.MustCompile(
 		`@cask\.(get|post|put|delete|patch)\s*\(\s*"([^"]*)"`)
 
-	// ZIO-HTTP: case Method.GET -> Root / "seg" => ...
-	// Captures: group1=method, group2=Root-path segments chain
+	// ZIO-HTTP (collect DSL): case Method.GET -> Root / "seg" / int("id") => ...
+	// Group 1 = method, group 2 = full segment expression after Root.
 	reZioHTTPRoute = regexp.MustCompile(
-		`\bcase\s+Method\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*->\s*Root((?:\s*/\s*"[^"]*")*)\s*=>`)
+		`\bcase\s+Method\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*->\s*Root((?:\s*/\s*[^=]+?)?)\s*=>`)
 
-	// ZIO-HTTP: extract each "segment" from Root / "seg1" / "seg2"
-	reZioHTTPPathSeg = regexp.MustCompile(`"([^"]+)"`)
+	// ZIO-HTTP (Scala-3 Routes DSL): Method.GET / "users" / int("id") -> handler
+	// Group 1 = method, group 2 = full segment expression up to the `->` arrow.
+	reZioRoutesDSL = regexp.MustCompile(
+		`\bMethod\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*((?:/\s*[^-]+?)?)\s*->`)
 
 	// Finatra: @Get("/path") or @Post("/path") annotations
 	reFinatraRoute = regexp.MustCompile(
@@ -379,7 +387,6 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 		}
 
 		combinedPathSeen := make(map[string]bool)
-		combinedMethodSeen := make(map[string]bool)
 		const window = 512
 		for _, m := range reAkkaMethodDir.FindAllStringSubmatchIndex(src, -1) {
 			method := src[m[2]:m[3]]
@@ -387,15 +394,16 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 			seg := nearestBefore(segPositions, m[0], window)
 			prefix := nearestBefore(prefixPositions, m[0], window)
 			if seg != "" {
-				// Build combined path
-				var fullPath string
+				// Canonicalise each path EXPRESSION (string literals + PathMatcher
+				// tokens like LongNumber/Segment/JavaUUID → {param}) then compose
+				// pathPrefix + path into one canonical path.
+				segPath := canonicalScalaPathExpr(seg)
+				prefixPath := ""
 				if prefix != "" {
-					fullPath = "/" + strings.Trim(prefix, "/") + "/" + strings.Trim(seg, "/")
-				} else {
-					fullPath = "/" + strings.Trim(seg, "/")
+					prefixPath = canonicalScalaPathExpr(prefix)
 				}
+				fullPath := composeScalaPath(prefixPath, segPath)
 				name := upperMethod + ":" + fullPath
-				combinedMethodSeen[upperMethod] = true
 				if prefix != "" {
 					combinedPathSeen[prefix] = true
 				}
@@ -407,12 +415,13 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 		}
 		// Emit individual path-directive entities not covered by combined (no associated methods)
 		for _, m := range reAkkaPathDirective.FindAllStringSubmatchIndex(src, -1) {
-			path := src[m[2]:m[3]]
-			if combinedPathSeen[path] {
+			expr := src[m[2]:m[3]]
+			if combinedPathSeen[expr] {
 				continue
 			}
-			ent := makeEntity(path, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
-			setProps(&ent, "framework", framework, "http_path", path, "provenance", "AKKA_HTTP_PATH_DIRECTIVE")
+			canonical := canonicalScalaPathExpr(expr)
+			ent := makeEntity(canonical, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", framework, "http_path", canonical, "provenance", "AKKA_HTTP_PATH_DIRECTIVE")
 			add(ent)
 		}
 
@@ -423,15 +432,10 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 			if m[4] >= 0 {
 				segChain = src[m[4]:m[5]]
 			}
-			// Build path from Root / "seg1" / "seg2" ... chain
-			fullPath := "/"
-			for _, sm := range reHttp4sPathSeg.FindAllStringSubmatch(segChain, -1) {
-				fullPath += sm[1] + "/"
-			}
-			fullPath = strings.TrimRight(fullPath, "/")
-			if fullPath == "" {
-				fullPath = "/"
-			}
+			// Canonicalise the full Root / "seg" / LongVar(id) chain. The leading
+			// `/` separators in segChain are split by canonicalScalaPathExpr; named
+			// extractor vars (LongVar(id)/IntVar/UUIDVar) normalise to {name}.
+			fullPath := canonicalScalaPathExpr(strings.TrimPrefix(strings.TrimSpace(segChain), "/"))
 			name := "route:" + method + ":" + fullPath
 			ent := makeEntity(name, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "http4s", "http_method", method, "http_path", fullPath, "provenance", "HTTP4S_HTTPROUTES_DSL")
@@ -443,7 +447,7 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 			method := src[m[2]:m[3]]
 			path := ""
 			if m[4] >= 0 {
-				path = src[m[4]:m[5]]
+				path = canonicalScalaColonPath(src[m[4]:m[5]])
 			}
 			ent := makeEntity(method+":"+path, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "scalatra", "http_method", strings.ToUpper(method), "http_path", path, "provenance", "SCALATRA_ROUTE")
@@ -453,38 +457,44 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 	case "cask":
 		for _, m := range reCaskRoute.FindAllStringSubmatchIndex(src, -1) {
 			method := src[m[2]:m[3]]
-			path := src[m[4]:m[5]]
+			path := canonicalScalaColonPath(src[m[4]:m[5]])
 			ent := makeEntity(method+":"+path, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "cask", "http_method", strings.ToUpper(method), "http_path", path, "provenance", "CASK_ANNOTATION_ROUTE")
 			add(ent)
 		}
 
 	case "zio-http":
+		// collect DSL: case Method.GET -> Root / "users" / int("id") => ...
 		for _, m := range reZioHTTPRoute.FindAllStringSubmatchIndex(src, -1) {
 			method := src[m[2]:m[3]]
 			segChain := ""
 			if m[4] >= 0 {
 				segChain = src[m[4]:m[5]]
 			}
-			// Build path from Root / "seg1" / "seg2" ... chain
-			fullPath := "/"
-			for _, sm := range reZioHTTPPathSeg.FindAllStringSubmatch(segChain, -1) {
-				fullPath += sm[1] + "/"
-			}
-			fullPath = strings.TrimRight(fullPath, "/")
-			if fullPath == "" {
-				fullPath = "/"
-			}
+			fullPath := canonicalScalaPathExpr(strings.TrimPrefix(strings.TrimSpace(segChain), "/"))
 			name := "route:" + method + ":" + fullPath
 			ent := makeEntity(name, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "zio-http", "http_method", method, "http_path", fullPath, "provenance", "ZIO_HTTP_ROUTE")
+			add(ent)
+		}
+		// Scala-3 Routes DSL: Method.GET / "users" / int("id") -> handler(...)
+		for _, m := range reZioRoutesDSL.FindAllStringSubmatchIndex(src, -1) {
+			method := src[m[2]:m[3]]
+			segChain := ""
+			if m[4] >= 0 {
+				segChain = src[m[4]:m[5]]
+			}
+			fullPath := canonicalScalaPathExpr(strings.TrimPrefix(strings.TrimSpace(segChain), "/"))
+			name := "route:" + method + ":" + fullPath
+			ent := makeEntity(name, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "zio-http", "http_method", method, "http_path", fullPath, "provenance", "ZIO_HTTP_ROUTES_DSL")
 			add(ent)
 		}
 
 	case "finatra":
 		for _, m := range reFinatraRoute.FindAllStringSubmatchIndex(src, -1) {
 			method := src[m[2]:m[3]]
-			path := src[m[4]:m[5]]
+			path := canonicalScalaColonPath(src[m[4]:m[5]])
 			ent := makeEntity(method+":"+path, "SCOPE.Operation", "http_route", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "finatra", "http_method", strings.ToUpper(method), "http_path", path, "provenance", "FINATRA_ANNOTATION_ROUTE")
 			add(ent)
@@ -492,7 +502,7 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 
 	case "lagom":
 		for _, m := range reLagomCall.FindAllStringSubmatchIndex(src, -1) {
-			path := src[m[2]:m[3]]
+			path := canonicalScalaColonPath(src[m[2]:m[3]])
 			ent := makeEntity("lagom:"+path, "SCOPE.Operation", "lagom_service_call", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "lagom", "service_descriptor", path, "provenance", "LAGOM_SERVICE_DESCRIPTOR")
 			add(ent)
@@ -501,7 +511,7 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 	case "play":
 		for _, m := range rePlayRoute.FindAllStringSubmatchIndex(src, -1) {
 			method := src[m[2]:m[3]]
-			path := src[m[4]:m[5]]
+			path := canonicalScalaColonPath(src[m[4]:m[5]])
 			controller := ""
 			if m[6] >= 0 {
 				controller = src[m[6]:m[7]]

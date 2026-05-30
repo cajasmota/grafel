@@ -47652,9 +47652,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/akka_http_pekko_http.yaml"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
           }
@@ -47936,9 +47935,8 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: @cask.get/@cask.post annotation routes with path extraction. File-local.",
             "verified_at": "2026-05-30"
           }
@@ -48486,9 +48484,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/finatra.yaml"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
           }
@@ -48777,9 +48774,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/http4s.yaml"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
           }
@@ -49059,9 +49055,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/lagom.yaml"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
           }
@@ -49366,8 +49361,8 @@
         },
         "Routing": {
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/play_framework.yaml"],
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "Play conf/routes file parsed by rePlayRoute regex (GET/POST/etc path controller.action); controller class patterns in play_framework.yaml. File-local.",
             "verified_at": "2026-05-30"
           },
@@ -49560,9 +49555,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/scalatra.yaml"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
           }
@@ -49842,9 +49836,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/zio.yaml"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
           }
