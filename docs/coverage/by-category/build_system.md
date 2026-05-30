@@ -94,8 +94,8 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [ruby](../by-language/ruby.md) | [Rake](../detail/build.rake.md) | 🔴 | — | — | 🟢 | |
 | [rust](../by-language/rust.md) | [Cargo (Cargo.toml)](../detail/build.cargo.md) | ✅ | — | — | ✅ | |
 | [rust](../by-language/rust.md) | [cargo test (stdlib)](../detail/test.cargo-test.md) | ✅ | — | — | ✅ | |
-| [rust](../by-language/rust.md) | [criterion (benchmark)](../detail/test.criterion.md) | 🔴 | — | — | 🔴 | |
-| [rust](../by-language/rust.md) | [mockall](../detail/test.mockall.md) | 🔴 | — | — | 🔴 | |
-| [rust](../by-language/rust.md) | [proptest](../detail/test.proptest.md) | 🔴 | — | — | 🔴 | |
+| [rust](../by-language/rust.md) | [criterion (benchmark)](../detail/test.criterion.md) | ✅ | — | — | ✅ | |
+| [rust](../by-language/rust.md) | [mockall](../detail/test.mockall.md) | ✅ | — | — | ✅ | |
+| [rust](../by-language/rust.md) | [proptest](../detail/test.proptest.md) | ✅ | — | — | ✅ | |
 | [scala](../by-language/scala.md) | [Mill](../detail/build.mill.md) | 🔴 | — | — | 🔴 | |
 | [scala](../by-language/scala.md) | [SBT](../detail/build.sbt.md) | ✅ | — | — | ✅ | |

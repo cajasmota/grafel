@@ -52,9 +52,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Cargo (Cargo.toml)](../detail/build.cargo.md) | ✅ | — | — | ✅ | |
 | [Cargo.toml](../detail/pkg.cargo.md) | — | 🔴 | ✅ | — | |
 | [cargo test (stdlib)](../detail/test.cargo-test.md) | ✅ | — | — | ✅ | |
-| [criterion (benchmark)](../detail/test.criterion.md) | 🔴 | — | — | 🔴 | |
-| [mockall](../detail/test.mockall.md) | 🔴 | — | — | 🔴 | |
-| [proptest](../detail/test.proptest.md) | 🔴 | — | — | 🔴 | |
+| [criterion (benchmark)](../detail/test.criterion.md) | ✅ | — | — | ✅ | |
+| [mockall](../detail/test.mockall.md) | ✅ | — | — | ✅ | |
+| [proptest](../detail/test.proptest.md) | ✅ | — | — | ✅ | |
 
 ## ORMs
 

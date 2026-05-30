@@ -51973,10 +51973,14 @@
       "label": "criterion (benchmark)",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/tests_edges.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-05-30"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/rust/test_patterns.yaml","internal/extractors/cross/testmap/frameworks.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },
@@ -52290,10 +52294,14 @@
       "label": "mockall",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/tests_edges.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-05-30"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/rust/test_patterns.yaml","internal/extractors/cross/testmap/frameworks.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },
@@ -52434,10 +52442,14 @@
       "label": "proptest",
       "capabilities": {
         "dependency_graph": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/tests_edges.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-05-30"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "full",
+          "cites": ["internal/engine/rules/rust/test_patterns.yaml","internal/extractors/cross/testmap/frameworks.go"],
+          "verified_at": "2026-05-30"
         }
       }
     },

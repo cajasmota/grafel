@@ -792,20 +792,186 @@ func detectMSTest(source string) []testFunction {
 }
 
 // ---------------------------------------------------------------------------
-// Rust — #[test]
+// Rust — cargo test (#[test] / #[tokio::test] / #[async_std::test]),
+//        criterion benchmarks, proptest property tests, mockall mocks.
+//
+// Deep linkage (#3415): each detected test/bench/property function is annotated
+// with both its body (so the resolver can find direct production calls) and a
+// naming-convention describeSubject derived from the function name
+// (`test_register` → `register`, `bench_parse` → `parse`). The resolver treats
+// the body call as high confidence and the naming-convention subject as a
+// medium-confidence fallback when no direct call is found.
 // ---------------------------------------------------------------------------
 
+// rustTestRE matches a Rust test function preceded by any of the recognised
+// test attributes:
+//
+//	#[test]
+//	#[tokio::test]            (and #[tokio::test(flavor = "multi_thread")])
+//	#[async_std::test]
+//	#[actix_web::test] / #[actix_rt::test]
+//	#[rstest]                 (rstest fixture-driven cases)
+//
+// Group 1 captures the function name. The attribute line is allowed to carry
+// arguments (e.g. `#[tokio::test(flavor = "multi_thread")]`) and may be
+// followed by additional attribute lines (e.g. `#[should_panic]`) before the
+// `fn` declaration.
 var rustTestRE = regexp.MustCompile(
-	`(?m)#\[test\][^\n]*\n\s*(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)(?:\s*->\s*[^\{]+)?\s*{`,
+	`(?m)#\[(?:test|tokio::test|async_std::test|actix_web::test|actix_rt::test|rstest)\b[^\]]*\]` +
+		`(?:\s*#\[[^\]]*\])*` + // optional extra attributes (#[should_panic], #[case(..)], …)
+		`\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)(?:\s*->\s*[^\{]+)?\s*{`,
 )
+
+// rustCriterionBenchRE matches a criterion benchmark function, recognised by
+// the conventional `&mut Criterion` parameter:
+//
+//	fn bench_parse(c: &mut Criterion) { … }
+//	pub fn bench_parse(c: &mut Criterion) { … }
+//
+// Group 1 captures the bench function name. The production target is recovered
+// from the `c.bench_function("name", |b| b.iter(|| target()))` call in the
+// body (a direct call the resolver already picks up) and, failing that, from
+// the bench-name naming convention.
+var rustCriterionBenchRE = regexp.MustCompile(
+	`(?m)(?:pub\s+)?fn\s+(\w+)\s*\(\s*\w+\s*:\s*&mut\s+Criterion\s*\)\s*{`,
+)
+
+// rustProptestRE matches a property test declared inside a `proptest! { … }`
+// macro block:
+//
+//	proptest! {
+//	    #[test]
+//	    fn p_roundtrip(s in ".*") { parse(&s); }
+//	}
+//
+// Inside the macro the `in <strategy>` argument syntax replaces normal typed
+// params, so the parameter list is matched loosely. Group 1 captures the
+// property function name.
+var rustProptestFnRE = regexp.MustCompile(
+	`(?m)#\[test\]\s*(?:#\[[^\]]*\]\s*)*fn\s+(\w+)\s*\([^)]*\)\s*{`,
+)
+
+// rustProptestBlockRE locates `proptest! { … }` macro blocks so property
+// functions are only scanned within them (avoiding double-counting the inner
+// `#[test]` via rustTestRE — the block bodies are subtracted first).
+var rustProptestBlockRE = regexp.MustCompile(`proptest!\s*{`)
+
+// rustAutomockRE matches a trait annotated with `#[automock]` (mockall). The
+// generated mock exercises the trait, so the trait name is the subject under
+// test. Group 1 captures the trait name.
+var rustAutomockRE = regexp.MustCompile(
+	`(?m)#\[(?:automock|cfg_attr\([^)]*\bautomock\b[^)]*\))\]\s*(?:pub\s+)?(?:unsafe\s+)?trait\s+(\w+)`,
+)
+
+// rustMockBangRE matches a `mock! { TraitName { … } }` mockall declaration.
+// Group 1 captures the mock struct name; group 2 (optional) the mocked trait.
+var rustMockBangRE = regexp.MustCompile(
+	`(?m)mock!\s*{\s*(?:pub\s+)?(\w+)\b`,
+)
+
+// rustTestSubject derives the production symbol a test/bench function exercises
+// from its name by stripping the conventional test/bench prefixes:
+//
+//	test_register      → register
+//	test_register_user → register_user
+//	bench_parse        → parse
+//	it_parses_input    → parses_input
+//	prop_roundtrip     → roundtrip
+//	p_roundtrip        → roundtrip      (single-letter proptest convention)
+//
+// Returns "" when no prefix applies (so we don't invent a subject from an
+// already-bare name like `roundtrip`).
+func rustTestSubject(name string) string {
+	for _, pfx := range []string{"test_", "bench_", "it_", "prop_", "p_"} {
+		if strings.HasPrefix(name, pfx) && len(name) > len(pfx) {
+			return name[len(pfx):]
+		}
+	}
+	return ""
+}
+
+// subtractRanges blanks out (replaces with spaces, preserving offsets) every
+// [start,end) range in source so a subsequent regex pass does not re-match
+// content already consumed by an earlier pass. Newlines are preserved so the
+// `(?m)` anchors of later passes stay aligned.
+func subtractRanges(source string, ranges [][2]int) string {
+	if len(ranges) == 0 {
+		return source
+	}
+	b := []byte(source)
+	for _, r := range ranges {
+		for i := r[0]; i < r[1] && i < len(b); i++ {
+			if b[i] != '\n' {
+				b[i] = ' '
+			}
+		}
+	}
+	return string(b)
+}
 
 func detectRustTest(source string) []testFunction {
 	var out []testFunction
-	for _, m := range rustTestRE.FindAllStringSubmatchIndex(source, -1) {
-		name := source[m[2]:m[3]]
-		body := extractBraceBody(source, m[1]-1)
-		out = append(out, testFunction{qname: name, body: body})
+	seen := map[string]bool{}
+	add := func(name, body, subject string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
 	}
+
+	// Pass A: proptest! { … } blocks. Scan inner property functions first, then
+	// subtract the block bodies so the inner #[test] attrs aren't re-matched by
+	// the cargo-test pass.
+	var consumed [][2]int
+	for _, loc := range rustProptestBlockRE.FindAllStringIndex(source, -1) {
+		block := extractBraceBody(source, loc[1]-1)
+		if block == "" {
+			continue
+		}
+		blockStart := strings.Index(source[loc[0]:], block) + loc[0]
+		consumed = append(consumed, [2]int{loc[0], blockStart + len(block)})
+		for _, m := range rustProptestFnRE.FindAllStringSubmatchIndex(block, -1) {
+			name := block[m[2]:m[3]]
+			body := extractBraceBody(block, m[1]-1)
+			add(name, body, rustTestSubject(name))
+		}
+	}
+	scanSrc := subtractRanges(source, consumed)
+
+	// Pass B: cargo test — #[test] / #[tokio::test] / #[async_std::test] / …
+	for _, m := range rustTestRE.FindAllStringSubmatchIndex(scanSrc, -1) {
+		name := scanSrc[m[2]:m[3]]
+		body := extractBraceBody(scanSrc, m[1]-1)
+		add(name, body, rustTestSubject(name))
+	}
+
+	// Pass C: criterion benchmarks — fn bench_x(c: &mut Criterion) { … }.
+	for _, m := range rustCriterionBenchRE.FindAllStringSubmatchIndex(scanSrc, -1) {
+		name := scanSrc[m[2]:m[3]]
+		body := extractBraceBody(scanSrc, m[1]-1)
+		add(name, body, rustTestSubject(name))
+	}
+
+	// Pass D: mockall — associate each mock with the trait it mocks. We emit a
+	// synthetic "test function" named after the mock whose describeSubject is
+	// the mocked trait, producing a medium-confidence TESTS edge mock → trait.
+	for _, m := range rustAutomockRE.FindAllStringSubmatch(source, -1) {
+		trait := m[1]
+		add("automock_"+trait, "", trait)
+	}
+	for _, m := range rustMockBangRE.FindAllStringSubmatch(source, -1) {
+		// mock! { MockFoo: FooTrait { … } } — prefer the explicit trait when the
+		// `: Trait` form is present; otherwise the mock name itself is the subject
+		// hint (mockall convention: mock name == Mock + Trait).
+		mockName := m[1]
+		subject := strings.TrimPrefix(mockName, "Mock")
+		if subject == mockName || subject == "" {
+			subject = mockName
+		}
+		add("mock_"+mockName, "", subject)
+	}
+
 	return out
 }
 

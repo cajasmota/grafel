@@ -9530,72 +9530,87 @@ records:
   test.criterion:
     capabilities:
       target_extraction:
-        # criterion benchmark detection: [[bench]] section in Cargo.toml,
-        # criterion_group!/criterion_main! macros, and benches/ directory
-        # are all recorded in internal/engine/rules/rust/test_patterns.yaml.
-        status: partial
+        # criterion benchmark detection: bench fns are recognised by their
+        # `c: &mut Criterion` signature (rustCriterionBenchRE); the production
+        # target is recovered from the c.bench_function(.., |b| b.iter(|| f()))
+        # closure as a direct call (#3415). Patterns also catalogued in
+        # internal/engine/rules/rust/test_patterns.yaml.
+        status: full
         symbols:
-          - file: internal/engine/rules/rust/test_patterns.yaml
           - file: internal/extractors/cross/testmap/frameworks.go
-            functions: [detectRustTest]
-        issues_implemented: ["3268"]
+            functions: [detectRustTest, rustTestSubject]
+          - file: internal/engine/rules/rust/test_patterns.yaml
+        issues_implemented: ["3268", "3415"]
         verified_at: "2026-05-30"
       dependency_graph:
-        # tests_edges.go propagates TESTS edges from test functions to the
-        # production entities they exercise; criterion benches are treated
-        # as test-bearing files via the rust_test sniffer path.
-        status: partial
+        # The criterion bench fn → benched target TESTS edge is emitted by the
+        # testmap resolver (high confidence from the b.iter closure call;
+        # criterion harness helpers black_box/b.iter/c.bench_function are
+        # stop-worded). tests_edges.go then propagates the edge (#3415).
+        status: full
         symbols:
+          - file: internal/extractors/cross/testmap/resolver.go
+            functions: [resolveCalls, isStopword]
           - file: internal/engine/tests_edges.go
             functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
-          - file: internal/engine/rules/rust/test_patterns.yaml
-        issues_implemented: ["3268"]
+        issues_implemented: ["3268", "3415"]
         verified_at: "2026-05-30"
 
   test.mockall:
     capabilities:
       target_extraction:
-        # mockall detection: use mockall:: import markers and #[automock]
-        # attribute patterns registered in internal/engine/rules/rust/test_patterns.yaml.
-        status: partial
+        # mockall detection: #[automock] / #[cfg_attr(test, automock)] on a
+        # trait (rustAutomockRE) and mock! { … } blocks (rustMockBangRE) are
+        # extracted and associated with the mocked trait (#3415). Patterns also
+        # catalogued in internal/engine/rules/rust/test_patterns.yaml.
+        status: full
         symbols:
-          - file: internal/engine/rules/rust/test_patterns.yaml
           - file: internal/extractors/cross/testmap/frameworks.go
             functions: [detectRustTest]
-        issues_implemented: ["3268"]
+          - file: internal/engine/rules/rust/test_patterns.yaml
+        issues_implemented: ["3268", "3415"]
         verified_at: "2026-05-30"
       dependency_graph:
-        # tests_edges.go propagates TESTS edges from test functions that use
-        # mockall mocks to the production entities under test.
-        status: partial
+        # The mock → mocked-trait TESTS edge is emitted at medium confidence by
+        # the testmap resolver via the describeSubject path; .expect_*/.returning
+        # /.times expectation builders are stop-worded so they never leak as
+        # targets. tests_edges.go propagates the edge (#3415).
+        status: full
         symbols:
+          - file: internal/extractors/cross/testmap/resolver.go
+            functions: [resolveCalls, isStopword]
           - file: internal/engine/tests_edges.go
             functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
-          - file: internal/engine/rules/rust/test_patterns.yaml
-        issues_implemented: ["3268"]
+        issues_implemented: ["3268", "3415"]
         verified_at: "2026-05-30"
 
   test.proptest:
     capabilities:
       target_extraction:
-        # proptest detection: proptest! macro block and use proptest:: import
-        # markers registered in internal/engine/rules/rust/test_patterns.yaml.
-        status: partial
+        # proptest detection: property fns inside proptest! { #[test] fn p(..) }
+        # macro blocks are scanned (rustProptestBlockRE + rustProptestFnRE) and
+        # the block body is subtracted so the inner #[test] is not double-counted
+        # by the cargo-test pass (#3415). Patterns also catalogued in
+        # internal/engine/rules/rust/test_patterns.yaml.
+        status: full
         symbols:
-          - file: internal/engine/rules/rust/test_patterns.yaml
           - file: internal/extractors/cross/testmap/frameworks.go
-            functions: [detectRustTest]
-        issues_implemented: ["3268"]
+            functions: [detectRustTest, subtractRanges, rustTestSubject]
+          - file: internal/engine/rules/rust/test_patterns.yaml
+        issues_implemented: ["3268", "3415"]
         verified_at: "2026-05-30"
       dependency_graph:
-        # tests_edges.go propagates TESTS edges from proptest property-based
-        # test functions to the production entities they exercise.
-        status: partial
+        # The property fn → target TESTS edge is emitted by the testmap resolver
+        # (high confidence from the direct call in the property body;
+        # prop_assert*/prop_assume macros are stop-worded). tests_edges.go
+        # propagates the edge (#3415).
+        status: full
         symbols:
+          - file: internal/extractors/cross/testmap/resolver.go
+            functions: [resolveCalls, isStopword]
           - file: internal/engine/tests_edges.go
             functions: [ApplyTestsMultiHopViaHTTP, buildRoutesToIndex]
-          - file: internal/engine/rules/rust/test_patterns.yaml
-        issues_implemented: ["3268"]
+        issues_implemented: ["3268", "3415"]
         verified_at: "2026-05-30"
 
   lang.csharp.orm.efcore:

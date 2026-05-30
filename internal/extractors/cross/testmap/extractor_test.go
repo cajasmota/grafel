@@ -1857,6 +1857,167 @@ mod tests {
 	}
 }
 
+// --- Deep Rust testing linkage (#3415) -------------------------------------
+
+// cargo test: a #[test] fn whose body directly calls a production function must
+// yield a high-confidence TESTS edge to that SPECIFIC production symbol — not
+// to the assertion macro, and not merely "an edge exists".
+func TestRust_CargoTest_DirectCallSpecificTarget(t *testing.T) {
+	src := `#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_register() {
+        let out = register("alice");
+        assert_eq!(out, true);
+        assert!(out);
+    }
+}`
+	recs := runExtract(t, "src/registry.rs", "rust", src)
+	rec := findByTested(t, recs, "test_register", "register")
+	if rec.Properties["confidence"] != "high" {
+		t.Errorf("confidence=%q, want high (direct call register())", rec.Properties["confidence"])
+	}
+	// assertion macros must NOT be treated as the tested subject.
+	for _, bad := range []string{"assert_eq", "assert", "assert_eq!", "assert!"} {
+		if hasEdgeAny(recs, "test_register", bad) {
+			t.Errorf("assertion macro %q leaked as a tested target", bad)
+		}
+	}
+}
+
+// #[tokio::test] async tests must be detected exactly like #[test].
+func TestRust_TokioTest_AsyncDirectCall(t *testing.T) {
+	src := `#[cfg(test)]
+mod tests {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_fetch_user() {
+        let u = fetch_user(42).await;
+        assert_eq!(u.id, 42);
+    }
+}`
+	recs := runExtract(t, "src/users.rs", "rust", src)
+	rec := findByTested(t, recs, "test_fetch_user", "fetch_user")
+	if rec.Properties["confidence"] != "high" {
+		t.Errorf("confidence=%q, want high", rec.Properties["confidence"])
+	}
+}
+
+// cargo test naming-convention fallback: a #[test] fn with no direct production
+// call but a `test_<name>` convention links to <name> at MEDIUM confidence.
+func TestRust_CargoTest_NamingConventionMedium(t *testing.T) {
+	src := `#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_normalize() {
+        // body only asserts on a precomputed fixture — no direct prod call.
+        let v = FIXTURE;
+        assert_eq!(v, 7);
+    }
+}`
+	recs := runExtract(t, "src/util.rs", "rust", src)
+	rec := findByTested(t, recs, "test_normalize", "normalize")
+	if rec.Properties["confidence"] != "medium" {
+		t.Errorf("confidence=%q, want medium (naming-convention test_normalize -> normalize)", rec.Properties["confidence"])
+	}
+}
+
+// criterion: fn bench_x(c: &mut Criterion) whose body iterates the target via
+// c.bench_function(.., |b| b.iter(|| target())) links to `target` (high), and
+// the criterion harness helpers must not leak as targets.
+func TestRust_Criterion_BenchTarget(t *testing.T) {
+	src := `use criterion::{criterion_group, criterion_main, Criterion};
+
+fn bench_parse(c: &mut Criterion) {
+    c.bench_function("parse", |b| b.iter(|| parse_input("data")));
+}
+
+criterion_group!(benches, bench_parse);
+criterion_main!(benches);`
+	recs := runExtract(t, "benches/parse_bench.rs", "rust", src)
+	rec := findByTested(t, recs, "bench_parse", "parse_input")
+	if rec.Properties["confidence"] != "high" {
+		t.Errorf("confidence=%q, want high (c.bench_function closure calls parse_input)", rec.Properties["confidence"])
+	}
+	for _, bad := range []string{"black_box", "c.bench_function", "b.iter", "criterion_group", "criterion_main"} {
+		if hasEdgeAny(recs, "bench_parse", bad) {
+			t.Errorf("criterion harness helper %q leaked as a tested target", bad)
+		}
+	}
+}
+
+// proptest: a property fn inside proptest! { #[test] fn p(..) { target(..) } }
+// links to `target` and is counted exactly once (not double-detected by the
+// inner #[test] attribute).
+func TestRust_Proptest_PropertyTarget(t *testing.T) {
+	src := `use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn prop_roundtrip(s in ".*") {
+        let encoded = encode(&s);
+        prop_assert_eq!(decode(&encoded), s);
+    }
+}`
+	recs := runExtract(t, "src/codec.rs", "rust", src)
+	// Both encode() and decode() are exercised; assert the SPECIFIC encode edge.
+	if !hasEdgeAny(recs, "prop_roundtrip", "encode") {
+		t.Errorf("expected a TESTS edge prop_roundtrip -> encode")
+	}
+	if !hasEdgeAny(recs, "prop_roundtrip", "decode") {
+		t.Errorf("expected a TESTS edge prop_roundtrip -> decode")
+	}
+	// proptest assertion macro must not be a target.
+	if hasEdgeAny(recs, "prop_roundtrip", "prop_assert_eq") {
+		t.Errorf("prop_assert_eq leaked as a tested target")
+	}
+	// The property must be detected exactly once (no duplicate from the inner
+	// #[test] being re-scanned by the cargo-test pass).
+	count := 0
+	for _, r := range recs {
+		if r.Properties["test_function"] == "prop_roundtrip" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("prop_roundtrip detected %d times, want 1 (proptest block double-count)", count)
+	}
+}
+
+// mockall #[automock]: the generated mock is associated with the trait it mocks.
+func TestRust_Mockall_AutomockTraitSubject(t *testing.T) {
+	src := `use mockall::automock;
+
+#[automock]
+pub trait UserRepository {
+    fn find(&self, id: u64) -> Option<User>;
+}`
+	recs := runExtract(t, "src/repo.rs", "rust", src)
+	rec := findByTested(t, recs, "automock_UserRepository", "UserRepository")
+	if rec.Properties["confidence"] != "medium" {
+		t.Errorf("confidence=%q, want medium (automock -> UserRepository trait)", rec.Properties["confidence"])
+	}
+}
+
+// mockall mock! { ... }: the mock is associated with its mocked trait (Mock<Trait>
+// naming convention strips the Mock prefix).
+func TestRust_Mockall_MockBangSubject(t *testing.T) {
+	src := `use mockall::mock;
+
+mock! {
+    MockDatabase {}
+    impl Database for MockDatabase {
+        fn query(&self, q: &str) -> Vec<Row>;
+    }
+}`
+	recs := runExtract(t, "src/db.rs", "rust", src)
+	rec := findByTested(t, recs, "mock_MockDatabase", "Database")
+	if rec.Properties["confidence"] != "medium" {
+		t.Errorf("confidence=%q, want medium (mock! MockDatabase -> Database)", rec.Properties["confidence"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // PHP
 // ---------------------------------------------------------------------------

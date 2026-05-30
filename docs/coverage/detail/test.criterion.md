@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency graph | 🔴 `missing` | — | — | — | — |
-| Target extraction | 🔴 `missing` | — | — | — | — |
+| Dependency graph | ✅ `full` | `2026-05-30` | — | `internal/engine/tests_edges.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/resolver.go` | — |
+| Target extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/rules/rust/test_patterns.yaml`<br>`internal/extractors/cross/testmap/frameworks.go` | — |
 
 ## Provenance
 

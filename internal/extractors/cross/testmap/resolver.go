@@ -110,8 +110,24 @@ var stopwords = map[string]bool{
 	"assert_raises": true, "assert_enqueued_jobs": true, "assert_performed_jobs": true,
 	"assert_enqueued_with": true, "assert_emails": true, "refute_nil": true,
 	"refute_equal": true, "refute_includes": true,
-	// Rust
-	"assert_eq": true, "assert_ne": true, "assert_ne!": true, "assert_eq!": true,
+	// Rust — std assertion macros (directCallRE captures the ident WITHOUT the
+	// trailing `!`, so the bare forms are the ones actually looked up; the `!`
+	// variants are kept for defensiveness).
+	"assert_eq": true, "assert_ne": true,
+	"assert_eq!": true, "assert_ne!": true, "assert!": true,
+	"assert_matches": true, "assert_matches!": true,
+	"debug_assert": true, "debug_assert_eq": true, "debug_assert_ne": true,
+	"panic": true, "panic!": true, "unreachable": true, "unimplemented": true,
+	"todo": true, "dbg": true, "matches": true,
+	// proptest assertion macros.
+	"prop_assert": true, "prop_assert_eq": true, "prop_assert_ne": true,
+	"prop_assume": true,
+	// criterion benchmark harness helpers — test infrastructure, not prod calls.
+	"black_box": true, "c.bench_function": true, "c.bench_with_input": true,
+	"b.iter": true, "b.iter_batched": true, "criterion_group": true,
+	"criterion_main": true, "bencher.iter": true,
+	// mockall expectation builders — `.expect_*`, `.returning(`, `.times(` etc.
+	// (`.returning`/`.times` are handled by the suffix filter below.)
 	// C# — xUnit (non-duplicate entries only; assert.equal/true/false/empty/contains/notequal covered above)
 	"assert.null": true, "assert.notnull": true, "assert.same": true, "assert.notsame": true,
 	"assert.doesnotcontain": true, "assert.notempty": true,
@@ -209,6 +225,18 @@ func isStopword(id string) bool {
 	if strings.HasPrefix(low, "be_") || strings.HasPrefix(low, "have_") || strings.HasPrefix(low, "match_") {
 		return true
 	}
+	// Rust assertion macro families and mockall expectation builders. The
+	// tail identifier (post `.`) is what is checked here:
+	//   assert_*       — std/proptest assertion macros (assert_eq!, …)
+	//   prop_assert_*  — proptest assertion macros
+	//   expect_*       — mockall expectation setter `mock.expect_register()`
+	//                    (the real subject is the mocked trait, recorded by the
+	//                    detector — the expectation setter is not a prod call)
+	tail := tailIdent(low)
+	if strings.HasPrefix(tail, "assert_") || strings.HasPrefix(tail, "prop_assert") ||
+		strings.HasPrefix(tail, "debug_assert") || strings.HasPrefix(tail, "expect_") {
+		return true
+	}
 	// Rails integration/controller test HTTP dispatch methods: `get :index`,
 	// `post :create`, etc. — these are test-framework helpers, not production
 	// calls, even though `get`/`post` also appear in production route helpers.
@@ -268,6 +296,10 @@ func isStopword(id string) bool {
 		".tobe", ".toequal", ".tohavebeencalled", ".tohavebeencalledwith",
 		".tothrow", ".toreturn", ".should", ".expect", ".called", ".mockreturnvalue",
 		".not.tobe",
+		// Rust noise: .unwrap()/.expect()/.iter() on values, and mockall
+		// expectation builders (.expect_x(), .returning(), .times(), .with()).
+		".unwrap", ".unwrap_err", ".iter", ".returning", ".return_const",
+		".times", ".never", ".with", ".withf",
 	} {
 		if strings.HasSuffix(low, suf) {
 			return true
