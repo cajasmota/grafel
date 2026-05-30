@@ -1955,14 +1955,16 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "ace is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "ace is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "ace is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
         "Auth": {
@@ -1972,12 +1974,12 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; no HTTP request DTO framework or field declaration DSL provided"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; HTTP request validation is app-level, not framework-provided"
           }
         },
         "Middleware": {
@@ -1992,12 +1994,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -2153,14 +2157,16 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "boost is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "boost is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "boost is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
         "Auth": {
@@ -2170,12 +2176,12 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; no HTTP request DTO framework or field declaration DSL provided"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; HTTP request validation is app-level, not framework-provided"
           }
         },
         "Middleware": {
@@ -2190,12 +2196,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -2351,14 +2359,16 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "boost-asio is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "boost-asio is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "boost-asio is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
         "Auth": {
@@ -2368,12 +2378,12 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; no HTTP request DTO framework or field declaration DSL provided"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; HTTP request validation is app-level, not framework-provided"
           }
         },
         "Middleware": {
@@ -2388,12 +2398,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -2561,8 +2573,10 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/cpprestsdk_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Path strings extracted from http_listener init + support() calls; partial = regex heuristic"
           }
         },
         "Auth": {
@@ -2574,12 +2588,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -2596,12 +2614,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -2769,8 +2789,10 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/crow_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Path strings extracted from CROW_ROUTE/CROW_BP_ROUTE macros; partial = regex heuristic"
           }
         },
         "Auth": {
@@ -2782,12 +2804,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -2804,12 +2830,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -2977,8 +3005,10 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/drogon_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Path strings extracted from ADD_METHOD_TO/METHOD_ADD/registerHandler; partial = regex heuristic"
           }
         },
         "Auth": {
@@ -2990,12 +3020,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -3012,12 +3046,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -3173,14 +3209,16 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
         "Auth": {
@@ -3190,12 +3228,12 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; no HTTP request DTO framework or field declaration DSL provided"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; HTTP request validation is app-level, not framework-provided"
           }
         },
         "Middleware": {
@@ -3210,12 +3248,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -3371,14 +3411,16 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
         "Auth": {
@@ -3388,12 +3430,12 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; no HTTP request DTO framework or field declaration DSL provided"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; HTTP request validation is app-level, not framework-provided"
           }
         },
         "Middleware": {
@@ -3408,12 +3450,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -3569,14 +3613,16 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "libuv is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "libuv is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "libuv is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
         "Auth": {
@@ -3586,12 +3632,12 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; no HTTP request DTO framework or field declaration DSL provided"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Raw async I/O library; HTTP request validation is app-level, not framework-provided"
           }
         },
         "Middleware": {
@@ -3606,12 +3652,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -3767,14 +3815,20 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/oatpp_routes.go"],
+            "notes": "SCOPE.Operation entities emitted from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/oatpp_routes.go"],
+            "notes": "Handler names extracted from ENDPOINT macro third arg; partial = regex heuristic"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/oatpp_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Path strings from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex heuristic"
           }
         },
         "Auth": {
@@ -3786,12 +3840,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -3808,12 +3866,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -3981,8 +4041,10 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/pistache_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Path strings extracted from Routes::Get/Post/etc and router.get; partial = regex heuristic"
           }
         },
         "Auth": {
@@ -3994,12 +4056,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -4016,12 +4082,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -4177,14 +4245,20 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/poco_routes.go"],
+            "notes": "SCOPE.Operation entities from POCO handler registration; partial = regex"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/poco_routes.go"],
+            "notes": "Handler class names extracted from addHandler\u003cT\u003e and server.addHandler; partial = regex"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/poco_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Paths from addHandler\u003cT\u003e/router.add/server.addHandler; partial = regex heuristic"
           }
         },
         "Auth": {
@@ -4196,12 +4270,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -4218,12 +4296,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -4410,10 +4490,13 @@
             "cites": ["internal/extractors/cpp/extractor.go"]
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           }
         },
         "Lifecycle": {
@@ -4545,14 +4628,20 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/restbed_routes.go"],
+            "notes": "SCOPE.Operation entities from Restbed Resource registration; partial = regex"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/restbed_routes.go"],
+            "notes": "Handler names from set_method_handler third arg; partial = regex"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/restbed_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Paths from Resource set_path/set_method_handler; partial = regex + same-file var correlation"
           }
         },
         "Auth": {
@@ -4564,12 +4653,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -4586,12 +4679,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",
@@ -4747,14 +4842,20 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/restinio_routes.go"],
+            "notes": "SCOPE.Operation entities from RESTinio router method calls; partial = regex"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/restinio_routes.go"],
+            "notes": "Handler names extracted from RESTinio router calls; partial = regex"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/restinio_routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Paths from router-\u003ehttp_get/post/etc and add_handler; partial = regex heuristic"
           }
         },
         "Auth": {
@@ -4764,12 +4865,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference"
           }
         },
         "Middleware": {
@@ -4784,12 +4889,14 @@
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction)"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/type_alias.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution"
           },
           "type_extraction": {
             "status": "partial",

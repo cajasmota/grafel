@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🔴 `missing` | — | — | — | — |
-| Handler attribution | 🔴 `missing` | — | — | — | — |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | — `not_applicable` | — | — | — | libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |
+| Handler attribution | — `not_applicable` | — | — | — | libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |
+| Route extraction | — `not_applicable` | — | — | — | libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |
 
 ### Auth
 
@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | — `not_applicable` | — | — | — | Raw async I/O library; no HTTP request DTO framework or field declaration DSL provided |
+| Request validation | — `not_applicable` | — | — | — | Raw async I/O library; HTTP request validation is app-level, not framework-provided |
 
 ### Middleware
 
@@ -43,8 +43,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/cpp/extractor.go` | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Interface extraction | — `not_applicable` | — | — | — | C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction) |
+| Type alias extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/type_alias.go` | typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution |
 | Type extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/cpp/extractor.go` | — |
 
 ### Testing
