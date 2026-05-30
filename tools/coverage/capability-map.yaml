@@ -9854,6 +9854,78 @@ records:
             - file: internal/extractors/cross/testmap/extractor_test.go
           issues_implemented: ["3261"]
           verified_at: "2026-05-30"
+      Observability:
+        log_extraction:
+          # ILogger<T>/ILoggerFactory DI injection declaration; _logger.LogInformation/
+          # LogError/LogWarning/LogDebug/LogTrace/LogCritical call sites; LoggerMessage.Define
+          # high-perf compile-time logging; Serilog Log.Information/Log.Error/Log.Warning/
+          # Log.Debug/Log.Fatal; services.AddLogging() service registration.
+          # Partial: call-site heuristic only; no cross-file DI binding from ILogger<T>
+          # declaration to concrete handler — that requires dataflow analysis beyond regex.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/observability.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/observability_test.go
+              functions:
+                - TestObservabilityILoggerDecl
+                - TestObservabilityILoggerFactoryDecl
+                - TestObservabilityLoggerLogError
+                - TestObservabilityLoggerLogInformation
+                - TestObservabilityLoggerLogWarning
+                - TestObservabilityLoggerLogDebug
+                - TestObservabilityLoggerMessageDefine
+                - TestObservabilitySerilogInformation
+                - TestObservabilitySerilogError
+                - TestObservabilityAddLoggingRegistration
+          issues_implemented: ["3384"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # System.Diagnostics.Metrics: new Meter(...), CreateCounter/CreateHistogram/
+          # CreateObservableGauge/CreateObservableCounter/CreateUpDownCounter (generic and
+          # non-generic forms), Counter<T>/Histogram<T> type declarations, IMeterFactory
+          # injection. prometheus-net: Metrics.CreateCounter/CreateHistogram/CreateGauge.
+          # App.Metrics: Metrics.Measure.Counter/Histogram/Timer/Gauge call sites.
+          # Partial: metric name captured from literal strings; no cross-file instrument
+          # registration binding (requires dataflow).
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/observability.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/observability_test.go
+              functions:
+                - TestObservabilityMeterNew
+                - TestObservabilityCreateCounter
+                - TestObservabilityCreateHistogram
+                - TestObservabilityIMeterFactory
+                - TestObservabilityPrometheusNetCreateCounter
+                - TestObservabilityPrometheusNetCreateHistogram
+                - TestObservabilityAppMetricsMeasureCounter
+                - TestObservabilityAppMetricsMeasureHistogram
+          issues_implemented: ["3384"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # System.Diagnostics.ActivitySource: new ActivitySource("name"), StartActivity("op"),
+          # ActivitySource field declarations. Activity.Current usage. OpenTelemetry service
+          # registration: AddOpenTelemetry().WithTracing(...) and AddOpenTelemetryTracing()
+          # (legacy). Partial: no cross-file binding of ActivitySource declaration to specific
+          # handler or span propagation chain.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/observability.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/observability_test.go
+              functions:
+                - TestObservabilityActivitySourceNew
+                - TestObservabilityStartActivity
+                - TestObservabilityActivityCurrent
+                - TestObservabilityAddOpenTelemetryWithTracing
+                - TestObservabilityAddOpenTelemetryTracingLegacy
+          issues_implemented: ["3384"]
+          verified_at: "2026-05-30"
 
   lang.csharp.framework.aspnet-mvc:
     capabilities:
@@ -9964,6 +10036,64 @@ records:
           tests:
             - file: internal/extractors/cross/testmap/extractor_test.go
           issues_implemented: ["3261"]
+          verified_at: "2026-05-30"
+      Observability:
+        log_extraction:
+          # Shared custom_csharp_observability extractor: ILogger<T>/ILoggerFactory DI
+          # injection, _logger.LogInformation/LogError/LogWarning/LogDebug/LogTrace/
+          # LogCritical call sites, LoggerMessage.Define high-perf logging, Serilog
+          # Log.Information/Log.Error/Log.Warning/Log.Debug/Log.Fatal, AddLogging().
+          # Partial: call-site heuristic; no cross-file DI binding.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/observability.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/observability_test.go
+              functions:
+                - TestObservabilityILoggerDecl
+                - TestObservabilityLoggerLogError
+                - TestObservabilityLoggerLogInformation
+                - TestObservabilityLoggerMessageDefine
+                - TestObservabilitySerilogInformation
+                - TestObservabilityAddLoggingRegistration
+          issues_implemented: ["3384"]
+          verified_at: "2026-05-30"
+        metric_extraction:
+          # Shared custom_csharp_observability extractor: System.Diagnostics.Metrics
+          # Meter/CreateCounter/CreateHistogram, IMeterFactory, prometheus-net
+          # Metrics.CreateCounter/Histogram/Gauge, App.Metrics Metrics.Measure.*
+          # Partial: literal metric names only; no cross-file instrument binding.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/observability.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/observability_test.go
+              functions:
+                - TestObservabilityMeterNew
+                - TestObservabilityCreateCounter
+                - TestObservabilityCreateHistogram
+                - TestObservabilityIMeterFactory
+                - TestObservabilityPrometheusNetCreateCounter
+                - TestObservabilityAppMetricsMeasureCounter
+          issues_implemented: ["3384"]
+          verified_at: "2026-05-30"
+        trace_extraction:
+          # Shared custom_csharp_observability extractor: ActivitySource / StartActivity /
+          # Activity.Current, AddOpenTelemetry().WithTracing / AddOpenTelemetryTracing.
+          # Partial: no cross-file span propagation binding.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/observability.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/observability_test.go
+              functions:
+                - TestObservabilityActivitySourceNew
+                - TestObservabilityStartActivity
+                - TestObservabilityAddOpenTelemetryWithTracing
+          issues_implemented: ["3384"]
           verified_at: "2026-05-30"
 
   lang.csharp.framework.blazor:
