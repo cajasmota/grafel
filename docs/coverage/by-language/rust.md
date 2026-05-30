@@ -26,16 +26,16 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | 🔴 0/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🔴 0/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 2/3 | 🟢 1/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | 🔴 0/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🔴 0/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
 
 
 ### Desktop
@@ -63,9 +63,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 2/8 | |
+| [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 5/8 | |
 | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🔴 0/8 | |
-| [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 2/8 | |
+| [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 6/8 | |
 | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/6 | |
 | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/6 | |
 | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟡 1/6 | |

@@ -142,9 +142,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [ruby](../by-language/ruby.md) | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🟡 1/4 | |
 | [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🟡 1/4 | |
 | [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🟡 1/4 | |
-| [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 2/8 | |
+| [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 5/8 | |
 | [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🔴 0/8 | |
-| [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 2/8 | |
+| [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 6/8 | |
 | [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/6 | |
 | [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/6 | |
 | [rust](../by-language/rust.md) | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟡 1/6 | |

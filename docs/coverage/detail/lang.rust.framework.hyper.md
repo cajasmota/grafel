@@ -44,7 +44,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/rust/rust.go` | — |
 | Interface extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/rust/rust.go` | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/extractors/rust/rust.go` | — |
 | Type extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/rust/rust.go` | — |
 
 ### Testing

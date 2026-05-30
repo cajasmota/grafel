@@ -681,3 +681,80 @@ fn method1() -> u32 { 1 }
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// type_alias_extraction — issue #3269
+// ---------------------------------------------------------------------------
+
+func TestRustExtractor_TypeAlias(t *testing.T) {
+	src := `
+type MyResult<T> = Result<T, MyError>;
+type UserId = u64;
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+`
+	tree := parseForTest(t, src)
+	ext, ok := extractor.Get("rust")
+	if !ok {
+		t.Fatal("rust extractor not registered")
+	}
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "types.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var aliases []string
+	for _, e := range got {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "type_alias" {
+			aliases = append(aliases, e.Name)
+		}
+	}
+
+	wantAliases := []string{"MyResult", "UserId", "BoxFuture"}
+	for _, want := range wantAliases {
+		found := false
+		for _, got := range aliases {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected type_alias entity %q; got: %v", want, aliases)
+		}
+	}
+}
+
+func TestRustExtractor_TypeAlias_Properties(t *testing.T) {
+	src := `type UserId = u64;`
+	tree := parseForTest(t, src)
+	ext, ok := extractor.Get("rust")
+	if !ok {
+		t.Fatal("rust extractor not registered")
+	}
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "types.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, e := range got {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "type_alias" && e.Name == "UserId" {
+			if e.Properties["aliased_type"] != "u64" {
+				t.Errorf("expected aliased_type=u64, got %q", e.Properties["aliased_type"])
+			}
+			return
+		}
+	}
+	t.Error("did not find UserId type_alias entity")
+}

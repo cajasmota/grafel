@@ -43161,8 +43161,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -43368,8 +43370,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -43575,8 +43579,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -43782,8 +43788,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -43989,8 +43997,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -44196,8 +44206,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -44399,8 +44411,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -44678,8 +44692,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -44881,8 +44897,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -45088,8 +45106,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
             "status": "partial",
@@ -45250,14 +45270,18 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/testdata/diesel_schema.rs"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/testdata/diesel_models.rs"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -45268,8 +45292,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/testdata/diesel_models.rs","internal/custom/rust/testdata/diesel_schema.rs"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -45394,14 +45420,18 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_entity.rs"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_entity.rs"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
             "status": "missing",
@@ -45412,8 +45442,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_entity.rs"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -45425,7 +45457,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_migration.rs"],
+            "verified_at": "2026-05-30"
           }
         }
       }

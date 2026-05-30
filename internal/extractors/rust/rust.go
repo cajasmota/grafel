@@ -74,6 +74,14 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 			*out = append(*out, rec)
 		}
 
+	case "type_item":
+		// Issue #3269 — type X = Y; alias declarations.
+		// tree-sitter Rust grammar: type_item has a "name" field (type_identifier)
+		// and a "type" field holding the aliased type expression.
+		if rec, ok := buildTypeAlias(node, file); ok {
+			*out = append(*out, rec)
+		}
+
 	case "trait_item":
 		rec, ok := buildComponent(node, file, "trait")
 		if !ok {
@@ -474,6 +482,35 @@ func buildOperation(node *sitter.Node, file extractor.FileInput) (types.EntityRe
 		Signature:          sig,
 		EnrichmentRequired: false,
 	}, true
+}
+
+// buildTypeAlias creates a Component entity for type alias declarations
+// (`type X = Y;`). The aliased type is captured in the "aliased_type" property.
+//
+// Issue #3269 — type_alias_extraction capability.
+func buildTypeAlias(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	name := childFieldText(node, "name", file.Content)
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+	aliasedType := childFieldText(node, "type", file.Content)
+
+	rec := types.EntityRecord{
+		Name:               name,
+		Kind:               "SCOPE.Component",
+		Subtype:            "type_alias",
+		SourceFile:         file.Path,
+		Language:           "rust",
+		StartLine:          int(node.StartPoint().Row) + 1,
+		EndLine:            int(node.EndPoint().Row) + 1,
+		Signature:          buildTypeSignature(node, file.Content, name),
+		EnrichmentRequired: false,
+	}
+	if aliasedType != "" {
+		rec.Properties = map[string]string{"aliased_type": aliasedType}
+	}
+	rec.ID = rec.ComputeID()
+	return rec, true
 }
 
 // buildImport creates a Component entity for use declarations.

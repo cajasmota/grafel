@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/orms/seaorm.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/seaorm.go`<br>`internal/custom/rust/testdata/seaorm_entity.rs` | — |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/seaorm.go`<br>`internal/custom/rust/testdata/seaorm_entity.rs` | — |
 | Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Relationship extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/seaorm.go`<br>`internal/custom/rust/testdata/seaorm_entity.rs` | — |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/seaorm.go`<br>`internal/custom/rust/testdata/seaorm_migration.rs` | — |
 
 ## Provenance
 
