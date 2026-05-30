@@ -34,13 +34,13 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | ✅ `full` | `2026-05-28` | — | `internal/graph/graph.go`<br>`internal/mcp/tools.go`<br>`internal/types/confidence.go` | — |
-| Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Constant propagation | ✅ `full` | — | — | `internal/substrate/kotlin.go` | — |
 | DB effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_kotlin.go` | — |
 | Dead code detection | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_kotlin.go` | — |
-| Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Env fallback recognition | ✅ `full` | — | — | `internal/substrate/kotlin.go` | — |
 | Fs effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_kotlin.go` | — |
 | HTTP effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_kotlin.go` | — |
-| Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Import resolution quality | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/kotlin/imports.go` | — |
 | Mutation effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_kotlin.go` | — |
 | Reachability analysis | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_kotlin.go` | — |
 
