@@ -52,15 +52,23 @@ var (
 	reCppDriverExec = regexp.MustCompile(
 		`(?m)\.(?:exec|exec_params|exec0|exec1|execute|query|prepare)\s*\(\s*(?:R"[^(]*\(|[rRuU]*")(.*?)(?:"|\)")`)
 
+	// Free-function exec-style calls: mysql_query(conn, "SQL") / mysql_real_query(...).
+	// MySQL's C API uses free functions rather than methods, so the method regex
+	// above misses them. Captures: (1) SQL string literal (first string arg).
+	reCppDriverFreeExec = regexp.MustCompile(
+		`(?m)\b(?:mysql_query|mysql_real_query)\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*,\s*(?:R"[^(]*\(|[rRuU]*")(.*?)(?:"|\)")`)
+
 	// CREATE TABLE detection inside a SQL string.
 	// Captures: (1) table name
 	reCppCreateTable = regexp.MustCompile(
 		`(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[` + "`" + `"']?([A-Za-z_][A-Za-z0-9_]*)[` + "`" + `"']?\s*\(`)
 
-	// Column definition line inside CREATE TABLE body.
+	// Column definition at the start of a top-level CREATE TABLE body segment.
+	// The body is split on top-level commas (see splitTopLevelCommas) so a single
+	// inline DDL string yields one segment per column/constraint.
 	// Captures: (1) column name, (2) type
 	reCppSQLColumn = regexp.MustCompile(
-		`(?im)^\s*[` + "`" + `"']?([A-Za-z_][A-Za-z0-9_]*)[` + "`" + `"']?\s+([A-Za-z][A-Za-z0-9_]*)`)
+		`^\s*[` + "`" + `"']?([A-Za-z_][A-Za-z0-9_]*)[` + "`" + `"']?\s+([A-Za-z][A-Za-z0-9_]*)`)
 
 	// SQL constraint lead keywords to skip.
 	cppSQLConstraintLead = map[string]bool{
@@ -76,7 +84,28 @@ var (
 	// Captures: (1) collection name
 	reMongocxxCollection = regexp.MustCompile(
 		`(?m)(?:db\s*\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\]|\.collection\s*\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\))`)
+
+	// mongocxx CRUD/aggregate operations on a collection handle:
+	//   coll.insert_one(...) / coll.find(...) / coll.update_one(...) /
+	//   coll.delete_many(...) / coll.aggregate(...) etc.
+	// Captures: (1) operation method name → mapped to a canonical Mongo verb.
+	reMongocxxOp = regexp.MustCompile(
+		`(?m)\.(insert_one|insert_many|find|find_one|find_one_and_update|find_one_and_delete|` +
+			`update_one|update_many|replace_one|delete_one|delete_many|count_documents|` +
+			`aggregate|bulk_write|distinct)\s*\(`)
 )
+
+// mongoVerbFromMethod maps a mongocxx collection method to a canonical verb
+// used as the redis-style query verb on the emitted SCOPE.Operation entity.
+var mongoVerbFromMethod = map[string]string{
+	"insert_one": "INSERT", "insert_many": "INSERT",
+	"find": "FIND", "find_one": "FIND",
+	"find_one_and_update": "UPDATE", "find_one_and_delete": "DELETE",
+	"update_one": "UPDATE", "update_many": "UPDATE", "replace_one": "UPDATE",
+	"delete_one": "DELETE", "delete_many": "DELETE",
+	"count_documents": "COUNT", "aggregate": "AGGREGATE",
+	"bulk_write": "BULK_WRITE", "distinct": "DISTINCT",
+}
 
 func (e *cppDriverSchemaExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/cpp")
@@ -129,16 +158,29 @@ func (e *cppDriverSchemaExtractor) Extract(ctx context.Context, file extractor.F
 			)
 			out = append(out, ent)
 		}
+
+		// --- mongocxx: CRUD/aggregate operation → query entity ---
+		for _, m := range reMongocxxOp.FindAllStringSubmatchIndex(src, -1) {
+			method := src[m[2]:m[3]]
+			verb := mongoVerbFromMethod[method]
+			if verb == "" {
+				verb = strings.ToUpper(method)
+			}
+			lineNum := lineOf(src, m[0])
+			queryName := "mongo:" + verb + "@L" + strconv.Itoa(lineNum)
+			ent := makeEntity(queryName, "SCOPE.Operation", "query", file.Path, "cpp", lineNum)
+			setProps(&ent,
+				"framework", "mongocxx",
+				"provenance", "INFERRED_FROM_MONGOCXX_OP",
+				"mongo_verb", verb,
+				"method_name", method,
+			)
+			out = append(out, ent)
+		}
 	}
 
-	// --- SQL-based drivers: exec("SQL") → schema + query extraction ---
-	for _, m := range reCppDriverExec.FindAllStringSubmatchIndex(src, -1) {
-		if m[2] < 0 {
-			continue
-		}
-		sqlText := src[m[2]:m[3]]
-		lineNum := lineOf(src, m[0])
-
+	// --- SQL-based drivers: exec("SQL") / mysql_query(conn,"SQL") → schema + query ---
+	processSQL := func(sqlText string, lineNum int) {
 		// Query attribution
 		if verbM := reCppSQLVerb.FindStringSubmatch(sqlText); verbM != nil {
 			verb := strings.ToUpper(verbM[1])
@@ -156,7 +198,7 @@ func (e *cppDriverSchemaExtractor) Extract(ctx context.Context, file extractor.F
 		// Schema extraction from CREATE TABLE
 		ctm := reCppCreateTable.FindStringSubmatchIndex(sqlText)
 		if ctm == nil {
-			continue
+			return
 		}
 		tableName := sqlText[ctm[2]:ctm[3]]
 		tableEnt := makeEntity(tableName, "SCOPE.Schema", "", file.Path, "cpp", lineNum)
@@ -168,18 +210,20 @@ func (e *cppDriverSchemaExtractor) Extract(ctx context.Context, file extractor.F
 		)
 		out = append(out, tableEnt)
 
-		// Extract column definitions from the CREATE TABLE body.
+		// Extract column definitions from the CREATE TABLE body. ctm[1] points at
+		// the opening '(' match end; walk to the matching ')' (paren-balanced) so
+		// inline types like VARCHAR(255)/DECIMAL(10,2) don't truncate the body.
 		bodyStart := ctm[1]
 		if bodyStart >= len(sqlText) {
-			continue
+			return
 		}
-		body := sqlText[bodyStart:]
-		// Trim up to the first closing paren.
-		if closeIdx := strings.IndexByte(body, ')'); closeIdx >= 0 {
-			body = body[:closeIdx]
-		}
+		body := balancedParenBody(sqlText[bodyStart-1:])
 
-		for _, cm := range reCppSQLColumn.FindAllStringSubmatch(body, -1) {
+		for _, segment := range splitTopLevelCommas(body) {
+			cm := reCppSQLColumn.FindStringSubmatch(segment)
+			if cm == nil {
+				continue
+			}
 			colName := cm[1]
 			colType := strings.ToUpper(cm[2])
 			if cppSQLConstraintLead[colType] {
@@ -198,6 +242,68 @@ func (e *cppDriverSchemaExtractor) Extract(ctx context.Context, file extractor.F
 		}
 	}
 
+	for _, m := range reCppDriverExec.FindAllStringSubmatchIndex(src, -1) {
+		if m[2] < 0 {
+			continue
+		}
+		processSQL(src[m[2]:m[3]], lineOf(src, m[0]))
+	}
+	for _, m := range reCppDriverFreeExec.FindAllStringSubmatchIndex(src, -1) {
+		if m[2] < 0 {
+			continue
+		}
+		processSQL(src[m[2]:m[3]], lineOf(src, m[0]))
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
+}
+
+// balancedParenBody takes a string beginning at an opening '(' and returns the
+// inner text up to (but excluding) the matching ')', respecting nesting. If the
+// string does not start with '(' or no balance is found, it returns the input
+// minus the leading paren. Used to isolate a CREATE TABLE column list that may
+// contain parenthesised types such as VARCHAR(255) or DECIMAL(10,2).
+func balancedParenBody(s string) string {
+	if len(s) == 0 || s[0] != '(' {
+		return s
+	}
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return s[1:i]
+			}
+		}
+	}
+	return s[1:]
+}
+
+// splitTopLevelCommas splits a CREATE TABLE column list on commas that are not
+// nested inside parentheses, so DECIMAL(10,2) stays a single segment.
+func splitTopLevelCommas(s string) []string {
+	var segments []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				segments = append(segments, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	segments = append(segments, s[start:])
+	return segments
 }

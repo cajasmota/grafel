@@ -1740,16 +1740,15 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "notes": "Regex: CREATE TABLE in exec() string literals → table entity",
+            "notes": "Regex: CREATE TABLE in exec()/exec_params() string literals → table entity with table_name",
             "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: column definitions from embedded CREATE TABLE SQL",
+            "notes": "Regex: paren-balanced CREATE TABLE body split on top-level commas → columns with column_name/column_type/parent_table",
             "verified_at": "2026-05-30"
           }
         },
@@ -1773,9 +1772,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "notes": "Regex: SQL verb from exec()/exec_params() string literals",
+            "notes": "Regex: SQL verb classified from exec()/exec_params() string literals",
             "verified_at": "2026-05-30"
           }
         },
@@ -1796,16 +1795,16 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "notes": "Regex: db[\"collection\"] / db.collection() access → SCOPE.Schema entity",
+            "notes": "Regex: db[\"coll\"]/db.collection(\"coll\") → SCOPE.Schema with collection_name",
             "verified_at": "2026-05-30"
           },
           "schema_extraction": {
             "status": "partial",
             "cites": ["internal/custom/cpp/driver_schema.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: collection access as schema proxy; no field-level schema in document driver",
+            "notes": "Collection access recorded as schema proxy; document store has no static field-level schema to extract",
             "verified_at": "2026-05-30"
           }
         },
@@ -1829,9 +1828,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "notes": "Regex: SQL verb in exec() calls (where applicable)",
+            "notes": "Regex: collection CRUD/aggregate ops (insert_one/find/update_one/delete_many/aggregate/...) → query with mongo_verb",
             "verified_at": "2026-05-30"
           }
         },
@@ -1852,16 +1851,15 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "notes": "Regex: CREATE TABLE in exec() string literals → table entity",
+            "notes": "Regex: CREATE TABLE in exec()/mysql_query() string literals → table entity with table_name",
             "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: column definitions from embedded CREATE TABLE SQL",
+            "notes": "Regex: paren-balanced CREATE TABLE body → columns with column_name/column_type/parent_table",
             "verified_at": "2026-05-30"
           }
         },
@@ -1885,9 +1883,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/driver_schema.go"],
-            "notes": "Regex: SQL verb from exec()/exec_params() string literals",
+            "notes": "Regex: SQL verb from exec()/exec_params() + mysql_query()/mysql_real_query() free-function literals",
             "verified_at": "2026-05-30"
           }
         },
@@ -1936,9 +1934,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/redis_query.go"],
-            "notes": "redis-plus-plus (sw::redis) GET/SET/HSET/HGET/DEL/etc method calls, redis.command(CMD,...), pipeline.set/get/etc attributed to call sites; regex/partial, key literals captured when string literal"
+            "notes": "Regex: redis-plus-plus GET/SET/HSET/etc method calls, redis.command(CMD,...), pipeline/tx ops → query with redis_command + key_literal",
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
@@ -5225,54 +5224,49 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "notes": "Regex: #pragma db object → class/struct name",
+            "notes": "Regex: #pragma db object + table(\"…\") → model with resolved table_name",
             "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: #pragma db member(field) → column entity",
+            "notes": "Regex: #pragma db member → column with resolved column(\"…\")/type(\"…\")/id PK props",
             "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: one_to_one/many_to_many in #pragma db member annotations",
+            "notes": "Regex: one_to_one/one_to_many/many_to_many in #pragma db member → relationship_kind + field",
             "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: inverse() in pragma member annotations",
+            "notes": "Regex: inverse(target) in #pragma db member → target_type on relationship",
             "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: odb::lazy_ptr\u003cT\u003e / lazy_shared_ptr\u003cT\u003e",
+            "notes": "Regex: odb::lazy_ptr\u003cT\u003e/lazy_shared_ptr\u003cT\u003e → relationship with resolved target_type",
             "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: relationship kind from #pragma db member annotations",
+            "notes": "Regex: relationship kind + field from #pragma db member annotations",
             "verified_at": "2026-05-30"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "notes": "Regex: odb::query\u003cT\u003e / odb::result\u003cT\u003e",
+            "notes": "Regex: odb::query\u003cT\u003e/odb::result\u003cT\u003e → query with model_type",
             "verified_at": "2026-05-30"
           }
         },
@@ -5294,16 +5288,16 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "notes": "Regex: type_conversion\u003cT\u003e specialization → model entity",
+            "notes": "Regex: type_conversion\u003cT\u003e specialization → model with class_name",
             "verified_at": "2026-05-30"
           },
           "schema_extraction": {
             "status": "partial",
             "cites": ["internal/custom/cpp/orm.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: into(var)/use(var) column bindings",
+            "notes": "Regex: into(var)/use(var) captured as binding vars + direction; cannot resolve bind var → real DB column without dataflow (cross-file gap)",
             "verified_at": "2026-05-30"
           }
         },
@@ -5331,9 +5325,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "notes": "Regex: sql \u003c\u003c \"SQL\" string literal → verb + query entity",
+            "notes": "Regex: sql \u003c\u003c \"SQL\" → query with classified sql_verb + sql_text",
             "verified_at": "2026-05-30"
           }
         },
@@ -5355,16 +5349,15 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "notes": "Regex: struct T : sqlpp::table\u003cT,...\u003e declarations",
+            "notes": "Regex: struct T : sqlpp::table\u003cT,...\u003e → model with class_name",
             "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex: column structs (trailing _) inside sqlpp::table body + SQLPP_ALIAS_PROVIDER",
+            "notes": "Regex: column structs (trailing _) inside table body → Table.col with parent_table + col_struct; SQLPP_ALIAS_PROVIDER → alias",
             "verified_at": "2026-05-30"
           }
         },
@@ -5392,9 +5385,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/orm.go"],
-            "notes": "Regex: db(select/insert_into/update/remove_from) calls",
+            "notes": "Regex: db(select/insert_into/update/remove_from) → query with classified sql_verb",
             "verified_at": "2026-05-30"
           }
         },

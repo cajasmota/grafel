@@ -85,10 +85,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟢 3/3 | |
-| [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟢 7/7 | |
+| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | ✅ 3/3 | |
+| [ODB](../detail/lang.c-cpp.orm.odb.md) | ✅ 7/7 | |
 | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟢 3/3 | |
-| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟢 3/3 | |
+| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | ✅ 3/3 | |
 | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟢 3/3 | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟢 1/1 | |
-| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟢 3/3 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | ✅ 1/1 | |
+| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | ✅ 3/3 | |

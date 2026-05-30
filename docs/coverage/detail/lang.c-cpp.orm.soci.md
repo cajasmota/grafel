@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: type_conversion<T> specialization → model entity |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: into(var)/use(var) column bindings |
+| Model extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: type_conversion<T> specialization → model with class_name |
+| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: into(var)/use(var) captured as binding vars + direction; cannot resolve bind var → real DB column without dataflow (cross-file gap) |
 
 ### Relationships
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: sql << "SQL" string literal → verb + query entity |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: sql << "SQL" → query with classified sql_verb + sql_text |
 
 ### Migrations
 

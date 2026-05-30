@@ -56,6 +56,17 @@ func findEndpoint(ents []entitySummary, name string) *entitySummary {
 	return nil
 }
 
+// ormFindEntity returns the first entity matching kind/subtype/name, or nil.
+// Namespaced helper for the deep ORM/driver value-asserting tests (#3493).
+func ormFindEntity(ents []entitySummary, kind, subtype, name string) *entitySummary {
+	for i := range ents {
+		if ents[i].Kind == kind && ents[i].Subtype == subtype && ents[i].Name == name {
+			return &ents[i]
+		}
+	}
+	return nil
+}
+
 // assertEndpoint asserts that an endpoint with name "verb path" exists and that
 // its route_path, http_method, and handler_name properties match exactly. This
 // is the TS/JS bar for proving (verb, path, handler) attribution — not len>0.
@@ -76,6 +87,19 @@ func assertEndpoint(t *testing.T, ents []entitySummary, verb, path, handler stri
 		if got := ep.Props["handler_name"]; got != handler {
 			t.Errorf("endpoint %q: handler_name = %q, want %q", name, got, handler)
 		}
+	}
+}
+
+// ormProp asserts that the entity identified by kind/subtype/name carries
+// property key=want; it fails the test otherwise.
+func ormProp(t *testing.T, ents []entitySummary, kind, subtype, name, key, want string) {
+	t.Helper()
+	e := ormFindEntity(ents, kind, subtype, name)
+	if e == nil {
+		t.Fatalf("no %s/%s entity named %q (got %+v)", kind, subtype, name, ents)
+	}
+	if got := e.Props[key]; got != want {
+		t.Errorf("entity %q prop %q = %q, want %q", name, key, got, want)
 	}
 }
 

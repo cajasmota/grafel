@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | — | — | `internal/custom/cpp/redis_query.go` | redis-plus-plus (sw::redis) GET/SET/HSET/HGET/DEL/etc method calls, redis.command(CMD,...), pipeline.set/get/etc attributed to call sites; regex/partial, key literals captured when string literal |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/redis_query.go` | Regex: redis-plus-plus GET/SET/HSET/etc method calls, redis.command(CMD,...), pipeline/tx ops → query with redis_command + key_literal |
 
 ### Migrations
 

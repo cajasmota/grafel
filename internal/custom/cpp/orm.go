@@ -89,6 +89,18 @@ var (
 
 	// inverse(<type>::<field>) — back-reference in a relationship
 	reODBInverse = regexp.MustCompile(`\binverse\s*\(\s*([A-Za-z_][A-Za-z0-9_:]*)\s*\)`)
+
+	// table("name") on a #pragma db object — explicit table mapping.
+	reODBTable = regexp.MustCompile(`\btable\s*\(\s*"([^"]+)"\s*\)`)
+
+	// column("name") in a #pragma db member annotation — explicit column name.
+	reODBColumn = regexp.MustCompile(`\bcolumn\s*\(\s*"([^"]+)"\s*\)`)
+
+	// type("SQL TYPE") in a #pragma db member annotation — DB column type.
+	reODBType = regexp.MustCompile(`\btype\s*\(\s*"([^"]+)"\s*\)`)
+
+	// id keyword as a standalone annotation token (PK marker on the member line).
+	reODBIDToken = regexp.MustCompile(`(^|\s)id(\s|$)`)
 )
 
 func (e *odbExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -116,6 +128,15 @@ func (e *odbExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 
 	// --- Model extraction: #pragma db object → class/struct immediately after ---
 	for _, pragmaIdx := range reODBObject.FindAllStringIndex(src, -1) {
+		// The pragma line may carry a table("name") mapping; capture the rest of
+		// the pragma line before scanning for the class.
+		pragmaLineEnd := strings.IndexByte(src[pragmaIdx[1]:], '\n')
+		tableName := ""
+		if pragmaLineEnd >= 0 {
+			if tm := reODBTable.FindStringSubmatch(src[pragmaIdx[1] : pragmaIdx[1]+pragmaLineEnd]); tm != nil {
+				tableName = tm[1]
+			}
+		}
 		// Search for first class/struct after the pragma
 		afterPragma := src[pragmaIdx[1]:]
 		cm := reODBClassName.FindStringSubmatchIndex(afterPragma)
@@ -131,6 +152,11 @@ func (e *odbExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 			"pattern_type", "model",
 			"class_name", className,
 		)
+		// Explicit table mapping defaults to the class name when omitted.
+		if tableName == "" {
+			tableName = className
+		}
+		setProps(&ent, "table_name", tableName)
 		out = append(out, ent)
 	}
 
@@ -156,6 +182,20 @@ func (e *odbExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 			"field_name", field,
 			"annotations", annotations,
 		)
+		// Parse the explicit column("…") / type("…") / id annotations so the
+		// resolved DB column name + type are first-class properties, not just
+		// raw annotation text.
+		dbColumn := field // default: ODB maps member → column of the same name
+		if cm := reODBColumn.FindStringSubmatch(annotations); cm != nil {
+			dbColumn = cm[1]
+		}
+		setProps(&ent, "column_name", dbColumn)
+		if tm := reODBType.FindStringSubmatch(annotations); tm != nil {
+			setProps(&ent, "column_type", tm[1])
+		}
+		if reODBIDToken.MatchString(annotations) {
+			setProps(&ent, "is_primary_key", "true")
+		}
 		out = append(out, ent)
 
 		// --- Relationship extraction from member annotations ---

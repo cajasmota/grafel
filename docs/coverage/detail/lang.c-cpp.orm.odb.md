@@ -15,23 +15,23 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: #pragma db object → class/struct name |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: #pragma db member(field) → column entity |
+| Model extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: #pragma db object + table("…") → model with resolved table_name |
+| Schema extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: #pragma db member → column with resolved column("…")/type("…")/id PK props |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: one_to_one/many_to_many in #pragma db member annotations |
-| Foreign key extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: inverse() in pragma member annotations |
-| Lazy loading recognition | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: odb::lazy_ptr<T> / lazy_shared_ptr<T> |
-| Relationship extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: relationship kind from #pragma db member annotations |
+| Association extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: one_to_one/one_to_many/many_to_many in #pragma db member → relationship_kind + field |
+| Foreign key extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: inverse(target) in #pragma db member → target_type on relationship |
+| Lazy loading recognition | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: odb::lazy_ptr<T>/lazy_shared_ptr<T> → relationship with resolved target_type |
+| Relationship extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: relationship kind + field from #pragma db member annotations |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: odb::query<T> / odb::result<T> |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: odb::query<T>/odb::result<T> → query with model_type |
 
 ### Migrations
 

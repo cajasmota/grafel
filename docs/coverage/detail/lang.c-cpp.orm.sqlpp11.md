@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: struct T : sqlpp::table<T,...> declarations |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/orm.go` | Regex: column structs (trailing _) inside sqlpp::table body + SQLPP_ALIAS_PROVIDER |
+| Model extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: struct T : sqlpp::table<T,...> → model with class_name |
+| Schema extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: column structs (trailing _) inside table body → Table.col with parent_table + col_struct; SQLPP_ALIAS_PROVIDER → alias |
 
 ### Relationships
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: db(select/insert_into/update/remove_from) calls |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/orm.go` | Regex: db(select/insert_into/update/remove_from) → query with classified sql_verb |
 
 ### Migrations
 

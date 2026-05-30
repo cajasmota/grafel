@@ -18,19 +18,14 @@ void setup(pqxx::connection& conn) {
 `
 	ents := extract(t, "custom_cpp_driver_schema", fi("setup.cpp", "cpp", src))
 	if !containsEntity(ents, "SCOPE.Schema", "users") {
-		t.Error("expected SCOPE.Schema entity for users table")
+		t.Fatal("expected SCOPE.Schema entity for users table")
 	}
-	// Should also have column entities
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Schema" && e.Subtype == "column" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("expected SCOPE.Schema column entity from CREATE TABLE")
-	}
+	ormProp(t, ents, "SCOPE.Schema", "", "users", "table_name", "users")
+	// Value assertions: specific columns + parsed SQL types.
+	ormProp(t, ents, "SCOPE.Schema", "column", "users.id", "column_type", "SERIAL")
+	ormProp(t, ents, "SCOPE.Schema", "column", "users.id", "parent_table", "users")
+	ormProp(t, ents, "SCOPE.Schema", "column", "users.name", "column_type", "VARCHAR")
+	ormProp(t, ents, "SCOPE.Schema", "column", "users.age", "column_type", "INT")
 }
 
 func TestCppDriverLibpqxx_QueryAttribution(t *testing.T) {
@@ -44,14 +39,18 @@ void query(pqxx::connection& conn, int id) {
 }
 `
 	ents := extract(t, "custom_cpp_driver_schema", fi("query.cpp", "cpp", src))
-	queryCount := 0
+	// Value assertions: SQL verbs classified specifically from exec() literals.
+	var verbs []string
 	for _, e := range ents {
 		if e.Kind == "SCOPE.Operation" && e.Subtype == "query" {
-			queryCount++
+			verbs = append(verbs, e.Props["sql_verb"])
 		}
 	}
-	if queryCount < 2 {
-		t.Errorf("expected at least 2 query entities, got %d", queryCount)
+	if !containsStr(verbs, "SELECT") {
+		t.Errorf("expected SELECT verb, got %v", verbs)
+	}
+	if !containsStr(verbs, "INSERT") {
+		t.Errorf("expected INSERT verb, got %v", verbs)
 	}
 }
 
@@ -67,10 +66,36 @@ void save(mongocxx::client& client) {
 `
 	ents := extract(t, "custom_cpp_driver_schema", fi("mongo.cpp", "cpp", src))
 	if !containsEntity(ents, "SCOPE.Schema", "users") {
-		t.Error("expected SCOPE.Schema entity for users collection")
+		t.Fatal("expected SCOPE.Schema entity for users collection")
 	}
-	if !containsEntity(ents, "SCOPE.Schema", "audit_logs") {
-		t.Error("expected SCOPE.Schema entity for audit_logs collection")
+	ormProp(t, ents, "SCOPE.Schema", "", "users", "collection_name", "users")
+	ormProp(t, ents, "SCOPE.Schema", "", "audit_logs", "collection_name", "audit_logs")
+}
+
+func TestCppDriverMongocxx_QueryAttribution(t *testing.T) {
+	src := `#include <mongocxx/client.hpp>
+
+void ops(mongocxx::client& client) {
+	auto db = client["mydb"];
+	auto users = db["users"];
+	users.insert_one(make_document(kvp("name", "Alice")));
+	auto cursor = users.find(make_document());
+	users.update_one(filter, update);
+	users.delete_many(filter);
+	auto pipe = users.aggregate(pipeline);
+}
+`
+	ents := extract(t, "custom_cpp_driver_schema", fi("ops.cpp", "cpp", src))
+	var verbs []string
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Operation" && e.Subtype == "query" {
+			verbs = append(verbs, e.Props["mongo_verb"])
+		}
+	}
+	for _, want := range []string{"INSERT", "FIND", "UPDATE", "DELETE", "AGGREGATE"} {
+		if !containsStr(verbs, want) {
+			t.Errorf("expected mongo verb %s, got %v", want, verbs)
+		}
 	}
 }
 
@@ -86,11 +111,26 @@ void doQuery(MYSQL* conn) {
 	mysql_query(conn, "SELECT * FROM orders WHERE id = 1");
 }
 `
-	// mysql_query doesn't match our .exec pattern, but we still test gate behavior
-	// (no match expected since mysql_query is a function not a method call)
+	// mysql_query is a free function (not a .exec method); the free-function
+	// regex picks up its SQL string literal.
 	ents := extract(t, "custom_cpp_driver_schema", fi("mysql.cpp", "cpp", src))
-	// No match expected (mysql_query is not .exec-style), just verify no panic
-	_ = ents
+	// CREATE TABLE → orders table + columns.
+	ormProp(t, ents, "SCOPE.Schema", "", "orders", "table_name", "orders")
+	ormProp(t, ents, "SCOPE.Schema", "column", "orders.id", "column_type", "INT")
+	ormProp(t, ents, "SCOPE.Schema", "column", "orders.total", "column_type", "DECIMAL")
+	// SELECT verb attributed from the second mysql_query.
+	var verbs []string
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Operation" && e.Subtype == "query" {
+			verbs = append(verbs, e.Props["sql_verb"])
+		}
+	}
+	if !containsStr(verbs, "SELECT") {
+		t.Errorf("expected SELECT verb from mysql_query, got %v", verbs)
+	}
+	if !containsStr(verbs, "CREATE") {
+		t.Errorf("expected CREATE verb from mysql_query, got %v", verbs)
+	}
 }
 
 func TestCppDriverNoMatch_WrongLanguage(t *testing.T) {

@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: db["collection"] / db.collection() access → SCOPE.Schema entity |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/driver_schema.go` | Regex: collection access as schema proxy; no field-level schema in document driver |
+| Model extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: db["coll"]/db.collection("coll") → SCOPE.Schema with collection_name |
+| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/driver_schema.go` | Collection access recorded as schema proxy; document store has no static field-level schema to extract |
 
 ### Relationships
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: SQL verb in exec() calls (where applicable) |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: collection CRUD/aggregate ops (insert_one/find/update_one/delete_many/aggregate/...) → query with mongo_verb |
 
 ### Migrations
 

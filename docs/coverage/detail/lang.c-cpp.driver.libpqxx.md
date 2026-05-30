@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: CREATE TABLE in exec() string literals → table entity |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/driver_schema.go` | Regex: column definitions from embedded CREATE TABLE SQL |
+| Model extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: CREATE TABLE in exec()/exec_params() string literals → table entity with table_name |
+| Schema extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: paren-balanced CREATE TABLE body split on top-level commas → columns with column_name/column_type/parent_table |
 
 ### Relationships
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: SQL verb from exec()/exec_params() string literals |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/driver_schema.go` | Regex: SQL verb classified from exec()/exec_params() string literals |
 
 ### Migrations
 
