@@ -17,6 +17,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/enrichment"
+	"github.com/cajasmota/archigraph/internal/gitmeta"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/links"
 	"github.com/cajasmota/archigraph/internal/types"
@@ -304,6 +305,22 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 		}
 	}
 
+	// Fix #2: when an explicit group= was provided, indexed_ref/indexed_sha must
+	// reflect the queried group's canonical repo, not the cwd's repo. We derive
+	// them from the group's loaded repos (first alphabetically) so the index
+	// fields correspond to the group being queried.
+	//
+	// If no explicit group was given, fall back to the cwd-derived values as
+	// before — that preserves all existing behaviour.
+	var indexedRef, indexedSHA string
+	if explicit != "" {
+		// Resolve ref/sha from the queried group's repos (not cwd).
+		indexedRef, indexedSHA = groupIndexedRefSHA(s.State, group)
+	} else {
+		indexedRef = cwdRes.Ref
+		indexedSHA = cwdRes.SHA
+	}
+
 	// Base response. PH1c ref fields come from sessionMeta (#2337).
 	sm := sessionMeta(nil, &cwdRes)
 	resp := map[string]any{
@@ -315,9 +332,11 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 		// PH1c ref fields (via sessionMeta — exclusive to whoami per #2337).
 		"cwd_resolved_to": cwdResolvedTo,
 		"is_worktree":     sm["is_worktree"],
-		"indexed_ref":     sm["indexed_ref"],
-		"indexed_sha":     sm["indexed_sha"],
-		"parent_repo":     sm["parent_repo"],
+		// Fix #2: indexed_ref/indexed_sha now key off the queried group when
+		// an explicit group= is supplied (not the cwd's repo).
+		"indexed_ref": indexedRef,
+		"indexed_sha": indexedSHA,
+		"parent_repo": sm["parent_repo"],
 	}
 	if cwdRes.Source == "worktree" {
 		resp["tier"] = "cold" // worktree refs may not be hot-loaded yet
@@ -334,6 +353,25 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 	lg := s.State.Group(group)
 	if lg == nil {
 		return jsonResult(resp), nil
+	}
+
+	// Fix #1: add an index-state block so agents always see that entities are
+	// present. Without this, a fully-indexed group read as "empty / never
+	// indexed" because the response only contained docgen fields — causing
+	// agents to fall back to grep (the "docgen-trap").
+	//
+	// entity_count and relationship_count mirror the totals reported by
+	// archigraph_stats so the two tools always agree. tests_edges is the count
+	// of TESTS-kind relationships aggregated across all loaded repos.
+	totalE, totalR, totalTests := groupIndexCounts(lg)
+	resp["entity_count"] = totalE       // top-level for immediate visibility
+	resp["relationship_count"] = totalR // top-level for immediate visibility
+	resp["index"] = map[string]any{
+		"entity_count":       totalE,
+		"relationship_count": totalR,
+		"tests_edges":        totalTests,
+		"indexed_sha":        indexedSHA,
+		"indexed_ref":        indexedRef,
 	}
 
 	docState := ComputeDocState(group, lg)
@@ -356,6 +394,58 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 	}
 
 	return jsonResult(resp), nil
+}
+
+// groupIndexCounts returns the total entity count, relationship count, and
+// TESTS-edge count aggregated across all loaded repos in the group. These
+// values are computed the same way archigraph_stats does so the two tools
+// always agree (Fix #1, the "docgen-trap" in archigraph_whoami).
+func groupIndexCounts(lg *LoadedGroup) (entities, relationships, testsEdges int) {
+	for _, r := range lg.Repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		entities += len(r.Doc.Entities)
+		relationships += len(r.Doc.Relationships)
+		for i := range r.Doc.Relationships {
+			if r.Doc.Relationships[i].Kind == "TESTS" {
+				testsEdges++
+			}
+		}
+	}
+	return
+}
+
+// groupIndexedRefSHA returns the git ref and abbreviated SHA for the canonical
+// repo of a group. When the group has multiple repos the first one in
+// alphabetical slug order is used (deterministic). This is used by Fix #2 so
+// that an explicit group= query returns the queried group's ref/sha rather than
+// the cwd's ref/sha.
+//
+// Returns ("", "") when the group is unknown or has no loaded repos.
+func groupIndexedRefSHA(s *State, groupName string) (ref, sha string) {
+	if s == nil {
+		return "", ""
+	}
+	gentry, ok := s.registry.Groups[groupName]
+	if !ok {
+		return "", ""
+	}
+	// Pick the first repo alphabetically for deterministic output.
+	slugs := make([]string, 0, len(gentry.Repos))
+	for slug := range gentry.Repos {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
+	for _, slug := range slugs {
+		repo := gentry.Repos[slug]
+		if repo.Path == "" {
+			continue
+		}
+		meta := gitmeta.Capture(repo.Path)
+		return meta.Ref, meta.SHA
+	}
+	return "", ""
 }
 
 // countPatterns returns the total number of patterns (candidate + approved) for a group.

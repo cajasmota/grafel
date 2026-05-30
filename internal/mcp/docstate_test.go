@@ -446,6 +446,280 @@ func checkField(t *testing.T, m map[string]any, key, want string) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Fix #1 — whoami docgen-trap: entity/relationship/tests_edges counts
+// ---------------------------------------------------------------------------
+
+// TestHandleWhoami_indexCounts asserts that archigraph_whoami always returns
+// entity_count, relationship_count, and an index{} block even when no docgen
+// has ever been run — so a fully-indexed group is never mistaken for empty.
+func TestHandleWhoami_indexCounts(t *testing.T) {
+	tmp := t.TempDir()
+	setTestHome(t, tmp)
+	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "") // normal mode
+
+	// Build a graph with 4 entities, 3 edges (2 CALLS + 1 TESTS).
+	repoDir := filepath.Join(tmp, "repo-a")
+	doc := &graph.Document{
+		Repo: "repo-a",
+		Entities: []graph.Entity{
+			{ID: "a1", Name: "Foo", Kind: "function", SourceFile: "foo.go", StartLine: 1, EndLine: 5},
+			{ID: "a2", Name: "Bar", Kind: "function", SourceFile: "bar.go", StartLine: 1, EndLine: 5},
+			{ID: "a3", Name: "Baz", Kind: "function", SourceFile: "baz.go", StartLine: 1, EndLine: 5},
+			{ID: "t1", Name: "TestFoo", Kind: "function", SourceFile: "foo_test.go", StartLine: 1, EndLine: 5},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "a1", ToID: "a2", Kind: "CALLS"},
+			{ID: "r2", FromID: "a2", ToID: "a3", Kind: "CALLS"},
+			{ID: "r3", FromID: "t1", ToID: "a1", Kind: "TESTS"},
+		},
+	}
+	writeGraph(t, repoDir, doc)
+
+	regPath := makeRegistry(t, tmp, map[string]map[string]string{
+		"g": {"repo-a": repoDir},
+	})
+
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "g"}
+	res, err := srv.handleWhoami(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleWhoami: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %v", res.Content)
+	}
+
+	out := extractResultJSON(t, res)
+
+	// Top-level counts must be present.
+	ec, ok := out["entity_count"].(float64)
+	if !ok {
+		t.Fatalf("entity_count: missing or wrong type (got %T: %v)", out["entity_count"], out["entity_count"])
+	}
+	if ec != 4 {
+		t.Errorf("entity_count: got %v want 4", ec)
+	}
+	rc, ok := out["relationship_count"].(float64)
+	if !ok {
+		t.Fatalf("relationship_count: missing or wrong type (got %T: %v)", out["relationship_count"], out["relationship_count"])
+	}
+	if rc != 3 {
+		t.Errorf("relationship_count: got %v want 3", rc)
+	}
+
+	// index{} sub-object must mirror the top-level counts and include tests_edges.
+	idx, ok := out["index"].(map[string]any)
+	if !ok {
+		t.Fatalf("index: missing or wrong type (got %T: %v)", out["index"], out["index"])
+	}
+	if v, _ := idx["entity_count"].(float64); v != 4 {
+		t.Errorf("index.entity_count: got %v want 4", idx["entity_count"])
+	}
+	if v, _ := idx["relationship_count"].(float64); v != 3 {
+		t.Errorf("index.relationship_count: got %v want 3", idx["relationship_count"])
+	}
+	if v, _ := idx["tests_edges"].(float64); v != 1 {
+		t.Errorf("index.tests_edges: got %v want 1", idx["tests_edges"])
+	}
+	// indexed_sha and indexed_ref must be present (may be empty string in test env).
+	if _, present := idx["indexed_sha"]; !present {
+		t.Error("index.indexed_sha: field must be present")
+	}
+	if _, present := idx["indexed_ref"]; !present {
+		t.Error("index.indexed_ref: field must be present")
+	}
+}
+
+// TestHandleWhoami_indexCounts_multiRepo asserts that entity/relationship counts
+// aggregate across all repos in the group, matching archigraph_stats behaviour.
+func TestHandleWhoami_indexCounts_multiRepo(t *testing.T) {
+	tmp := t.TempDir()
+	setTestHome(t, tmp)
+	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "")
+
+	repoADir := filepath.Join(tmp, "repo-a")
+	repoBDir := filepath.Join(tmp, "repo-b")
+
+	docA := &graph.Document{
+		Repo: "repo-a",
+		Entities: []graph.Entity{
+			{ID: "a1", Name: "FuncA1", Kind: "function", SourceFile: "a.go", StartLine: 1, EndLine: 5},
+			{ID: "a2", Name: "FuncA2", Kind: "function", SourceFile: "a.go", StartLine: 6, EndLine: 10},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "a1", ToID: "a2", Kind: "CALLS"},
+		},
+	}
+	docB := &graph.Document{
+		Repo: "repo-b",
+		Entities: []graph.Entity{
+			{ID: "b1", Name: "FuncB1", Kind: "function", SourceFile: "b.go", StartLine: 1, EndLine: 5},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "r2", FromID: "b1", ToID: "a1", Kind: "TESTS"},
+		},
+	}
+	writeGraph(t, repoADir, docA)
+	writeGraph(t, repoBDir, docB)
+
+	regPath := makeRegistry(t, tmp, map[string]map[string]string{
+		"g": {"repo-a": repoADir, "repo-b": repoBDir},
+	})
+
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "g"}
+	res, err := srv.handleWhoami(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleWhoami: %v", err)
+	}
+	out := extractResultJSON(t, res)
+
+	// repo-a has 2 entities + 1 rel; repo-b has 1 entity + 1 TESTS rel → totals: 3 + 2.
+	if v, _ := out["entity_count"].(float64); v != 3 {
+		t.Errorf("entity_count: got %v want 3", out["entity_count"])
+	}
+	if v, _ := out["relationship_count"].(float64); v != 2 {
+		t.Errorf("relationship_count: got %v want 2", out["relationship_count"])
+	}
+	idx, _ := out["index"].(map[string]any)
+	if idx == nil {
+		t.Fatal("index: missing")
+	}
+	if v, _ := idx["tests_edges"].(float64); v != 1 {
+		t.Errorf("index.tests_edges: got %v want 1", idx["tests_edges"])
+	}
+}
+
+// TestHandleWhoami_indexCounts_quietMode asserts that index counts are NOT
+// present when ARCHIGRAPH_WHOAMI_NUDGE=quiet (early return path).
+func TestHandleWhoami_indexCounts_quietMode(t *testing.T) {
+	tmp := t.TempDir()
+	setTestHome(t, tmp)
+	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "quiet")
+
+	repoDir := filepath.Join(tmp, "repo-a")
+	doc := fixtureDoc("repo-a")
+	writeGraph(t, repoDir, doc)
+	regPath := makeRegistry(t, tmp, map[string]map[string]string{
+		"g": {"repo-a": repoDir},
+	})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "g"}
+	res, err := srv.handleWhoami(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleWhoami: %v", err)
+	}
+	out := extractResultJSON(t, res)
+
+	// In quiet mode the enrichment block (including index counts) is suppressed.
+	if _, found := out["entity_count"]; found {
+		t.Error("entity_count should be absent in quiet mode")
+	}
+	if _, found := out["index"]; found {
+		t.Error("index should be absent in quiet mode")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Fix #2 — whoami must honor explicit group= for index-state fields
+// ---------------------------------------------------------------------------
+
+// TestHandleWhoami_explicitGroup_indexState asserts that when group= is
+// provided explicitly, the indexed_sha/indexed_ref in the response key off the
+// queried group's repos (not the cwd). The test sets up two groups in the same
+// registry and queries each via explicit group= to verify the index block
+// reflects the correct group.
+func TestHandleWhoami_explicitGroup_indexState(t *testing.T) {
+	tmp := t.TempDir()
+	setTestHome(t, tmp)
+	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "")
+
+	// Two groups, each with a different repo and entity count.
+	repoAlphaDir := filepath.Join(tmp, "repo-alpha")
+	repoBetaDir := filepath.Join(tmp, "repo-beta")
+
+	docAlpha := &graph.Document{
+		Repo: "repo-alpha",
+		Entities: []graph.Entity{
+			{ID: "e1", Name: "AlphaFunc", Kind: "function", SourceFile: "alpha.go", StartLine: 1, EndLine: 5},
+			{ID: "e2", Name: "AlphaStruct", Kind: "struct", SourceFile: "alpha.go", StartLine: 6, EndLine: 10},
+			{ID: "e3", Name: "AlphaHelper", Kind: "function", SourceFile: "alpha.go", StartLine: 11, EndLine: 15},
+		},
+	}
+	docBeta := &graph.Document{
+		Repo: "repo-beta",
+		Entities: []graph.Entity{
+			{ID: "f1", Name: "BetaFunc", Kind: "function", SourceFile: "beta.go", StartLine: 1, EndLine: 5},
+		},
+	}
+	writeGraph(t, repoAlphaDir, docAlpha)
+	writeGraph(t, repoBetaDir, docBeta)
+
+	// Both groups in the same registry.
+	regPath := makeRegistry(t, tmp, map[string]map[string]string{
+		"alpha-group": {"repo-alpha": repoAlphaDir},
+		"beta-group":  {"repo-beta": repoBetaDir},
+	})
+
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	// Query alpha-group explicitly.
+	reqAlpha := mcpapi.CallToolRequest{}
+	reqAlpha.Params.Arguments = map[string]any{"group": "alpha-group"}
+	resAlpha, err := srv.handleWhoami(context.Background(), reqAlpha)
+	if err != nil {
+		t.Fatalf("handleWhoami(alpha-group): %v", err)
+	}
+	outAlpha := extractResultJSON(t, resAlpha)
+	if v, _ := outAlpha["entity_count"].(float64); v != 3 {
+		t.Errorf("alpha-group entity_count: got %v want 3", outAlpha["entity_count"])
+	}
+	if v, _ := outAlpha["group"].(string); v != "alpha-group" {
+		t.Errorf("alpha-group group field: got %q want %q", v, "alpha-group")
+	}
+
+	// Query beta-group explicitly.
+	reqBeta := mcpapi.CallToolRequest{}
+	reqBeta.Params.Arguments = map[string]any{"group": "beta-group"}
+	resBeta, err := srv.handleWhoami(context.Background(), reqBeta)
+	if err != nil {
+		t.Fatalf("handleWhoami(beta-group): %v", err)
+	}
+	outBeta := extractResultJSON(t, resBeta)
+	if v, _ := outBeta["entity_count"].(float64); v != 1 {
+		t.Errorf("beta-group entity_count: got %v want 1", outBeta["entity_count"])
+	}
+	if v, _ := outBeta["group"].(string); v != "beta-group" {
+		t.Errorf("beta-group group field: got %q want %q", v, "beta-group")
+	}
+
+	// The two results must have different entity counts, proving each query
+	// resolved against its own group's index (not the cwd's).
+	alphaEC, _ := outAlpha["entity_count"].(float64)
+	betaEC, _ := outBeta["entity_count"].(float64)
+	if alphaEC == betaEC {
+		t.Errorf("entity_count must differ between groups: alpha=%v beta=%v", alphaEC, betaEC)
+	}
+}
+
 // makeLoadedGroupWithFile builds a minimal LoadedGroup with one repo whose
 // entity graph has the given source file path relative to repoDir.
 func makeLoadedGroupWithFile(t *testing.T, groupName, repoName, repoDir, relFile string) *LoadedGroup {
