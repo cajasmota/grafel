@@ -22,14 +22,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Deep link extraction | 🔴 `missing` | — | — | — | — |
-| Navigation extraction | 🔴 `missing` | — | — | — | — |
-| Screen detection | 🔴 `missing` | — | — | — | — |
+| Navigation extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
+| Screen detection | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Platform
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Platform branching | 🔴 `missing` | — | — | — | — |
+| Platform branching | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Native Bridge
 
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | 🔴 `missing` | — | — | — | — |
-| State management | 🔴 `missing` | — | — | — | — |
+| State management | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Type System
 
@@ -56,7 +56,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | 🔴 `missing` | — | — | — | — |
+| State setter emission | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Testing
 

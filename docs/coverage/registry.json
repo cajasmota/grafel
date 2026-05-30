@@ -29016,15 +29016,21 @@
             "status": "missing"
           },
           "navigation_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           },
           "screen_detection": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Platform": {
           "platform_branching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Native Bridge": {
@@ -29037,7 +29043,9 @@
             "status": "missing"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -29059,7 +29067,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -29589,12 +29599,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -29830,12 +29844,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -30057,15 +30075,21 @@
             "status": "missing"
           },
           "navigation_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           },
           "screen_detection": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Platform": {
           "platform_branching": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Native Bridge": {
@@ -30078,7 +30102,9 @@
             "status": "missing"
           },
           "state_management": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -30100,7 +30126,9 @@
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/compose.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
@@ -30246,12 +30274,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -30486,12 +30518,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -30735,12 +30771,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -30986,12 +31026,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
