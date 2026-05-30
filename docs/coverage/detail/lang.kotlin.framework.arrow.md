@@ -48,10 +48,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
+| Interface extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
+| Type alias extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
+| Type extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
 
 ### DI
 

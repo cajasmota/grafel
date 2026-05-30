@@ -28659,20 +28659,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -28886,13 +28890,19 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Lifecycle": {
@@ -29209,20 +29219,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -29445,20 +29459,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -29682,20 +29700,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -29909,13 +29931,19 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Lifecycle": {
@@ -30054,8 +30082,9 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/ktor_routes.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -30087,20 +30116,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -30323,20 +30356,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -30568,20 +30605,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -30815,20 +30856,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/kotlin/kotlin.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {

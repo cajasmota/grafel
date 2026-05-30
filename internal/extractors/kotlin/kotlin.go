@@ -101,12 +101,16 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	}
 
 	switch node.Type() {
-	case "class_declaration":
-		subtype := "class"
-		raw := string(file.Content[node.StartByte():node.EndByte()])
-		if strings.Contains(raw, "data class ") {
-			subtype = "data_class"
+	case "type_alias":
+		// Issue #3275 — typealias Handler = (String) -> Unit
+		// tree-sitter-kotlin: [type_alias] → [typealias] [type_identifier <name>] [=] <rhs>
+		if rec, ok := buildTypeAlias(node, file); ok {
+			*out = append(*out, rec)
 		}
+		return
+
+	case "class_declaration":
+		subtype := classDeclarationSubtype(node, file.Content)
 		rec, ok := buildComponent(node, file, subtype)
 		if !ok {
 			for i := range node.ChildCount() {
@@ -413,6 +417,57 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 		}
 	}
 	return out
+}
+
+// classDeclarationSubtype determines the subtype for a class_declaration node.
+//
+// tree-sitter-kotlin maps interface, enum class, and plain class all to
+// class_declaration; we discriminate by inspecting direct children:
+//
+//   - [interface] child → "interface"
+//   - [enum] child      → "enum"
+//   - raw text contains "data class" → "data_class"
+//   - otherwise          → "class"
+//
+// Issue #3275 — type-system CST extraction.
+func classDeclarationSubtype(node *sitter.Node, src []byte) string {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		switch node.Child(i).Type() {
+		case "interface":
+			return "interface"
+		case "enum":
+			return "enum"
+		}
+	}
+	raw := string(src[node.StartByte():node.EndByte()])
+	if strings.Contains(raw, "data class ") {
+		return "data_class"
+	}
+	return "class"
+}
+
+// buildTypeAlias creates a SCOPE.Schema/type_alias entity for a type_alias node.
+//
+// tree-sitter-kotlin shape:
+//
+//	[type_alias] → [typealias] [type_identifier <name>] [=] <rhs>
+//
+// Mirrors the Go and Python extractors which emit SCOPE.Schema/type_alias for
+// language-level type alias declarations (#3275 — type-system CST extraction).
+func buildTypeAlias(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	name := firstChildOfType(node, file.Content, "type_identifier")
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+	return types.EntityRecord{
+		Name:       name,
+		Kind:       "SCOPE.Schema",
+		Subtype:    "type_alias",
+		SourceFile: file.Path,
+		Language:   "kotlin",
+		StartLine:  int(node.StartPoint().Row) + 1,
+		EndLine:    int(node.EndPoint().Row) + 1,
+	}, true
 }
 
 // buildComponent creates a Component entity for class/object declarations.

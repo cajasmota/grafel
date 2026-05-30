@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/kotlin/frameworks/ktor.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/kotlin/frameworks/ktor.yaml` | — |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/ktor_routes.go` | — |
 
 ### Auth
 
@@ -48,10 +48,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
+| Interface extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
+| Type alias extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
+| Type extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/kotlin/kotlin.go` | — |
 
 ### DI
 

@@ -483,6 +483,209 @@ func TestKotlinExtractor_UnregisteredLanguage(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Issue #3275 — type-system CST extraction: interface, enum, typealias
+// ---------------------------------------------------------------------------
+
+// TestKotlinExtractor_InterfaceDeclaration verifies that an interface
+// declaration emits a SCOPE.Component/interface entity (not a plain class).
+func TestKotlinExtractor_InterfaceDeclaration(t *testing.T) {
+	src := `
+interface Greeter {
+    fun greet(name: String): String
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("kotlin")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "Greeter.kt",
+		Content:  []byte(src),
+		Language: "kotlin",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var found bool
+	for _, e := range got {
+		if e.Name == "Greeter" && e.Kind == "SCOPE.Component" && e.Subtype == "interface" {
+			found = true
+			if e.SourceFile != "Greeter.kt" {
+				t.Errorf("expected SourceFile=Greeter.kt, got %s", e.SourceFile)
+			}
+			if e.Language != "kotlin" {
+				t.Errorf("expected Language=kotlin, got %s", e.Language)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected entity Greeter with Kind=SCOPE.Component Subtype=interface")
+	}
+}
+
+// TestKotlinExtractor_InterfaceNotClass ensures an interface declaration is NOT
+// emitted with subtype "class".
+func TestKotlinExtractor_InterfaceNotClass(t *testing.T) {
+	src := `interface Repository { fun find(id: Int): Any? }`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("kotlin")
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path: "Repo.kt", Content: []byte(src), Language: "kotlin", Tree: tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, e := range got {
+		if e.Name == "Repository" && e.Subtype == "class" {
+			t.Error("interface Repository must not be emitted with subtype=class")
+		}
+	}
+}
+
+// TestKotlinExtractor_EnumDeclaration verifies that an enum class emits a
+// SCOPE.Component/enum entity.
+func TestKotlinExtractor_EnumDeclaration(t *testing.T) {
+	src := `
+enum class Direction {
+    NORTH, SOUTH, EAST, WEST
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("kotlin")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "Direction.kt",
+		Content:  []byte(src),
+		Language: "kotlin",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var found bool
+	for _, e := range got {
+		if e.Name == "Direction" && e.Kind == "SCOPE.Component" && e.Subtype == "enum" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected entity Direction with Kind=SCOPE.Component Subtype=enum")
+	}
+}
+
+// TestKotlinExtractor_EnumNotClass ensures an enum class is NOT emitted with
+// subtype "class".
+func TestKotlinExtractor_EnumNotClass(t *testing.T) {
+	src := `enum class Color { RED, GREEN, BLUE }`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("kotlin")
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path: "Color.kt", Content: []byte(src), Language: "kotlin", Tree: tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, e := range got {
+		if e.Name == "Color" && e.Subtype == "class" {
+			t.Error("enum class Color must not be emitted with subtype=class")
+		}
+	}
+}
+
+// TestKotlinExtractor_TypeAlias verifies that a typealias declaration emits a
+// SCOPE.Schema/type_alias entity.
+func TestKotlinExtractor_TypeAlias(t *testing.T) {
+	src := `
+typealias Handler = (String) -> Unit
+typealias UserId = Int
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("kotlin")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "aliases.kt",
+		Content:  []byte(src),
+		Language: "kotlin",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	names := make(map[string]bool)
+	for _, e := range got {
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "type_alias" {
+			names[e.Name] = true
+			if e.Language != "kotlin" {
+				t.Errorf("expected Language=kotlin on type_alias entity, got %s", e.Language)
+			}
+		}
+	}
+	if !names["Handler"] {
+		t.Error("expected SCOPE.Schema/type_alias entity named Handler")
+	}
+	if !names["UserId"] {
+		t.Error("expected SCOPE.Schema/type_alias entity named UserId")
+	}
+}
+
+// TestKotlinExtractor_TypeSystemMixed verifies that a file mixing class,
+// interface, enum, and typealias produces correct subtype discriminations.
+func TestKotlinExtractor_TypeSystemMixed(t *testing.T) {
+	src := `
+interface Shape {
+    fun area(): Double
+}
+
+enum class Color { RED, GREEN, BLUE }
+
+typealias Callback = () -> Unit
+
+data class Circle(val radius: Double) : Shape {
+    override fun area(): Double = Math.PI * radius * radius
+}
+
+class Box(val width: Double, val height: Double) : Shape {
+    override fun area(): Double = width * height
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("kotlin")
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path: "shapes.kt", Content: []byte(src), Language: "kotlin", Tree: tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type check struct {
+		name, kind, subtype string
+		found               bool
+	}
+	checks := []*check{
+		{name: "Shape", kind: "SCOPE.Component", subtype: "interface"},
+		{name: "Color", kind: "SCOPE.Component", subtype: "enum"},
+		{name: "Callback", kind: "SCOPE.Schema", subtype: "type_alias"},
+		{name: "Circle", kind: "SCOPE.Component", subtype: "data_class"},
+		{name: "Box", kind: "SCOPE.Component", subtype: "class"},
+	}
+	for _, e := range got {
+		for _, c := range checks {
+			if e.Name == c.name && e.Kind == c.kind && e.Subtype == c.subtype {
+				c.found = true
+			}
+		}
+	}
+	for _, c := range checks {
+		if !c.found {
+			t.Errorf("expected entity %s Kind=%s Subtype=%s", c.name, c.kind, c.subtype)
+		}
+	}
+}
+
 func TestKotlinExtractor_LineNumbers(t *testing.T) {
 	src := `class Alpha {
     fun method1(): Unit {}
