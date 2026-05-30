@@ -2981,6 +2981,34 @@ var frameworkClassKindPriority = map[string]int{
 	"SCOPE.Schema":      80,
 }
 
+// frameworkClassKindCanonRank is the deterministic tiebreaker used when two or
+// more framework-typed nodes share the SAME (source_file, name) AND the SAME
+// frameworkClassKindPriority — i.e. one class symbol was double-emitted under
+// two equally-strong kinds (the #3172/#3195 DRF/Django family: a Django
+// `models.Model` class surfacing as BOTH "Model" AND "Controller"). Both are
+// survivor candidates of priority 100, so without a tiebreaker the fold leaves
+// two nodes for one class, violating the #1613 "every class → ONE node"
+// invariant (TestClassShadowFold_NoLine0Shadows).
+//
+// Higher value = stronger canonical signal. The ranking prefers a kind that
+// names what the class structurally *is* (its declaration role: a data Model, a
+// rendered View, a Service, a Repository, a Schema) over a kind that names how
+// the class is *dispatched/routed* ("Controller"). A Controller is the role
+// most prone to spurious co-emission from route/endpoint synthesis on a class
+// that is really a Model/View, so it is deliberately ranked below the structural
+// declaration kinds. Kinds absent from this map rank as 0 (only consulted to
+// break an exact-priority tie; the priority map remains the primary order).
+var frameworkClassKindCanonRank = map[string]int{
+	"Model": 5, "SCOPE.Model": 5,
+	"View": 5, "SCOPE.View": 5,
+	"Repository": 4,
+	"Service":    4, "SCOPE.Service": 4,
+	"Schema": 3, "SCOPE.Schema": 3,
+	"Worker": 2, "Job": 2, "Topic": 2,
+	"Middleware": 1,
+	"Controller": 0,
+}
+
 func isShadowRecord(r *types.EntityRecord) bool {
 	return r.Properties["provenance"] == "INFERRED_FROM_CLASS_HIERARCHY"
 }
@@ -3070,12 +3098,19 @@ func (i *Indexer) foldClassHierarchyShadows(
 ) ([]types.EntityRecord, []types.RelationshipRecord, foldShadowStats) {
 	var stats foldShadowStats
 
+	// remap: folded source ID -> survivor ID. drop: indices of folded-away records.
+	// Declared up front because the sibling-survivor fold below (which collapses a
+	// double-emitted class's extra framework-typed nodes) populates both.
+	remap := make(map[string]string)
+	drop := make(map[int]bool)
+
 	// Index framework-typed survivor candidates by (SourceFile, Name).
 	type cand struct {
-		idx int
-		id  string
-		pri int
-		ln  int
+		idx  int
+		id   string
+		pri  int
+		rank int
+		ln   int
 	}
 	bySymbol := make(map[[2]string][]cand)
 	for k := range merged {
@@ -3088,7 +3123,91 @@ func (i *Indexer) foldClassHierarchyShadows(
 			continue
 		}
 		key := [2]string{r.SourceFile, r.Name}
-		bySymbol[key] = append(bySymbol[key], cand{idx: k, id: r.ID, pri: pri, ln: r.StartLine})
+		bySymbol[key] = append(bySymbol[key], cand{
+			idx: k, id: r.ID, pri: pri, rank: frameworkClassKindCanonRank[r.Kind], ln: r.StartLine,
+		})
+	}
+
+	// bestCand picks the single canonical survivor among framework-typed
+	// candidates for one (file, name). Precedence (strongest first):
+	//   1. highest frameworkClassKindPriority (class-declaration strength),
+	//   2. highest frameworkClassKindCanonRank (structural-role tiebreaker for
+	//      equal priority — Model/View/Service/… beat Controller; see that map),
+	//   3. smallest real (>0) start_line (the declaration; 0 == "no line" loses),
+	//   4. smallest id (stable, deterministic across runs).
+	bestCand := func(cands []cand) cand {
+		best := cands[0]
+		for _, c := range cands[1:] {
+			switch {
+			case c.pri != best.pri:
+				if c.pri > best.pri {
+					best = c
+				}
+			case c.rank != best.rank:
+				if c.rank > best.rank {
+					best = c
+				}
+			case c.ln != best.ln:
+				// Prefer a real (>0) smaller line; treat 0 as "no line" (worst).
+				if (best.ln == 0 && c.ln > 0) || (c.ln > 0 && c.ln < best.ln) {
+					best = c
+				}
+			default:
+				if c.id < best.id {
+					best = c
+				}
+			}
+		}
+		return best
+	}
+
+	// Sibling-survivor fold (#3172/#3195): when one class symbol is double-emitted
+	// under several framework-typed kinds (e.g. a Django models.Model class
+	// surfacing as BOTH "Model" AND "Controller"), every emission is a survivor
+	// CANDIDATE and none is a fold *source*, so the fold-source loop below would
+	// never collapse them against each other and the class would resolve to >1
+	// node — violating the #1613 invariant. Here we pre-collapse each such symbol
+	// to its single canonical survivor (bestCand), dropping the weaker siblings,
+	// remapping their stamped IDs onto the survivor, and re-homing their
+	// properties + owned edges. After this, bySymbol holds exactly one candidate
+	// per symbol so the fold-source loop targets a unique survivor.
+	for key, cands := range bySymbol {
+		if len(cands) < 2 {
+			continue
+		}
+		win := bestCand(cands)
+		sv := &merged[win.idx]
+		if sv.Properties == nil {
+			sv.Properties = map[string]string{}
+		}
+		for _, c := range cands {
+			if c.idx == win.idx {
+				continue
+			}
+			r := &merged[c.idx]
+			drop[c.idx] = true
+			if r.ID != "" && r.ID != win.id {
+				remap[r.ID] = win.id
+			}
+			stats.ShadowsFolded++
+			for pk, pv := range r.Properties {
+				if pk == "provenance" || pk == "ref" {
+					continue
+				}
+				if _, exists := sv.Properties[pk]; !exists {
+					sv.Properties[pk] = pv
+				}
+			}
+			for ri := range r.Relationships {
+				rel := r.Relationships[ri]
+				if rel.FromID == "" || rel.FromID == r.ID {
+					rel.FromID = win.id
+				}
+				sv.Relationships = append(sv.Relationships, rel)
+			}
+			r.Relationships = nil
+		}
+		bySymbol[key] = []cand{win}
 	}
 
 	// Index non-shadow records by stamped ID so a surviving shadow can detect a
@@ -3105,11 +3224,11 @@ func (i *Indexer) foldClassHierarchyShadows(
 		}
 	}
 
-	// remap: folded source ID -> survivor ID.
-	remap := make(map[string]string)
-	drop := make(map[int]bool)
-
 	for k := range merged {
+		if drop[k] {
+			// Already folded away as a non-canonical sibling survivor.
+			continue
+		}
 		r := &merged[k]
 		if !isFoldSource(r) {
 			continue
@@ -3149,30 +3268,10 @@ func (i *Indexer) foldClassHierarchyShadows(
 			}
 			continue
 		}
-		// Pick the strongest class-like candidate: highest priority, then
-		// smallest start_line (the declaration), then smallest id for stability.
-		best := cands[0]
-		for _, c := range cands[1:] {
-			if c.pri != best.pri {
-				if c.pri > best.pri {
-					best = c
-				}
-				continue
-			}
-			if c.ln != best.ln {
-				// Prefer a real (>0) smaller line; treat 0 as "no line" (worst).
-				switch {
-				case best.ln == 0 && c.ln > 0:
-					best = c
-				case c.ln > 0 && c.ln < best.ln:
-					best = c
-				}
-				continue
-			}
-			if c.id < best.id {
-				best = c
-			}
-		}
+		// Pick the strongest class-like candidate (see bestCand: priority, then
+		// canonical-kind rank, then real start_line, then id for stability).
+		// Post sibling-survivor fold, cands holds a single winner per symbol.
+		best := bestCand(cands)
 		if best.id == r.ID {
 			// Degenerate (same ID) — leave as-is.
 			continue
