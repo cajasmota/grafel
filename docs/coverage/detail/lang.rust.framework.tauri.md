@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| IPC extraction | 🔴 `missing` | — | — | — | — |
-| Main renderer split | 🔴 `missing` | — | — | — | — |
+| IPC extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/tauri.go`<br>`internal/custom/rust/tauri_test.go`<br>`internal/custom/rust/testdata/tauri_app.rs` | Detects #[tauri::command] fn declarations and generate_handler![...] registrations |
+| Main renderer split | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/tauri.go`<br>`internal/custom/rust/tauri_test.go` | Detects tauri::Builder::default() and fn main() in Tauri files as Rust backend entry points; WindowBuilder for renderer side |
 
 ### Native
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🔴 `missing` | — | — | — | — |
+| Native module imports | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/tauri.go`<br>`internal/custom/rust/tauri_test.go` | Detects tauri::api::* module usage and tauri_plugin_* crate imports |
 
 ### Updates
 

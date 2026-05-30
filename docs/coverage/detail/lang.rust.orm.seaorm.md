@@ -23,8 +23,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/seaorm.go`<br>`internal/custom/rust/testdata/seaorm_entity.rs` | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Foreign key extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/diesel_seaorm_test.go`<br>`internal/custom/rust/seaorm.go` | Detects #[sea_orm(belongs_to=..., from=..., to=...)] with explicit FK column references |
+| Lazy loading recognition | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/diesel_seaorm_test.go`<br>`internal/custom/rust/seaorm.go` | Detects .find_related(), .find_linked(), LoaderTrait::load_many/load_one patterns |
 | Relationship extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/seaorm.go`<br>`internal/custom/rust/testdata/seaorm_entity.rs` | — |
 
 ### Queries

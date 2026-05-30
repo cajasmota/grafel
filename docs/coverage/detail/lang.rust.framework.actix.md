@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/actix_web.go` | Route path+method extraction from macros and builder calls |
 
 ### Auth
 
@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects #[derive(Deserialize)] and #[derive(Validate)] structs; actix web::Json/Query/Form/Path<T> extractors |
+| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects #[validate(...)] field attrs, .validate() calls, actix extractor types |
 
 ### Middleware
 

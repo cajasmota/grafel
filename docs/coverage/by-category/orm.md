@@ -142,9 +142,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [ruby](../by-language/ruby.md) | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🟢 1/1 | |
 | [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🟢 1/1 | |
 | [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🟢 1/1 | |
-| [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 5/8 | |
-| [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🔴 0/4 | |
-| [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 6/8 | |
+| [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟢 7/7 | |
+| [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟢 4/4 | |
+| [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟢 8/8 | |
 | [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟢 1/1 | |
@@ -154,7 +154,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟢 1/1 | |
-| [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 2/4 | |
+| [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
 | [rust](../by-language/rust.md) | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟢 1/1 | |
 | [scala](../by-language/scala.md) | [Doobie](../detail/lang.scala.orm.doobie.md) | 🟡 2/8 | |
 | [scala](../by-language/scala.md) | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟡 2/7 | |

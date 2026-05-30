@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_axum.go`<br>`internal/engine/rules/rust/frameworks/axum.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_axum.go` | — |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/axum.go`<br>`internal/custom/rust/extractors_test.go` | Regex extracts .route(path, method(handler)) paths and methods |
 
 ### Auth
 
@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects serde Deserialize/Validate structs; axum Json/Query/Form/Path<T> extractors |
+| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects #[validate(...)] field attrs and axum extractor types |
 
 ### Middleware
 

@@ -9,6 +9,10 @@ package rust
 //   - DeriveRelation enum variants with #[sea_orm(has_many / belongs_to = "...")] →
 //     SCOPE.Pattern (subtype="orm_relationship")
 //   - sea-orm-migration MigrationTrait impl blocks → SCOPE.Component (subtype="migration")
+//   - Foreign-key columns detected via #[sea_orm(belongs_to)] with from/to column refs →
+//     SCOPE.Pattern (subtype="foreign_key")   [foreign_key_extraction]
+//   - find_related() / find_linked() / LoaderTrait usage →
+//     SCOPE.Pattern (subtype="lazy_load")     [lazy_loading_recognition]
 //
 // Honesty:
 //
@@ -17,7 +21,7 @@ package rust
 //	Fixtures prove the detection surface; full cross-entity linking
 //	requires import-graph analysis beyond this scanner.
 //
-// Issue #3269 — lang.rust.orm.seaorm ORM build.
+// Issue #3267 — lang.rust.orm.seaorm Relationships cells.
 
 import (
 	"context"
@@ -73,6 +77,28 @@ var (
 	// sea-orm-migration: impl MigrationTrait for MigrationName
 	reSeaOrmMigration = regexp.MustCompile(
 		`\bimpl\s+MigrationTrait\s+for\s+(\w+)`,
+	)
+
+	// belongs_to with from/to column references → FK extraction
+	// #[sea_orm(belongs_to = "...", from = "Column::FieldId", to = "super::user::Column::Id")]
+	reSeaOrmBelongsToFK = regexp.MustCompile(
+		`#\[sea_orm\([^)]*\bbelongs_to\s*=\s*"([^"]+)"[^)]*\bfrom\s*=\s*"([^"]+)"[^)]*\bto\s*=\s*"([^"]+)"`,
+	)
+
+	// find_related(T) / find_linked(T) — lazy/eager load signals
+	// Note: these take a type argument, so do NOT require empty parens.
+	reSeaOrmFindRelated = regexp.MustCompile(
+		`\.find_related\s*\(|\.find_linked\s*\(`,
+	)
+
+	// LoaderTrait usage — batch loading (lazy loading pattern)
+	reSeaOrmLoaderTrait = regexp.MustCompile(
+		`LoaderTrait|load_many\s*\(|load_one\s*\(|load_many_to_many\s*\(`,
+	)
+
+	// impl Related<T> for Entity — relation type implementation
+	reSeaOrmRelated = regexp.MustCompile(
+		`\bimpl\s+(?:<[^>]*>\s+)?Related\s*<\s*([^>]+)>\s+for\s+(\w+)`,
 	)
 )
 
@@ -204,6 +230,67 @@ func (e *rustSeaORMExtractor) Extract(ctx context.Context, file extractor.FileIn
 			"framework", "seaorm",
 			"migration_name", migName,
 			"provenance", "INFERRED_FROM_SEAORM_MIGRATION_TRAIT",
+		)
+		add(ent)
+	}
+
+	// 4. foreign_key_extraction — belongs_to with explicit from/to column refs
+	for _, m := range reSeaOrmBelongsToFK.FindAllStringSubmatchIndex(src, -1) {
+		targetEntity := src[m[2]:m[3]]
+		fromCol := src[m[4]:m[5]]
+		toCol := src[m[6]:m[7]]
+		// Shorten target entity path to last segment
+		targetShort := targetEntity
+		if idx := strings.LastIndex(targetEntity, "::"); idx >= 0 {
+			targetShort = targetEntity[idx+2:]
+		}
+		name := "seaorm:fk:" + fromCol + "->" + targetShort
+		ent := makeEntity(name, "SCOPE.Pattern", "foreign_key",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "seaorm",
+			"target_entity", targetEntity,
+			"from_column", fromCol,
+			"to_column", toCol,
+			"provenance", "INFERRED_FROM_SEAORM_BELONGS_TO_FK",
+		)
+		add(ent)
+	}
+
+	// 5. impl Related<T> for Entity → relationship implementation
+	for _, m := range reSeaOrmRelated.FindAllStringSubmatchIndex(src, -1) {
+		targetType := strings.TrimSpace(src[m[2]:m[3]])
+		entityType := src[m[4]:m[5]]
+		name := "seaorm:related:" + entityType + "->" + targetType
+		ent := makeEntity(name, "SCOPE.Pattern", "orm_relationship",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "seaorm",
+			"entity_type", entityType,
+			"related_to", targetType,
+			"provenance", "INFERRED_FROM_SEAORM_IMPL_RELATED",
+		)
+		add(ent)
+	}
+
+	// 6. lazy_loading_recognition — find_related() / find_linked()
+	for _, m := range reSeaOrmFindRelated.FindAllStringIndex(src, -1) {
+		ent := makeEntity("seaorm:find_related", "SCOPE.Pattern", "lazy_load",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "seaorm",
+			"provenance", "INFERRED_FROM_SEAORM_FIND_RELATED",
+		)
+		add(ent)
+	}
+
+	// 7. lazy_loading_recognition — LoaderTrait batch loading
+	for _, m := range reSeaOrmLoaderTrait.FindAllStringIndex(src, -1) {
+		ent := makeEntity("seaorm:loader_trait", "SCOPE.Pattern", "lazy_load",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "seaorm",
+			"provenance", "INFERRED_FROM_SEAORM_LOADER_TRAIT",
 		)
 		add(ent)
 	}

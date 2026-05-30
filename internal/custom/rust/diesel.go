@@ -9,6 +9,9 @@ package rust
 //     SCOPE.Component (subtype="orm_model") with the derive list in properties
 //   - joinable!(table1 -> table2 (fk_col)) → SCOPE.Pattern (subtype="orm_relationship")
 //   - #[belongs_to(Parent)] attribute → SCOPE.Pattern (subtype="orm_relationship")
+//   - diesel migration files: diesel_migrations::embed_migrations! / run_pending_migrations /
+//     MigrationHarness impls → SCOPE.Component (subtype="migration")
+//   - Foreign-key columns in table! macro → SCOPE.Pattern (subtype="foreign_key")
 //
 // Honesty:
 //
@@ -17,7 +20,7 @@ package rust
 //	Fixtures prove the detection surface; semantic cross-file resolution
 //	requires import-graph analysis beyond this scanner.
 //
-// Issue #3269 — lang.rust.orm.diesel ORM build.
+// Issue #3267 — lang.rust.orm.diesel Relationships + Migrations cells.
 
 import (
 	"context"
@@ -72,6 +75,33 @@ var (
 	// #[belongs_to(Parent)] / #[belongs_to(Parent, foreign_key = "parent_id")]
 	reDieselBelongsTo = regexp.MustCompile(
 		`#\[belongs_to\(\s*(\w+)(?:\s*,\s*[^)]+)?\s*\)\]`,
+	)
+
+	// diesel_migrations::embed_migrations!("path") or embed_migrations!()
+	reDieselEmbedMigrations = regexp.MustCompile(
+		`diesel_migrations::embed_migrations!\s*\(([^)]*)\)|embed_migrations!\s*\(([^)]*)\)`,
+	)
+
+	// run_pending_migrations(...) — migration execution
+	reDieselRunMigrations = regexp.MustCompile(
+		`run_pending_migrations\s*\(|connection\.run_pending_migrations\s*\(`,
+	)
+
+	// impl MigrationHarness for T  (diesel 2.x migration trait)
+	reDieselMigrationHarness = regexp.MustCompile(
+		`\bimpl\s+(?:<[^>]*>\s+)?MigrationHarness\b`,
+	)
+
+	// Foreign-key column pattern in table! body: col_name -> Nullable<Integer> or col_name -> Integer
+	// We detect *_id columns as FK signals within table! macro bodies.
+	// Capture: table name (from reDieselTable) then scan body for _id columns.
+	reDieselTableBody = regexp.MustCompile(
+		`\btable!\s*\{\s*(\w+)\s*[\({][^}]*\}`,
+	)
+
+	// Inside a table! body: field_name (ending in _id) -> SomeType
+	reDieselFKColumn = regexp.MustCompile(
+		`(\w+_id)\s*->\s*\w+`,
 	)
 )
 
@@ -188,6 +218,73 @@ func (e *rustDieselExtractor) Extract(ctx context.Context, file extractor.FileIn
 			"parent_model", parent,
 			"relationship_type", "belongs_to",
 			"provenance", "INFERRED_FROM_DIESEL_BELONGS_TO",
+		)
+		add(ent)
+	}
+
+	// 5. Foreign-key column extraction — scan table! macro bodies for *_id columns
+	for _, m := range reDieselTableBody.FindAllStringSubmatchIndex(src, -1) {
+		tableName := src[m[2]:m[3]]
+		tableBody := src[m[0]:m[1]]
+		for _, fkm := range reDieselFKColumn.FindAllStringSubmatchIndex(tableBody, -1) {
+			colName := tableBody[fkm[2]:fkm[3]]
+			// Skip the primary key "id" itself — only *_id references
+			if colName == "id" {
+				continue
+			}
+			fkName := "diesel:fk:" + tableName + "." + colName
+			fkEnt := makeEntity(fkName, "SCOPE.Pattern", "foreign_key",
+				file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&fkEnt,
+				"framework", "diesel",
+				"table_name", tableName,
+				"fk_column", colName,
+				"provenance", "INFERRED_FROM_DIESEL_FK_COLUMN",
+			)
+			add(fkEnt)
+		}
+	}
+
+	// 6. migration_parsing — embed_migrations! macro
+	for _, m := range reDieselEmbedMigrations.FindAllStringSubmatchIndex(src, -1) {
+		migPath := ""
+		for i := 2; i < len(m); i += 2 {
+			if m[i] >= 0 {
+				migPath = strings.TrimSpace(strings.Trim(src[m[i]:m[i+1]], `"`))
+				break
+			}
+		}
+		if migPath == "" {
+			migPath = "./migrations"
+		}
+		ent := makeEntity("diesel:embed_migrations:"+migPath, "SCOPE.Component", "migration",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "diesel",
+			"migration_path", migPath,
+			"provenance", "INFERRED_FROM_DIESEL_EMBED_MIGRATIONS",
+		)
+		add(ent)
+	}
+
+	// 7. run_pending_migrations → migration execution entity
+	for _, m := range reDieselRunMigrations.FindAllStringIndex(src, -1) {
+		ent := makeEntity("diesel:run_pending_migrations", "SCOPE.Component", "migration",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "diesel",
+			"provenance", "INFERRED_FROM_DIESEL_RUN_MIGRATIONS",
+		)
+		add(ent)
+	}
+
+	// 8. impl MigrationHarness → migration trait implementation
+	for _, m := range reDieselMigrationHarness.FindAllStringIndex(src, -1) {
+		ent := makeEntity("diesel:MigrationHarness", "SCOPE.Pattern", "migration",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "diesel",
+			"provenance", "INFERRED_FROM_DIESEL_MIGRATION_HARNESS",
 		)
 		add(ent)
 	}

@@ -105,16 +105,16 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
 | [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
 | [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟢 2/2 | — | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
-| [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Poem](../detail/lang.rust.framework.poem.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Tide](../detail/lang.rust.framework.tide.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 1/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
-| [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Poem](../detail/lang.rust.framework.poem.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Tide](../detail/lang.rust.framework.tide.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 8/21 | 🔴 0/6 | |
 
 
@@ -214,7 +214,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [Electron](../detail/lang.jsts.framework.electron.md) | 🟢 10/10 | ✅ 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Desktop](../detail/lang.kotlin.framework.compose-desktop.md) | 🟢 10/10 | 🔴 0/3 | |
 | [kotlin](../by-language/kotlin.md) | [Compose Multiplatform](../detail/lang.kotlin.framework.compose-multiplatform.md) | 🟢 10/10 | 🔴 0/3 | |
-| [rust](../by-language/rust.md) | [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | 🟢 10/10 | 🔴 0/3 | |
+| [rust](../by-language/rust.md) | [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | 🟢 10/10 | 🟢 3/3 | |
 
 
 ## RPC Framework
