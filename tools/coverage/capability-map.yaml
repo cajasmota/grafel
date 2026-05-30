@@ -7149,6 +7149,19 @@ records:
               functions: [runTaintFlowPass, computeFindings]
           issues_implemented: ["2773"]
           verified_at: "2026-05-28"
+      Testing:
+        tests_linkage:
+          status: full
+          symbols:
+            - file: internal/extractors/cross/testmap/frameworks.go
+              functions: [detectPHPUnit, detectPhpPest]
+            - file: internal/extractors/cross/testmap/resolver.go
+              functions: [resolveCalls, isStopword]
+          tests:
+            - file: internal/extractors/cross/testmap/extractor_test.go
+              functions: [TestPHPUnit_TestPrefixMethod, TestPHPUnit_HashTestAttribute, TestPHPUnit_DocblockTestAnnotation, TestPHPUnit_ClassNameSubjectDerivation, TestPHPUnit_LaravelFeatureTest, TestPhpPest_ItBlock, TestPhpPest_UsesSubjectExtraction, TestPhpPest_LaravelFeatureTest]
+          issues_implemented: ["3399"]
+          verified_at: "2026-05-30"
 
   lang.rust.framework.axum:
     capabilities:

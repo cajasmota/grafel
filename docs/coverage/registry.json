@@ -34518,10 +34518,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor_test.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Deep PHPUnit/Pest linkage (#3399): test* prefix + #[Test] attribute + @test docblock detection; class-name subject derivation (UserServiceTest→UserService); instantiation body hints (new Foo()); Pest it()/test() blocks with uses(Class::class) subject extraction and describe() PascalCase subject fallback; Laravel feature test HTTP helpers (-\u003eget/post/assertStatus) filtered as stopwords; path hints for tests/ directory; TESTS edge emitted for all three PHPUnit forms and Pest DSL"
           }
         },
         "Observability": {
@@ -35620,10 +35619,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/test_patterns.yaml","internal/engine/tests_edges.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go)"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor_test.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Deep PHPUnit/Pest linkage (#3399): test* prefix + #[Test] attribute + @test docblock detection; class-name subject derivation (UserServiceTest→UserService); instantiation body hints (new Foo()); Pest it()/test() blocks with uses(Class::class) subject extraction; TESTS edge emitted for all three PHPUnit forms and Pest DSL; Symfony-specific TestCase subclasses covered by phpunit class regex"
           }
         },
         "Observability": {

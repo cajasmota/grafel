@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/engine/rules/php/test_patterns.yaml`<br>`internal/engine/tests_edges.go` | PHPUnit test detection via test_patterns.yaml + TESTS edge multi-hop via HTTP router (tests_edges.go) |
+| Tests linkage | ✅ `full` | — | — | `internal/extractors/cross/testmap/extractor_test.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/resolver.go` | Deep PHPUnit/Pest linkage (#3399): test* prefix + #[Test] attribute + @test docblock detection; class-name subject derivation (UserServiceTest→UserService); instantiation body hints (new Foo()); Pest it()/test() blocks with uses(Class::class) subject extraction; TESTS edge emitted for all three PHPUnit forms and Pest DSL; Symfony-specific TestCase subclasses covered by phpunit class regex |
 
 ### Observability
 

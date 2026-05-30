@@ -141,6 +141,44 @@ var stopwords = map[string]bool{
 	// C# common test framework helpers (all frameworks)
 	"testcontext.writeline": true, "testcontext.write": true,
 	"output.writeline": true, "output.write": true,
+	// PHP — PHPUnit assertion helpers (non-duplicate; assertequal/asserttrue/assertfalse
+	// /assertnull/assertnotnull/assertempty/assertnotempty/assertcontains/assertnotcontains
+	// are already covered by the generic assert.* entries above).
+	"assertsame": true, "assertinstanceof": true,
+	"assertcount": true, "assertarrayhaskey": true,
+	"assertstringcontainstring": true, "assertstringnotcontainstring": true,
+	"assertmatchesregularexpression": true, "assertdatabasehas": true,
+	"assertdatabasemissing": true, "assertdatabasecount": true, "assertsoftdeleted": true,
+	"assertnotdeleted": true,
+	// PHP — Pest DSL helpers (should not be production call targets).
+	// "expect" is already in the generic stopwords block above.
+	"tobetrue": true, "tobefalse": true, "tobenull": true,
+	"toequal": true, "tobesame": true, "tocontain": true, "tohavecount": true,
+	"tohavekey": true, "tobeempty": true, "tobeaninstanceof": true,
+	"tobestring": true, "tobefloat": true, "tobeinf": true, "tobenan": true,
+	"tobebetween": true, "tothrow": true, "tobegreaterhan": true,
+	// PHP — Laravel feature test HTTP helpers (test infrastructure, not prod calls)
+	// $this->get/post/put/patch/delete/json/getJson/postJson/putJson/patchJson/deleteJson
+	"$this->get": true, "$this->post": true, "$this->put": true,
+	"$this->patch": true, "$this->delete": true, "$this->json": true,
+	"$this->getjson": true, "$this->postjson": true, "$this->putjson": true,
+	"$this->patchjson": true, "$this->deletejson": true,
+	// normalised lowercase (the resolver lowercases before lookup)
+	"this.get": true, "this.post": true, "this.put": true,
+	"this.patch": true, "this.delete": true, "this.json": true,
+	"this.getjson": true, "this.postjson": true, "this.putjson": true,
+	"this.patchjson": true, "this.deletejson": true,
+	// Laravel test assertion helpers on TestResponse
+	"assertstatus": true, "assertok": true, "assertcreated": true,
+	"assertnotfound": true, "assertforbidden": true, "assertunauthorized": true,
+	"assertredirect": true, "assertjson": true, "assertjsonpath": true,
+	"assertjsonfragment": true, "assertjsoncount": true, "assertjsonstructure": true,
+	"assertsee": true, "assertdontesee": true, "assertseeinorder": true,
+	"assertheader": true, "assertcookie": true, "assertsession": true,
+	"assertviewhas": true, "assertviewmissing": true,
+	// Laravel RefreshDatabase / HTTP test lifecycle helpers
+	"refreshdatabase": true, "seeddatabase": true, "withoutexceptionhandling": true,
+	"withheaders": true, "actingas": true, "withtoken": true, "be": true,
 	// Common language keywords that end up in call-like positions
 	"if": true, "for": true, "while": true, "switch": true, "return": true,
 	"func": true, "def": true, "class": true, "struct": true, "new": true,
@@ -200,6 +238,25 @@ func isStopword(id string) bool {
 		// ASP.NET Core / HttpClient test infrastructure
 		"_factory.", "factory.", "_client.", "httpclient.",
 		"response.", "_response.",
+		// PHP / Laravel feature-test infrastructure (#3399).
+		// $this->get('/url'), $this->post(...), $this->assertStatus(200) etc. are
+		// TestResponse helpers or HTTP dispatch on the test kernel — not production calls.
+		// directCallRE captures `this.get(` / `this.post(` after PHP $ is stripped by
+		// the regex ($ is not a word character so `\b$this\b` never matches; the RE
+		// sees `this` as the receiver). We drop any call whose receiver is `this` and
+		// the method is an HTTP verb or an assertion helper — covered by stopwords above
+		// for the common cases, and here for the compound `this.<verb>` form.
+		"this.assertstatus", "this.assertok", "this.assertcreated", "this.assertnotfound",
+		"this.assertforbidden", "this.assertunauthorized", "this.assertredirect",
+		"this.assertjson", "this.assertjsonpath", "this.assertjsonfragment",
+		"this.assertjsoncount", "this.assertjsonstructure",
+		"this.assertsee", "this.assertdontsee", "this.assertheader",
+		"this.assertcookie", "this.assertsession",
+		"this.assertviewhas", "this.assertviewmissing",
+		"this.assertdatabasehas", "this.assertdatabasemissing",
+		"this.assertdatabasecount", "this.assertsoftdeleted",
+		"this.refreshdatabase", "this.seed", "this.actingas", "this.withtoken",
+		"this.withheaders", "this.withoutexceptionhandling",
 	} {
 		if strings.HasPrefix(low, prefix) {
 			return true

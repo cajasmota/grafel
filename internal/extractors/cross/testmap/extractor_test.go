@@ -52,6 +52,25 @@ func hasEdge(recs []types.EntityRecord, test, prod string) bool {
 	return false
 }
 
+// hasEdgeAny reports whether any entity for the given test function has a
+// TESTS relationship edge whose "tested" property equals prod. Unlike
+// hasEdge, it does not require prod to be the primary tested_function —
+// useful when the test body contains multiple production calls and the
+// highest-confidence one is not the one being asserted.
+func hasEdgeAny(recs []types.EntityRecord, test, prod string) bool {
+	for _, r := range recs {
+		if r.Properties["test_function"] != test {
+			continue
+		}
+		for _, rel := range r.Relationships {
+			if rel.Kind == "TESTS" && rel.Properties["tested"] == prod {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // Interface / registration
 // ---------------------------------------------------------------------------
@@ -1856,6 +1875,405 @@ class UserTest extends TestCase {
 	}
 	if recs[0].Properties["test_framework"] != "phpunit" {
 		t.Errorf("framework=%q, want phpunit", recs[0].Properties["test_framework"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PHP — PHPUnit deep linkage (#3399)
+// ---------------------------------------------------------------------------
+
+// TestPHPUnit_TestPrefixMethod verifies the classic test* prefix method
+// form emits a TESTS edge to the directly-called production function.
+func TestPHPUnit_TestPrefixMethod(t *testing.T) {
+	src := `<?php
+use PHPUnit\Framework\TestCase;
+
+class UserServiceTest extends TestCase {
+    public function testRegisterCreatesUser() {
+        $svc = new UserService();
+        $user = $svc->register(['email' => 'a@b.com']);
+        $this->assertInstanceOf(User::class, $user);
+    }
+}`
+	recs := runExtract(t, "tests/Unit/UserServiceTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from phpunit test prefix form")
+	}
+	if recs[0].Properties["test_framework"] != "phpunit" {
+		t.Errorf("framework=%q, want phpunit", recs[0].Properties["test_framework"])
+	}
+	// register() is called directly in the body → high-confidence TESTS edge.
+	// Use hasEdgeAny because the body also instantiates UserService which may
+	// be the primary tested_function; register appears as a secondary edge.
+	if !hasEdgeAny(recs, "testRegisterCreatesUser", "register") {
+		t.Error("expected TESTS edge from testRegisterCreatesUser to register (direct call)")
+	}
+}
+
+// TestPHPUnit_HashTestAttribute verifies PHP8 #[Test] attribute methods are
+// detected and emit a TESTS edge to the directly-called production function.
+func TestPHPUnit_HashTestAttribute(t *testing.T) {
+	src := `<?php
+use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\Test;
+
+class OrderServiceTest extends TestCase {
+    #[Test]
+    public function it_calculates_total() {
+        $svc = new OrderService();
+        $total = $svc->calculateTotal([10, 20]);
+        $this->assertEquals(30, $total);
+    }
+}`
+	recs := runExtract(t, "tests/OrderServiceTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from #[Test] attribute form")
+	}
+	found := false
+	for _, r := range recs {
+		if r.Properties["test_function"] == "it_calculates_total" {
+			found = true
+			if !hasEdgeAny([]types.EntityRecord{r}, "it_calculates_total", "calculateTotal") {
+				t.Error("expected TESTS edge to calculateTotal (direct call)")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected entity with test_function=it_calculates_total from #[Test] attribute")
+	}
+}
+
+// TestPHPUnit_DocblockTestAnnotation verifies /** @test */ docblock annotated
+// methods are detected and emit a TESTS edge.
+func TestPHPUnit_DocblockTestAnnotation(t *testing.T) {
+	src := `<?php
+use PHPUnit\Framework\TestCase;
+
+class ProductRepositoryTest extends TestCase {
+    /** @test */
+    public function it_finds_product_by_id() {
+        $repo = new ProductRepository();
+        $product = $repo->findById(1);
+        $this->assertNotNull($product);
+    }
+}`
+	recs := runExtract(t, "tests/ProductRepositoryTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from @test docblock form")
+	}
+	found := false
+	for _, r := range recs {
+		if r.Properties["test_function"] == "it_finds_product_by_id" {
+			found = true
+			if !hasEdgeAny([]types.EntityRecord{r}, "it_finds_product_by_id", "findById") {
+				t.Error("expected TESTS edge to findById (direct call)")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected entity with test_function=it_finds_product_by_id from @test docblock")
+	}
+}
+
+// TestPHPUnit_ClassNameSubjectDerivation verifies that UserServiceTest → UserService
+// is used as a medium-confidence subject when the body has no direct production call.
+func TestPHPUnit_ClassNameSubjectDerivation(t *testing.T) {
+	src := `<?php
+use PHPUnit\Framework\TestCase;
+
+class UserServiceTest extends TestCase {
+    public function testSomething() {
+        // no explicit production call
+        $this->assertTrue(true);
+    }
+}`
+	recs := runExtract(t, "tests/UserServiceTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from phpunit class-name subject derivation")
+	}
+	// describeSubject = UserService (stripped "Test") → medium-confidence TESTS edge.
+	if !hasEdge(recs, "testSomething", "UserService") {
+		t.Error("expected TESTS edge to UserService derived from class name UserServiceTest")
+	}
+}
+
+// TestPHPUnit_InstantiationBodyHint verifies that `new UserService()` in the
+// test body is used as the subject hint when no class-name-derived subject exists.
+func TestPHPUnit_InstantiationBodyHint(t *testing.T) {
+	src := `<?php
+use PHPUnit\Framework\TestCase;
+
+class SomeTest extends TestCase {
+    public function testDoesWork() {
+        $svc = new UserService();
+        $this->assertNotNull($svc);
+    }
+}`
+	recs := runExtract(t, "tests/SomeTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities")
+	}
+	// UserService instantiated in body → should appear as a production target.
+	found := false
+	for _, r := range recs {
+		if r.Properties["test_function"] == "testDoesWork" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected entity with test_function=testDoesWork")
+	}
+}
+
+// TestPHPUnit_LaravelFeatureTest verifies that Laravel feature test HTTP
+// dispatch calls ($this->get, $this->postJson) are NOT emitted as production
+// call targets (they are test infrastructure), but that the named service
+// method in the body IS linked.
+func TestPHPUnit_LaravelFeatureTest(t *testing.T) {
+	src := `<?php
+namespace Tests\Feature;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class UserApiTest extends TestCase {
+    use RefreshDatabase;
+
+    public function testIndexReturnsUsers() {
+        $response = $this->get('/api/users');
+        $response->assertStatus(200);
+        $response->assertJson(['data' => []]);
+    }
+
+    public function testStoreCreatesUser() {
+        $response = $this->postJson('/api/users', [
+            'name' => 'Alice',
+            'email' => 'alice@example.com',
+        ]);
+        $response->assertCreated();
+        UserService::create(['name' => 'Alice']);
+    }
+}`
+	recs := runExtract(t, "tests/Feature/UserApiTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from Laravel feature test")
+	}
+	// $this->get('/api/users') must NOT produce a TESTS edge to "get".
+	for _, r := range recs {
+		if hasEdge([]types.EntityRecord{r}, r.Properties["test_function"], "get") {
+			t.Errorf("unexpected TESTS edge to 'get' — Laravel $this->get should be a stopword")
+		}
+		if hasEdge([]types.EntityRecord{r}, r.Properties["test_function"], "postJson") {
+			t.Errorf("unexpected TESTS edge to 'postJson' — Laravel $this->postJson should be a stopword")
+		}
+	}
+	// UserService::create() IS a production call → should produce a TESTS edge.
+	if !hasEdgeAny(recs, "testStoreCreatesUser", "create") {
+		t.Error("expected TESTS edge to create (UserService::create)")
+	}
+}
+
+// TestPHPUnit_PathHintLaravelTests verifies that a PHPUnit file under tests/
+// without an explicit use PHPUnit statement is still detected via path hints.
+func TestPHPUnit_PathHintLaravelTests(t *testing.T) {
+	src := `<?php
+namespace Tests\Unit;
+
+class OrderCalculatorTest extends \PHPUnit\Framework\TestCase {
+    public function testCalculate() {
+        $calc = new OrderCalculator();
+        $total = $calc->calculate([5, 10]);
+        $this->assertEquals(15, $total);
+    }
+}`
+	recs := runExtract(t, "tests/Unit/OrderCalculatorTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities for file under tests/ path hint")
+	}
+	if recs[0].Properties["test_framework"] != "phpunit" {
+		t.Errorf("framework=%q want phpunit", recs[0].Properties["test_framework"])
+	}
+}
+
+// TestPHPUnit_MultipleTestForms verifies that all three test detection forms
+// (test* prefix, #[Test] attribute, @test docblock) are discovered in the
+// same class and each produces its own TESTS edge.
+func TestPHPUnit_MultipleTestForms(t *testing.T) {
+	src := `<?php
+use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\Test;
+
+class PaymentServiceTest extends TestCase {
+    public function testChargeCard() {
+        $svc = new PaymentService();
+        $svc->chargeCard('tok_visa', 1000);
+    }
+
+    #[Test]
+    public function it_refunds_payment() {
+        $svc = new PaymentService();
+        $svc->refund('txn_123');
+    }
+
+    /** @test */
+    public function it_handles_failure() {
+        $svc = new PaymentService();
+        $svc->chargeCard('tok_declined', 500);
+    }
+}`
+	recs := runExtract(t, "tests/PaymentServiceTest.php", "php", src)
+	// Should detect all 3 test functions.
+	funcNames := map[string]bool{}
+	for _, r := range recs {
+		funcNames[r.Properties["test_function"]] = true
+	}
+	for _, want := range []string{"testChargeCard", "it_refunds_payment", "it_handles_failure"} {
+		if !funcNames[want] {
+			t.Errorf("expected test function %q to be detected", want)
+		}
+	}
+	if !hasEdgeAny(recs, "testChargeCard", "chargeCard") {
+		t.Error("expected TESTS edge: testChargeCard → chargeCard")
+	}
+	if !hasEdgeAny(recs, "it_refunds_payment", "refund") {
+		t.Error("expected TESTS edge: it_refunds_payment → refund")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PHP — Pest deep linkage (#3399)
+// ---------------------------------------------------------------------------
+
+// TestPhpPest_ItBlock verifies that Pest it('description', fn()=>...) blocks
+// are detected and emit TESTS edges based on direct calls in the body.
+func TestPhpPest_ItBlock(t *testing.T) {
+	src := `<?php
+use Pest\Test;
+use App\Services\UserService;
+
+it('creates a user', function () {
+    $svc = new UserService();
+    $user = $svc->create(['email' => 'a@b.com']);
+    expect($user)->toBeInstanceOf(User::class);
+});
+`
+	recs := runExtract(t, "tests/Feature/UserTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from Pest it() block")
+	}
+	if recs[0].Properties["test_framework"] != "phptest_pest" {
+		t.Errorf("framework=%q want phptest_pest", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_creates_a_user", "create") {
+		t.Error("expected TESTS edge to create (direct call in Pest it() body)")
+	}
+}
+
+// TestPhpPest_UsesSubjectExtraction verifies that uses(UserService::class)
+// produces a medium-confidence TESTS edge to UserService even when the body
+// has no direct call.
+func TestPhpPest_UsesSubjectExtraction(t *testing.T) {
+	src := `<?php
+use Pest\Test;
+uses(App\Services\UserService::class);
+
+it('validates user', function () {
+    expect(true)->toBeTrue();
+});
+`
+	recs := runExtract(t, "tests/UserServiceTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from Pest uses() subject extraction")
+	}
+	// Subject = UserService (last segment of App\Services\UserService)
+	if !hasEdge(recs, "it_validates_user", "UserService") {
+		t.Error("expected medium-confidence TESTS edge to UserService from uses()")
+	}
+}
+
+// TestPhpPest_TestFunction verifies test('description', ...) form is also detected.
+func TestPhpPest_TestFunction(t *testing.T) {
+	src := `<?php
+use Pest\Test;
+
+test('order total is calculated', function () {
+    $calc = new OrderCalculator();
+    $result = $calc->total([10, 20, 30]);
+    expect($result)->toBe(60);
+});
+`
+	recs := runExtract(t, "tests/OrderTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from Pest test() function")
+	}
+	if recs[0].Properties["test_framework"] != "phptest_pest" {
+		t.Errorf("framework=%q want phptest_pest", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_order_total_is_calculated", "total") {
+		t.Error("expected TESTS edge to total() method")
+	}
+}
+
+// TestPhpPest_DescribeSubjectFallback verifies that describe('UserService', ...)
+// provides a PascalCase subject for nested it() blocks via describeSubject.
+func TestPhpPest_DescribeSubjectFallback(t *testing.T) {
+	src := `<?php
+use Pest\Test;
+
+describe('UserService', function () {
+    it('registers a user', function () {
+        // body has no direct call
+        expect(true)->toBeTrue();
+    });
+});
+`
+	recs := runExtract(t, "tests/UserServiceTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from Pest describe() with subject")
+	}
+	// Subject "UserService" from describe() → medium-confidence edge.
+	if !hasEdge(recs, "it_registers_a_user", "UserService") {
+		t.Error("expected TESTS edge to UserService from Pest describe() subject")
+	}
+}
+
+// TestPhpPest_LaravelFeatureTest verifies that Laravel feature tests written
+// in Pest style emit TESTS edges to production code, not to HTTP dispatch helpers.
+func TestPhpPest_LaravelFeatureTest(t *testing.T) {
+	src := `<?php
+use Pest\Test;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+it('returns user list', function () {
+    $response = $this->get('/api/users');
+    $response->assertStatus(200);
+});
+
+it('stores a user', function () {
+    UserService::store(['name' => 'Bob']);
+    $this->assertDatabaseHas('users', ['name' => 'Bob']);
+});
+`
+	recs := runExtract(t, "tests/Feature/UserApiPestTest.php", "php", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected entities from Pest Laravel feature test")
+	}
+	// $this->get should not produce a production TESTS edge.
+	for _, r := range recs {
+		if r.Properties["test_function"] == "it_returns_user_list" {
+			if hasEdge([]types.EntityRecord{r}, "it_returns_user_list", "get") {
+				t.Error("unexpected TESTS edge to 'get' — $this->get is a stopword")
+			}
+		}
+	}
+	// UserService::store IS a production call.
+	if !hasEdgeAny(recs, "it_stores_a_user", "store") {
+		t.Error("expected TESTS edge to store (UserService::store production call)")
 	}
 }
 

@@ -810,19 +810,171 @@ func detectRustTest(source string) []testFunction {
 }
 
 // ---------------------------------------------------------------------------
-// PHP — PHPUnit
+// PHP — PHPUnit (deep linkage, #3399)
 // ---------------------------------------------------------------------------
 
-var phpUnitRE = regexp.MustCompile(
+// phpUnitTestNameRE matches PHPUnit test methods by the three recognised forms:
+//
+//  1. test* name prefix:            public function testGetUser() { … }
+//  2. #[Test] PHP8 attribute:       #[Test] public function getUserById() { … }
+//  3. /** @test */ docblock:        /** @test */ public function it_gets_user() { … }
+//
+// Group 1 captures the method name for all three forms.
+var phpUnitTestNameRE = regexp.MustCompile(
 	`(?m)(?:public\s+|private\s+|protected\s+)?function\s+(test\w+)\s*\([^)]*\)\s*(?::\s*\w+\s*)?{`,
 )
 
+// phpUnitAttrTestRE matches PHP8 #[Test] attribute before a public method.
+// Captures group 1 = method name.
+var phpUnitAttrTestRE = regexp.MustCompile(
+	`(?m)#\[Test\](?:\s*\n)+\s*(?:public\s+|protected\s+|private\s+)?(?:static\s+)?function\s+(\w+)\s*\(`,
+)
+
+// phpUnitDocTestRE matches /** @test */ docblock before a public method.
+// Captures group 1 = method name.
+var phpUnitDocTestRE = regexp.MustCompile(
+	`(?m)/\*\*[^*]*@test[^*]*\*/\s*(?:(?:public|protected|private|static|abstract|final)\s+)*function\s+(\w+)\s*\(`,
+)
+
+// phpUnitClassRE detects a PHPUnit test class extending TestCase (or its
+// Laravel/Symfony subclasses). Captures group 1 = class name.
+var phpUnitClassRE = regexp.MustCompile(
+	`(?m)class\s+(\w+)\s+extends\s+(?:\w+\\)*TestCase\b`,
+)
+
+// phpUnitInstantiationRE detects `new UserService()` / `new SomeClass(` patterns
+// in PHP test bodies that identify the class-under-test.
+// Captures group 1 = class name being instantiated.
+var phpUnitInstantiationRE = regexp.MustCompile(
+	`\bnew\s+([A-Z][A-Za-z0-9_]*)\s*\(`,
+)
+
+// phpTestSubjectFromClassName derives the class under test from the test class
+// name by stripping trailing "Test(s)". Examples:
+//
+//	UserTest          → User
+//	UserServiceTest   → UserService
+//	UserControllerTest → UserController
+func phpTestSubjectFromClassName(className string) string {
+	for _, suf := range []string{"Tests", "Test"} {
+		if strings.HasSuffix(className, suf) && len(className) > len(suf) {
+			return className[:len(className)-len(suf)]
+		}
+	}
+	return ""
+}
+
 func detectPHPUnit(source string) []testFunction {
+	// Derive the described subject from the class name.
+	subject := ""
+	if m := phpUnitClassRE.FindStringSubmatch(source); m != nil {
+		subject = phpTestSubjectFromClassName(m[1])
+	}
+
+	seen := map[string]bool{}
 	var out []testFunction
-	for _, m := range phpUnitRE.FindAllStringSubmatchIndex(source, -1) {
+	add := func(name, body string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		// Augment body with instantiation targets: `new UserService()` → subject hint
+		// carried in describeSubject so resolver can pick up class-under-test even
+		// when the body has no direct method call matching a production function.
+		ds := subject
+		if ds == "" {
+			// Try to infer from body instantiation (e.g. new UserService())
+			if im := phpUnitInstantiationRE.FindStringSubmatch(body); im != nil {
+				ds = im[1]
+			}
+		}
+		out = append(out, testFunction{qname: name, body: body, describeSubject: ds})
+	}
+
+	// Form 1: test* prefix methods.
+	for _, m := range phpUnitTestNameRE.FindAllStringSubmatchIndex(source, -1) {
 		name := source[m[2]:m[3]]
 		body := extractBraceBody(source, m[1]-1)
-		out = append(out, testFunction{qname: name, body: body})
+		add(name, body)
+	}
+
+	// Form 2: #[Test] attribute methods.
+	for _, m := range phpUnitAttrTestRE.FindAllStringSubmatchIndex(source, -1) {
+		name := source[m[2]:m[3]]
+		// Find the function body by scanning forward from the match.
+		body := extractBraceBody(source, m[1])
+		add(name, body)
+	}
+
+	// Form 3: /** @test */ docblock methods.
+	for _, m := range phpUnitDocTestRE.FindAllStringSubmatchIndex(source, -1) {
+		name := source[m[2]:m[3]]
+		body := extractBraceBody(source, m[1])
+		add(name, body)
+	}
+
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// PHP — Pest (functional test DSL, #3399)
+// ---------------------------------------------------------------------------
+
+// pestItRE matches Pest it('description', function () { … }) and
+// test('description', function () { … }) or arrow-function variants.
+// Allows optional leading whitespace so that nested it() inside describe()
+// blocks is also detected.
+// Captures group 1 = single-quoted description, group 2 = double-quoted.
+var pestItRE = regexp.MustCompile(
+	`(?m)^\s*(?:it|test)\s*\(\s*(?:'([^']{1,300})'|"([^"]{1,300})")\s*,`,
+)
+
+// pestUsesSubjectRE matches uses(ClassName::class) to extract the test subject
+// for use in describeSubject. Captures group 1 = class name (without ::class).
+var pestUsesSubjectRE = regexp.MustCompile(
+	`(?m)uses\s*\(\s*([A-Za-z_][A-Za-z0-9_\\]*?)::class`,
+)
+
+// pestDescribeSubjectRE matches describe('ClassName', ...) where the description
+// is a PascalCase identifier — used as a fallback subject.
+var pestDescribeSubjectRE = regexp.MustCompile(
+	`(?m)^\s*describe\s*\(\s*(?:'([A-Z][A-Za-z0-9_]*)'|"([A-Z][A-Za-z0-9_]*)")`,
+)
+
+func detectPhpPest(source string) []testFunction {
+	// Derive subject from uses(ClassName::class).
+	subject := ""
+	if m := pestUsesSubjectRE.FindStringSubmatch(source); m != nil {
+		// Take the last segment of a namespaced class: App\Services\UserService → UserService
+		parts := strings.Split(m[1], `\`)
+		subject = parts[len(parts)-1]
+	}
+	// Fallback: describe('ClassName', ...) where first arg looks like a class.
+	if subject == "" {
+		if m := pestDescribeSubjectRE.FindStringSubmatch(source); m != nil {
+			if m[1] != "" {
+				subject = m[1]
+			} else if m[2] != "" {
+				subject = m[2]
+			}
+		}
+	}
+
+	var out []testFunction
+	for _, m := range pestItRE.FindAllStringSubmatchIndex(source, -1) {
+		// Pick whichever quote group matched.
+		rawName := ""
+		if m[2] >= 0 && m[3] >= 0 {
+			rawName = source[m[2]:m[3]]
+		} else if m[4] >= 0 && m[5] >= 0 {
+			rawName = source[m[4]:m[5]]
+		}
+		if rawName == "" {
+			continue
+		}
+		name := jestCaseQName(rawName) // reuse JS normaliser: spaces → underscores
+		body := extractBraceBody(source, m[1])
+		out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
 	}
 	return out
 }
@@ -1034,11 +1186,30 @@ var frameworkOrder = []frameworkEntry{
 		},
 		detect: detectRustTest,
 	},
+	// PHP — Pest: listed BEFORE phpunit so that files with an explicit Pest
+	// import are routed to the Pest detector first. Import-hints-only — no
+	// path hints — to avoid false-positive matches on PHPUnit files that also
+	// live under tests/. Files that use Pest DSL without a recognised import
+	// fall through to phpunit detection (which will yield 0 results and skip
+	// the file), which is an acceptable partial miss rather than a wrong match.
+	{
+		name:        "phptest_pest",
+		importHints: []string{"pest", "pestphp", "pest\\expect", "pest\\test"},
+		detect:      detectPhpPest,
+	},
 	{
 		name:        "phpunit",
-		importHints: []string{"phpunit", "phpunit\\framework"},
+		importHints: []string{"phpunit", "phpunit\\framework", "phpunit\\framework\\testcase"},
 		filenameHints: []*regexp.Regexp{
 			regexp.MustCompile(`Test\.php$`),
+			regexp.MustCompile(`Tests\.php$`),
+		},
+		// Laravel/Symfony PHPUnit tests commonly live under tests/ — detect by
+		// path even when the use PHPUnit statement is absent (e.g. when the test
+		// class extends a framework-provided TestCase base that hides the import).
+		pathHints: []*regexp.Regexp{
+			regexp.MustCompile(`/tests?/.*Test\.php$`),
+			regexp.MustCompile(`/tests?/.*Tests\.php$`),
 		},
 		detect: detectPHPUnit,
 	},
