@@ -228,16 +228,22 @@ func processSpringClass(class *sitter.Node, src []byte, path string, out *compos
 			out.claimedMethodPaths[apath] = true
 			out.claimedHandlerMethods[methodName] = true
 
+			routeProps := map[string]string{
+				"framework":    "java",
+				"pattern_type": "ast_driven",
+				"http_method":  httpMethodForAnnotation(aname),
+			}
+			// Surface path-variable names (e.g. {id}, {userId}) so the graph
+			// records which segments are dynamic without losing the template form.
+			if pathParams := extractRoutePathParams(composedPath); pathParams != "" {
+				routeProps["path_params"] = pathParams
+			}
 			out.entities = append(out.entities, types.EntityRecord{
-				Name:       composedPath,
-				Kind:       "Route",
-				SourceFile: path,
-				Language:   "java",
-				Properties: map[string]string{
-					"framework":    "java",
-					"pattern_type": "ast_driven",
-					"http_method":  httpMethodForAnnotation(aname),
-				},
+				Name:               composedPath,
+				Kind:               "Route",
+				SourceFile:         path,
+				Language:           "java",
+				Properties:         routeProps,
 				EnrichmentRequired: false,
 				EnrichmentStatus:   types.StatusPending,
 				QualityScore:       0.7,
@@ -387,6 +393,35 @@ func nodeText(n *sitter.Node, src []byte) string {
 		return ""
 	}
 	return string(src[n.StartByte():n.EndByte()])
+}
+
+// extractRoutePathParams returns a comma-separated list of path-variable names
+// found in the URL template (e.g. "/api/users/{id}/orders/{orderId}" →
+// "id,orderId"). Returns an empty string when the path has no path variables.
+func extractRoutePathParams(path string) string {
+	var params []string
+	inBrace := false
+	start := 0
+	for i := 0; i < len(path); i++ {
+		switch path[i] {
+		case '{':
+			inBrace = true
+			start = i + 1
+		case '}':
+			if inBrace {
+				// Strip optional regex constraint after ':'.
+				token := path[start:i]
+				if j := strings.IndexByte(token, ':'); j >= 0 {
+					token = token[:j]
+				}
+				if token != "" {
+					params = append(params, token)
+				}
+				inBrace = false
+			}
+		}
+	}
+	return strings.Join(params, ",")
 }
 
 // nodeFieldText returns the text of node.ChildByFieldName(field), or "" if

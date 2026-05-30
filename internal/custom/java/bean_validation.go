@@ -2,25 +2,25 @@
 //
 // Delivers four Class B coverage cells for lang.java.validation.bean-validation:
 //
-//   custom_validator_extraction  missing  → partial
-//     Scans classes implementing ConstraintValidator<A,T> and emits
-//     SCOPE.CustomValidator entities with the annotation type and validated
-//     type captured as properties.
+//	custom_validator_extraction  missing  → partial
+//	  Scans classes implementing ConstraintValidator<A,T> and emits
+//	  SCOPE.CustomValidator entities with the annotation type and validated
+//	  type captured as properties.
 //
-//   constraint_extraction        partial  → full
-//     Extends the existing string-level annotation capture by parsing value
-//     bounds from @Size(min,max), @Min(value), @Max(value), and
-//     @Pattern(regexp) — both field-level and parameter-level.
+//	constraint_extraction        partial  → full
+//	  Extends the existing string-level annotation capture by parsing value
+//	  bounds from @Size(min,max), @Min(value), @Max(value), and
+//	  @Pattern(regexp) — both field-level and parameter-level.
 //
-//   nested_model_extraction      partial  → full
-//     Detects @Valid-annotated fields and parameters and emits a VALIDATES
-//     edge from the owning DTO class to the nested type, enabling the graph
-//     to represent the full recursive validation scope.
+//	nested_model_extraction      partial  → full
+//	  Detects @Valid-annotated fields and parameters and emits a VALIDATES
+//	  edge from the owning DTO class to the nested type, enabling the graph
+//	  to represent the full recursive validation scope.
 //
-//   schema_extraction            partial  → full
-//     Extends constraint annotation recognition to field-level declarations
-//     inside DTO classes (not just handler method parameters), emitting
-//     SCOPE.Schema entities for DTO fields carrying Bean Validation annotations.
+//	schema_extraction            partial  → full
+//	  Extends constraint annotation recognition to field-level declarations
+//	  inside DTO classes (not just handler method parameters), emitting
+//	  SCOPE.Schema entities for DTO fields carrying Bean Validation annotations.
 //
 // Framework gate: fires for any Java source file whose framework key is one of
 // the bean_validation family; gracefully no-ops on unrelated frameworks.
@@ -50,7 +50,9 @@ var beanValidationFrameworks = map[string]bool{
 // ── constraint validation annotation regexes ────────────────────────────────
 
 // bvConstraintValidatorRE matches:
-//   class Foo implements ConstraintValidator<AnnotType, ValidatedType>
+//
+//	class Foo implements ConstraintValidator<AnnotType, ValidatedType>
+//
 // Group 1 = class name, Group 2 = annotation type, Group 3 = validated type
 var bvConstraintValidatorRE = regexp.MustCompile(
 	`(?s)(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)\s+` +
@@ -70,9 +72,10 @@ var bvValidatedClassRE = regexp.MustCompile(
 
 // bvFieldWithAnnotationsRE matches a Java field declaration that is preceded by
 // at least one annotation. We capture:
-//   Group 1 = everything from the first annotation up to the type+name token
-//   Group 2 = type name
-//   Group 3 = field name
+//
+//	Group 1 = everything from the first annotation up to the type+name token
+//	Group 2 = type name
+//	Group 3 = field name
 //
 // The (?s) flag is needed because the annotation block may span multiple lines.
 var bvFieldWithAnnotationsRE = regexp.MustCompile(
@@ -142,6 +145,36 @@ var bvMaxRE = regexp.MustCompile(`@Max\s*\(\s*(?:value\s*=\s*)?(-?\d+)\s*\)`)
 
 // bvPatternRE extracts @Pattern(regexp="…").
 var bvPatternRE = regexp.MustCompile(`@Pattern\s*\([^)]*regexp\s*=\s*"([^"]*)"`)
+
+// bvCollectionWrapperRE matches Java generic-collection types of the form
+// List<T>, Set<T>, Collection<T>, Iterable<T>, Page<T>, Flux<T>, Mono<T>,
+// Optional<T>, Queue<T>, Deque<T>, SortedSet<T>.
+// Group 1 = collection wrapper name; Group 2 = element type (stripped of trailing '>').
+var bvCollectionWrapperRE = regexp.MustCompile(
+	`^(List|Set|Collection|Iterable|Page|Flux|Mono|Optional|Queue|Deque|SortedSet)\s*<\s*(.+?)\s*>$`)
+
+// bvUnwrapCollectionType returns the effective type name to use for schema/
+// validation purposes, the element type (when it is a collection), and a
+// boolean indicating whether the raw type was a collection wrapper.
+//
+// Examples:
+//
+//	List<OrderItem>     → ("List", "OrderItem", true)
+//	Set<Address>        → ("Set", "Address", true)
+//	String              → ("String", "", false)
+//	OrderDto            → ("OrderDto", "", false)
+func bvUnwrapCollectionType(rawType string) (typeName, elementType string, isCollection bool) {
+	rawType = strings.TrimSpace(rawType)
+	if m := bvCollectionWrapperRE.FindStringSubmatch(rawType); m != nil {
+		// Strip any nested generic from the element (e.g. "Map<String,V>" → "Map")
+		elem := strings.TrimSpace(m[2])
+		if idx := strings.IndexAny(elem, "<>"); idx >= 0 {
+			elem = strings.TrimSpace(elem[:idx])
+		}
+		return m[1], elem, true
+	}
+	return rawType, "", false
+}
 
 // parseConstraintBounds returns a map of bound properties discovered in a
 // source fragment (annotation block or parameter chunk). This is the
@@ -251,8 +284,15 @@ func ExtractBeanValidation(ctx PatternContext) PatternResult {
 
 	for _, m := range bvFieldWithAnnotationsRE.FindAllStringSubmatchIndex(source, -1) {
 		annotBlock := source[m[2]:m[3]]
-		typeName := source[m[4]:m[5]]
+		rawTypeName := source[m[4]:m[5]]
 		fieldName := source[m[6]:m[7]]
+
+		// #3347 — generic-collection element unwrap:
+		// When the field type is List<T>, Set<T>, Collection<T>, Iterable<T>,
+		// or Page<T>, the validation target is the element type T, not the
+		// collection wrapper. We record both: the raw type as "collection_type"
+		// and the element type as the effective typeName for @Valid tracking.
+		typeName, elementType, isCollection := bvUnwrapCollectionType(rawTypeName)
 
 		// Skip non-field-level constructs (method return types, etc.)
 		if primitiveTypes[typeName] && !strings.Contains(annotBlock, "@Valid") {
@@ -284,6 +324,10 @@ func ExtractBeanValidation(ctx PatternContext) PatternResult {
 		for k, v := range bounds {
 			props[k] = v
 		}
+		if isCollection {
+			props["collection_type"] = rawTypeName
+			props["element_type"] = elementType
+		}
 		addEntity(&result, seenRefs, SecondaryEntity{
 			Name: ownerClass + "." + fieldName, Kind: "SCOPE.Schema", SourceFile: fp,
 			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
@@ -293,9 +337,17 @@ func ExtractBeanValidation(ctx PatternContext) PatternResult {
 
 		// ── 4. @Valid recursion → VALIDATES edge (nested_model_extraction) ──────
 
-		if strings.Contains(annotBlock, "@Valid") && !primitiveTypes[typeName] {
+		// #3347 — for @Valid on a List<T> / Set<T> field, the nested type to
+		// validate is the element type T, not the collection wrapper. Using
+		// elementType (or typeName when not a collection) ensures that the
+		// VALIDATES edge points at the correct DTO.
+		validTarget := typeName
+		if isCollection && elementType != "" {
+			validTarget = elementType
+		}
+		if strings.Contains(annotBlock, "@Valid") && !primitiveTypes[validTarget] {
 			ownerRef := "scope:class:bean_validation:" + fp + ":" + ownerClass
-			nestedRef := findRefForType(typeName, fp, "bean_validation", &result)
+			nestedRef := findRefForType(validTarget, fp, "bean_validation", &result)
 			addRel(&result, seenRels, Relationship{
 				SourceRef: ownerRef, TargetRef: nestedRef,
 				RelationshipType: "VALIDATES",

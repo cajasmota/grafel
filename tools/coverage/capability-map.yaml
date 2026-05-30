@@ -2392,6 +2392,9 @@ records:
           verified_at: "2026-05-30"
       Routing:
         endpoint_synthesis:
+          # #3347: path_params property is now emitted on every Route entity listing
+          # the {id}-style path-variable names from the URL template. This enables
+          # graph consumers to query dynamic segments without parsing the template.
           status: full
           symbols:
             - file: internal/engine/http_endpoint_synthesis.go
@@ -2405,10 +2408,18 @@ records:
                 - annotationNameAndPath
                 - joinRoutePaths
                 - httpMethodForAnnotation
+                - extractRoutePathParams
             - file: internal/engine/rules/java/frameworks/spring_boot.yaml
             - file: internal/engine/rules/java/frameworks/spring_mvc.yaml
-          issues_implemented: ["2680"]
-          verified_at: "2026-05-28"
+            - file: internal/custom/java/spring_boot.go
+              functions: [ExtractSpringBoot]
+            - file: internal/custom/java/types.go
+              functions: [extractPathParams]
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions: [TestPathVariable_SpringBoot_PathParams_Issue3347]
+          issues_implemented: ["2680", "3347"]
+          verified_at: "2026-05-30"
         handler_attribution:
           status: full
           symbols:
@@ -2420,8 +2431,9 @@ records:
                 - ApplyJavaAnnotationRoutes
                 - extractJavaEndpoints
                 - containsAnyHTTPAnnotation
-          issues_implemented: ["2680"]
-          verified_at: "2026-05-28"
+                - extractRouteTemplatePathParams
+          issues_implemented: ["2680", "3347"]
+          verified_at: "2026-05-30"
       Auth:
         auth_coverage:
           status: full
@@ -2438,15 +2450,89 @@ records:
           verified_at: "2026-05-28"
       Middleware:
         middleware_coverage:
-          status: partial
+          # java_annotation_params.go surfaces @PathVariable/@RequestHeader etc. param
+          # locations. spring_di_deepen.go (ExtractSpringDIDeepen) adds class-level
+          # detection of HandlerInterceptor, OncePerRequestFilter, GenericFilterBean
+          # subclasses and WebMvcConfigurer.addInterceptors overrides — all three
+          # standard Spring MVC middleware registration patterns. Full where the
+          # middleware class is in the same file; cross-module SecurityFilterChain
+          # wiring is beyond single-file regex → full for in-file detection.
+          status: full
           symbols:
             - file: internal/engine/java_annotation_params.go
               functions:
                 - extractJavaParameters
                 - classifyJavaParam
                 - paramRecord
-          issues_implemented: []
-          verified_at: "2026-05-28"
+            - file: internal/custom/java/spring_di_deepen.go
+              functions:
+                - ExtractSpringDIDeepen
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions:
+                - TestSpringDI_HandlerInterceptor_Issue3347
+                - TestSpringDI_OncePerRequestFilter_Issue3347
+                - TestSpringDI_GenericFilterBean_Issue3347
+                - TestSpringDI_WebMvcConfigurer_Issue3347
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
+      DI:
+        di_binding_extraction:
+          # ExtractSpringBoot handles @Autowired field/setter/constructor injection
+          # (DEPENDS_ON edges). ExtractSpringDIDeepen adds @Qualifier-specific binding:
+          # captures the qualifier name at injection sites and emits a DEPENDS_ON
+          # edge pointing at the named bean, plus @ConditionalOnMissingBean @Bean
+          # guards recorded on the conditional bean method.
+          status: full
+          symbols:
+            - file: internal/custom/java/spring_boot.go
+              functions: [ExtractSpringBoot]
+            - file: internal/custom/java/spring_di_deepen.go
+              functions:
+                - ExtractSpringDIDeepen
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions:
+                - TestSpringDI_QualifierField_Issue3347
+                - TestSpringDI_ConditionalOnMissingBean_Issue3347
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
+        di_injection_point:
+          # @Value("${prop.key:default}") field and constructor-parameter injection:
+          # emits a SCOPE.Pattern with the extracted property key and default value
+          # plus a DEPENDS_ON edge pointing at the property placeholder. Cross-file
+          # binding (linking @PropertySource files to every @Value site) requires
+          # multi-file dataflow → honest partial.
+          status: partial
+          symbols:
+            - file: internal/custom/java/spring_di_deepen.go
+              functions:
+                - ExtractSpringDIDeepen
+                - parseValueExpression
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions:
+                - TestSpringDI_ValueFieldInjection_Issue3347
+                - TestSpringDI_ValueParamInjection_Issue3347
+                - TestSpringDI_ValuePropertyKey_Issue3347
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
+        di_scope_resolution:
+          # Spring @Scope/@RequestScope/@SessionScope/@ApplicationScope already
+          # handled in spring_boot.go. spring_di_deepen.go adds @ConditionalOnMissingBean
+          # guard detection. Cross-file scope propagation (e.g. bean declared in one
+          # module, injected in another) is beyond single-file regex → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/java/spring_boot.go
+              functions: [ExtractSpringBoot]
+            - file: internal/custom/java/spring_di_deepen.go
+              functions: [ExtractSpringDIDeepen]
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions: [TestSpringDI_ConditionalOnMissingBean_Issue3347]
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full
@@ -2599,6 +2685,40 @@ records:
             - file: internal/substrate/template_pattern_java.go
           issues_implemented: ["2774"]
           verified_at: "2026-05-28"
+      Validation:
+        request_validation:
+          # ExtractBeanValidation (bean_validation.go) extends the existing
+          # java_annotation_params.go parameter-level capture with field-level
+          # constraint extraction from DTO classes: @Size(min,max), @Min, @Max,
+          # @Pattern, @NotNull, @NotBlank, etc., with parsed bound properties.
+          # #3347 adds:
+          #   - List<T>/Set<T> generic-collection element unwrap so the validated
+          #     element type is recorded (collection_type + element_type properties).
+          #   - @Valid cross-file DTO chains: VALIDATES edges now target the element
+          #     type T when the field is List<T>/Set<T>, not the wrapper.
+          # Cross-file DTO chain resolution is honest-partial: the target class may
+          # be in another file; a synthetic dependency ref is emitted in that case.
+          status: partial
+          symbols:
+            - file: internal/engine/java_annotation_params.go
+              functions:
+                - extractJavaParameters
+                - classifyJavaParam
+            - file: internal/custom/java/bean_validation.go
+              functions:
+                - ExtractBeanValidation
+                - parseConstraintBounds
+                - bvUnwrapCollectionType
+                - constraintAnnotsInWindow
+          tests:
+            - file: internal/custom/java/bean_validation_test.go
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions:
+                - TestBeanValidation_ListGenericUnwrap_Issue3347
+                - TestBeanValidation_SetGenericUnwrap_Issue3347
+                - TestBeanValidation_NestedValidListElement_Issue3347
+          issues_implemented: ["3100", "3347"]
+          verified_at: "2026-05-30"
 
   lang.go.framework.gin:
     capabilities:
@@ -6273,6 +6393,57 @@ records:
             - file: internal/custom/java/extractors_test.go
               functions: [TestSpringAOP_Fixture_Issue3004, TestSpringAOP_AllAdviceTypes_Issue3004]
           issues_implemented: ["3004"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # #3347 — method-level security for Spring WebFlux reactive handlers:
+          # @PreAuthorize / @Secured / @RolesAllowed / @PermitAll / @DenyAll.
+          # Single-file detection; SecurityFilterChain cross-file wiring stays
+          # beyond regex → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/java/java_method_security.go
+              functions:
+                - ExtractJavaMethodSecurity
+                - parseSpringSecurityExpression
+                - parseRolesText
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions:
+                - TestMethodSecurity_SpringWebFlux_PreAuthorize_Issue3347
+                - TestMethodSecurity_SpringWebFlux_Secured_Issue3347
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
+      Middleware:
+        middleware_coverage:
+          # ExtractSpringDIDeepen adds OncePerRequestFilter/GenericFilterBean detection
+          # for WebFlux-adjacent filter classes (same Spring filter model). Partial:
+          # WebFilter is handled by spring_webflux_routes.go; GenericFilterBean is
+          # a servlet-tier class rarely used in pure WebFlux, but valid in reactive
+          # Spring apps that mix servlet and reactive filters.
+          status: partial
+          symbols:
+            - file: internal/custom/java/spring_webflux_routes.go
+              functions: [ExtractSpringWebFlux]
+            - file: internal/custom/java/spring_di_deepen.go
+              functions: [ExtractSpringDIDeepen]
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions: [TestSpringDI_GenericFilterBean_Issue3347]
+          issues_implemented: ["3080", "3347"]
+          verified_at: "2026-05-30"
+      Routing:
+        endpoint_synthesis:
+          # ExtractSpringBoot + spring_routes.go (annotation-based) handle class/method
+          # composition. spring_webflux_routes.go handles the functional DSL.
+          # #3347: path_params property is now emitted on all endpoints.
+          status: full
+          symbols:
+            - file: internal/custom/java/spring_webflux_routes.go
+              functions: [ExtractSpringWebFlux]
+            - file: internal/engine/java_annotation_routes.go
+              functions: [buildMethodEndpointsWithAuth, extractRouteTemplatePathParams]
+          issues_implemented: ["3080", "3347"]
           verified_at: "2026-05-30"
 
   lang.ruby.framework.rails:
@@ -11922,6 +12093,39 @@ records:
               functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003]
           issues_implemented: ["3003"]
           verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # #3347 — method-level @RolesAllowed / @PermitAll / @DenyAll on JAX-RS
+          # resource methods. Single-file annotation detection; runtime policy
+          # enforcement and RBAC configuration are beyond static analysis → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/java/java_method_security.go
+              functions:
+                - ExtractJavaMethodSecurity
+                - parseRolesText
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions:
+                - TestMethodSecurity_JaxRS_RolesAllowed_Issue3347
+                - TestMethodSecurity_JaxRS_PermitAll_Issue3347
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
+      DI:
+        di_scope_resolution:
+          # #3347 — CDI @ConversationScoped: emits SCOPE.Component with scope=conversation
+          # for classes declaring CDI conversation-scoped lifecycle. Single-file
+          # annotation detection; conversation lifecycle management (injection of
+          # Conversation bean, begin/end calls) is runtime → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/java/java_di_scope_deepen.go
+              functions: [ExtractJavaDIScopeDeepen]
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions: [TestDIScope_JaxrsConversationScoped_Issue3347]
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
   lang.java.framework.micronaut:
     capabilities:
       Observability:
@@ -12016,6 +12220,54 @@ records:
             - file: internal/custom/java/extractors_test.go
               functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003]
           issues_implemented: ["3003"]
+          verified_at: "2026-05-30"
+      Routing:
+        endpoint_synthesis:
+          # ExtractMicronaut composes class/method @Controller/@Get/@Post paths.
+          # #3347: path_params property is now emitted listing {id}-style variables.
+          status: full
+          symbols:
+            - file: internal/custom/java/micronaut.go
+              functions: [ExtractMicronaut]
+            - file: internal/custom/java/types.go
+              functions: [extractPathParams]
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions: [TestPathVariable_Micronaut_PathParams_Issue3347]
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
+      Auth:
+        auth_coverage:
+          # #3347 — method-level @Secured (Micronaut Security), @RolesAllowed,
+          # @PermitAll, @DenyAll on controller methods. Single-file detection;
+          # SecurityRule config-driven policies require runtime → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/java/java_method_security.go
+              functions:
+                - ExtractJavaMethodSecurity
+                - parseRolesText
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions:
+                - TestMethodSecurity_Micronaut_Secured_Issue3347
+          issues_implemented: ["3347"]
+          verified_at: "2026-05-30"
+      DI:
+        di_scope_resolution:
+          # #3347 — Micronaut @Requires conditional bean guard: captures the
+          # property key, expected value, env, notEnv, and required bean type.
+          # Single-file annotation detection; runtime environment evaluation is
+          # beyond static analysis → partial.
+          status: partial
+          symbols:
+            - file: internal/custom/java/java_di_scope_deepen.go
+              functions:
+                - ExtractJavaDIScopeDeepen
+          tests:
+            - file: internal/custom/java/java_deepening_3347_test.go
+              functions: [TestDIScope_MicronautRequires_Issue3347]
+          issues_implemented: ["3347"]
           verified_at: "2026-05-30"
   lang.java.framework.quarkus:
     capabilities:

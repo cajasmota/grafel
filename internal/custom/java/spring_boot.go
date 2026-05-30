@@ -183,15 +183,19 @@ func ExtractSpringBoot(ctx PatternContext) PatternResult {
 		}
 
 		ref := "scope:operation:spring_boot_endpoint:" + fp + ":" + owner + "." + methodName
+		props := map[string]any{
+			"http_method": verb, "path": fullPath,
+			"controller_class": owner, "framework": "spring_boot",
+		}
+		if pathVars := extractPathParams(fullPath); len(pathVars) > 0 {
+			props["path_params"] = pathVars
+		}
 		addEntity(&result, seenRefs, SecondaryEntity{
 			Name: owner + "." + methodName, Kind: "SCOPE.Operation",
 			Subtype: "endpoint", SourceFile: fp,
 			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 			Provenance: "INFERRED_FROM_SPRING_BOOT_REQUEST_MAPPING", Ref: ref,
-			Properties: map[string]any{
-				"http_method": verb, "path": fullPath,
-				"controller_class": owner, "framework": "spring_boot",
-			},
+			Properties: props,
 		})
 	}
 

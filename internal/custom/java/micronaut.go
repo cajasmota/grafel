@@ -137,15 +137,19 @@ func ExtractMicronaut(ctx PatternContext) PatternResult {
 		fullPath := joinPaths(basePath, methodPath)
 
 		ref := "scope:operation:micronaut_endpoint:" + fp + ":" + ctrlName + "." + methodName
+		mnProps := map[string]any{
+			"http_method": verb, "path": fullPath,
+			"controller_class": ctrlName, "framework": "micronaut",
+		}
+		if pathVars := extractPathParams(fullPath); len(pathVars) > 0 {
+			mnProps["path_params"] = pathVars
+		}
 		addEntity(&result, seenRefs, SecondaryEntity{
 			Name: ctrlName + "." + methodName, Kind: "SCOPE.Operation",
 			Subtype: "endpoint", SourceFile: fp,
 			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 			Provenance: "INFERRED_FROM_MICRONAUT_CONTROLLER", Ref: ref,
-			Properties: map[string]any{
-				"http_method": verb, "path": fullPath,
-				"controller_class": ctrlName, "framework": "micronaut",
-			},
+			Properties: mnProps,
 		})
 	}
 

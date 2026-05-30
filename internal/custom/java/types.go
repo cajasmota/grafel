@@ -144,3 +144,17 @@ func addRel(result *PatternResult, seen map[relKey]bool, r Relationship) bool {
 var constructorParamRE = regexp.MustCompile(
 	`(?:@\w+(?:\([^)]*\))?\s+)*(\w+)(?:\s*<[^>]*>)?\s+\w+`,
 )
+
+// pathVarTokenRE matches a path-variable expression like {id}, {userId},
+// {orderId:[0-9]+}, or {name:.+} inside a URL template.
+var pathVarTokenRE = regexp.MustCompile(`\{(\w+)(?::[^}]*)?\}`)
+
+// extractPathParams returns the list of path-variable names from a URL
+// template string, e.g. "/api/users/{id}/orders/{orderId}" → ["id","orderId"].
+func extractPathParams(path string) []string {
+	var params []string
+	for _, m := range pathVarTokenRE.FindAllStringSubmatch(path, -1) {
+		params = append(params, m[1])
+	}
+	return params
+}

@@ -823,6 +823,14 @@ func buildMethodEndpointsWithAuth(
 			props["api_responses"] = apiResponsesJSON
 		}
 
+		// #3347 — path-variable names derived from the URL template so the
+		// graph records which segments are dynamic (e.g. "/users/{id}" →
+		// path_params="id"). Complements the existing `parameters` JSON which
+		// carries the same information but is harder to query flat.
+		if ppNames := extractRouteTemplatePathParams(canonical); ppNames != "" {
+			props["path_params"] = ppNames
+		}
+
 		out = append(out, types.EntityRecord{
 			ID:                 id,
 			Name:               id,
@@ -1041,4 +1049,36 @@ func DecodeAPIResponses(raw string) []APIResponseEntry {
 		return nil
 	}
 	return out
+}
+
+// extractRouteTemplatePathParams returns a comma-separated list of path-variable
+// names from a URL template string such as "/api/users/{id}/orders/{orderId}".
+// Returns "" when the path contains no variables.
+// #3347 — surfaces {id}-style path variables as a flat property on http_endpoint
+// entities so consumers can query which endpoints use dynamic path segments
+// without parsing the full URL template or the parameters JSON.
+func extractRouteTemplatePathParams(path string) string {
+	var params []string
+	inBrace := false
+	start := 0
+	for i := 0; i < len(path); i++ {
+		switch path[i] {
+		case '{':
+			inBrace = true
+			start = i + 1
+		case '}':
+			if inBrace {
+				token := path[start:i]
+				// Strip optional regex constraint after ':' (e.g. {id:[0-9]+}).
+				if j := strings.IndexByte(token, ':'); j >= 0 {
+					token = token[:j]
+				}
+				if token != "" {
+					params = append(params, token)
+				}
+				inBrace = false
+			}
+		}
+	}
+	return strings.Join(params, ",")
 }
