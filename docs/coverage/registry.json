@@ -2026,18 +2026,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -2230,18 +2231,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -2434,18 +2436,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -2647,18 +2650,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -2860,18 +2864,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -3073,18 +3078,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -3277,18 +3283,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -3481,18 +3488,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -3685,18 +3693,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -3897,18 +3906,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -4110,18 +4120,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -4323,18 +4334,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -4721,18 +4733,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
@@ -4933,18 +4946,19 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-\u003e receiver type assumed not resolved -\u003e stays partial.",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Metric name captured as literal at call site: prometheus .Name(\"name\"), otel meter-\u003eCreateCounter(\"name\"), statsd .increment(\"name\") -\u003e metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution.",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/cpp/observability.go"],
-            "issue": "backfill:dictionary-completeness",
+            "notes": "Span name captured as literal at call site (tracer-\u003eStartSpan(\"name\")/StartActiveSpan/jaeger StartSpan) -\u003e span_name prop; value-asserting tests pin specific names. No cross-file resolution needed.",
             "verified_at": "2026-05-30"
           }
         },
