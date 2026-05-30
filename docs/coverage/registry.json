@@ -29176,16 +29176,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Arrow Fx projects use SLF4J/kotlin-logging; the observability extractor covers all Kotlin files regardless of framework — file-local"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Micrometer meter builders in Arrow Fx service layers — file-local"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel @WithSpan / tracer.spanBuilder in Arrow Fx coroutine continuations — file-local"
           }
         },
         "Substrate": {
@@ -29446,12 +29452,12 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Compose is a declarative UI framework with no HTTP handler surface. No request shapes are extracted. HTTP calls in Compose apps go through a separate network layer (ktor-client, Retrofit) handled in non-Compose files."
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Compose is a pure UI framework; there are no HTTP response shapes to extract from @Composable functions."
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -29459,8 +29465,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Compose UI layer has no HTTP payload schema. Schema drift is not applicable for @Composable functions."
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -29746,16 +29752,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Coroutine-based services use SLF4J/kotlin-logging; same extractor covers all Kotlin files — file-local"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Micrometer meters in coroutine service layers — file-local"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel @WithSpan / tracer.spanBuilder in suspend functions — file-local"
           }
         },
         "Substrate": {
@@ -29897,7 +29909,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/http4k_auth_middleware.go"],
+            "notes": "ServerFilters.BearerAuth/BasicAuth/ApiKey, BearerAuthFilter, custom Authorization header checks — file-local"
           }
         },
         "Validation": {
@@ -29916,7 +29930,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/http4k_auth_middleware.go"],
+            "notes": "ServerFilters.RequestTracing/GZip/Cors/OpenTelemetry, Filter{next-\u003e} lambda composition — file-local"
           }
         },
         "Testing": {
@@ -29950,58 +29966,64 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no built-in DI container. The framework is DI-agnostic; projects use Koin, manual wiring, or no DI."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no built-in DI container. No injection-point annotation surface exists in the framework itself."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no built-in DI scoping. Not applicable by design."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no transaction management layer. Transactions are handled by the persistence library chosen by the user (Exposed, JOOQ, etc.) independently of http4k."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no transaction propagation model. Not applicable by framework design."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no transaction rollback model. Not applicable by framework design."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no AOP / AspectJ proxy model. Cross-cutting concerns are addressed via composable Filter functions."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no aspect concept. Not applicable by design."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "http4k has no pointcut concept. Not applicable by design."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "SLF4J/kotlin-logging logger detection and log statement extraction — file-local"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Micrometer meter builders and @Timed annotation — file-local"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel @WithSpan and tracer.spanBuilder — file-local"
           }
         },
         "Substrate": {
@@ -30142,7 +30164,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go"],
+            "notes": "JavalinJWT, accessManager pattern, JavalinJWT.getTokenPayload — Kotlin Javalin uses identical DSL to Java, same extractor applies"
           }
         },
         "Validation": {
@@ -30161,7 +30185,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/java/javalin_routes.go"],
+            "notes": "app.before() and app.after() global/path-scoped middleware — Kotlin Javalin trailing lambda matches same regex"
           }
         },
         "Testing": {
@@ -30195,58 +30221,64 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no built-in DI. The framework is intentionally DI-agnostic (see lang.java.framework.javalin)."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no built-in DI injection surface."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no built-in DI scoping."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no transaction management (see lang.java.framework.javalin)."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no transaction propagation model."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no transaction rollback rules."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no AOP model (see lang.java.framework.javalin)."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no aspect concept."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Javalin has no pointcut concept."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "SLF4J/kotlin-logging logger and call site detection — file-local"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Micrometer meter builders — file-local"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel @WithSpan and tracer.spanBuilder — file-local"
           }
         },
         "Substrate": {
@@ -30507,12 +30539,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_kotlin.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "KMP shared code can use ktor-client; client.get/post with mapOf and data class @Serializable shapes are extracted. Server-side shapes require ktor server in shared module (less common). File-local."
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/payload_shapes_kotlin.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "KMP ktor-client response data classes extracted via kotlinx.serialization @Serializable data class primary constructor parameters. File-local."
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -30520,8 +30556,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes_kotlin.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "KMP payload shapes are compared across producer/consumer for drift detection. Limited to ktor-client usage in KMP shared modules. File-local."
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -30572,7 +30610,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor.go"],
+            "notes": "authenticate{} blocks with scheme detection via Ktor built-in install(Authentication) — file-local"
           }
         },
         "Validation": {
@@ -30591,7 +30631,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor.go"],
+            "notes": "install(Plugin) Ktor plugin middleware extraction — file-local"
           }
         },
         "Testing": {
@@ -30625,58 +30667,76 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Koin module{} single/factory/scoped bindings — file-local, does not resolve cross-file module wiring"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Koin 'by inject()' property injection detection — file-local"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Koin scope keyword (single=singleton, factory, scoped) extraction — file-local"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Exposed transaction{} and newSuspendedTransaction{} boundary detection — file-local"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Exposed transaction propagation defaults to REQUIRED; newSuspendedTransaction is coroutine-aware — file-local"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Exposed isolation level hints (Connection.TRANSACTION_*) extracted as rollback context — file-local"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Ktor has no Spring AOP / AspectJ proxy model. AOP is not used in Ktor applications."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Ktor has no aspect-oriented programming construct. @Aspect/@Pointcut patterns are Spring-only."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Ktor has no pointcut concept. The framework uses suspend functions and Pipelines, not AOP proxies."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger, log.info/warn/error call sites — file-local"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Micrometer Counter/Timer/Gauge.builder, MeterRegistry usage, @Timed annotation — file-local"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OpenTelemetry @WithSpan, tracer.spanBuilder, span.setAttribute — file-local"
           }
         },
         "Substrate": {
@@ -30818,7 +30878,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "notes": "@Secured, @RolesAllowed, @PermitAll/@Unauthenticated — Kotlin Micronaut annotation-based security"
           }
         },
         "Validation": {
@@ -30837,7 +30899,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "notes": "@Filter/@ServerFilter HttpServerFilter implementation detection — file-local"
           }
         },
         "Testing": {
@@ -30871,16 +30935,22 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@Singleton/@Prototype/@RequestScoped class and @Bean factory method detection — file-local"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@Inject property injection detection — file-local"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@Singleton/@Prototype/@RequestScoped scope annotation extraction — file-local"
           }
         },
         "Transactions": {
@@ -31073,7 +31143,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "notes": "@RolesAllowed, @PermitAll, @DenyAll (JAX-RS), @Authenticated (SmallRye JWT) — Kotlin Quarkus annotation-based security"
           }
         },
         "Validation": {
@@ -31092,7 +31164,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "notes": "@Provider ContainerRequestFilter / ContainerResponseFilter implementation detection — file-local"
           }
         },
         "Testing": {
@@ -31126,16 +31200,22 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "CDI scope annotations (@ApplicationScoped, @RequestScoped, @Singleton, @Dependent) and @Produces method detection — file-local"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "@Inject property and lateinit var injection detection — file-local"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "CDI @ApplicationScoped/@RequestScoped/@Singleton/@Dependent scope extraction — file-local"
           }
         },
         "Transactions": {
@@ -31349,7 +31429,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_middleware.go"],
+            "notes": "Spring Security filter chain (@Bean SecurityFilterChain), OncePerRequestFilter, HandlerInterceptor, WebMvcConfigurer.addInterceptors — regex-based, file-local"
           }
         },
         "Testing": {

@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | — | — | — |
+| Auth coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/http4k_auth_middleware.go` | ServerFilters.BearerAuth/BasicAuth/ApiKey, BearerAuthFilter, custom Authorization header checks — file-local |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | — | — | — |
+| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/http4k_auth_middleware.go` | ServerFilters.RequestTracing/GZip/Cors/OpenTelemetry, Filter{next->} lambda composition — file-local |
 
 ### Testing
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | — `not_applicable` | — | — | — | http4k has no built-in DI container. The framework is DI-agnostic; projects use Koin, manual wiring, or no DI. |
+| DI injection point | — `not_applicable` | — | — | — | http4k has no built-in DI container. No injection-point annotation surface exists in the framework itself. |
+| DI scope resolution | — `not_applicable` | — | — | — | http4k has no built-in DI scoping. Not applicable by design. |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | — `not_applicable` | — | — | — | http4k has no transaction management layer. Transactions are handled by the persistence library chosen by the user (Exposed, JOOQ, etc.) independently of http4k. |
+| Transaction propagation | — `not_applicable` | — | — | — | http4k has no transaction propagation model. Not applicable by framework design. |
+| Transaction rollback rules | — `not_applicable` | — | — | — | http4k has no transaction rollback model. Not applicable by framework design. |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | — `not_applicable` | — | — | — | http4k has no AOP / AspectJ proxy model. Cross-cutting concerns are addressed via composable Filter functions. |
+| Aspect extraction | — `not_applicable` | — | — | — | http4k has no aspect concept. Not applicable by design. |
+| Pointcut resolution | — `not_applicable` | — | — | — | http4k has no pointcut concept. Not applicable by design. |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | SLF4J/kotlin-logging logger detection and log statement extraction — file-local |
+| Metric extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | Micrometer meter builders and @Timed annotation — file-local |
+| Trace extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | OTel @WithSpan and tracer.spanBuilder — file-local |
 
 ### Data
 

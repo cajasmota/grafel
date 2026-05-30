@@ -81,10 +81,10 @@ Auto-generated. Back to [summary](../summary.md).
 | Mutation effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_kotlin.go` | — |
 | Pure function tagging | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/pure_function_pass.go` | — |
 | Reachability analysis | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_kotlin.go` | — |
-| Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | — `not_applicable` | — | — | — | Compose is a declarative UI framework with no HTTP handler surface. No request shapes are extracted. HTTP calls in Compose apps go through a separate network layer (ktor-client, Retrofit) handled in non-Compose files. |
+| Response shape extraction | — `not_applicable` | — | — | — | Compose is a pure UI framework; there are no HTTP response shapes to extract from @Composable functions. |
 | Sanitizer recognition | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_kotlin.go` | — |
-| Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | — `not_applicable` | — | — | — | Compose UI layer has no HTTP payload schema. Schema drift is not applicable for @Composable functions. |
 | Taint sink detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_kotlin.go` | — |
 | Taint source detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_kotlin.go` | — |
 | Template pattern catalog | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_kotlin.go` | — |

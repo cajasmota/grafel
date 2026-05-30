@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | — | — | — |
+| Auth coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/ktor.go` | authenticate{} blocks with scheme detection via Ktor built-in install(Authentication) — file-local |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | — | — | — |
+| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/ktor.go` | install(Plugin) Ktor plugin middleware extraction — file-local |
 
 ### Testing
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Koin module{} single/factory/scoped bindings — file-local, does not resolve cross-file module wiring |
+| DI injection point | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Koin 'by inject()' property injection detection — file-local |
+| DI scope resolution | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Koin scope keyword (single=singleton, factory, scoped) extraction — file-local |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed transaction{} and newSuspendedTransaction{} boundary detection — file-local |
+| Transaction propagation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed transaction propagation defaults to REQUIRED; newSuspendedTransaction is coroutine-aware — file-local |
+| Transaction rollback rules | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed isolation level hints (Connection.TRANSACTION_*) extracted as rollback context — file-local |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | — `not_applicable` | — | — | — | Ktor has no Spring AOP / AspectJ proxy model. AOP is not used in Ktor applications. |
+| Aspect extraction | — `not_applicable` | — | — | — | Ktor has no aspect-oriented programming construct. @Aspect/@Pointcut patterns are Spring-only. |
+| Pointcut resolution | — `not_applicable` | — | — | — | Ktor has no pointcut concept. The framework uses suspend functions and Pipelines, not AOP proxies. |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger, log.info/warn/error call sites — file-local |
+| Metric extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | Micrometer Counter/Timer/Gauge.builder, MeterRegistry usage, @Timed annotation — file-local |
+| Trace extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | OpenTelemetry @WithSpan, tracer.spanBuilder, span.setAttribute — file-local |
 
 ### Data
 

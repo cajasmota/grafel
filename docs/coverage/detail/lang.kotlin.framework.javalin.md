@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | — | — | — |
+| Auth coverage | 🟢 `partial` | — | — | `internal/custom/java/javalin_routes.go` | JavalinJWT, accessManager pattern, JavalinJWT.getTokenPayload — Kotlin Javalin uses identical DSL to Java, same extractor applies |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | — | — | — |
+| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/java/javalin_routes.go` | app.before() and app.after() global/path-scoped middleware — Kotlin Javalin trailing lambda matches same regex |
 
 ### Testing
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | — `not_applicable` | — | — | — | Javalin has no built-in DI. The framework is intentionally DI-agnostic (see lang.java.framework.javalin). |
+| DI injection point | — `not_applicable` | — | — | — | Javalin has no built-in DI injection surface. |
+| DI scope resolution | — `not_applicable` | — | — | — | Javalin has no built-in DI scoping. |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | — `not_applicable` | — | — | — | Javalin has no transaction management (see lang.java.framework.javalin). |
+| Transaction propagation | — `not_applicable` | — | — | — | Javalin has no transaction propagation model. |
+| Transaction rollback rules | — `not_applicable` | — | — | — | Javalin has no transaction rollback rules. |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Aspect extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Pointcut resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Advice attribution | — `not_applicable` | — | — | — | Javalin has no AOP model (see lang.java.framework.javalin). |
+| Aspect extraction | — `not_applicable` | — | — | — | Javalin has no aspect concept. |
+| Pointcut resolution | — `not_applicable` | — | — | — | Javalin has no pointcut concept. |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | SLF4J/kotlin-logging logger and call site detection — file-local |
+| Metric extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | Micrometer meter builders — file-local |
+| Trace extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | OTel @WithSpan and tracer.spanBuilder — file-local |
 
 ### Data
 

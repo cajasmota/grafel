@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | — | — | — |
+| Auth coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/micronaut_quarkus.go` | @Secured, @RolesAllowed, @PermitAll/@Unauthenticated — Kotlin Micronaut annotation-based security |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | — | — | — |
+| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/micronaut_quarkus.go` | @Filter/@ServerFilter HttpServerFilter implementation detection — file-local |
 
 ### Testing
 
@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI injection point | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| DI scope resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI binding extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/micronaut_quarkus.go` | @Singleton/@Prototype/@RequestScoped class and @Bean factory method detection — file-local |
+| DI injection point | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/micronaut_quarkus.go` | @Inject property injection detection — file-local |
+| DI scope resolution | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/micronaut_quarkus.go` | @Singleton/@Prototype/@RequestScoped scope annotation extraction — file-local |
 
 ### Transactions
 

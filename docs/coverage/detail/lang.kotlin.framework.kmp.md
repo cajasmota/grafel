@@ -81,10 +81,10 @@ Auto-generated. Back to [summary](../summary.md).
 | Mutation effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_kotlin.go` | — |
 | Pure function tagging | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/pure_function_pass.go` | — |
 | Reachability analysis | ✅ `full` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_kotlin.go` | — |
-| Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/substrate/payload_shapes_kotlin.go` | KMP shared code can use ktor-client; client.get/post with mapOf and data class @Serializable shapes are extracted. Server-side shapes require ktor server in shared module (less common). File-local. |
+| Response shape extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/substrate/payload_shapes_kotlin.go` | KMP ktor-client response data classes extracted via kotlinx.serialization @Serializable data class primary constructor parameters. File-local. |
 | Sanitizer recognition | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_kotlin.go` | — |
-| Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/payload_drift.go`<br>`internal/substrate/payload_shapes_kotlin.go` | KMP payload shapes are compared across producer/consumer for drift detection. Limited to ktor-client usage in KMP shared modules. File-local. |
 | Taint sink detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_kotlin.go` | — |
 | Taint source detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_kotlin.go` | — |
 | Template pattern catalog | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_kotlin.go` | — |
