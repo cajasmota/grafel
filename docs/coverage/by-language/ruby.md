@@ -55,7 +55,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🟢 1/1 | |
-| [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | 🟢 8/8 | |
+| [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | ✅ 8/8 | |
 | [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟢 8/8 | |
 | [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟢 6/6 | |
 | [ROM (Ruby Object Mapper)](../detail/lang.ruby.orm.rom-rb.md) | 🟢 8/8 | |

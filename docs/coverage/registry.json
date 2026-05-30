@@ -44405,32 +44405,31 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"],
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go"],
+            "notes": "db/schema.rb create_table parsed into table+typed columns (name/type/null/default/limit), t.references→FK column+key, t.timestamps; table linked to model by Rails inflection (users→User). Migrations also emit columns. Test: TestDeepSchema_ExactColumnsAndModelLink/IrregularModelLink assert exact columns+types+options+model link."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"],
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go"],
+            "notes": "has_many/belongs_to/has_one/HABTM/has_many:through with options (:through/:source/:class_name/:foreign_key/polymorphic/:as); target-model inferred via inflection+class_name. Test: TestDeepAssoc_AllMacrosWithOptions asserts type+target+options per macro."
           },
           "foreign_key_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"],
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go"],
+            "notes": "FK from belongs_to convention (x_id), explicit foreign_key:, add_foreign_key (with to_table:), t.references/t.belongs_to/add_reference (incl polymorphic x_id+x_type). target_model inferred. Tests: TestDeepAssoc_AllMacrosWithOptions, TestDeepMigration_CreateTableColumnsAndOps, TestDeepSchema_ExactColumnsAndModelLink."
           },
           "lazy_loading_recognition": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "AR includes/preload/eager_load eager markers + lazy defaults from has_many/has_one/belongs_to. Part of #3282."
+            "status": "full",
+            "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go"],
+            "notes": "Declaration-level (parity with TypeORM bar): recognizes eager loading calls (includes/preload/eager_load) AND AR lazy-by-default associations, each emitted with loading_strategy. Test: TestDeepLazyLoading_EagerAndLazyBothRecognized. Note: query-site dataflow tracing of which records are actually eager-loaded is out of scope (static declaration-level)."
           },
           "relationship_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"],
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go"],
+            "notes": "Each association emits a SCOPE.Pattern/association entity carrying association_type, target_model, owner_model and option props (through/source/class_name/foreign_key/polymorphic/as). Test: TestDeepAssoc_AllMacrosWithOptions."
           }
         },
         "Queries": {
@@ -44442,8 +44441,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"]
+            "status": "full",
+            "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go"],
+            "notes": "db/migrate/*.rb parsed into normalized SCOPE.Evolution ops (create_table/add_column/drop_column/alter_column/create_index/add_reference/add_foreign_key/drop_table), plus typed columns inside create_table blocks and FK entities. Test: TestDeepMigration_CreateTableColumnsAndOps asserts exact op subtypes+columns+FKs."
           }
         }
       }

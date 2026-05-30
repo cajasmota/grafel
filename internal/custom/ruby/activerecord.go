@@ -321,6 +321,12 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 			)
 			add(ent)
 		}
+
+		// Deep model + association + foreign-key extraction (TS/JS bar):
+		// model→table link, association options (:through/:source/:class_name/
+		// :foreign_key/polymorphic/as) with target-model inference, and FK
+		// entities (belongs_to x_id convention + explicit foreign_key).
+		extractARModelsAndAssociations(src, file, add)
 	}
 
 	// -------------------------------------------------------------------------
@@ -364,6 +370,11 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 				add(ent)
 			}
 		}
+
+		// Deep schema extraction (TS/JS bar): typed columns with options
+		// (null/default/limit), t.references / t.belongs_to → FK column + key,
+		// t.timestamps, and table→model linking by Rails convention.
+		extractARSchemaDeep(src, file, add)
 	}
 
 	// -------------------------------------------------------------------------
@@ -442,6 +453,12 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 			)
 			add(ent)
 		}
+
+		// Deep migration parsing (TS/JS bar): normalized SCOPE.Evolution ops
+		// (create_table/add_column/drop_column/alter_column/create_index/
+		// add_reference/add_foreign_key/drop_table) + typed columns inside
+		// create_table blocks + FK entities from add_foreign_key / references.
+		extractARMigrationDeep(src, file, add)
 	}
 
 	// -------------------------------------------------------------------------

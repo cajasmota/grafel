@@ -130,7 +130,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [python](../by-language/python.md) | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
 | [python](../by-language/python.md) | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |
 | [ruby](../by-language/ruby.md) | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🟢 1/1 | |
-| [ruby](../by-language/ruby.md) | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | 🟢 8/8 | |
+| [ruby](../by-language/ruby.md) | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | ✅ 8/8 | |
 | [ruby](../by-language/ruby.md) | [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟢 8/8 | |
 | [ruby](../by-language/ruby.md) | [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [ROM (Ruby Object Mapper)](../detail/lang.ruby.orm.rom-rb.md) | 🟢 8/8 | |
