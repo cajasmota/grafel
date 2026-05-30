@@ -2058,7 +2058,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -2103,7 +2103,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -2262,7 +2262,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -2307,7 +2307,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -2466,7 +2466,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -2511,7 +2511,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -2682,7 +2682,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -2727,7 +2727,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3114,7 +3114,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3159,7 +3159,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3318,7 +3318,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3363,7 +3363,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3522,7 +3522,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3567,7 +3567,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3726,7 +3726,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3771,7 +3771,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3940,7 +3940,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -3985,7 +3985,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4156,7 +4156,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4201,7 +4201,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4370,7 +4370,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4415,7 +4415,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4558,7 +4558,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4603,7 +4603,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4769,7 +4769,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4814,7 +4814,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -4982,7 +4982,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -5027,7 +5027,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -5119,7 +5119,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -5148,7 +5148,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           }
@@ -5197,7 +5197,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           },
@@ -5226,7 +5226,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
             "verified_at": "2026-05-28"
           }
@@ -6467,7 +6467,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -6512,7 +6512,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -6657,7 +6657,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -6702,7 +6702,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -6847,7 +6847,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -6892,7 +6892,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7037,7 +7037,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7082,7 +7082,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7256,7 +7256,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7301,7 +7301,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7475,7 +7475,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7520,7 +7520,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7621,7 +7621,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7666,7 +7666,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7840,7 +7840,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -7885,7 +7885,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8039,7 +8039,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8084,7 +8084,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8258,7 +8258,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8303,7 +8303,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8396,7 +8396,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8427,7 +8427,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           }
@@ -8477,7 +8477,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8508,7 +8508,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           }
@@ -8558,7 +8558,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8589,7 +8589,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           }
@@ -8700,7 +8700,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -8745,7 +8745,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_csharp.go"],
             "verified_at": "2026-05-28"
           },
@@ -9607,7 +9607,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -9655,7 +9655,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -9822,7 +9822,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -9870,7 +9870,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10030,7 +10030,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10078,7 +10078,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10242,7 +10242,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10290,7 +10290,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10447,7 +10447,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10495,7 +10495,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10656,7 +10656,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -10704,7 +10704,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -11074,7 +11074,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -11122,7 +11122,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -11291,7 +11291,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -11339,7 +11339,7 @@
             "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
             "verified_at": "2026-05-28"
           },
@@ -12050,7 +12050,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12095,7 +12095,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12263,7 +12263,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12308,7 +12308,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12474,7 +12474,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12519,7 +12519,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12685,7 +12685,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12730,7 +12730,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12895,7 +12895,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -12940,7 +12940,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -13106,7 +13106,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -13151,7 +13151,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -13239,7 +13239,7 @@
             "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -13273,7 +13273,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           }
@@ -13397,7 +13397,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-28"
           },
@@ -13442,7 +13442,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-28"
           },
@@ -13609,7 +13609,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -13654,7 +13654,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -13801,7 +13801,7 @@
             "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -13852,7 +13852,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14025,7 +14025,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14070,7 +14070,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14240,7 +14240,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14285,7 +14285,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14454,7 +14454,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14499,7 +14499,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14667,7 +14667,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14712,7 +14712,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14879,7 +14879,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -14924,7 +14924,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -15090,7 +15090,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -15135,7 +15135,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -15302,7 +15302,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -15347,7 +15347,7 @@
             "verified_at": "2026-05-29"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_golang.go"],
             "verified_at": "2026-05-29"
           },
@@ -19522,7 +19522,7 @@
             "verified_at": "2026-05-29"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
             "verified_at": "2026-05-28"
           },
@@ -19567,7 +19567,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_java.go"],
             "verified_at": "2026-05-28"
           },
@@ -26897,12 +26897,12 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_jsts.go"],
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_jsts.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
@@ -26927,7 +26927,7 @@
             "verified_at": "2026-05-28"
           },
           "module_cycle_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/extractors/javascript/testdata/substrate_react/cyclic_dep.tsx","internal/links/module_cycle_pass.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
@@ -26937,12 +26937,12 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/react_substrate_test.go"],
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_jsts.go"],
             "verified_at": "2026-05-28"
           },
@@ -26978,7 +26978,7 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/extractors/javascript/testdata/substrate_react/UserDashboard.tsx","internal/links/template_pattern_pass.go","internal/substrate/react_substrate_test.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_jsts.go"],
             "verified_at": "2026-05-28"
           },
@@ -28199,7 +28199,7 @@
             "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_t3_test.go"],
             "verified_at": "2026-05-29"
           },
@@ -28288,7 +28288,7 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/substrate/def_use_t3_test.go","internal/substrate/template_pattern_markup_script.go"],
             "verified_at": "2026-05-29"
           },
@@ -28870,7 +28870,7 @@
             "verified_at": "2026-05-29"
           },
           "def_use_chain_extraction": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/substrate/def_use_jsts.go","internal/substrate/def_use_t3_test.go"],
             "verified_at": "2026-05-29"
           },
@@ -28959,7 +28959,7 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/substrate/def_use_t3_test.go","internal/substrate/template_pattern_markup_script.go"],
             "verified_at": "2026-05-29"
           },
@@ -29690,7 +29690,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -29735,7 +29735,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -29889,7 +29889,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -29934,7 +29934,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30018,7 +30018,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30047,7 +30047,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           }
@@ -30094,7 +30094,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30123,7 +30123,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           }
@@ -30282,7 +30282,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30327,7 +30327,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30538,7 +30538,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30583,7 +30583,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30799,7 +30799,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30844,7 +30844,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -30997,7 +30997,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -31042,7 +31042,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -31264,7 +31264,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -31309,7 +31309,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -31547,7 +31547,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -31592,7 +31592,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -31830,7 +31830,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -31875,7 +31875,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_kotlin.go"],
             "verified_at": "2026-05-28"
           },
@@ -33697,7 +33697,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -33921,7 +33921,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -34145,7 +34145,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -34369,7 +34369,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -34817,7 +34817,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -35041,7 +35041,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -35265,7 +35265,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -35489,7 +35489,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -35713,7 +35713,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -35937,7 +35937,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -36161,7 +36161,7 @@
             "notes": "Language-agnostic pure-function tagging pass reads effect stamps from PHP effect_sinks substrate"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
             "verified_at": "2026-05-28"
           },
@@ -42754,7 +42754,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -42799,7 +42799,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -42960,7 +42960,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -43005,7 +43005,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -43170,7 +43170,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -43215,7 +43215,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -43380,7 +43380,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -43425,7 +43425,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -43590,7 +43590,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -43635,7 +43635,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -44009,7 +44009,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -44054,7 +44054,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -44219,7 +44219,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -44264,7 +44264,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_ruby.go"],
             "verified_at": "2026-05-28"
           },
@@ -45161,7 +45161,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -45206,7 +45206,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -45597,7 +45597,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -45642,7 +45642,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -45815,7 +45815,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -45860,7 +45860,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46033,7 +46033,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46078,7 +46078,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46251,7 +46251,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46296,7 +46296,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46469,7 +46469,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46514,7 +46514,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46609,7 +46609,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46638,7 +46638,7 @@
             "verified_at": "2026-05-28"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           }
@@ -46768,7 +46768,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46813,7 +46813,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -46987,7 +46987,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -47032,7 +47032,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -47205,7 +47205,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -47250,7 +47250,7 @@
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_rust.go"],
             "verified_at": "2026-05-28"
           },
@@ -47768,7 +47768,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -47819,7 +47819,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48052,7 +48052,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48103,7 +48103,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48320,7 +48320,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48371,7 +48371,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48611,7 +48611,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48662,7 +48662,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48893,7 +48893,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -48944,7 +48944,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -49184,7 +49184,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -49235,7 +49235,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -49676,7 +49676,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -49727,7 +49727,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -49967,7 +49967,7 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
@@ -50018,7 +50018,7 @@
             "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_scala.go"],
             "verified_at": "2026-05-28"
           },
