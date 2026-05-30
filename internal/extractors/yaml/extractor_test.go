@@ -1680,3 +1680,272 @@ func TestIssue474_ContainsFromIDResolvesToDocumentEntity(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Kustomize (#3520)
+// ---------------------------------------------------------------------------
+
+// kustomizationFixture exercises every Kustomize capability: resource/base/
+// component imports, all three patch shapes, both generators, and the
+// name/namespace/label transforms.
+var kustomizationFixture = []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: production
+namePrefix: prod-
+nameSuffix: -v2
+commonLabels:
+  app: web
+  tier: frontend
+
+resources:
+  - deployment.yaml
+  - ../base
+  - service.yaml
+
+components:
+  - ../components/monitoring
+
+patchesStrategicMerge:
+  - increase-replicas.yaml
+
+patches:
+  - path: cpu-limits.yaml
+    target:
+      kind: Deployment
+      name: web
+
+patchesJson6902:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: web
+    path: add-annotation.yaml
+
+configMapGenerator:
+  - name: app-config
+    literals:
+      - LOG_LEVEL=info
+      - FEATURE_X=true
+    files:
+      - config.properties
+
+secretGenerator:
+  - name: app-secret
+    envs:
+      - secret.env
+`)
+
+func TestKustomize_DetectedAndDocument(t *testing.T) {
+	entities, err := extractYAML(kustomizationFixture, "overlays/prod/kustomization.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	docs := findEntitiesBySubtype(entities, "kustomize")
+	if len(docs) != 1 {
+		t.Fatalf("expected one SCOPE.Document with subtype kustomize, got %d", len(docs))
+	}
+	if docs[0].Kind != "SCOPE.Document" {
+		t.Errorf("kustomize Document Kind=%q, want SCOPE.Document", docs[0].Kind)
+	}
+}
+
+// Detection must work from filename alone even without the kustomize apiVersion.
+func TestKustomize_DetectedByFilename(t *testing.T) {
+	src := []byte("resources:\n  - deployment.yaml\nnamePrefix: dev-\n")
+	entities, err := extractYAML(src, "kustomization.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(findEntitiesBySubtype(entities, "kustomization")) != 1 {
+		t.Fatalf("expected a kustomization entity detected by filename, got entities: %+v", entities)
+	}
+}
+
+// A kustomization carrying kind: Kustomization must NOT be classified as a
+// generic Kubernetes manifest (regression guard for the detect ordering).
+func TestKustomize_NotClassifiedAsKubernetes(t *testing.T) {
+	entities, err := extractYAML(kustomizationFixture, "overlays/prod/kustomization.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for _, e := range entities {
+		if e.Subtype == "k8s_resource" {
+			t.Fatalf("kustomization was extracted as a k8s_resource (%q) — detect ordering regressed", e.Name)
+		}
+	}
+}
+
+func TestKustomize_ResourceImports(t *testing.T) {
+	const kustRef = "overlays/prod/kustomization.yaml"
+	entities, err := extractYAML(kustomizationFixture, kustRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	imports := findRels(entities, "IMPORTS")
+
+	// IMPORTS edges to deployment.yaml and ../base (resources) and the component.
+	wantTargets := []string{
+		"kustomize_path:deployment.yaml",
+		"kustomize_path:../base",
+		"kustomize_path:service.yaml",
+		"kustomize_path:../components/monitoring",
+	}
+	for _, want := range wantTargets {
+		if !relExists(imports, kustRef, want) {
+			t.Errorf("missing IMPORTS edge %s -> %s; got %+v", kustRef, want, imports)
+		}
+	}
+}
+
+func TestKustomize_Patches(t *testing.T) {
+	const kustRef = "overlays/prod/kustomization.yaml"
+	entities, err := extractYAML(kustomizationFixture, kustRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	patches := findRels(entities, "PATCHES")
+	if len(patches) != 3 {
+		t.Fatalf("expected 3 PATCHES edges (strategic-merge file, patches target, json6902 target), got %d: %+v", len(patches), patches)
+	}
+
+	// patchesStrategicMerge file reference.
+	if !relExists(patches, kustRef, "kustomize_patch_file:increase-replicas.yaml") {
+		t.Errorf("missing strategic-merge PATCHES edge to increase-replicas.yaml; got %+v", patches)
+	}
+
+	// patches + patchesJson6902 both target Deployment/web — assert the
+	// targeted stub and its target_kind/target_name properties.
+	var targetedWeb int
+	for _, p := range patches {
+		if p.ToID == "kustomize_target:Deployment/web" {
+			targetedWeb++
+			if p.Properties["target_kind"] != "Deployment" {
+				t.Errorf("PATCHES target_kind=%q, want Deployment", p.Properties["target_kind"])
+			}
+			if p.Properties["target_name"] != "web" {
+				t.Errorf("PATCHES target_name=%q, want web", p.Properties["target_name"])
+			}
+		}
+	}
+	if targetedWeb != 2 {
+		t.Errorf("expected 2 PATCHES edges targeting Deployment/web (patches + json6902), got %d", targetedWeb)
+	}
+}
+
+func TestKustomize_ConfigMapGenerator(t *testing.T) {
+	const kustRef = "overlays/prod/kustomization.yaml"
+	entities, err := extractYAML(kustomizationFixture, kustRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	cms := findEntitiesBySubtype(entities, "generated_configmap")
+	if len(cms) != 1 {
+		t.Fatalf("expected 1 generated ConfigMap entity, got %d", len(cms))
+	}
+	cm := cms[0]
+	if cm.Name != "app-config" {
+		t.Errorf("generated ConfigMap Name=%q, want app-config", cm.Name)
+	}
+	if cm.Properties["literals"] != "LOG_LEVEL=info,FEATURE_X=true" {
+		t.Errorf("generated ConfigMap literals=%q, want LOG_LEVEL=info,FEATURE_X=true", cm.Properties["literals"])
+	}
+	if cm.Properties["files"] != "config.properties" {
+		t.Errorf("generated ConfigMap files=%q, want config.properties", cm.Properties["files"])
+	}
+	// CONTAINS: kustomization -> generated ConfigMap.
+	if !relExists(findRels(entities, "CONTAINS"), kustRef, cm.QualifiedName) {
+		t.Errorf("missing CONTAINS edge %s -> %s", kustRef, cm.QualifiedName)
+	}
+}
+
+func TestKustomize_SecretGenerator(t *testing.T) {
+	entities, err := extractYAML(kustomizationFixture, "overlays/prod/kustomization.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	secrets := findEntitiesBySubtype(entities, "generated_secret")
+	if len(secrets) != 1 {
+		t.Fatalf("expected 1 generated Secret entity, got %d", len(secrets))
+	}
+	if secrets[0].Name != "app-secret" {
+		t.Errorf("generated Secret Name=%q, want app-secret", secrets[0].Name)
+	}
+	if secrets[0].Properties["envs"] != "secret.env" {
+		t.Errorf("generated Secret envs=%q, want secret.env", secrets[0].Properties["envs"])
+	}
+}
+
+func TestKustomize_Transforms(t *testing.T) {
+	entities, err := extractYAML(kustomizationFixture, "overlays/prod/kustomization.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	ks := findEntitiesBySubtype(entities, "kustomization")
+	if len(ks) != 1 {
+		t.Fatalf("expected 1 kustomization entity, got %d", len(ks))
+	}
+	k := ks[0]
+	if k.Properties["kust_namespace"] != "production" {
+		t.Errorf("kust_namespace=%q, want production", k.Properties["kust_namespace"])
+	}
+	if k.Properties["kust_name_prefix"] != "prod-" {
+		t.Errorf("kust_name_prefix=%q, want prod-", k.Properties["kust_name_prefix"])
+	}
+	if k.Properties["kust_name_suffix"] != "-v2" {
+		t.Errorf("kust_name_suffix=%q, want -v2", k.Properties["kust_name_suffix"])
+	}
+	if !strings.Contains(k.Properties["kust_common_labels"], "app=web") ||
+		!strings.Contains(k.Properties["kust_common_labels"], "tier=frontend") {
+		t.Errorf("kust_common_labels=%q, want app=web and tier=frontend", k.Properties["kust_common_labels"])
+	}
+}
+
+// Minimal acceptance check from the ticket: resources + a patch + a
+// configMapGenerator must produce the IMPORTS edges, the PATCHES edge, and the
+// generated ConfigMap entity.
+func TestKustomize_TicketAcceptance(t *testing.T) {
+	src := []byte(`kind: Kustomization
+resources:
+  - deployment.yaml
+  - ../base
+patchesStrategicMerge:
+  - patch.yaml
+configMapGenerator:
+  - name: settings
+    literals:
+      - A=1
+`)
+	const kustRef = "kustomization.yaml"
+	entities, err := extractYAML(src, kustRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	imports := findRels(entities, "IMPORTS")
+	if !relExists(imports, kustRef, "kustomize_path:deployment.yaml") {
+		t.Errorf("missing IMPORTS edge to deployment.yaml")
+	}
+	if !relExists(imports, kustRef, "kustomize_path:../base") {
+		t.Errorf("missing IMPORTS edge to ../base")
+	}
+	if !relExists(findRels(entities, "PATCHES"), kustRef, "kustomize_patch_file:patch.yaml") {
+		t.Errorf("missing PATCHES edge to patch.yaml")
+	}
+	if len(findEntitiesBySubtype(entities, "generated_configmap")) != 1 {
+		t.Errorf("expected the generated ConfigMap entity 'settings'")
+	}
+}
+
+// All Kustomize entity kinds must be allowlisted (no novel Kind escapes).
+func TestKustomize_AllKindsAllowlisted(t *testing.T) {
+	entities, err := extractYAML(kustomizationFixture, "overlays/prod/kustomization.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for _, e := range entities {
+		if !allowedKinds[e.Kind] {
+			t.Errorf("entity %q has non-allowlisted kind %q", e.Name, e.Kind)
+		}
+	}
+}

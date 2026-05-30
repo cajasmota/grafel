@@ -24,7 +24,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Helm charts](../detail/infra.resource.helm.md) | — | — | — | 🔴 | 🔴 | |
 | [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.container.kubernetes.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.resource.kubernetes.md) | — | — | — | ✅ | ✅ | |
-| [multi](../by-language/multi.md) | [Kustomize](../detail/infra.container.kustomize.md) | 🔴 | — | — | 🔴 | 🔴 | |
+| [multi](../by-language/multi.md) | [Kustomize](../detail/infra.container.kustomize.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | — | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | 🟢 | — | — | 🟢 | 🟢 | |

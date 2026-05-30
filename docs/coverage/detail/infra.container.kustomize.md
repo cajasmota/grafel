@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | 🔴 `missing` | — | — | — | — |
-| Resource extraction | 🔴 `missing` | — | — | — | — |
+| Dependency attribution | ✅ `full` | `2026-05-30` | — | `internal/extractors/yaml/extractor.go`<br>`internal/extractors/yaml/extractor_test.go` | — |
+| Resource extraction | ✅ `full` | `2026-05-30` | — | `internal/extractors/yaml/extractor.go`<br>`internal/extractors/yaml/extractor_test.go` | — |
 
 ## Provenance
 

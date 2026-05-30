@@ -130,6 +130,7 @@ const (
 	flavorDockerCompose = "docker_compose"
 	flavorKubernetes    = "kubernetes"
 	flavorAnsible       = "ansible"
+	flavorKustomize     = "kustomize"
 	flavorGeneric       = "generic"
 )
 
@@ -162,6 +163,18 @@ func detectFlavor(src []byte, path string) (flavor string) {
 		return flavorDockerCompose
 	}
 
+	// Kustomize: a kustomization.yaml. Must be checked BEFORE Kubernetes because
+	// a kustomization carries `kind: Kustomization` + `apiVersion: kustomize...`
+	// which would otherwise match the generic K8s manifest branch below.
+	// Detect signals (any one suffices):
+	//   - filename is kustomization.yaml / kustomization.yml / Kustomization
+	//   - apiVersion line mentions kustomize.config.k8s.io
+	//   - a top-level `kind: Kustomization`
+	//   - a top-level `resources:` key alongside a kustomize transform/generator
+	if isKustomizeContent(content, path) {
+		return flavorKustomize
+	}
+
 	// Kubernetes: "apiVersion:" and "kind:" at top level
 	if containsTopLevelKey(content, "apiVersion") && containsTopLevelKey(content, "kind") {
 		return flavorKubernetes
@@ -189,6 +202,51 @@ func isAnsibleContent(content string) bool {
 	// A play list starts with a dash at column 0 and has hosts: somewhere nearby.
 	if strings.Contains(content, "hosts:") && containsListItemWithKey(content, "hosts") {
 		return true
+	}
+	return false
+}
+
+// isKustomizeContent reports whether the YAML is a Kustomize kustomization.yaml.
+// Any one signal suffices (filename, apiVersion, kind, or a top-level resources/
+// bases/components list combined with a kustomize-specific transform/generator).
+func isKustomizeContent(content, path string) bool {
+	// Filename signal.
+	base := path
+	if idx := strings.LastIndexByte(base, '/'); idx >= 0 {
+		base = base[idx+1:]
+	}
+	switch base {
+	case "kustomization.yaml", "kustomization.yml", "Kustomization":
+		return true
+	}
+	// apiVersion signal — kustomize.config.k8s.io/v1beta1 (or v1).
+	if strings.Contains(content, "kustomize.config.k8s.io") {
+		return true
+	}
+	// kind: Kustomization at top level.
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimRight(line, " \t\r")
+		if (trimmed == "kind: Kustomization" || strings.HasPrefix(trimmed, "kind: Kustomization ")) &&
+			len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+			return true
+		}
+	}
+	// Structural signal: a top-level resources/bases/components list AND at least
+	// one kustomize-specific key. `resources:` alone also appears in some CRDs,
+	// so require a corroborating kustomize key to avoid false positives.
+	hasResourceList := containsTopLevelKey(content, "resources") ||
+		containsTopLevelKey(content, "bases") ||
+		containsTopLevelKey(content, "components")
+	if hasResourceList {
+		for _, k := range []string{
+			"patchesStrategicMerge", "patchesJson6902", "patches",
+			"configMapGenerator", "secretGenerator", "namePrefix",
+			"nameSuffix", "commonLabels",
+		} {
+			if containsTopLevelKey(content, k) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -256,6 +314,8 @@ func extractByFlavor(flavor string, root *sitter.Node, file extractor.FileInput)
 		entities = extractKubernetes(root, file)
 	case flavorAnsible:
 		entities = extractAnsible(root, file)
+	case flavorKustomize:
+		entities = extractKustomize(root, file)
 	default:
 		entities = extractGeneric(root, file)
 	}
@@ -1575,6 +1635,279 @@ func extractAnsibleSectionPairs(p *sitter.Node, file extractor.FileInput, src []
 			)
 			addContains(&ent, ref)
 			entities = append(entities, ent)
+		}
+	}
+
+	return entities
+}
+
+// ---------------------------------------------------------------------------
+// Kustomize extractor (#3520)
+// ---------------------------------------------------------------------------
+
+// extractKustomize processes a kustomization.yaml, building the overlay-
+// composition graph:
+//
+//	resources: / bases: / components:   → IMPORTS edges (kustomization → manifest/overlay)
+//	patches: / patchesStrategicMerge: / patchesJson6902: → PATCHES edges (kustomization → target)
+//	configMapGenerator: / secretGenerator:  → generated-resource entities
+//	namespace: / namePrefix: / nameSuffix: / commonLabels: → transform metadata on the kustomization
+//
+// All IMPORTS/PATCHES edges originate from the kustomization entity whose
+// QualifiedName equals file.Path, so they resolve against the per-file
+// SCOPE.Document anchor (issue #474 chain-fix) via byQualifiedName.
+func extractKustomize(root *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+	src := file.Content
+	pairs := topLevelMappings(root)
+	var entities []types.EntityRecord
+
+	// The kustomization itself is the root entity for the overlay graph. Its
+	// QualifiedName is file.Path so it coincides with the SCOPE.Document anchor
+	// the dispatcher prepends; IMPORTS/PATCHES edges use file.Path as FromID and
+	// resolve through that anchor.
+	name := file.Path
+	if idx := strings.LastIndexByte(name, '/'); idx >= 0 {
+		name = name[idx+1:]
+	}
+	startLine := 1
+	endLine := bytes.Count(src, []byte("\n")) + 1
+	if root != nil {
+		endLine = int(root.EndPoint().Row) + 1
+	}
+	kustRef := file.Path
+	kustEnt := entity(
+		"SCOPE.Component", name, "kustomization",
+		kustRef,
+		file.Path, "yaml", startLine, endLine,
+	)
+
+	// Collect transform metadata onto the kustomization entity's Properties so
+	// downstream tooling sees namespace / prefix / suffix / commonLabels at a
+	// glance without re-parsing the file.
+	transforms := map[string]string{}
+	for _, p := range pairs {
+		switch pairKeyText(p, src) {
+		case "namespace":
+			if v := getPairValueText(p, src); v != "" {
+				transforms["kust_namespace"] = v
+			}
+		case "namePrefix":
+			if v := getPairValueText(p, src); v != "" {
+				transforms["kust_name_prefix"] = v
+			}
+		case "nameSuffix":
+			if v := getPairValueText(p, src); v != "" {
+				transforms["kust_name_suffix"] = v
+			}
+		case "commonLabels":
+			labelPairs := getMappingPairsForKey(pairs, "commonLabels", src)
+			var kvs []string
+			for _, lp := range labelPairs {
+				k := pairKeyText(lp, src)
+				v := getPairValueText(lp, src)
+				if k != "" {
+					kvs = append(kvs, k+"="+v)
+				}
+			}
+			if len(kvs) > 0 {
+				transforms["kust_common_labels"] = strings.Join(kvs, ",")
+			}
+		}
+	}
+	if len(transforms) > 0 {
+		if kustEnt.Properties == nil {
+			kustEnt.Properties = map[string]string{}
+		}
+		for k, v := range transforms {
+			kustEnt.Properties[k] = v
+		}
+	}
+
+	// IMPORTS: resources / bases / components → referenced manifest/overlay path.
+	// Each is a list of file or directory paths. kustomize_import_kind records
+	// which list the path came from for downstream disambiguation.
+	for _, key := range []struct{ field, importKind string }{
+		{"resources", "kustomize_resource"},
+		{"bases", "kustomize_base"},
+		{"components", "kustomize_component"},
+	} {
+		valNode := findValueNodeForKey(pairs, key.field, src)
+		for _, ref := range getSequenceItems(valNode, src) {
+			ref = kustTrimScalar(ref)
+			if ref == "" {
+				continue
+			}
+			kustEnt.Relationships = append(kustEnt.Relationships,
+				importsRel(kustRef, "kustomize_path:"+ref, key.importKind))
+		}
+	}
+
+	entities = append(entities, kustEnt)
+
+	// PATCHES: patches / patchesStrategicMerge / patchesJson6902. These mutate
+	// the kustomization entity in place (append edges).
+	kustExtractPatches(&kustEnt, pairs, kustRef, file, src)
+	// Re-sync the (value-copied) kustomization entity now that patch edges are
+	// attached — it was appended above by value.
+	entities[len(entities)-1] = kustEnt
+
+	// Generated resources: configMapGenerator / secretGenerator → new entities.
+	entities = append(entities, kustExtractGenerators(pairs, kustRef, file, src)...)
+
+	return entities
+}
+
+// kustTrimScalar strips a leading "- " list marker and surrounding quotes from
+// a raw sequence-item scalar (getSequenceItems returns the verbatim node text).
+func kustTrimScalar(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "- ")
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		first, last := s[0], s[len(s)-1]
+		if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+			s = s[1 : len(s)-1]
+		}
+	}
+	return s
+}
+
+// kustPatchTargetStub builds the synthetic ToID for a patch target. When the
+// patch declares a target {kind,name}, the stub is
+// "kustomize_target:<Kind>/<name>"; otherwise it falls back to a file-reference
+// stub "kustomize_patch_file:<path>" or "kustomize_inline_patch".
+func kustPatchTargetStub(targetKind, targetName, patchFile string) string {
+	switch {
+	case targetKind != "" && targetName != "":
+		return "kustomize_target:" + targetKind + "/" + targetName
+	case targetKind != "":
+		return "kustomize_target:" + targetKind
+	case targetName != "":
+		return "kustomize_target:" + targetName
+	case patchFile != "":
+		return "kustomize_patch_file:" + patchFile
+	default:
+		return "kustomize_inline_patch"
+	}
+}
+
+// kustExtractPatches appends PATCHES edges from the kustomization to each patch
+// target. Handles the three patch list shapes Kustomize accepts:
+//
+//	patchesStrategicMerge: [ file.yaml, ... ]            (scalar file paths)
+//	patches:              [ { path|patch, target:{kind,name} }, ... ]
+//	patchesJson6902:      [ { target:{group,version,kind,name}, path|patch }, ... ]
+func kustExtractPatches(kustEnt *types.EntityRecord, pairs []*sitter.Node, kustRef string, file extractor.FileInput, src []byte) {
+	patchesRel := func(toID, style, targetKind, targetName string) {
+		rel := types.RelationshipRecord{
+			FromID: kustRef,
+			ToID:   toID,
+			Kind:   "PATCHES",
+			Properties: map[string]string{
+				"patch_style": style,
+			},
+		}
+		if targetKind != "" {
+			rel.Properties["target_kind"] = targetKind
+		}
+		if targetName != "" {
+			rel.Properties["target_name"] = targetName
+		}
+		kustEnt.Relationships = append(kustEnt.Relationships, rel)
+	}
+
+	// patchesStrategicMerge: scalar list of file paths.
+	smNode := findValueNodeForKey(pairs, "patchesStrategicMerge", src)
+	for _, ref := range getSequenceItems(smNode, src) {
+		ref = kustTrimScalar(ref)
+		if ref == "" {
+			continue
+		}
+		patchesRel(kustPatchTargetStub("", "", ref), "strategic_merge", "", "")
+	}
+
+	// patches: list of mappings with optional target and path|patch.
+	patchMappings := getSequenceItemMappings(findValueNodeForKey(pairs, "patches", src), src)
+	for _, pp := range patchMappings {
+		kustEmitPatchMapping(pp, "strategic_merge", patchesRel, src)
+	}
+
+	// patchesJson6902: list of mappings with a required target and path|patch.
+	json6902Mappings := getSequenceItemMappings(findValueNodeForKey(pairs, "patchesJson6902", src), src)
+	for _, pp := range json6902Mappings {
+		kustEmitPatchMapping(pp, "json6902", patchesRel, src)
+	}
+}
+
+// kustEmitPatchMapping resolves a single patch mapping's target (from a nested
+// target: {kind,name}) and file/inline body, then emits one PATCHES edge.
+func kustEmitPatchMapping(pp []*sitter.Node, style string, emit func(toID, style, targetKind, targetName string), src []byte) {
+	targetPairs := getMappingPairsForKey(pp, "target", src)
+	targetKind := findPairValueText(targetPairs, "kind", src)
+	targetName := findPairValueText(targetPairs, "name", src)
+	patchFile := findPairValueText(pp, "path", src)
+	finalStyle := style
+	if findPairValueText(pp, "patch", src) != "" && patchFile == "" {
+		finalStyle = "inline"
+	}
+	emit(kustPatchTargetStub(targetKind, targetName, patchFile), finalStyle, targetKind, targetName)
+}
+
+// kustExtractGenerators emits one generated-resource entity per entry in
+// configMapGenerator: / secretGenerator:. The entity Name is the generator's
+// name:; the literals/files it pulls are recorded in Properties so the
+// generated config surface is visible without re-parsing.
+func kustExtractGenerators(pairs []*sitter.Node, kustRef string, file extractor.FileInput, src []byte) []types.EntityRecord {
+	var entities []types.EntityRecord
+
+	for _, gen := range []struct{ field, subtype, kind string }{
+		{"configMapGenerator", "generated_configmap", "SCOPE.Schema"},
+		{"secretGenerator", "generated_secret", "SCOPE.Schema"},
+	} {
+		genMappings := getSequenceItemMappings(findValueNodeForKey(pairs, gen.field, src), src)
+		for _, gp := range genMappings {
+			genName := findPairValueText(gp, "name", src)
+			if genName == "" {
+				continue
+			}
+			gStart, gEnd := pairsLineRange(gp)
+			genRef := "kustomize/" + gen.subtype + "/" + file.Path + "#" + genName
+			genEnt := entity(
+				gen.kind, genName, gen.subtype,
+				genRef,
+				file.Path, "yaml", gStart, gEnd,
+			)
+			// CONTAINS: kustomization → generated resource.
+			genEnt.Relationships = append(genEnt.Relationships,
+				containsRel(kustRef, genRef))
+
+			// Record the literals: / files: / envs: the generator pulls from.
+			props := map[string]string{}
+			if lits := getSequenceItems(findValueNodeForKey(gp, "literals", src), src); len(lits) > 0 {
+				cleaned := make([]string, 0, len(lits))
+				for _, l := range lits {
+					cleaned = append(cleaned, kustTrimScalar(l))
+				}
+				props["literals"] = strings.Join(cleaned, ",")
+			}
+			if files := getSequenceItems(findValueNodeForKey(gp, "files", src), src); len(files) > 0 {
+				cleaned := make([]string, 0, len(files))
+				for _, f := range files {
+					cleaned = append(cleaned, kustTrimScalar(f))
+				}
+				props["files"] = strings.Join(cleaned, ",")
+			}
+			if envs := getSequenceItems(findValueNodeForKey(gp, "envs", src), src); len(envs) > 0 {
+				cleaned := make([]string, 0, len(envs))
+				for _, e := range envs {
+					cleaned = append(cleaned, kustTrimScalar(e))
+				}
+				props["envs"] = strings.Join(cleaned, ",")
+			}
+			if len(props) > 0 {
+				genEnt.Properties = props
+			}
+			entities = append(entities, genEnt)
 		}
 	}
 
