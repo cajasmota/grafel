@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/observability.go`<br>`internal/substrate/template_pattern_c_cpp.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/observability.go` | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/observability.go`<br>`internal/substrate/template_pattern_c_cpp.go` | Heuristic regex: spdlog/glog/Boost.Log/printf/std stream detected; log_level severity token captured at call site (spdlog::info, LOG(INFO)). Message text and runtime format args NOT pinned (dataflow); logger-> receiver type assumed not resolved -> stays partial. |
+| Metric extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/observability.go` | Metric name captured as literal at call site: prometheus .Name("name"), otel meter->CreateCounter("name"), statsd .increment("name") -> metric_name prop; value-asserting tests pin specific names. Runtime-bound names stay unpinned (honest). No cross-file resolution. |
+| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/observability.go` | Span name captured as literal at call site (tracer->StartSpan("name")/StartActiveSpan/jaeger StartSpan) -> span_name prop; value-asserting tests pin specific names. No cross-file resolution needed. |
 
 ### Data
 
