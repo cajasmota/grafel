@@ -20,7 +20,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟢 3/3 | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟢 2/2 | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟢 2/2 | |
-| [C#](../by-language/csharp.md) | [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟢 3/3 | |
+| [C#](../by-language/csharp.md) | [Dapper](../detail/lang.csharp.orm.dapper.md) | ✅ 3/3 | |
 | [C#](../by-language/csharp.md) | [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ✅ 8/8 | |
 | [C#](../by-language/csharp.md) | [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟢 7/7 | |
 | [C#](../by-language/csharp.md) | [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟢 6/6 | |

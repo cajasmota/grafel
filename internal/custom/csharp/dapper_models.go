@@ -3,9 +3,15 @@
 //
 // Patterns extracted:
 //
-//	Dapper (POCO + attribute annotations):
+//	Dapper (POCO + attribute annotations + SQL attribution):
 //	  - POCO class with [Table("name")] / [Column("name")] → Models/schema
 //	  - sql.Query<T>(...) / sql.Execute(...) → query_attribution
+//	  - POCO class T referenced in Query<T>(...) → model_extraction (full)
+//	    including public auto-property declarations (public TYPE Prop { get; set; })
+//	  - SQL string literal in Query<T>("SELECT …") → query_attribution (full)
+//	    verb (SELECT/INSERT/UPDATE/DELETE) + table attributed to model T
+//	  - Columns in SQL SELECT col1, col2 FROM … / INSERT INTO t (col1, col2)
+//	    → schema_extraction (full where determinable, honest-partial otherwise)
 //
 //	LINQ-to-SQL / LinqToDB:
 //	  - [Table] / [Table(Name="...")] class attribute → Models
@@ -27,6 +33,7 @@ package csharp
 import (
 	"context"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -64,6 +71,24 @@ var (
 	// POCO class with [Table] — class declaration following the attribute
 	reDapperClass = regexp.MustCompile(
 		`(?m)class\s+(\w+)\s*(?::\s*[\w\s,<>]+)?\s*\{`,
+	)
+
+	// Deep extraction: capture Query/Execute method name, optional type arg T, and
+	// the first string argument (SQL literal, single- or double-quoted, verbatim
+	// @"…" or interpolated $"…" prefix).
+	// Group 1: method name; group 2: type arg T (may be empty); group 3: SQL literal.
+	reDapperQueryFull = regexp.MustCompile(
+		`\.(Query(?:Async|First(?:OrDefault)?|Single(?:OrDefault)?)?|Execute(?:Async|Scalar(?:Async)?)?)\s*` +
+			`(?:<\s*(\w+)\s*>)?\s*\(\s*` +
+			`(?:[@$]?"([^"\\]*(?:\\.[^"\\]*)*)"|@?'([^'\\]*(?:\\.[^'\\]*)*)')`,
+	)
+
+	// Public auto-property inside a POCO class body:
+	//   public [modifier] TYPE PropName { get; set; }
+	// Captures: group 1 = property type (may be generic like List<int>), group 2 = property name.
+	reDapperProp = regexp.MustCompile(
+		`(?m)^\s*(?:public|internal|protected)\s+(?:(?:virtual|override|new|required|static)\s+)*` +
+			`([\w<>\[\]?,\s]+?)\s+(\w+)\s*\{\s*get\s*;\s*(?:(?:private|protected|init)\s+)?set\s*;`,
 	)
 )
 
@@ -131,6 +156,148 @@ var (
 	reLinqToDBNS   = regexp.MustCompile(`using\s+LinqToDB\b`)
 	reNHibernateNS = regexp.MustCompile(`using\s+(?:NHibernate|FluentNHibernate)\b`)
 )
+
+// ---------------------------------------------------------------------------
+// SQL-parsing helpers (Dapper deep extraction)
+// ---------------------------------------------------------------------------
+
+var (
+	// SQL verb at the start of the statement (case-insensitive).
+	reSQLVerb = regexp.MustCompile(`(?i)^\s*(SELECT|INSERT\s+(?:INTO\s+)?|UPDATE|DELETE\s+(?:FROM\s+)?)`)
+
+	// Table name after SELECT … FROM tableName (stops at space, comma, WHERE, JOIN, etc.)
+	reSQLFromTable = regexp.MustCompile(`(?i)\bFROM\s+(?:\[?(\w+)\]?\.)?(?:\[?(\w+)\]?)(?:\s+(?:AS\s+)?\w+)?\s*(?:$|\s|,|WHERE|JOIN|INNER|LEFT|RIGHT|ORDER|GROUP|HAVING|LIMIT|OFFSET|;)`)
+
+	// INSERT INTO tableName (…) / INSERT INTO [schema].[tableName]
+	reSQLInsertTable = regexp.MustCompile(`(?i)\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+(?:\[?(\w+)\]?\.)?(?:\[?(\w+)\]?)`)
+
+	// UPDATE tableName SET …
+	reSQLUpdateTable = regexp.MustCompile(`(?i)\bUPDATE\s+(?:\[?(\w+)\]?\.)?(?:\[?(\w+)\]?)`)
+
+	// DELETE FROM tableName
+	reSQLDeleteTable = regexp.MustCompile(`(?i)\bDELETE\s+FROM\s+(?:\[?(\w+)\]?\.)?(?:\[?(\w+)\]?)`)
+
+	// SELECT col1, col2, … FROM — captures everything between SELECT and FROM
+	// (naive: works for simple flat lists, not sub-selects)
+	reSQLSelectCols = regexp.MustCompile(`(?is)\bSELECT\s+(.*?)\bFROM\b`)
+
+	// INSERT INTO t (col1, col2) — captures the column list in parens
+	reSQLInsertCols = regexp.MustCompile(`(?is)\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+\S+\s*\(([^)]+)\)`)
+)
+
+// csDapperSQLVerb extracts the normalised SQL verb from a raw SQL literal.
+func csDapperSQLVerb(sql string) string {
+	m := reSQLVerb.FindStringSubmatch(sql)
+	if m == nil {
+		return ""
+	}
+	v := strings.ToUpper(strings.Fields(m[1])[0])
+	return v
+}
+
+// csDapperSQLTable extracts the primary target table from a raw SQL literal.
+// Returns (tableName, ok).
+func csDapperSQLTable(sql string) (string, bool) {
+	verb := csDapperSQLVerb(sql)
+	switch verb {
+	case "SELECT":
+		if m := reSQLFromTable.FindStringSubmatch(sql); m != nil {
+			if m[2] != "" {
+				return m[2], true
+			}
+		}
+	case "INSERT":
+		if m := reSQLInsertTable.FindStringSubmatch(sql); m != nil {
+			if m[2] != "" {
+				return m[2], true
+			}
+		}
+	case "UPDATE":
+		if m := reSQLUpdateTable.FindStringSubmatch(sql); m != nil {
+			if m[2] != "" {
+				return m[2], true
+			}
+		}
+	case "DELETE":
+		if m := reSQLDeleteTable.FindStringSubmatch(sql); m != nil {
+			if m[2] != "" {
+				return m[2], true
+			}
+		}
+	}
+	return "", false
+}
+
+// csDapperSQLColumns extracts an explicit column list from a SQL literal.
+// Returns nil if the statement uses SELECT * or the list is not determinable.
+func csDapperSQLColumns(sql string) []string {
+	verb := csDapperSQLVerb(sql)
+	var rawList string
+	switch verb {
+	case "SELECT":
+		m := reSQLSelectCols.FindStringSubmatch(sql)
+		if m == nil {
+			return nil
+		}
+		rawList = m[1]
+		if strings.TrimSpace(rawList) == "*" {
+			return nil // wildcard — not determinable
+		}
+	case "INSERT":
+		m := reSQLInsertCols.FindStringSubmatch(sql)
+		if m == nil {
+			return nil
+		}
+		rawList = m[1]
+	default:
+		return nil
+	}
+	var cols []string
+	for _, part := range strings.Split(rawList, ",") {
+		part = strings.TrimSpace(part)
+		// Strip alias (col AS alias or [col] AS alias) — take left side
+		if idx := strings.Index(strings.ToUpper(part), " AS "); idx >= 0 {
+			part = strings.TrimSpace(part[:idx])
+		}
+		// Strip table qualifier (t.col → col)
+		if idx := strings.LastIndex(part, "."); idx >= 0 {
+			part = part[idx+1:]
+		}
+		// Strip brackets
+		part = strings.Trim(part, "[]`\"")
+		if part == "" || part == "*" || strings.Contains(part, "(") {
+			// Skip expressions / sub-selects / functions
+			continue
+		}
+		cols = append(cols, part)
+	}
+	return cols
+}
+
+// csDapperPocoBody returns the source text of a named class body (content
+// between the first '{' and its matching '}').  Returns "" if not found.
+func csDapperPocoBody(src, className string) string {
+	// Find "class <name>" ignoring modifiers and inheritance
+	classRE := regexp.MustCompile(`(?m)\bclass\s+` + regexp.QuoteMeta(className) + `\b[^{]*\{`)
+	loc := classRE.FindStringIndex(src)
+	if loc == nil {
+		return ""
+	}
+	start := loc[1] // position just after the opening '{'
+	depth := 1
+	for i := start; i < len(src) && depth > 0; i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[start:i]
+			}
+		}
+	}
+	return ""
+}
 
 // ---------------------------------------------------------------------------
 // Extract
@@ -217,18 +384,123 @@ func (e *ormModelsExtractor) Extract(ctx context.Context, file extractor.FileInp
 		}
 	}
 
-	// Dapper query calls → query_attribution
-	if isDapper || reDapperQuery.MatchString(src) {
-		for _, m := range reDapperQuery.FindAllStringSubmatchIndex(src, -1) {
-			entityType := ""
+	// -------------------------------------------------------------------------
+	// Dapper deep extraction: Query<T>("SQL") → full model_extraction +
+	// query_attribution (verb+table attributed to T) + schema_extraction
+	// (columns from SELECT/INSERT column lists).
+	// -------------------------------------------------------------------------
+
+	if isDapper || reDapperQueryFull.MatchString(src) {
+		for _, m := range reDapperQueryFull.FindAllStringSubmatchIndex(src, -1) {
+			line := lineOf(src, m[0])
+
+			// method name (group 1)
+			methodName := ""
 			if m[2] >= 0 {
-				entityType = src[m[2]:m[3]]
+				methodName = src[m[2]:m[3]]
 			}
-			name := "dapper:query:" + entityType + ":" + file.Path + ":" + itoa(lineOf(src, m[0]))
-			ent := makeEntity(name, "SCOPE.Operation", "query_attribution", file.Path, "csharp", lineOf(src, m[0]))
-			setProps(&ent, "framework", "dapper", "provenance", "INFERRED_FROM_DAPPER_QUERY",
-				"entity_type", entityType)
-			add(ent)
+
+			// type arg T (group 2) — may be absent for non-generic methods
+			entityType := ""
+			if m[4] >= 0 {
+				entityType = src[m[4]:m[5]]
+			}
+
+			// SQL literal — prefer double-quoted group 3, fall back to single-quoted group 4
+			sqlLit := ""
+			if m[6] >= 0 {
+				sqlLit = src[m[6]:m[7]]
+			} else if m[8] >= 0 {
+				sqlLit = src[m[8]:m[9]]
+			}
+
+			// -----------------------------------------------------------------
+			// query_attribution: emit verb + table on the Operation entity
+			// -----------------------------------------------------------------
+			verb := csDapperSQLVerb(sqlLit)
+			table, hasTable := csDapperSQLTable(sqlLit)
+
+			qName := "dapper:query:" + entityType + ":" + file.Path + ":" + itoa(line)
+			qEnt := makeEntity(qName, "SCOPE.Operation", "query_attribution", file.Path, "csharp", line)
+			setProps(&qEnt, "framework", "dapper", "provenance", "INFERRED_FROM_DAPPER_QUERY_FULL",
+				"entity_type", entityType,
+				"method", methodName,
+				"sql_verb", verb,
+			)
+			if hasTable {
+				setProps(&qEnt, "sql_table", table)
+			}
+			if sqlLit != "" {
+				// Store a truncated SQL snippet for debugging (max 200 chars)
+				snippet := sqlLit
+				if len(snippet) > 200 {
+					snippet = snippet[:200] + "…"
+				}
+				setProps(&qEnt, "sql_snippet", snippet)
+			}
+			add(qEnt)
+
+			// -----------------------------------------------------------------
+			// model_extraction: emit the POCO type T referenced by the call,
+			// then scan its class body for public auto-properties.
+			// -----------------------------------------------------------------
+			if entityType != "" && !csharpPrimitives[entityType] {
+				mEnt := makeEntity("dapper:model:"+entityType, "SCOPE.Component", "model_extraction", file.Path, "csharp", line)
+				setProps(&mEnt, "framework", "dapper", "provenance", "INFERRED_FROM_DAPPER_QUERY_TYPE")
+				if hasTable {
+					setProps(&mEnt, "table_name", table)
+				}
+				add(mEnt)
+
+				// Scan the class body for public auto-properties
+				body := csDapperPocoBody(src, entityType)
+				if body != "" {
+					for _, pm := range reDapperProp.FindAllStringSubmatchIndex(body, -1) {
+						propType := strings.TrimSpace(body[pm[2]:pm[3]])
+						propName := strings.TrimSpace(body[pm[4]:pm[5]])
+						if csharpPrimitives[propName] {
+							continue
+						}
+						pEnt := makeEntity(
+							"dapper:prop:"+entityType+"."+propName,
+							"SCOPE.Pattern", "model_extraction",
+							file.Path, "csharp", line,
+						)
+						setProps(&pEnt, "framework", "dapper",
+							"provenance", "INFERRED_FROM_DAPPER_POCO_PROP",
+							"model", entityType,
+							"property_name", propName,
+							"property_type", propType,
+						)
+						add(pEnt)
+					}
+				}
+			}
+
+			// -----------------------------------------------------------------
+			// schema_extraction: columns from SQL SELECT / INSERT column lists
+			// -----------------------------------------------------------------
+			if sqlLit != "" {
+				cols := csDapperSQLColumns(sqlLit)
+				for _, col := range cols {
+					colEnt := makeEntity(
+						"dapper:sql_col:"+col+":"+file.Path+":"+itoa(line),
+						"SCOPE.Pattern", "schema_extraction",
+						file.Path, "csharp", line,
+					)
+					setProps(&colEnt, "framework", "dapper",
+						"provenance", "INFERRED_FROM_DAPPER_SQL_COLUMN",
+						"column_name", col,
+					)
+					if entityType != "" {
+						setProps(&colEnt, "model", entityType)
+					}
+					if hasTable {
+						setProps(&colEnt, "table_name", table)
+					}
+					add(colEnt)
+				}
+			}
 		}
 	}
 

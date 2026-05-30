@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/dapper_models.go` | POCO classes with [Table] attribute detected via regex; heuristic |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/dapper_models.go` | [Column] attribute annotation on POCO properties detected via regex; heuristic |
+| Model extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/csharp/dapper_models.go` | POCO classes with [Table] attribute detected via regex; heuristic |
+| Schema extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/csharp/dapper_models.go` | [Column] attribute annotation on POCO properties detected via regex; heuristic |
 
 ### Relationships
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/dapper_models.go` | Dapper Query<T>/Execute/ExecuteScalar calls detected via regex; heuristic |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/csharp/dapper_models.go` | Dapper Query<T>/Execute/ExecuteScalar calls detected via regex; heuristic |
 
 ### Migrations
 

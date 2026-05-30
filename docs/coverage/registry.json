@@ -8804,16 +8804,14 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/csharp/dapper_models.go"],
-            "issue": "3263",
             "notes": "POCO classes with [Table] attribute detected via regex; heuristic",
             "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/csharp/dapper_models.go"],
-            "issue": "3263",
             "notes": "[Column] attribute annotation on POCO properties detected via regex; heuristic",
             "verified_at": "2026-05-30"
           }
@@ -8838,9 +8836,8 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/csharp/dapper_models.go"],
-            "issue": "3263",
             "notes": "Dapper Query\u003cT\u003e/Execute/ExecuteScalar calls detected via regex; heuristic",
             "verified_at": "2026-05-30"
           }

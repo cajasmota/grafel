@@ -88,7 +88,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 |---|---|---|
 | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟢 2/2 | |
 | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟢 2/2 | |
-| [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟢 3/3 | |
+| [Dapper](../detail/lang.csharp.orm.dapper.md) | ✅ 3/3 | |
 | [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ✅ 8/8 | |
 | [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟢 7/7 | |
 | [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟢 6/6 | |
