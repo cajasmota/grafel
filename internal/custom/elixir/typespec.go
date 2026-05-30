@@ -3,6 +3,7 @@ package elixir
 import (
 	"context"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -53,6 +54,26 @@ var (
 	reModuleDecl = regexp.MustCompile(
 		`(?m)^defmodule\s+([\w.]+)`,
 	)
+	// defstruct  [:id, :name, age: 0]   or   defstruct id: nil, name: nil
+	// Captures the bracket/keyword body up to end of line for field parsing.
+	reDefStruct = regexp.MustCompile(
+		`(?m)^\s*defstruct\s+(.+)$`,
+	)
+	// @enforce_keys [:id, :email]
+	reEnforceKeys = regexp.MustCompile(
+		`(?m)^\s*@enforce_keys\s+\[([^\]]*)\]`,
+	)
+	// Individual struct field names: a leading :atom (`:id`) or a keyword
+	// key (`age:`). Used to enumerate fields from a defstruct body.
+	reStructField = regexp.MustCompile(`:([A-Za-z_][\w]*)\b|\b([A-Za-z_][\w]*):`)
+	// @type role :: :admin | :user | :guest   (literal atom-union typespec)
+	// The RHS must be a pipe-separated list of bare :atom literals to qualify
+	// as an "enum". Captures name + full RHS for member parsing.
+	reAtomUnionType = regexp.MustCompile(
+		`(?m)^\s*@type\s+([A-Za-z_][\w]*)\s*(?:\([^)]*\))?\s*::\s*(:[A-Za-z_]\w*(?:\s*\|\s*:[A-Za-z_]\w*)+)`,
+	)
+	// A single bare atom literal, e.g. `:admin`.
+	reAtomLiteral = regexp.MustCompile(`:([A-Za-z_]\w*)`)
 )
 
 func (e *typespecExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -86,10 +107,30 @@ func (e *typespecExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		entities = append(entities, ent)
 	}
 
+	// 0. @type name :: :a | :b | :c  (literal atom union) → SCOPE.Schema/enum
+	//    Elixir has no enum keyword, but a typespec whose RHS is a literal
+	//    pipe-separated list of bare atoms is the idiomatic enum analogue and
+	//    is fully statically determinable. Recorded so block 1 can skip the
+	//    same name (avoid a duplicate generic /type entity).
+	atomUnionNames := make(map[string]bool)
+	for _, m := range reAtomUnionType.FindAllStringSubmatchIndex(src, -1) {
+		typeName := src[m[2]:m[3]]
+		rhs := src[m[4]:m[5]]
+		members := uniqueStrings(submatch1(reAtomLiteral, rhs))
+		atomUnionNames[typeName] = true
+		ent := makeEntity(typeName, "SCOPE.Schema", "enum", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "elixir_typespec", "provenance", "INFERRED_FROM_ATOM_UNION_TYPE",
+			"enum_members", strings.Join(members, ","), "member_count", itoa(len(members)))
+		add(ent)
+	}
+
 	// 1. @type / @typep / @opaque  → SCOPE.Schema/type
 	for _, m := range reTypeDecl.FindAllStringSubmatchIndex(src, -1) {
 		typeKind := src[m[2]:m[3]] // "type", "typep", "opaque"
 		typeName := src[m[4]:m[5]]
+		if atomUnionNames[typeName] {
+			continue // already emitted as SCOPE.Schema/enum
+		}
 		ent := makeEntity(typeName, "SCOPE.Schema", "type", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "elixir_typespec", "provenance", "INFERRED_FROM_TYPESPEC",
 			"type_kind", "@"+typeKind)
@@ -103,6 +144,32 @@ func (e *typespecExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		ent := makeEntity(typeName, "SCOPE.Schema", "type_alias", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "elixir_typespec", "provenance", "INFERRED_FROM_TYPE_ALIAS",
 			"alias_target", aliasTarget)
+		add(ent)
+	}
+
+	// 2b. defstruct [...]  → SCOPE.Schema/struct  (concrete record type)
+	//     A defstruct is the strongest static type Elixir offers: the field
+	//     set is literal and fully enumerable at parse time. The owning
+	//     defmodule names the struct (%MyApp.User{}). @enforce_keys, when
+	//     present, marks the required subset.
+	enforced := parseEnforceKeys(src)
+	for _, m := range reDefStruct.FindAllStringSubmatchIndex(src, -1) {
+		body := src[m[2]:m[3]]
+		fields := uniqueStrings(submatch1(reStructField, body))
+		if len(fields) == 0 {
+			continue
+		}
+		prefix := src[:m[0]]
+		structName := "struct"
+		if mm := reModuleDecl.FindAllStringSubmatch(prefix, -1); len(mm) > 0 {
+			structName = mm[len(mm)-1][1]
+		}
+		ent := makeEntity(structName, "SCOPE.Schema", "struct", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "elixir_typespec", "provenance", "INFERRED_FROM_DEFSTRUCT",
+			"struct_fields", strings.Join(fields, ","), "field_count", itoa(len(fields)))
+		if len(enforced) > 0 {
+			setProps(&ent, "enforced_keys", strings.Join(enforced, ","))
+		}
 		add(ent)
 	}
 
@@ -156,4 +223,14 @@ func (e *typespecExtractor) Extract(ctx context.Context, file extractor.FileInpu
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
+}
+
+// parseEnforceKeys collects all atom names from every @enforce_keys [...]
+// declaration in src (a module may have at most one, but we union defensively).
+func parseEnforceKeys(src string) []string {
+	var keys []string
+	for _, m := range reEnforceKeys.FindAllStringSubmatch(src, -1) {
+		keys = append(keys, submatch1(reAtomLiteral, m[1])...)
+	}
+	return uniqueStrings(keys)
 }

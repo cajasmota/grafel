@@ -19,6 +19,36 @@ var (
 	ectoBlockTokenRe = regexp.MustCompile(`do:|\b(?:do|fn|end)\b`)
 )
 
+// submatch1 returns the first non-empty capture group of every match of re
+// against s, in source order. Used to enumerate struct fields / atom members
+// from a regex with alternated capture groups.
+func submatch1(re *regexp.Regexp, s string) []string {
+	var out []string
+	for _, m := range re.FindAllStringSubmatch(s, -1) {
+		for _, g := range m[1:] {
+			if g != "" {
+				out = append(out, g)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// uniqueStrings returns ss with duplicates removed, preserving first-seen order.
+func uniqueStrings(ss []string) []string {
+	seen := make(map[string]bool, len(ss))
+	var out []string
+	for _, s := range ss {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
 func lineOf(source string, offset int) int {
 	return strings.Count(source[:offset], "\n") + 1
 }

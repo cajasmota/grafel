@@ -26,21 +26,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
-| [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟢 1/1 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 1/1 | |
-| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 2/2 | |
-| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟢 1/1 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 1/1 | |
-| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟢 1/1 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟢 3/3 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
-| [Plug](../detail/lang.elixir.framework.plug.md) | 🟢 3/3 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
+| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
+| [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟢 3/3 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 1/1 | |
+| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟢 3/3 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 2/2 | |
+| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 1/1 | |
+| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
+| [Plug](../detail/lang.elixir.framework.plug.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
 
 
 ### Meta Framework
 
 | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | 🟢 2/2 | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
+| [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | 🟢 2/2 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
 
 
 ## Tools
