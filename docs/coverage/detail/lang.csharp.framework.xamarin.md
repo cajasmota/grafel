@@ -50,7 +50,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | 🔴 `missing` | — | — | — | — |
 | Interface extraction | 🔴 `missing` | — | — | — | — |
-| Type alias extraction | 🔴 `missing` | — | — | — | — |
+| Type alias extraction | — `not_applicable` | — | — | — | C# has only file-scoped using-aliases, not first-class type aliases |
 
 ### Lifecycle
 

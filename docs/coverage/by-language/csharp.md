@@ -26,29 +26,29 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 4/6 | |
-| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
-| [Carter](../detail/lang.csharp.framework.carter.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
-| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
-| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
+| [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🟡 4/6 | |
+| [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
+| [Carter](../detail/lang.csharp.framework.carter.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
+| [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
+| [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
+| [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/6 | |
 
 
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
-| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
-| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
+| [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | 🔴 0/2 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
+| [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | 🔴 0/2 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
+| [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | 🔴 0/2 | 🔴 0/1 | 🟢 21/21 | 🔴 0/8 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/9 | |
-| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🔴 0/3 | 🔴 0/1 | 🟢 21/21 | 🔴 0/9 | |
+| [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🔴 0/2 | 🔴 0/1 | 🟢 21/21 | 🔴 0/9 | |
+| [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🔴 0/2 | 🔴 0/1 | 🟢 21/21 | 🔴 0/9 | |
 
 
 ### Desktop
@@ -86,17 +86,17 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/6 | |
-| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/6 | |
-| [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 2/8 | |
+| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/2 | |
+| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/2 | |
+| [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 2/7 | |
 | [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ✅ 8/8 | |
-| [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟡 2/8 | |
-| [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🔴 0/8 | |
-| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🟡 1/6 | |
-| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 1/6 | |
-| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🟡 1/6 | |
-| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟡 1/6 | |
-| [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟡 2/8 | |
-| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🟡 1/6 | |
-| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🟡 1/6 | |
-| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟡 1/6 | |
+| [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟡 2/7 | |
+| [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🔴 0/7 | |
+| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🟡 1/2 | |
+| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 1/2 | |
+| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🟡 1/2 | |
+| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟡 1/2 | |
+| [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟡 2/7 | |
+| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🟡 1/2 | |
+| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🟡 1/2 | |
+| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟡 1/2 | |

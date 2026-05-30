@@ -5327,20 +5327,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5376,20 +5376,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5425,20 +5425,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5474,20 +5474,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5523,20 +5523,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5572,20 +5572,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5621,20 +5621,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5670,20 +5670,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5719,20 +5719,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -5807,8 +5807,8 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
             "status": "missing",
@@ -6008,8 +6008,8 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
             "status": "missing",
@@ -6196,7 +6196,8 @@
             "status": "missing"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           }
         },
         "Lifecycle": {
@@ -6363,7 +6364,8 @@
             "status": "missing"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           }
         },
         "Lifecycle": {
@@ -6530,7 +6532,8 @@
             "status": "missing"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           }
         },
         "Lifecycle": {
@@ -6706,8 +6709,8 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
             "status": "missing",
@@ -6903,8 +6906,8 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
             "status": "missing",
@@ -7238,8 +7241,8 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
             "status": "missing",
@@ -7433,7 +7436,8 @@
             "status": "missing"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           }
         },
         "Lifecycle": {
@@ -7609,8 +7613,8 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           },
           "type_extraction": {
             "status": "missing",
@@ -8029,7 +8033,8 @@
             "status": "missing"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "C# has only file-scoped using-aliases, not first-class type aliases"
           }
         },
         "Lifecycle": {
@@ -8199,7 +8204,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "micro-ORM/query-lib — no built-in migration system"
           }
         }
       }
@@ -8306,7 +8312,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "micro-ORM/query-lib — no built-in migration system"
           }
         }
       }
@@ -8352,7 +8359,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "micro-ORM/query-lib — no built-in migration system"
           }
         }
       }
@@ -8402,7 +8410,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "micro-ORM/query-lib — no built-in migration system"
           }
         }
       }
