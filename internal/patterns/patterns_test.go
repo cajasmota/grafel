@@ -833,38 +833,6 @@ fastapi==0.103.1`
 }
 
 // ============================================================
-// IAC detector
-// ============================================================
-
-func TestIACDetector_AppliesTo(t *testing.T) {
-	d := &iacDetector{}
-	if !d.AppliesTo(`resource "aws_s3_bucket" "main" {`) {
-		t.Error("should apply to terraform resource")
-	}
-}
-
-func TestIACDetector_Detect_TerraformResource(t *testing.T) {
-	d := &iacDetector{}
-	src := `resource "aws_s3_bucket" "my_bucket" {
-  bucket = "my-app-bucket"
-}
-resource "aws_sqs_queue" "jobs" {
-  name = "jobs-queue"
-}`
-	results := d.Detect("main.tf", "hcl", src)
-	if len(results) < 2 {
-		t.Errorf("expected 2 IAC entities, got %d", len(results))
-	}
-	kinds := map[string]bool{}
-	for _, e := range results {
-		kinds[e.Kind] = true
-	}
-	if !kinds["SCOPE.Datastore"] && !kinds["SCOPE.Queue"] && !kinds["SCOPE.Service"] {
-		t.Error("expected IAC entity with proper kind")
-	}
-}
-
-// ============================================================
 // Logging config extractor
 // ============================================================
 
@@ -1524,40 +1492,6 @@ func TestSQLJoinCountExtractor_Detect_MultipleJoins(t *testing.T) {
 		if results[0].Properties["join_count"] == "" {
 			t.Error("expected join_count property")
 		}
-	}
-}
-
-// ============================================================
-// Terraform module enricher
-// ============================================================
-
-func TestTerraformModuleEnricher_AppliesTo(t *testing.T) {
-	d := &terraformModuleEnricher{}
-	if !d.AppliesTo(`module "vpc" {`) {
-		t.Error("should apply to Terraform module block")
-	}
-	if !d.AppliesTo(`provider "aws" {`) {
-		t.Error("should apply to Terraform provider block")
-	}
-}
-
-func TestTerraformModuleEnricher_Detect_Modules(t *testing.T) {
-	d := &terraformModuleEnricher{}
-	src := `# owner: platform-team
-module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "3.14.0"
-}
-module "eks" {
-  source = "terraform-aws-modules/eks/aws"
-}`
-	results := d.Detect("main.tf", "hcl", src)
-	names := map[string]bool{}
-	for _, e := range results {
-		names[e.Properties["module_name"]] = true
-	}
-	if !names["vpc"] || !names["eks"] {
-		t.Error("expected vpc and eks module entities")
 	}
 }
 

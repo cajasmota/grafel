@@ -4,8 +4,8 @@
 // interface covers language-specific AST extraction; this package covers
 // cross-cutting semantic signals).
 //
-// There are 61 detectors matching Python parity.  Each file in this package
-// defines exactly one detector and calls Register via init().
+// Each file in this package defines exactly one detector and calls Register
+// via init().
 //
 // Usage:
 //
