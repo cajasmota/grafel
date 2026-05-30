@@ -453,23 +453,28 @@ func (e *kotlinHttp4kRoutesExtractor) Extract(ctx context.Context, file extracto
 		entities = append(entities, ent)
 	}
 
-	// Flat bindings: "path" bind METHOD to handler.
-	for _, m := range reHttp4kBind.FindAllStringSubmatchIndex(src, -1) {
-		path := src[m[2]:m[3]]
-		verb := src[m[4]:m[5]]
-		name := verb + " " + path
-		line := lineOf(src, m[0])
-		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, "kotlin", line)
+	// Composed bindings: walk the source tracking a prefix stack from
+	// "prefix" bind routes( … ) blocks so that inner verb bindings inherit
+	// the enclosing prefix, e.g.:
+	//
+	//	"/api" bind routes(
+	//	    "/users" bind GET to ::listUsers,   → GET /api/users
+	//	)
+	for _, b := range http4kComposedBinds(src) {
+		fullPath := b.path
+		name := b.verb + " " + fullPath
+		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, "kotlin", lineOf(src, b.offset))
 		setProps(&ent,
 			"framework", "http4k",
-			"http_method", verb,
-			"path", path,
+			"http_method", b.verb,
+			"path", fullPath,
 			"provenance", "INFERRED_FROM_HTTP4K_BIND",
 		)
 		add(ent)
 	}
 
-	// Nested prefix blocks: extract the prefix as a route scope entity.
+	// Nested prefix blocks: also emit the prefix as a route scope entity so the
+	// scope node is discoverable independently of its leaf verbs.
 	for _, m := range reHttp4kNestedBind.FindAllStringSubmatchIndex(src, -1) {
 		prefix := src[m[2]:m[3]]
 		line := lineOf(src, m[0])
@@ -490,6 +495,99 @@ func (e *kotlinHttp4kRoutesExtractor) Extract(ctx context.Context, file extracto
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+// http4kBind is a resolved http4k leaf route with its enclosing prefix already
+// composed into path.
+type http4kBind struct {
+	verb   string
+	path   string
+	offset int
+}
+
+// http4kComposedBinds scans http4k routing DSL and returns leaf bindings with
+// nested "prefix" bind routes( … ) prefixes composed into the full path.
+//
+// It performs a single left-to-right pass over the source, maintaining a stack
+// of (prefix, closeParenDepth) frames. When it encounters `"p" bind routes(`
+// it pushes a frame whose prefix is p, tracking the paren depth so the frame is
+// popped when its routes( … ) closes. Leaf `"path" bind VERB` matches compose
+// every active prefix onto path.
+//
+// The scanner only tracks the prefix stack via http4k-specific tokens, so it is
+// robust against unrelated parentheses in handler bodies (handlers are normally
+// method references like ::handler, not inline parenthesised blocks). When in
+// doubt it favours under-composition over cross-contamination.
+func http4kComposedBinds(src string) []http4kBind {
+	type frame struct {
+		prefix   string
+		closeOff int // offset of the matching ')' that ends this routes( … )
+	}
+
+	var (
+		out   []http4kBind
+		stack []frame
+	)
+
+	nested := reHttp4kNestedBind.FindAllStringSubmatchIndex(src, -1)
+	leaf := reHttp4kBind.FindAllStringSubmatchIndex(src, -1)
+
+	ni, li := 0, 0
+	for pos := 0; pos < len(src); pos++ {
+		// Pop frames whose routes( … ) has closed before this position.
+		for len(stack) > 0 && pos > stack[len(stack)-1].closeOff {
+			stack = stack[:len(stack)-1]
+		}
+
+		// A nested prefix opener `"prefix" bind routes(` starts at pos. The '('
+		// it opens is the final char of the match (nested[ni][1]-1); find its
+		// matching ')' so we know exactly where this prefix scope ends.
+		if ni < len(nested) && nested[ni][0] == pos {
+			prefix := src[nested[ni][2]:nested[ni][3]]
+			openParen := nested[ni][1] - 1
+			if close := matchCloseParen(src, openParen); close >= 0 {
+				stack = append(stack, frame{prefix: prefix, closeOff: close})
+			}
+			ni++
+		}
+
+		// A leaf "path" bind VERB starts at pos: compose every active prefix.
+		if li < len(leaf) && leaf[li][0] == pos {
+			composed := src[leaf[li][2]:leaf[li][3]]
+			// Wrap innermost-first so the outermost prefix ends up leftmost.
+			for i := len(stack) - 1; i >= 0; i-- {
+				composed = joinKtRoutePaths(stack[i].prefix, composed)
+			}
+			out = append(out, http4kBind{
+				verb:   src[leaf[li][4]:leaf[li][5]],
+				path:   composed,
+				offset: leaf[li][0],
+			})
+			li++
+		}
+	}
+	return out
+}
+
+// matchCloseParen returns the offset of the ')' that matches the '(' at
+// openParen, or -1 if unbalanced. src[openParen] must be '('.
+func matchCloseParen(src string, openParen int) int {
+	if openParen < 0 || openParen >= len(src) || src[openParen] != '(' {
+		return -1
+	}
+	depth := 0
+	for i := openParen; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
 
 // joinKtRoutePaths composes a base path and a sub-path, normalising double
 // slashes. Both parts may be empty.

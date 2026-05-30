@@ -30435,9 +30435,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-30"
           }
         },
@@ -30695,9 +30694,8 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
-            "issue": "3274",
             "notes": "java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
           }
@@ -31417,9 +31415,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-30"
           }
         },
@@ -31700,9 +31697,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-30"
           }
         },
@@ -31983,9 +31979,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-30"
           }
         },

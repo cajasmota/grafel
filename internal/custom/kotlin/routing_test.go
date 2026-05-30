@@ -248,13 +248,39 @@ val app = routes(
 )
 `
 	ents := extract(t, "custom_kotlin_http4k_routes", fi("Nested.kt", "kotlin", src))
-	// Flat bindings inside nested should still be captured.
+	// Nested "/api" bind routes( … ) must compose onto the leaf paths.
 	names := routeNames(ents)
-	if !names["GET /users"] {
-		t.Errorf("http4k: expected GET /users in nested; got %v", names)
+	if !names["GET /api/users"] {
+		t.Errorf("http4k: expected composed GET /api/users in nested; got %v", names)
 	}
-	if !names["POST /users"] {
-		t.Errorf("http4k: expected POST /users in nested; got %v", names)
+	if !names["POST /api/users"] {
+		t.Errorf("http4k: expected composed POST /api/users in nested; got %v", names)
+	}
+}
+
+func TestHttp4kRoutes_NestedTwoLevels(t *testing.T) {
+	src := `
+val app = routes(
+    "/api" bind routes(
+        "/v1" bind routes(
+            "/users" bind GET to ::listUsers,
+            "/users/{id}" bind DELETE to ::deleteUser,
+        ),
+    ),
+    "/ping" bind GET to ::ping,
+)
+`
+	ents := extract(t, "custom_kotlin_http4k_routes", fi("DeepNested.kt", "kotlin", src))
+	names := routeNames(ents)
+	want := []string{
+		"GET /api/v1/users",
+		"DELETE /api/v1/users/{id}",
+		"GET /ping",
+	}
+	for _, w := range want {
+		if !names[w] {
+			t.Errorf("http4k: expected composed route %q; got %v", w, names)
+		}
 	}
 }
 
