@@ -1908,11 +1908,12 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "redis-plus-plus is a schemaless key-value client; no relational/document models"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Redis is schemaless; no schema to extract"
           }
         },
         "Relationships": {
@@ -1969,7 +1970,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no authentication subsystem"
           }
         },
         "Validation": {
@@ -1984,7 +1986,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no HTTP middleware pipeline"
           }
         },
         "Type System": {
@@ -2171,7 +2174,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no authentication subsystem"
           }
         },
         "Validation": {
@@ -2186,7 +2190,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no HTTP middleware pipeline"
           }
         },
         "Type System": {
@@ -2373,7 +2378,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no authentication subsystem"
           }
         },
         "Validation": {
@@ -2388,7 +2394,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no HTTP middleware pipeline"
           }
         },
         "Type System": {
@@ -3223,7 +3230,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no authentication subsystem"
           }
         },
         "Validation": {
@@ -3238,7 +3246,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no HTTP middleware pipeline"
           }
         },
         "Type System": {
@@ -3425,7 +3434,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no authentication subsystem"
           }
         },
         "Validation": {
@@ -3440,7 +3450,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no HTTP middleware pipeline"
           }
         },
         "Type System": {
@@ -3627,7 +3638,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no authentication subsystem"
           }
         },
         "Validation": {
@@ -3642,7 +3654,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "low-level network/event library; no HTTP middleware pipeline"
           }
         },
         "Type System": {
@@ -4860,7 +4873,8 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "restinio is a minimal HTTP server lib; no built-in authentication subsystem"
           }
         },
         "Validation": {

@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🔴 `missing` | — | — | — | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Model extraction | — `not_applicable` | — | — | — | redis-plus-plus is a schemaless key-value client; no relational/document models |
+| Schema extraction | — `not_applicable` | — | — | — | Redis is schemaless; no schema to extract |
 
 ### Relationships
 

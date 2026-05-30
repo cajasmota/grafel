@@ -16,7 +16,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C/C++](../by-language/c-cpp.md) | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟢 3/3 | |
 | [C/C++](../by-language/c-cpp.md) | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟢 3/3 | |
 | [C/C++](../by-language/c-cpp.md) | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟢 3/3 | |
-| [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/1 | |
 | [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟢 3/3 | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/2 | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/2 | |

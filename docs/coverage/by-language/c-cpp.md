@@ -26,20 +26,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | — | 🔴 0/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 3/4 | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | — | 🔴 0/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 3/4 | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | — | 🔴 0/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 3/4 | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | 🔴 0/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
 | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | — | 🔴 0/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 3/4 | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | — | 🔴 0/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 3/4 | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | — | 🔴 0/1 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟡 3/4 | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | — | — | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
 
 
 ### UI Frontend
@@ -90,5 +90,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟢 3/3 | |
 | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟢 3/3 | |
 | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟢 3/3 | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/3 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/1 | |
 | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟢 3/3 | |

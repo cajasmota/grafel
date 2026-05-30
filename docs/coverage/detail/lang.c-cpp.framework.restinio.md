@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | — | — | — |
+| Auth coverage | — `not_applicable` | — | — | — | restinio is a minimal HTTP server lib; no built-in authentication subsystem |
 
 ### Validation
 
