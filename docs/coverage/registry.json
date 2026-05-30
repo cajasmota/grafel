@@ -47690,10 +47690,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -47966,10 +47965,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -48228,10 +48226,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -48502,10 +48499,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -48784,10 +48780,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -49058,10 +49053,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -49364,9 +49358,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -49563,10 +49557,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },
@@ -49836,10 +49829,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/scala/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Scala TESTS linkage: scalatest (AnyFunSuite/AnyFlatSpec/AnyWordSpec/AnyFunSpec), specs2, MUnit, ZIO Test leaf cases with subject-from-spec-name (UserServiceSpec-\u003eUserService) + body call resolution; Scala assertion/matcher stopwords (assert/assertResult/assertTrue/shouldBe/mustBe/must_==/specs2 matchers). Value-asserting tests in extractor_test.go assert specific test-\u003etarget edges per framework. Closes #3457.",
             "verified_at": "2026-05-30"
           }
         },

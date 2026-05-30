@@ -2707,6 +2707,155 @@ class FooSpec extends AnyFunSuite {
 	}
 }
 
+// TestScala_FunSuite_DirectCall asserts a ScalaTest AnyFunSuite leaf whose body
+// directly calls a production method emits a high-confidence TESTS edge to that
+// specific symbol (the `assert(...)` wrapper is stop-worded).
+func TestScala_FunSuite_DirectCall(t *testing.T) {
+	src := `import org.scalatest.funsuite.AnyFunSuite
+class UserServiceSpec extends AnyFunSuite {
+    test("registers a new user") {
+        val svc = new UserService
+        assert(svc.register("alice") == true)
+    }
+}`
+	recs := runExtract(t, "UserServiceSpec.scala", "scala", src)
+	if recs[0].Properties["test_framework"] != "scalatest" {
+		t.Errorf("framework=%q, want scalatest", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_registers_a_new_user", "svc.register") {
+		t.Fatalf("expected TESTS edge to svc.register; recs=%+v", recs)
+	}
+	// The assert(...) wrapper must NOT be a tested target.
+	if hasEdgeAny(recs, "it_registers_a_new_user", "assert") {
+		t.Errorf("assert() must be stop-worded, not a tested target")
+	}
+}
+
+// TestScala_FlatSpec_DirectCall asserts an AnyFlatSpec `"X" should "y" in { … }`
+// leaf links to the production call in its body.
+func TestScala_FlatSpec_DirectCall(t *testing.T) {
+	src := `import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+class StackSpec extends AnyFlatSpec with Matchers {
+    "A Stack" should "pop values in LIFO order" in {
+        val s = new Stack
+        s.pop() shouldBe 5
+    }
+}`
+	recs := runExtract(t, "StackSpec.scala", "scala", src)
+	if !hasEdgeAny(recs, "it_A_Stack_pop_values_in_LIFO_order", "s.pop") {
+		t.Fatalf("expected TESTS edge to s.pop; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_A_Stack_pop_values_in_LIFO_order", "shouldBe") {
+		t.Errorf("shouldBe matcher must be stop-worded")
+	}
+}
+
+// TestScala_FunSpec_DirectCall asserts an AnyFunSpec `it("…") { … }` leaf links
+// to its production call.
+func TestScala_FunSpec_DirectCall(t *testing.T) {
+	src := `import org.scalatest.funspec.AnyFunSpec
+class CalculatorSpec extends AnyFunSpec {
+    describe("Calculator") {
+        it("adds two numbers") {
+            val c = new Calculator
+            assertResult(3)(c.add(1, 2))
+        }
+    }
+}`
+	recs := runExtract(t, "CalculatorSpec.scala", "scala", src)
+	if !hasEdgeAny(recs, "it_adds_two_numbers", "c.add") {
+		t.Fatalf("expected TESTS edge to c.add; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_adds_two_numbers", "assertResult") {
+		t.Errorf("assertResult must be stop-worded")
+	}
+}
+
+// TestScala_Specs2_NamingConvention asserts a specs2 spec whose leaf has no
+// direct production call still emits a subject-derived TESTS edge from the
+// spec type name (OrderServiceSpec → OrderService), at medium confidence.
+func TestScala_Specs2_NamingConvention(t *testing.T) {
+	src := `import org.specs2.mutable.Specification
+class OrderServiceSpec extends Specification {
+    "OrderService" should {
+        "be defined" in {
+            ok
+        }
+    }
+}`
+	recs := runExtract(t, "OrderServiceSpec.scala", "scala", src)
+	if recs[0].Properties["test_framework"] != "specs2" {
+		t.Errorf("framework=%q, want specs2", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_be_defined", "OrderService") {
+		t.Fatalf("expected naming-convention TESTS edge to OrderService; recs=%+v", recs)
+	}
+}
+
+// TestScala_MUnit_DirectCall asserts a MUnit FunSuite leaf links to its
+// production call and is attributed to the munit framework.
+func TestScala_MUnit_DirectCall(t *testing.T) {
+	src := `import munit.FunSuite
+class ParserSuite extends FunSuite {
+    test("parses input") {
+        val p = new Parser
+        assertEquals(p.parse("x"), 1)
+    }
+}`
+	recs := runExtract(t, "ParserSuite.scala", "scala", src)
+	if recs[0].Properties["test_framework"] != "munit" {
+		t.Errorf("framework=%q, want munit", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_parses_input", "p.parse") {
+		t.Fatalf("expected TESTS edge to p.parse; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_parses_input", "assertEquals") {
+		t.Errorf("assertEquals must be stop-worded")
+	}
+}
+
+// TestScala_ZioTest_DirectCall asserts a ZIO Test object spec leaf (paren-thunk
+// and brace forms) links to its production call and is attributed to zio_test.
+func TestScala_ZioTest_DirectCall(t *testing.T) {
+	src := `import zio.test._
+import zio.test.Assertion._
+object GreeterSpec extends ZIOSpecDefault {
+    def spec = suite("Greeter")(
+        test("greets the user") {
+            val g = new Greeter
+            assertTrue(g.greet("ann") == "hi ann")
+        }
+    )
+}`
+	recs := runExtract(t, "GreeterSpec.scala", "scala", src)
+	if recs[0].Properties["test_framework"] != "zio_test" {
+		t.Errorf("framework=%q, want zio_test", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_greets_the_user", "g.greet") {
+		t.Fatalf("expected TESTS edge to g.greet; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_greets_the_user", "assertTrue") {
+		t.Errorf("assertTrue must be stop-worded")
+	}
+}
+
+func TestScalaSubjectFromSpecName(t *testing.T) {
+	cases := map[string]string{
+		"UserServiceSpec":  "UserService",
+		"UserServiceTest":  "UserService",
+		"UserServiceSuite": "UserService",
+		"OrderSpecs":       "Order",
+		"Spec":             "",
+		"Plain":            "",
+	}
+	for in, want := range cases {
+		if got := scalaSubjectFromSpecName(in); got != want {
+			t.Errorf("scalaSubjectFromSpecName(%q)=%q, want %q", in, got, want)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Path normalisation / test-type inference
 // ---------------------------------------------------------------------------

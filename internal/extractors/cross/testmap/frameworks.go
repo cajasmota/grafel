@@ -1411,22 +1411,203 @@ func detectXCTest(source string) []testFunction {
 }
 
 // ---------------------------------------------------------------------------
-// Scala — Spock / ScalaTest
+// Scala — ScalaTest / specs2 / MUnit / ZIO Test  (deep linkage, #3457)
+//
+// Deep linkage covers four families, all subject-aware: the class/object under
+// test is derived from the spec's own type name (UserServiceSpec → UserService),
+// mirroring the C#/Kotlin/Java describeSubject path, so a naming-convention
+// TESTS edge is emitted even when a leaf case contains no direct production
+// call. Where a leaf case body DOES contain a production call, the resolver
+// promotes it to a high-confidence edge (the Scala assertion helpers — assert,
+// assertResult, mustBe, shouldBe, assertTrue, … — are stop-worded in
+// resolver.go so they never masquerade as the tested subject).
+//
+//	scalatest — AnyFunSuite     test("desc") { … }
+//	            AnyFlatSpec     "X" should "do y" in { … }
+//	            AnyWordSpec     "X" should { "do y" in { … } }
+//	            AnyFunSpec      describe("X") { it("does y") { … } }
+//	specs2    — class XSpec extends Specification { "x" should { "y" in { … } } }
+//	            (the `>>` and `in` leaf forms are both accepted)
+//	munit     — class XSuite extends FunSuite { test("y") { … } }
+//	zio-test  — object XSpec extends ZIOSpecDefault {
+//	                def spec = suite("x")(test("y")(assertTrue(…)))
+//	            }
 // ---------------------------------------------------------------------------
 
-// ScalaTest FunSuite: test("name") { ... }
-var scalaTestRE = regexp.MustCompile(
+// scalaSpecTypeRE captures the first class/object name in a Scala test source so
+// the subject under test can be derived from it (FooSpec → Foo). Both `class`
+// and `object` (zio-test specs are objects) are accepted, as are the optional
+// `final`/`abstract`/`sealed`/`case` modifiers.
+var scalaSpecTypeRE = regexp.MustCompile(
+	`(?m)^\s*(?:(?:final|abstract|sealed|case|private|protected)\s+)*(?:class|object)\s+(\w+)`,
+)
+
+// scalaFunSuiteCaseRE matches a ScalaTest AnyFunSuite / MUnit FunSuite leaf:
+//
+//	test("computes the total") { … }
+//
+// Group 1 is the description. Shared by scalatest-funsuite and munit (both use
+// the identical `test("…") { … }` surface).
+var scalaFunSuiteCaseRE = regexp.MustCompile(
 	`(?m)\btest\s*\(\s*"([^"]{1,200})"\s*\)\s*{`,
 )
 
-func detectScalaTest(source string) []testFunction {
-	var out []testFunction
-	for _, m := range scalaTestRE.FindAllStringSubmatchIndex(source, -1) {
-		name := source[m[2]:m[3]]
-		body := extractBraceBody(source, m[1]-1)
-		out = append(out, testFunction{qname: jestCaseQName(name), body: body})
+// scalaFlatSpecCaseRE matches a ScalaTest AnyFlatSpec leaf:
+//
+//	"A Stack" should "pop values in LIFO order" in { … }
+//	"it"      must    "do something"           in { … }
+//
+// Group 1 is the subject phrase, group 2 the verb phrase. The leaf description
+// is the concatenation; the body follows `in {`.
+var scalaFlatSpecCaseRE = regexp.MustCompile(
+	`(?m)"([^"]{1,200})"\s+(?:should|must|can|may)\s+"([^"]{1,200})"\s+in\s*{`,
+)
+
+// scalaWordSpecLeafRE matches a ScalaTest AnyWordSpec / specs2 leaf case:
+//
+//	"return the user" in { … }
+//	"return the user" >> { … }     (specs2 acceptance/unit style)
+//
+// Group 1 is the leaf description. The enclosing `"subject" should { … }` block
+// is handled by the type-name subject; we only need the leaf bodies.
+var scalaWordSpecLeafRE = regexp.MustCompile(
+	`(?m)"([^"]{1,200})"\s+(?:in|>>)\s*{`,
+)
+
+// scalaFunSpecCaseRE matches a ScalaTest AnyFunSpec leaf:
+//
+//	it("does the thing") { … }
+//
+// Group 1 is the description. `describe("…")` containers are intentionally not
+// emitted as leaves — `it` is the finest-grained case.
+var scalaFunSpecCaseRE = regexp.MustCompile(
+	`(?m)\bit\s*\(\s*"([^"]{1,200})"\s*\)\s*{`,
+)
+
+// scalaZioTestCaseRE matches a ZIO Test leaf inside a suite(...) tree:
+//
+//	test("returns the user") { … }
+//	test("returns the user")(assertTrue(…))
+//
+// ZIO uses both the brace-lambda and the paren-thunk forms. Group 1 is the
+// description; the brace-lambda form is captured by scalaFunSuiteCaseRE, so this
+// RE only needs to add the paren-thunk form. Group 1 = description.
+var scalaZioTestParenCaseRE = regexp.MustCompile(
+	`(?m)\btest\s*\(\s*"([^"]{1,200})"\s*\)\s*\(`,
+)
+
+// scalaSubjectFromSpecName derives the class/object under test from a Scala
+// spec/suite type name by stripping the conventional trailing suffixes.
+//
+//	UserServiceSpec  → UserService
+//	UserServiceTest  → UserService
+//	UserServiceSuite → UserService
+//	UserServiceSpecs → UserService   (specs2 plural convention)
+//	(no suffix)      → ""
+func scalaSubjectFromSpecName(typeName string) string {
+	for _, suf := range []string{"Specs", "Spec", "Suite", "Tests", "Test"} {
+		if strings.HasSuffix(typeName, suf) && len(typeName) > len(suf) {
+			return typeName[:len(typeName)-len(suf)]
+		}
 	}
+	return ""
+}
+
+// scalaFirstSpecType returns the first class/object name declared in source.
+func scalaFirstSpecType(source string) string {
+	if m := scalaSpecTypeRE.FindStringSubmatch(source); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// detectScalaTest detects ScalaTest (FunSuite/FlatSpec/WordSpec/FunSpec),
+// specs2, MUnit and ZIO Test leaf cases. Every leaf is annotated with the
+// subject derived from the spec type name, so a TESTS edge is emitted even for
+// pure-naming-convention cases; leaves whose body contains a production call are
+// promoted by the resolver to high confidence.
+func detectScalaTest(source string) []testFunction {
+	subject := scalaSubjectFromSpecName(scalaFirstSpecType(source))
+
+	var out []testFunction
+	seen := map[string]bool{}
+	add := func(rawName, body string) {
+		name := jestCaseQName(rawName)
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
+	}
+
+	// FunSuite / MUnit / ZIO brace form: test("…") { … }
+	for _, m := range scalaFunSuiteCaseRE.FindAllStringSubmatchIndex(source, -1) {
+		add(source[m[2]:m[3]], extractBraceBody(source, m[1]-1))
+	}
+	// ZIO paren-thunk form: test("…")( … ) — body is the paren group. We reuse
+	// extractBraceBody is brace-only, so capture from the opening paren to its
+	// matching close via extractParenBody.
+	for _, m := range scalaZioTestParenCaseRE.FindAllStringSubmatchIndex(source, -1) {
+		add(source[m[2]:m[3]], scalaParenBody(source, m[1]-1))
+	}
+	// FlatSpec: "subject" should "verb" in { … }
+	for _, m := range scalaFlatSpecCaseRE.FindAllStringSubmatchIndex(source, -1) {
+		desc := source[m[2]:m[3]] + "_" + source[m[4]:m[5]]
+		add(desc, extractBraceBody(source, m[1]-1))
+	}
+	// FunSpec: it("…") { … }
+	for _, m := range scalaFunSpecCaseRE.FindAllStringSubmatchIndex(source, -1) {
+		add(source[m[2]:m[3]], extractBraceBody(source, m[1]-1))
+	}
+	// WordSpec / specs2 leaf: "…" in { … } / "…" >> { … }. Scanned last so that
+	// the more specific FlatSpec/FunSpec forms claim their descriptions first
+	// (jestCaseQName de-dupes identical leaf names via `seen`).
+	for _, m := range scalaWordSpecLeafRE.FindAllStringSubmatchIndex(source, -1) {
+		add(source[m[2]:m[3]], extractBraceBody(source, m[1]-1))
+	}
+
 	return out
+}
+
+// scalaParenBody returns the substring of source from the first `(` at or after
+// startAt to its balanced `)`. Used for the ZIO `test("…")( … )` paren-thunk
+// form. Mirrors extractBraceBody for parentheses; quote-aware so a `)` inside a
+// string literal does not close the group prematurely.
+func scalaParenBody(source string, startAt int) string {
+	n := len(source)
+	i := startAt
+	for i < n && source[i] != '(' {
+		i++
+	}
+	if i >= n {
+		return ""
+	}
+	depth := 0
+	start := i
+	for i < n {
+		c := source[i]
+		switch c {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return source[start : i+1]
+			}
+		case '"', '\'', '`':
+			quote := c
+			i++
+			for i < n && source[i] != quote {
+				if source[i] == '\\' {
+					i += 2
+					continue
+				}
+				i++
+			}
+		}
+		i++
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -1619,6 +1800,26 @@ var frameworkOrder = []frameworkEntry{
 			regexp.MustCompile(`Tests?\.swift$`),
 		},
 		detect: detectXCTest,
+	},
+	// Scala — specs2 / MUnit / ZIO Test: import-hints only, listed BEFORE the
+	// scalatest filename-fallback entry so a file carrying an explicit framework
+	// import is attributed to the right framework even though all four share the
+	// detectScalaTest detector (the leaf-case surfaces overlap). Files with no
+	// recognised import fall through to the scalatest entry's filename hints.
+	{
+		name:        "specs2",
+		importHints: []string{"org.specs2", "specs2"},
+		detect:      detectScalaTest,
+	},
+	{
+		name:        "munit",
+		importHints: []string{"munit"},
+		detect:      detectScalaTest,
+	},
+	{
+		name:        "zio_test",
+		importHints: []string{"zio.test", "zio.Test", "ziospec"},
+		detect:      detectScalaTest,
 	},
 	{
 		name:        "scalatest",
