@@ -260,6 +260,16 @@ func walkStructural(n *sitter.Node, src []byte, path, lang, container string, ou
 		return
 
 	case "template_declaration":
+		// C++20 concept: `template<...> concept Name = <constraint>;`
+		// The template wraps a concept_definition child. A concept is the
+		// C++ analogue of an interface/type-class constraint, so emit it as
+		// a SCOPE.Schema/concept entity rather than a generic template.
+		if cn := cppFirstChildOfType(n, "concept_definition"); cn != nil {
+			if r, ok := extractConcept(n, cn, src, path, lang); ok {
+				*out = append(*out, r)
+			}
+			return
+		}
 		if r, ok := extractTemplate(n, src, path, lang); ok {
 			// Template's inner declaration may be a function — collect
 			// its calls. Find function_definition or class_specifier
@@ -775,6 +785,32 @@ func extractClassLike(n *sitter.Node, src []byte, path, lang, subtype string) (t
 		return types.EntityRecord{}, false
 	}
 	start, end := nodeLines(n)
+
+	meta := map[string]interface{}{"subtype": subtype}
+
+	// Inheritance: base_class_clause → [access_specifier? type_identifier]+.
+	if bases := cppBaseClasses(n, src); len(bases) > 0 {
+		meta["bases"] = bases
+	}
+
+	// Member fields + access specifiers + abstract (pure-virtual) detection.
+	// Methods are emitted as separate SCOPE.Operation entities via the
+	// structural walk; here we record the data-member shape so a `type`
+	// (class/struct/union) entity carries its field schema.
+	body := findClassBody(n)
+	if body != nil {
+		fields, isAbstract := cppClassMembers(body, src)
+		if len(fields) > 0 {
+			meta["fields"] = fields
+			meta["field_count"] = len(fields)
+		}
+		if isAbstract {
+			// An abstract class with pure-virtual methods is the C++
+			// analogue of an interface.
+			meta["abstract"] = true
+		}
+	}
+
 	return types.EntityRecord{
 		Name:         name,
 		Kind:         "SCOPE.Component",
@@ -784,8 +820,99 @@ func extractClassLike(n *sitter.Node, src []byte, path, lang, subtype string) (t
 		EndLine:      end,
 		Language:     lang,
 		QualityScore: 0.9,
-		Metadata:     map[string]interface{}{"subtype": subtype},
+		Metadata:     meta,
 	}, true
+}
+
+// cppBaseClasses returns the inherited base classes of a class/struct
+// specifier as []map{"name","access"} where access is the explicit
+// access-specifier ("public"/"protected"/"private") when present.
+func cppBaseClasses(n *sitter.Node, src []byte) []map[string]interface{} {
+	var clause *sitter.Node
+	for i := 0; i < int(n.ChildCount()); i++ {
+		if n.Child(i).Type() == "base_class_clause" {
+			clause = n.Child(i)
+			break
+		}
+	}
+	if clause == nil {
+		return nil
+	}
+	var out []map[string]interface{}
+	access := ""
+	for i := 0; i < int(clause.ChildCount()); i++ {
+		ch := clause.Child(i)
+		switch ch.Type() {
+		case "access_specifier":
+			access = strings.TrimSpace(nodeText(ch, src))
+		case "type_identifier", "qualified_identifier", "template_type":
+			base := map[string]interface{}{"name": nodeText(ch, src)}
+			if access != "" {
+				base["access"] = access
+			}
+			out = append(out, base)
+			access = ""
+		case ",":
+			access = ""
+		}
+	}
+	return out
+}
+
+// cppClassMembers walks a field_declaration_list returning the data members
+// (name + type + current access section) and whether the class is abstract
+// (has at least one pure-virtual method, i.e. a `pure_virtual_clause`).
+func cppClassMembers(body *sitter.Node, src []byte) (fields []map[string]interface{}, abstract bool) {
+	access := "private" // class default; struct/union default is public but
+	// access is tracked relative to the explicit specifiers we see.
+	for i := 0; i < int(body.ChildCount()); i++ {
+		ch := body.Child(i)
+		switch ch.Type() {
+		case "access_specifier":
+			access = strings.TrimSpace(nodeText(ch, src))
+		case "field_declaration":
+			// Distinguish a data member from an inline method declaration.
+			// A function_declarator child ⇒ it's a method, not a field.
+			if cppFirstChildOfType(ch, "function_declarator") != nil {
+				continue
+			}
+			typeNode := ch.ChildByFieldName("type")
+			fname := ""
+			for j := 0; j < int(ch.ChildCount()); j++ {
+				cj := ch.Child(j)
+				if cj.Type() == "field_identifier" {
+					fname = nodeText(cj, src)
+					break
+				}
+			}
+			if fname == "" {
+				continue
+			}
+			f := map[string]interface{}{"name": fname, "access": access}
+			if typeNode != nil {
+				f["type"] = strings.TrimSpace(nodeText(typeNode, src))
+			}
+			fields = append(fields, f)
+		case "function_definition", "declaration":
+			// Pure-virtual method ⇒ abstract class. The pure_virtual_clause
+			// appears as a child of the function_definition.
+			if cppFirstChildOfType(ch, "pure_virtual_clause") != nil {
+				abstract = true
+			}
+		}
+	}
+	return fields, abstract
+}
+
+// cppFirstChildOfType returns the first direct child of n with the given
+// node type, or nil.
+func cppFirstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+	for i := 0; i < int(n.ChildCount()); i++ {
+		if n.Child(i).Type() == typ {
+			return n.Child(i)
+		}
+	}
+	return nil
 }
 
 // extractNamespace extracts a namespace_definition node.
@@ -859,6 +986,13 @@ func extractTemplate(n *sitter.Node, src []byte, path, lang string) (types.Entit
 }
 
 // extractEnum extracts an enum_specifier node.
+//
+// Captures the enum's depth so TypeSystem coverage is real, not just a name:
+//   - scoped:          true for `enum class` / `enum struct` (C++11)
+//   - underlying_type: the `: <type>` fixed underlying type when present
+//   - enumerators:     ordered list of {name, value?} for each enumerator,
+//     where value is the explicit `= <expr>` text when given
+//   - enumerator_count: convenience count
 func extractEnum(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil {
@@ -869,6 +1003,39 @@ func extractEnum(n *sitter.Node, src []byte, path, lang string) (types.EntityRec
 		return types.EntityRecord{}, false
 	}
 	start, end := nodeLines(n)
+
+	meta := map[string]interface{}{"subtype": "enum"}
+
+	// Scoped enums (`enum class` / `enum struct`) carry a `class`/`struct`
+	// keyword child before the name. The fixed underlying type, when
+	// present, follows a `:` token.
+	scoped := false
+	underlying := ""
+	sawColon := false
+	for i := 0; i < int(n.ChildCount()); i++ {
+		ch := n.Child(i)
+		switch ch.Type() {
+		case "class", "struct":
+			scoped = true
+		case ":":
+			sawColon = true
+		case "primitive_type", "type_identifier", "sized_type_specifier", "qualified_identifier":
+			if sawColon && underlying == "" {
+				underlying = nodeText(ch, src)
+			}
+		}
+	}
+	meta["scoped"] = scoped
+	if underlying != "" {
+		meta["underlying_type"] = underlying
+	}
+
+	enumerators := cppEnumerators(n, src)
+	if len(enumerators) > 0 {
+		meta["enumerators"] = enumerators
+		meta["enumerator_count"] = len(enumerators)
+	}
+
 	return types.EntityRecord{
 		Name:         name,
 		Kind:         "SCOPE.Schema",
@@ -878,8 +1045,131 @@ func extractEnum(n *sitter.Node, src []byte, path, lang string) (types.EntityRec
 		EndLine:      end,
 		Language:     lang,
 		QualityScore: 0.9,
-		Metadata:     map[string]interface{}{"subtype": "enum"},
+		Metadata:     meta,
 	}, true
+}
+
+// cppEnumerators returns the ordered enumerators of an enum_specifier as
+// []map{"name","value"} where value is the explicit initialiser text (or
+// absent when the enumerator has no `= <expr>`).
+func cppEnumerators(n *sitter.Node, src []byte) []map[string]interface{} {
+	var list *sitter.Node
+	for i := 0; i < int(n.ChildCount()); i++ {
+		if n.Child(i).Type() == "enumerator_list" {
+			list = n.Child(i)
+			break
+		}
+	}
+	if list == nil {
+		return nil
+	}
+	var out []map[string]interface{}
+	for i := 0; i < int(list.ChildCount()); i++ {
+		ch := list.Child(i)
+		if ch.Type() != "enumerator" {
+			continue
+		}
+		nameNode := ch.ChildByFieldName("name")
+		ename := ""
+		if nameNode != nil {
+			ename = nodeText(nameNode, src)
+		} else {
+			// Fallback: first identifier child.
+			for j := 0; j < int(ch.ChildCount()); j++ {
+				if ch.Child(j).Type() == "identifier" {
+					ename = nodeText(ch.Child(j), src)
+					break
+				}
+			}
+		}
+		if ename == "" {
+			continue
+		}
+		e := map[string]interface{}{"name": ename}
+		if valNode := ch.ChildByFieldName("value"); valNode != nil {
+			e["value"] = strings.TrimSpace(nodeText(valNode, src))
+		} else {
+			// Fallback: text after the `=` token, if any.
+			sawEq := false
+			for j := 0; j < int(ch.ChildCount()); j++ {
+				cj := ch.Child(j)
+				if cj.Type() == "=" {
+					sawEq = true
+					continue
+				}
+				if sawEq {
+					e["value"] = strings.TrimSpace(nodeText(cj, src))
+					break
+				}
+			}
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// extractConcept extracts a C++20 concept_definition (wrapped in a
+// template_declaration). Emits a SCOPE.Schema/concept entity — the C++
+// analogue of an interface constraint.
+//
+//	tmpl is the enclosing template_declaration (for span/template params),
+//	cn   is the concept_definition node carrying the concept name.
+func extractConcept(tmpl, cn *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+	name := ""
+	if nameNode := cn.ChildByFieldName("name"); nameNode != nil {
+		name = nodeText(nameNode, src)
+	} else {
+		// Fallback: first identifier child after the `concept` keyword.
+		for i := 0; i < int(cn.ChildCount()); i++ {
+			if cn.Child(i).Type() == "identifier" {
+				name = nodeText(cn.Child(i), src)
+				break
+			}
+		}
+	}
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+	start, end := nodeLines(tmpl)
+	meta := map[string]interface{}{"subtype": "concept"}
+	if params := cppTemplateParams(tmpl, src); len(params) > 0 {
+		meta["template_params"] = params
+	}
+	return types.EntityRecord{
+		Name:         name,
+		Kind:         "SCOPE.Schema",
+		Subtype:      "concept",
+		SourceFile:   path,
+		StartLine:    start,
+		EndLine:      end,
+		Language:     lang,
+		QualityScore: 0.9,
+		Metadata:     meta,
+	}, true
+}
+
+// cppTemplateParams returns the names of a template_declaration's parameters
+// (e.g. `template<class T, int N>` → ["T","N"]).
+func cppTemplateParams(tmpl *sitter.Node, src []byte) []string {
+	list := cppFirstChildOfType(tmpl, "template_parameter_list")
+	if list == nil {
+		return nil
+	}
+	var out []string
+	for i := 0; i < int(list.ChildCount()); i++ {
+		ch := list.Child(i)
+		switch ch.Type() {
+		case "type_parameter_declaration", "parameter_declaration",
+			"optional_type_parameter_declaration", "variadic_type_parameter_declaration":
+			for j := 0; j < int(ch.ChildCount()); j++ {
+				cj := ch.Child(j)
+				if cj.Type() == "type_identifier" || cj.Type() == "identifier" {
+					out = append(out, nodeText(cj, src))
+				}
+			}
+		}
+	}
+	return out
 }
 
 // extractInclude extracts a preproc_include node and emits an IMPORTS edge

@@ -12642,6 +12642,43 @@ records:
 
   lang.c-cpp.framework.crow:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
       Substrate:
         constant_propagation:
           status: full
@@ -12781,6 +12818,43 @@ records:
 
   lang.c-cpp.framework.drogon:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
       Routing:
         endpoint_synthesis:
           status: partial
@@ -12803,6 +12877,43 @@ records:
 
   lang.c-cpp.framework.pistache:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
       Routing:
         endpoint_synthesis:
           status: partial
@@ -12825,6 +12936,43 @@ records:
 
   lang.c-cpp.framework.cpprestsdk:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
       Routing:
         endpoint_synthesis:
           status: partial
@@ -12847,6 +12995,34 @@ records:
 
   lang.c-cpp.framework.qt:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
       Structure:
         component_extraction:
           # QObject subclass (Q_OBJECT macro) → SCOPE.UIComponent; partial (regex).
@@ -12934,6 +13110,43 @@ records:
 
   lang.c-cpp.framework.restinio:
     capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
       Middleware:
         middleware_coverage:
           # non_matched_request_handler, make_chain<H1,H2,...>, request_handler chaining; partial.
@@ -15114,3 +15327,363 @@ records:
             - file: internal/custom/ruby/activerecord_test.go
           issues_implemented: ["3282"]
           verified_at: "2026-05-30"
+
+  lang.c-cpp.framework.ace:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.boost:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.boost-asio:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.libev:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.libevent:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.libuv:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.oatpp:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.poco:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+
+  lang.c-cpp.framework.restbed:
+    capabilities:
+      Type System:
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, extractConcept]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/cpp/type_alias.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/cpp/type_alias_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractEnum, cppEnumerators]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/cpp/extractor.go
+              functions: [extractClassLike, cppClassMembers, cppBaseClasses]
+          tests:
+            - file: internal/extractors/cpp/typesystem_test.go
+          issues_implemented: ["3491"]
+          verified_at: "2026-05-31"
