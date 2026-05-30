@@ -40562,7 +40562,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/auth.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
@@ -40607,16 +40609,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -40799,16 +40807,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -40948,7 +40962,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/auth.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
@@ -40993,16 +41009,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -41142,7 +41164,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/auth.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
@@ -41187,16 +41211,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -41336,7 +41366,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/auth.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
@@ -41381,16 +41413,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -41530,7 +41568,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/auth.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
@@ -41575,16 +41615,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -41724,7 +41770,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/auth.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
@@ -41769,16 +41817,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -41918,7 +41972,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/auth.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
@@ -41963,16 +42019,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
