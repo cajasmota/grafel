@@ -29,10 +29,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 8/8 | |
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 12/12 | |
 | [Falcon](../detail/lang.python.framework.falcon.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
+| [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 8/8 | |
 | [Hug](../detail/lang.python.framework.hug.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
@@ -56,7 +56,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
-| [Celery (task queue)](../detail/lang.python.framework.celery.md) | 🟢 1/1 | 🟢 21/21 | ✅ 6/6 | |
+| [Celery (task queue)](../detail/lang.python.framework.celery.md) | 🟢 1/1 | 🟢 21/21 | ✅ 7/7 | |
 | [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
 | [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 

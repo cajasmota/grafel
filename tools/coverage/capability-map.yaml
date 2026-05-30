@@ -9791,96 +9791,125 @@ records:
     capabilities:
       Data Flow:
         prop_extraction:
-          # [Parameter]/[CascadingParameter] property declarations detected via
-          # reBDFParameter/reBDFCascadingParameter; issue #3261.
-          status: partial
+          # [Parameter] with explicit type+name (reBDpParameterTyped → "param:TYPE:NAME"),
+          # EventCallback<T> (reBDpEventCallback → "callback:T:NAME"), and
+          # [CascadingParameter] (reBDFCascadingParameter); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         state_management:
-          # [CascadingParameter] + StateHasChanged() calls detected via
-          # reBDFCascadingParameter/reBDFStateHasChanged; issue #3261.
-          status: partial
+          # [CascadingParameter], StateHasChanged(), InvokeAsync(StateHasChanged),
+          # @bind two-way binding (reBDpBind → "bind:FIELD"), and
+          # <CascadingValue> provider (reBDpCascadeValue); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         data_fetching:
-          # @inject HttpClient + await GetAsync/GetFromJsonAsync calls detected
-          # via reBDFInjectHTTP/reBDFHTTPCall/reBDFHTTPJson; issue #3261.
-          status: partial
+          # @inject HttpClient/IHttpClientFactory + await GetAsync/GetFromJsonAsync +
+          # IHttpClientFactory.CreateClient() (reBDpHttpFactory); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         branch_conditions:
-          # @if/@switch Razor directives + code if() statements detected via
-          # reBDFRazorIf/reBDFRazorSwitch/reBDFCodeIf; issue #3261.
-          status: partial
+          # @if/@switch Razor directives, @foreach (reBDpRazorForeach), and
+          # code if() statements; issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Structure:
         component_extraction:
-          # @page-annotated .razor files and ComponentBase/LayoutComponentBase subclasses
-          # emitted as SCOPE.UIComponent/component_extraction via reBEPage/reBEComponentBase;
-          # issue #3261.
-          status: partial
+          # Razor filename basename, @page-annotated components, @attribute [Route(...)],
+          # @rendermode directive, ComponentBase/LayoutComponentBase subclasses;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         context_extraction:
-          # @inject service types and [CascadingParameter] cascade context providers emitted
-          # as SCOPE.Component/context_extraction via reBEInject/reBECascadingParam; issue #3261.
-          status: partial
+          # @inject service types, [CascadingParameter] cascade context providers, and
+          # constructor DI in .razor.cs code-behind (reBDpCtorDI); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Navigation:
         router_pattern:
-          # @page route declarations as SCOPE.Operation/router_pattern; NavigateTo() and
-          # NavLink href patterns as SCOPE.Pattern/router_pattern; issue #3261.
-          status: partial
+          # @page route declarations, @attribute [Route(...)], route parameter names
+          # (reBDpRouteParam), NavigateTo() calls, NavLink href patterns;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Lifecycle:
         state_setter_emission:
-          # OnInitialized/OnParametersSet/OnAfterRender/OnDispose lifecycle overrides and
-          # StateHasChanged()/InvokeAsync(StateHasChanged) call sites; issue #3261.
-          status: partial
+          # OnInitialized/OnParametersSet/OnAfterRender/SetParametersAsync lifecycle
+          # overrides, ShouldRender, Dispose/DisposeAsync, and
+          # StateHasChanged()/InvokeAsync(StateHasChanged) call sites;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Testing:
         tests_linkage:
@@ -9898,87 +9927,118 @@ records:
     capabilities:
       Data Flow:
         prop_extraction:
-          # [Parameter]/[CascadingParameter] property declarations detected; issue #3261.
-          status: partial
+          # [Parameter] type+name, EventCallback<T>, [CascadingParameter];
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         state_management:
-          # [CascadingParameter] + StateHasChanged() calls; issue #3261.
-          status: partial
+          # [CascadingParameter], StateHasChanged(), @bind, CascadingValue provider;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         data_fetching:
-          # @inject HttpClient + await HTTP calls; issue #3261.
-          status: partial
+          # @inject HttpClient, await GetFromJsonAsync, IHttpClientFactory.CreateClient();
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         branch_conditions:
-          # @if/@switch Razor + code if() branches; issue #3261.
-          status: partial
+          # @if/@switch Razor, @foreach, code if(); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Structure:
         component_extraction:
-          # @page-annotated .razor components and ComponentBase subclasses; issue #3261.
-          status: partial
+          # Razor filename, @page, @attribute [Route], @rendermode, ComponentBase subclasses;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         context_extraction:
-          # @inject service types and [CascadingParameter] cascade context; issue #3261.
-          status: partial
+          # @inject, [CascadingParameter], constructor DI in .razor.cs code-behind;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Navigation:
         router_pattern:
-          # @page routes, NavigateTo(), NavLink href patterns; issue #3261.
-          status: partial
+          # @page, @attribute [Route], route params, NavigateTo(), NavLink href;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Lifecycle:
         state_setter_emission:
-          # OnInitialized/OnParametersSet/OnAfterRender and StateHasChanged() calls; issue #3261.
-          status: partial
+          # OnInitialized*, OnParametersSet*, OnAfterRender*, SetParametersAsync,
+          # ShouldRender, Dispose/DisposeAsync, StateHasChanged(); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Testing:
         tests_linkage:
@@ -9996,87 +10056,118 @@ records:
     capabilities:
       Data Flow:
         prop_extraction:
-          # [Parameter]/[CascadingParameter] property declarations detected; issue #3261.
-          status: partial
+          # [Parameter] type+name, EventCallback<T>, [CascadingParameter];
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         state_management:
-          # [CascadingParameter] + StateHasChanged() calls; issue #3261.
-          status: partial
+          # [CascadingParameter], StateHasChanged(), @bind, CascadingValue provider;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         data_fetching:
-          # @inject HttpClient + await HTTP calls; issue #3261.
-          status: partial
+          # @inject HttpClient, await GetFromJsonAsync, IHttpClientFactory.CreateClient();
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         branch_conditions:
-          # @if/@switch Razor + code if() branches; issue #3261.
-          status: partial
+          # @if/@switch Razor, @foreach, code if(); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_dataflow.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_dataflow_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Structure:
         component_extraction:
-          # @page-annotated .razor components and ComponentBase subclasses; issue #3261.
-          status: partial
+          # Razor filename, @page, @attribute [Route], @rendermode, ComponentBase subclasses;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
         context_extraction:
-          # @inject service types and [CascadingParameter] cascade context; issue #3261.
-          status: partial
+          # @inject, [CascadingParameter], constructor DI in .razor.cs code-behind;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Navigation:
         router_pattern:
-          # @page routes, NavigateTo(), NavLink href patterns; issue #3261.
-          status: partial
+          # @page, @attribute [Route], route params, NavigateTo(), NavLink href;
+          # issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Lifecycle:
         state_setter_emission:
-          # OnInitialized/OnParametersSet/OnAfterRender and StateHasChanged() calls; issue #3261.
-          status: partial
+          # OnInitialized*, OnParametersSet*, OnAfterRender*, SetParametersAsync,
+          # ShouldRender, Dispose/DisposeAsync, StateHasChanged(); issues #3261, #3381.
+          status: full
           symbols:
             - file: internal/custom/csharp/blazor_extra.go
               functions: [Extract]
+            - file: internal/custom/csharp/blazor_deep.go
+              functions: [Extract]
           tests:
             - file: internal/custom/csharp/blazor_extra_test.go
-          issues_implemented: ["3261"]
+            - file: internal/custom/csharp/blazor_deep_test.go
+          issues_implemented: ["3261", "3381"]
           verified_at: "2026-05-30"
       Testing:
         tests_linkage:

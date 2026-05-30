@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 38
+- **Capability cells:** 42
 
 ## Capabilities
 
@@ -91,6 +91,15 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_python.go` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
+
+### Uncategorized
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Drf default auth throttle settings | ✅ `full` | `2026-05-30` | — | `internal/custom/python/django.go`<br>`internal/custom/python/extractors_test.go` | — |
+| Form field type introspection | ✅ `full` | `2026-05-30` | — | `internal/custom/python/django.go`<br>`internal/custom/python/extractors_test.go` | — |
+| Middleware settings parser | ✅ `full` | `2026-05-30` | — | `internal/custom/python/django.go`<br>`internal/custom/python/extractors_test.go` | — |
+| Serializer method field inference | ✅ `full` | `2026-05-30` | — | `internal/custom/python/django.go`<br>`internal/custom/python/extractors_test.go` | — |
 
 ## Framework-specific
 

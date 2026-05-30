@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Task Queue
-- **Capability cells:** 28
+- **Capability cells:** 29
 
 ## Capabilities
 
@@ -68,6 +68,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/taint_sites_python.go` | language-wide Python taint sniffer recognises request/env sources; partial for Celery task context |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/template_pattern_python.go` | language-wide Python template-pattern sniffer covers i18n/log/SQL patterns; partial for Celery-specific message formatting |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | vulnerability_finding derives from taint_source+taint_sink co-occurrence (taint_flow.go); fires on all Python; partial for task queue context |
+
+### Uncategorized
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Tests edges via delay apply | ✅ `full` | `2026-05-30` | — | `internal/custom/python/extractors_test.go`<br>`internal/custom/python/pytest.go` | — |
 
 ## Provenance
 

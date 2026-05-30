@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 36
+- **Capability cells:** 37
 
 ## Capabilities
 
@@ -91,6 +91,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_python.go` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
+
+### Uncategorized
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Validate on submit detection | ✅ `full` | `2026-05-30` | — | `internal/custom/python/extractors_test.go`<br>`internal/custom/python/flask.go` | — |
 
 ## Provenance
 

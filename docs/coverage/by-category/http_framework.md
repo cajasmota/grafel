@@ -83,10 +83,10 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 8/8 | |
+| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 12/12 | |
 | [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
+| [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 8/8 | |
 | [python](../by-language/python.md) | [Hug](../detail/lang.python.framework.hug.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [Pyramid](../detail/lang.python.framework.pyramid.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
@@ -239,6 +239,6 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [python](../by-language/python.md) | [Celery (task queue)](../detail/lang.python.framework.celery.md) | 🟢 1/1 | 🟢 21/21 | ✅ 6/6 | |
+| [python](../by-language/python.md) | [Celery (task queue)](../detail/lang.python.framework.celery.md) | 🟢 1/1 | 🟢 21/21 | ✅ 7/7 | |
 | [python](../by-language/python.md) | [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
 | [python](../by-language/python.md) | [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
