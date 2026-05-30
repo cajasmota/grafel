@@ -43810,8 +43810,8 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/ruby/middleware.go"]
+            "status": "full",
+            "cites": ["internal/custom/ruby/middleware.go","internal/custom/ruby/middleware_test.go"]
           }
         },
         "Type System": {

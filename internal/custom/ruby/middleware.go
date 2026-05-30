@@ -2,8 +2,14 @@
 //
 // Detects:
 //   - Rack `use SomeMiddleware` calls (all frameworks that mount Rack stacks)
+//   - Rails config.middleware stack: use/insert_before/insert_after/swap/delete
+//     in config/application.rb + per-environment files — emits each middleware
+//     with operation name and order_position (sequential index within file).
+//   - Custom Rack middleware classes: class with `def initialize(app)` +
+//     `def call(env)` — emitted as rack_middleware_class entities.
 //   - Rails / Padrino / Sinatra `before_action` / `after_action` / `around_action`
-//     controller filters (middleware-equivalent pattern)
+//     controller filters with full `:only`/`:except` scope capture
+//     (middleware-equivalent pattern).
 //   - Grape `before` / `after` / `rescue_from` hooks
 //   - Hanami middleware in config/application.rb (config.middleware.use ...)
 //   - Roda plugin + before/after
@@ -16,16 +22,17 @@
 //	lang.ruby.framework.grape    Middleware/middleware_coverage → partial
 //	lang.ruby.framework.hanami   Middleware/middleware_coverage → partial
 //	lang.ruby.framework.padrino  Middleware/middleware_coverage → partial
-//	lang.ruby.framework.rails    Middleware/middleware_coverage → partial
+//	lang.ruby.framework.rails    Middleware/middleware_coverage → full   (#3341)
 //	lang.ruby.framework.roda     Middleware/middleware_coverage → partial
 //	lang.ruby.framework.sinatra  Middleware/middleware_coverage → partial
 //
-// Part of #3282.
+// Part of #3282 / #3341.
 package ruby
 
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/otel"
@@ -35,6 +42,9 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// itoa converts an integer to its decimal string representation.
+func itoa(n int) string { return strconv.Itoa(n) }
 
 func init() {
 	extractor.Register("ruby_middleware", &rubyMiddlewareExtractor{})
@@ -54,14 +64,59 @@ var (
 		`(?m)^\s*use\s+([A-Z][A-Za-z0-9_:]+)`,
 	)
 
-	// Rails/Padrino config middleware: config.middleware.use Middleware
-	reMWConfigUse = regexp.MustCompile(
-		`(?m)\bconfig\.middleware\.(?:use|insert_before|insert_after)\s+([A-Z][A-Za-z0-9_:]+)`,
+	// Rails/Padrino config middleware — captures the operation name and the
+	// middleware class name.  Handles:
+	//   config.middleware.use          MiddlewareClass
+	//   config.middleware.insert_before OtherClass, MiddlewareClass
+	//   config.middleware.insert_after  OtherClass, MiddlewareClass
+	//   config.middleware.swap          OtherClass, MiddlewareClass
+	//   config.middleware.delete        MiddlewareClass
+	//
+	// Group 1 = operation (use|insert_before|insert_after|swap|delete)
+	// Group 2 = first class-name token (the anchor class for insert/swap ops or
+	//            the target class for use/delete)
+	// Group 3 = optional second class-name token (the new middleware for
+	//            insert_before/insert_after/swap)
+	reMWConfigOp = regexp.MustCompile(
+		`(?m)\bconfig\.middleware\.(use|insert_before|insert_after|swap|delete)\s+([A-Z][A-Za-z0-9_:]+)(?:\s*,\s*([A-Z][A-Za-z0-9_:]+))?`,
 	)
 
-	// Rails before_action / after_action / around_action (already in rails.go
-	// for CALLS edges; here we also emit a middleware_coverage entity so the
-	// middleware_coverage cell is satisfied independently).
+	// Rails before_action / after_action / around_action with optional
+	// :only / :except scoping.
+	//
+	// Examples matched:
+	//   before_action :authenticate_user!
+	//   before_action :set_resource, only: [:show, :edit, :update, :destroy]
+	//   after_action  :log_request, except: [:index]
+	//
+	// Group 1 = filter type  (before_action|after_action|around_action)
+	// Group 2 = method name  (:symbol)
+	// Group 3 = scope kind   (only|except) — may be empty
+	// Group 4 = scope value  (raw text after "only:" or "except:") — may be empty
+	reMWRailsFilterScoped = regexp.MustCompile(
+		`(?m)^\s*(before_action|after_action|around_action)\s+:([a-z_]+[!?]?)` +
+			`(?:[^#\n]*?\b(only|except)\s*:\s*(\[[^\]]*\]|\:[a-z_]+[!?]?))?`,
+	)
+
+	// Custom Rack middleware class: any Ruby class that defines both
+	// `def initialize(app)` and `def call(env)`.  We detect them in two phases:
+	//   Phase 1 — class-name line: `class SomeName`
+	//   Phase 2 — presence of both initialize(app) and call(env) in the same
+	//             source (file-level check; good enough for single-class files
+	//             which is the idiomatic Rack pattern).
+	raMwClassDef = regexp.MustCompile(
+		`(?m)^\s*class\s+([A-Z][A-Za-z0-9_:]*)`,
+	)
+	raMwInitApp = regexp.MustCompile(
+		`(?m)\bdef\s+initialize\s*\(\s*app\b`,
+	)
+	raMwCallEnv = regexp.MustCompile(
+		`(?m)\bdef\s+call\s*\(\s*@?env\b`,
+	)
+
+	// Rails before_action / after_action / around_action (legacy — kept for
+	// backwards compat with non-scoped fast-path; replaced by reMWRailsFilterScoped
+	// in the extraction loop but retained so existing callers compile).
 	reMWRailsFilter = regexp.MustCompile(
 		`(?m)^\s*(before_action|after_action|around_action)\s+:([a-z_]+[!?]?)`,
 	)
@@ -137,7 +192,10 @@ func (e *rubyMiddlewareExtractor) Extract(ctx context.Context, file extractor.Fi
 		strings.Contains(src, `after "`) ||
 		strings.Contains(src, "rescue_from") ||
 		strings.Contains(src, "plugin :") ||
-		strings.Contains(src, "config.middleware")
+		strings.Contains(src, "config.middleware") ||
+		(strings.Contains(src, "def initialize(app)") && strings.Contains(src, "def call(env)")) ||
+		(strings.Contains(src, "def initialize(app)") && strings.Contains(src, "def call(@env)")) ||
+		(strings.Contains(src, "def initialize( app") && strings.Contains(src, "def call( env"))
 	if !hasMW {
 		return nil, nil
 	}
@@ -180,37 +238,98 @@ func (e *rubyMiddlewareExtractor) Extract(ctx context.Context, file extractor.Fi
 		add(ent)
 	}
 
-	// ---- config.middleware.use ----
-	for _, idx := range reMWConfigUse.FindAllStringSubmatchIndex(src, -1) {
-		mwName := src[idx[2]:idx[3]]
-		ln := lineOf(src, idx[0])
-		fw := "rails"
-		if isPadrino {
-			fw = "padrino"
+	// ---- config.middleware stack (use/insert_before/insert_after/swap/delete) ----
+	// Emit one entity per operation, tagged with the operation name and an
+	// order_position (1-based sequential index within the file) so consumers can
+	// reconstruct the declaration order of the middleware stack.
+	{
+		allOps := reMWConfigOp.FindAllStringSubmatchIndex(src, -1)
+		for pos, idx := range allOps {
+			op := src[idx[2]:idx[3]]   // use|insert_before|insert_after|swap|delete
+			cls1 := src[idx[4]:idx[5]] // first class token
+
+			// For insert_before/insert_after/swap the second token (if present)
+			// is the middleware being added; for use/delete the first token is.
+			mwName := cls1
+			anchorClass := ""
+			if idx[6] >= 0 {
+				// second token present — cls1 is the anchor, cls2 is the new MW
+				anchorClass = cls1
+				mwName = src[idx[6]:idx[7]]
+			}
+
+			ln := lineOf(src, idx[0])
+			fw := "rails"
+			if isPadrino {
+				fw = "padrino"
+			}
+
+			name := "config_mw:" + mwName
+			// For delete/swap with anchor, qualify name to allow multiple ops on same class.
+			if op == "delete" {
+				name = "config_mw_delete:" + mwName
+			} else if (op == "insert_before" || op == "insert_after" || op == "swap") && anchorClass != "" {
+				name = "config_mw_" + op + ":" + anchorClass + ":" + mwName
+			}
+
+			ent := makeEntity(name, "SCOPE.Pattern", "middleware", file.Path, file.Language, ln)
+			setProps(&ent,
+				"framework", fw,
+				"provenance", "INFERRED_FROM_CONFIG_MIDDLEWARE_OP",
+				"middleware_class", mwName,
+				"middleware_op", op,
+				"order_position", itoa(pos+1),
+			)
+			if anchorClass != "" {
+				setProps(&ent, "anchor_class", anchorClass)
+			}
+			add(ent)
 		}
-		ent := makeEntity("config_mw:"+mwName, "SCOPE.Pattern", "middleware", file.Path, file.Language, ln)
-		setProps(&ent,
-			"framework", fw,
-			"provenance", "INFERRED_FROM_CONFIG_MIDDLEWARE_USE",
-			"middleware_class", mwName,
-		)
-		add(ent)
 	}
 
-	// ---- Rails filters ----
+	// ---- Custom Rack middleware classes ----
+	// A class is a Rack middleware if it defines both initialize(app) and call(env).
+	if raMwInitApp.MatchString(src) && raMwCallEnv.MatchString(src) {
+		for _, cidx := range raMwClassDef.FindAllStringSubmatchIndex(src, -1) {
+			className := src[cidx[2]:cidx[3]]
+			ln := lineOf(src, cidx[0])
+			fw := detectFramework(isRails, isGrape, isSinatra, isPadrino, isHanami, isRoda, isCuba)
+			name := "rack_middleware_class:" + className
+			ent := makeEntity(name, "SCOPE.Pattern", "middleware", file.Path, file.Language, ln)
+			setProps(&ent,
+				"framework", fw,
+				"provenance", "INFERRED_FROM_RACK_MIDDLEWARE_CLASS",
+				"middleware_class", className,
+				"rack_interface", "initialize(app)+call(env)",
+			)
+			add(ent)
+		}
+	}
+
+	// ---- Rails filters (scoped: only/except) ----
 	if isRails {
-		for _, idx := range reMWRailsFilter.FindAllStringSubmatchIndex(src, -1) {
+		for _, idx := range reMWRailsFilterScoped.FindAllStringSubmatchIndex(src, -1) {
 			filterType := src[idx[2]:idx[3]]
 			filterMethod := src[idx[4]:idx[5]]
 			name := "rails_filter:" + filterType + ":" + filterMethod
 			ln := lineOf(src, idx[0])
 			ent := makeEntity(name, "SCOPE.Pattern", "middleware", file.Path, file.Language, ln)
-			setProps(&ent,
+			props := []string{
 				"framework", "rails",
 				"provenance", "INFERRED_FROM_RAILS_FILTER_MW",
 				"filter_type", filterType,
 				"filter_method", filterMethod,
-			)
+			}
+			// Capture :only/:except scope when present (groups 3 and 4).
+			if idx[6] >= 0 {
+				scopeKind := src[idx[6]:idx[7]]
+				scopeVal := ""
+				if idx[8] >= 0 {
+					scopeVal = src[idx[8]:idx[9]]
+				}
+				props = append(props, "filter_scope_kind", scopeKind, "filter_scope", scopeVal)
+			}
+			setProps(&ent, props...)
 			add(ent)
 		}
 	}
