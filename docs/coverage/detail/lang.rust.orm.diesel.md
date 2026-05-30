@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/orms/diesel.yaml` | — |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/testdata/diesel_schema.rs` | — |
+| Schema extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/orm_props_test.go`<br>`internal/custom/rust/testdata/diesel_schema.rs` | — |
 
 ### Relationships
 
@@ -25,7 +25,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Association extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/testdata/diesel_models.rs` | — |
 | Foreign key extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/diesel_seaorm_test.go` | Detects *_id columns in table! macro bodies as FK signals; joinable!() also captures FK relationships |
 | Lazy loading recognition | — `not_applicable` | `2026-05-30` | — | — | Diesel is synchronous and does not support lazy loading; eager joins via joinable!/load() only |
-| Relationship extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/testdata/diesel_models.rs`<br>`internal/custom/rust/testdata/diesel_schema.rs` | — |
+| Relationship extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/testdata/diesel_models.rs`<br>`internal/custom/rust/testdata/diesel_schema.rs` | joinable!/belongs_to detected with from/to tables; resolving the target Rust model path to its table! schema requires cross-file import-graph analysis (diesel.toml schema path). |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/diesel_seaorm_test.go` | Detects embed_migrations!(), run_pending_migrations(), impl MigrationHarness patterns |
+| Migration parsing | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/diesel.go`<br>`internal/custom/rust/diesel_seaorm_test.go`<br>`internal/custom/rust/orm_props_test.go`<br>`internal/custom/rust/testdata/diesel_up.sql` | Detects embed_migrations!(), run_pending_migrations(), impl MigrationHarness patterns |
 
 ## Provenance
 

@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/rust/orms/sqlx.yaml` | — |
-| Schema extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/sqlx_rbatis.go`<br>`internal/custom/rust/sqlx_rbatis_test.go`<br>`internal/custom/rust/testdata/sqlx_models.rs` | Detects #[derive(FromRow)] structs and Pool::connect() as schema-mapped models |
+| Schema extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/sqlx_rbatis.go`<br>`internal/custom/rust/sqlx_rbatis_test.go`<br>`internal/custom/rust/testdata/sqlx_models.rs` | Detects #[derive(FromRow)] structs and Pool::connect() as schema-mapped models |
 
 ### Relationships
 
@@ -31,13 +31,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/rust/orms/sqlx.yaml` | — |
+| Query attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/orm_props_test.go`<br>`internal/custom/rust/sqlx_rbatis.go` | — |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/sqlx_rbatis.go`<br>`internal/custom/rust/sqlx_rbatis_test.go` | Detects sqlx::migrate!(path).run() macro invocations and migration file references |
+| Migration parsing | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/sqlx_rbatis.go`<br>`internal/custom/rust/sqlx_rbatis_test.go` | sqlx::migrate! path + migration file refs detected; parsing the referenced migrations/*.sql DDL is out of scope (sqlx resolves them at compile time, not in the .rs source). |
 
 ## Provenance
 

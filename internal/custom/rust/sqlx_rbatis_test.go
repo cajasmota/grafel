@@ -75,6 +75,24 @@ let user = sqlx::query_as!(User, "SELECT id, name, email FROM users WHERE id = $
 	}
 }
 
+func TestSqlx_QueryAttributedToTable(t *testing.T) {
+	src := `
+let user = sqlx::query_as!(User, "SELECT id, name, email FROM users WHERE id = $1", id)
+    .fetch_one(pool)
+    .await?;
+let _ = sqlx::query!("INSERT INTO posts (title, body) VALUES ($1, $2)", t, b)
+    .execute(pool)
+    .await?;
+`
+	ents := extract(t, "custom_rust_sqlx", fi("repo.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "sqlx:query:users") {
+		t.Error("expected sqlx:query:users attributed from SELECT ... FROM users")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "sqlx:query:posts") {
+		t.Error("expected sqlx:query:posts attributed from INSERT INTO posts")
+	}
+}
+
 func TestSqlx_PoolConnect(t *testing.T) {
 	src := `
 let pool = PgPool::connect("postgres://localhost/mydb").await?;
@@ -171,6 +189,37 @@ async fn select_by_condition(rb: &Rbatis, id: &str) -> BizActivity {
 	ents := extract(t, "custom_rust_rbatis", fi("mapper.rs", "rust", src))
 	if !containsEntity(ents, "SCOPE.Operation", "rbatis:html_sql:select_by_condition") {
 		t.Error("expected rbatis:html_sql:select_by_condition query")
+	}
+}
+
+func TestRbatis_QueryAttributedToTable(t *testing.T) {
+	src := `
+#[py_sql("select * from biz_activity where delete_flag = 0 and name like #{name}")]
+async fn select_by_name(rb: &Rbatis, name: &str) -> Vec<BizActivity> {
+    impled!()
+}
+
+#[sql("select * from user_info where id = #{id}")]
+async fn get_user_by_id(rb: &Rbatis, id: &str) -> UserInfo {
+    impled!()
+}
+`
+	ents := extract(t, "custom_rust_rbatis", fi("mapper.rs", "rust", src))
+	// The py_sql query must resolve its target table to biz_activity.
+	foundBiz, foundUser := false, false
+	for _, e := range ents {
+		if e.Name == "rbatis:py_sql:select_by_name" && e.Kind == "SCOPE.Operation" {
+			foundBiz = true
+		}
+		if e.Name == "rbatis:sql:get_user_by_id" && e.Kind == "SCOPE.Operation" {
+			foundUser = true
+		}
+	}
+	if !foundBiz {
+		t.Error("expected rbatis py_sql query for select_by_name")
+	}
+	if !foundUser {
+		t.Error("expected rbatis sql query for get_user_by_id")
 	}
 }
 

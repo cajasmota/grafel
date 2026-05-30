@@ -44,6 +44,28 @@ func init() {
 	extractor.Register("custom_rust_rbatis", &rustRbatisExtractor{})
 }
 
+// ---------------------------------------------------------------------------
+// Shared SQL helpers
+// ---------------------------------------------------------------------------
+
+// reSQLTargetTable matches the table reference in the major SQL DML statements,
+// covering the first table named after FROM / INSERT INTO / UPDATE / DELETE FROM /
+// JOIN. Used to attribute a compile-time SQL string to a concrete table.
+var reSQLTargetTable = regexp.MustCompile(
+	`(?i)\b(?:FROM|INTO|UPDATE|JOIN|DELETE\s+FROM)\s+["` + "`" + `]?([A-Za-z_][\w.]*)["` + "`" + `]?`,
+)
+
+// sqlPrimaryTable returns the first/primary table referenced by a SQL string,
+// or "" if none can be resolved. UPDATE/INSERT/DELETE targets take precedence
+// over FROM/JOIN since they appear first in those statements anyway.
+func sqlPrimaryTable(sql string) string {
+	m := reSQLTargetTable.FindStringSubmatch(sql)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
 // ===========================================================================
 // SQLx
 // ===========================================================================
@@ -181,17 +203,26 @@ func (e *rustSqlxExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		add(ent)
 	}
 
-	// query! macros → schema usage evidence
+	// query! macros → query_attribution. Resolve the primary target table
+	// from the compile-time SQL so the query is attributed to a concrete
+	// table; encode that table in the entity name.
 	for _, m := range reSqlxQueryMacro.FindAllStringSubmatchIndex(src, -1) {
-		sql := src[m[2]:m[3]]
+		fullSQL := src[m[2]:m[3]]
+		table := sqlPrimaryTable(fullSQL)
+		sql := fullSQL
 		if len(sql) > 80 {
 			sql = sql[:80] + "..."
 		}
-		ent := makeEntity("sqlx:query_macro", "SCOPE.Operation", "sql_query",
+		name := "sqlx:query"
+		if table != "" {
+			name = "sqlx:query:" + table
+		}
+		ent := makeEntity(name, "SCOPE.Operation", "sql_query",
 			file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent,
 			"framework", "sqlx",
 			"sql_fragment", sql,
+			"target_table", table,
 			"provenance", "INFERRED_FROM_SQLX_QUERY_MACRO",
 		)
 		add(ent)
@@ -347,6 +378,7 @@ func (e *rustRbatisExtractor) Extract(ctx context.Context, file extractor.FileIn
 			"framework", "rbatis",
 			"function_name", fnName,
 			"sql_fragment", sql,
+			"target_table", sqlPrimaryTable(src[m[2]:m[3]]),
 			"query_style", "py_sql",
 			"provenance", "INFERRED_FROM_RBATIS_PY_SQL",
 		)
@@ -366,6 +398,7 @@ func (e *rustRbatisExtractor) Extract(ctx context.Context, file extractor.FileIn
 			"framework", "rbatis",
 			"function_name", fnName,
 			"sql_fragment", sql,
+			"target_table", sqlPrimaryTable(src[m[2]:m[3]]),
 			"query_style", "sql_attr",
 			"provenance", "INFERRED_FROM_RBATIS_SQL_ATTR",
 		)

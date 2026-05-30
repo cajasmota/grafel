@@ -103,6 +103,23 @@ var (
 	reDieselFKColumn = regexp.MustCompile(
 		`(\w+_id)\s*->\s*\w+`,
 	)
+
+	// Any column mapping in a table! body: col_name -> SqlType (possibly
+	// wrapped, e.g. Nullable<Integer>, Array<Text>). Captures column name
+	// and the full type token up to the line terminator/comma.
+	reDieselColumn = regexp.MustCompile(
+		`(\w+)\s*->\s*([A-Za-z_][\w:<>, ]*?)\s*,`,
+	)
+
+	// CREATE TABLE <name> ( ... ) in a diesel up.sql migration file.
+	reSQLCreateTable = regexp.MustCompile(
+		`(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["` + "`" + `]?(\w+)["` + "`" + `]?\s*\(`,
+	)
+
+	// REFERENCES <table>(<col>) — SQL foreign-key clause in migrations.
+	reSQLReferences = regexp.MustCompile(
+		`(?i)\bREFERENCES\s+["` + "`" + `]?(\w+)["` + "`" + `]?\s*(?:\(\s*["` + "`" + `]?(\w+)["` + "`" + `]?\s*\))?`,
+	)
 )
 
 // ---------------------------------------------------------------------------
@@ -139,6 +156,15 @@ func (e *rustDieselExtractor) Extract(ctx context.Context, file extractor.FileIn
 		entities = append(entities, ent)
 	}
 
+	// 0. SQL migration files (up.sql / down.sql) — parse CREATE TABLE and
+	//    REFERENCES clauses. These live alongside table! macros and prove
+	//    end-to-end migration schema attribution.
+	if strings.HasSuffix(file.Path, ".sql") {
+		e.extractSQLMigration(src, file, add)
+		span.SetAttributes(attribute.Int("entity_count", len(entities)))
+		return entities, nil
+	}
+
 	// 1. table! {} macro → schema_table entity
 	for _, m := range reDieselTable.FindAllStringSubmatchIndex(src, -1) {
 		tableName := src[m[2]:m[3]]
@@ -150,6 +176,28 @@ func (e *rustDieselExtractor) Extract(ctx context.Context, file extractor.FileIn
 			"provenance", "INFERRED_FROM_DIESEL_TABLE_MACRO",
 		)
 		add(ent)
+	}
+
+	// 1b. Column extraction — for each table! body, emit a schema_column
+	//     entity per `col -> SqlType` mapping, carrying the resolved sql_type.
+	for _, m := range reDieselTableBody.FindAllStringSubmatchIndex(src, -1) {
+		tableName := src[m[2]:m[3]]
+		tableBody := src[m[0]:m[1]]
+		for _, cm := range reDieselColumn.FindAllStringSubmatchIndex(tableBody, -1) {
+			colName := tableBody[cm[2]:cm[3]]
+			sqlType := strings.TrimSpace(tableBody[cm[4]:cm[5]])
+			colEnt := makeEntity("diesel:column:"+tableName+"."+colName,
+				"SCOPE.Component", "schema_column",
+				file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&colEnt,
+				"framework", "diesel",
+				"table_name", tableName,
+				"column_name", colName,
+				"sql_type", sqlType,
+				"provenance", "INFERRED_FROM_DIESEL_TABLE_COLUMN",
+			)
+			add(colEnt)
+		}
 	}
 
 	// 2. #[derive(Queryable/Insertable/...)] struct → orm_model entity.
@@ -291,4 +339,44 @@ func (e *rustDieselExtractor) Extract(ctx context.Context, file extractor.FileIn
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
+}
+
+// extractSQLMigration parses a diesel SQL migration file (up.sql / down.sql),
+// emitting a migration component per CREATE TABLE and a foreign_key pattern per
+// REFERENCES clause. The table/column names are encoded in entity names so that
+// downstream tests and consumers can assert specific schema fragments.
+func (e *rustDieselExtractor) extractSQLMigration(src string, file extractor.FileInput, add func(types.EntityRecord)) {
+	for _, m := range reSQLCreateTable.FindAllStringSubmatchIndex(src, -1) {
+		tableName := src[m[2]:m[3]]
+		ent := makeEntity("diesel:migration:create_table:"+tableName,
+			"SCOPE.Component", "migration",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "diesel",
+			"table_name", tableName,
+			"migration_op", "create_table",
+			"provenance", "INFERRED_FROM_DIESEL_SQL_CREATE_TABLE",
+		)
+		add(ent)
+	}
+	for _, m := range reSQLReferences.FindAllStringSubmatchIndex(src, -1) {
+		refTable := src[m[2]:m[3]]
+		refCol := ""
+		if m[4] >= 0 {
+			refCol = src[m[4]:m[5]]
+		}
+		name := "diesel:migration:fk:" + refTable
+		if refCol != "" {
+			name += "." + refCol
+		}
+		ent := makeEntity(name, "SCOPE.Pattern", "foreign_key",
+			file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "diesel",
+			"ref_table", refTable,
+			"ref_column", refCol,
+			"provenance", "INFERRED_FROM_DIESEL_SQL_REFERENCES",
+		)
+		add(ent)
+	}
 }

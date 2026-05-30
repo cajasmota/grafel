@@ -73,7 +73,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🟢 1/1 | |
 | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 1/1 | |
 | [redis-rs](../detail/lang.rust.driver.redis.md) | 🟢 1/1 | |
-| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟢 1/1 | |
+| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ✅ 1/1 | |
 | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟢 1/1 | |
 | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
 | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟢 1/1 | |

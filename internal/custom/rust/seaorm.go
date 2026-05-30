@@ -100,6 +100,12 @@ var (
 	reSeaOrmRelated = regexp.MustCompile(
 		`\bimpl\s+(?:<[^>]*>\s+)?Related\s*<\s*([^>]+)>\s+for\s+(\w+)`,
 	)
+
+	// Struct field inside an Entity Model body: `pub col_name: RustType,`
+	// Captures the field name and its Rust type for schema_column emission.
+	reSeaOrmField = regexp.MustCompile(
+		`(?m)^\s*pub\s+(\w+)\s*:\s*([A-Za-z_][\w:<>, ]*?)\s*,`,
+	)
 )
 
 // ---------------------------------------------------------------------------
@@ -177,6 +183,34 @@ func (e *rustSeaORMExtractor) Extract(ctx context.Context, file extractor.FileIn
 			"provenance", "INFERRED_FROM_SEAORM_DERIVE_ENTITY_MODEL",
 		)
 		add(ent)
+
+		// schema_extraction (columns) — parse the Model struct body for
+		// `pub field: Type,` declarations and emit a schema_column per field.
+		// The body begins at the struct's opening brace within the lookahead.
+		colKey := modelKey
+		if bodyOpen := strings.Index(tail[structMatch[3]:], "{"); bodyOpen >= 0 {
+			bodyStart := structMatch[3] + bodyOpen
+			bodyEnd := strings.Index(tail[bodyStart:], "}")
+			if bodyEnd < 0 {
+				bodyEnd = len(tail) - bodyStart
+			}
+			body := tail[bodyStart : bodyStart+bodyEnd]
+			for _, fm := range reSeaOrmField.FindAllStringSubmatchIndex(body, -1) {
+				colName := body[fm[2]:fm[3]]
+				colType := strings.TrimSpace(body[fm[4]:fm[5]])
+				colEnt := makeEntity("seaorm:column:"+colKey+"."+colName,
+					"SCOPE.Component", "schema_column",
+					file.Path, file.Language, line)
+				setProps(&colEnt,
+					"framework", "seaorm",
+					"table_name", tableName,
+					"column_name", colName,
+					"rust_type", colType,
+					"provenance", "INFERRED_FROM_SEAORM_MODEL_FIELD",
+				)
+				add(colEnt)
+			}
+		}
 	}
 
 	// 2. DeriveRelation enum → parse each variant's sea_orm attribute

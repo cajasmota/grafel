@@ -47375,9 +47375,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/testdata/diesel_schema.rs"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/orm_props_test.go","internal/custom/rust/testdata/diesel_schema.rs"],
             "verified_at": "2026-05-30"
           }
         },
@@ -47404,6 +47403,7 @@
             "status": "partial",
             "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/testdata/diesel_models.rs","internal/custom/rust/testdata/diesel_schema.rs"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "joinable!/belongs_to detected with from/to tables; resolving the target Rust model path to its table! schema requires cross-file import-graph analysis (diesel.toml schema path).",
             "verified_at": "2026-05-30"
           }
         },
@@ -47416,8 +47416,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/diesel_seaorm_test.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/diesel_seaorm_test.go","internal/custom/rust/orm_props_test.go","internal/custom/rust/testdata/diesel_up.sql"],
             "notes": "Detects embed_migrations!(), run_pending_migrations(), impl MigrationHarness patterns",
             "verified_at": "2026-05-30"
           }
@@ -47466,8 +47466,8 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
+            "status": "full",
+            "cites": ["internal/custom/rust/orm_props_test.go","internal/custom/rust/sqlx_rbatis.go"],
             "notes": "Detects #[py_sql(...)], #[sql(...)], #[html_sql] macro annotations on async functions",
             "verified_at": "2026-05-30"
           }
@@ -47518,9 +47518,9 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/rusqlite.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/rust/orm_props_test.go","internal/custom/rust/rusqlite.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
@@ -47544,9 +47544,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_entity.rs"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/orm_props_test.go","internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_entity.rs"],
             "verified_at": "2026-05-30"
           }
         },
@@ -47575,6 +47574,7 @@
             "status": "partial",
             "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_entity.rs"],
             "issue": "backfill:dictionary-completeness",
+            "notes": "DeriveRelation variants + impl Related resolved to target Entity path string; linking 'super::user::Entity' to its concrete Model entity needs cross-module resolution.",
             "verified_at": "2026-05-30"
           }
         },
@@ -47608,9 +47608,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go","internal/custom/rust/testdata/sqlx_models.rs"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "Detects #[derive(FromRow)] structs and Pool::connect() as schema-mapped models",
             "verified_at": "2026-05-30"
           }
@@ -47635,16 +47634,16 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/sqlx.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/rust/orm_props_test.go","internal/custom/rust/sqlx_rbatis.go"],
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
           "migration_parsing": {
             "status": "partial",
             "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
-            "notes": "Detects sqlx::migrate!(path).run() macro invocations and migration file references",
+            "notes": "sqlx::migrate! path + migration file refs detected; parsing the referenced migrations/*.sql DDL is out of scope (sqlx resolves them at compile time, not in the .rs source).",
             "verified_at": "2026-05-30"
           }
         }

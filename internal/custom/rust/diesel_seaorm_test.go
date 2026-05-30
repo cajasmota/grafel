@@ -146,6 +146,25 @@ pub struct Model {
 }
 
 // ---------------------------------------------------------------------------
+// SeaORM — schema_extraction: Model struct columns (value-asserting)
+// ---------------------------------------------------------------------------
+
+func TestSeaORM_SchemaColumns(t *testing.T) {
+	src := readFixture(t, "testdata/seaorm_entity.rs")
+	ents := extract(t, "custom_rust_seaorm", fi("user.rs", "rust", src))
+
+	for _, want := range []string{
+		"seaorm:column:users.id",
+		"seaorm:column:users.name",
+		"seaorm:column:users.email",
+	} {
+		if !containsEntity(ents, "SCOPE.Component", want) {
+			t.Errorf("expected schema_column %q from Model struct fields", want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // SeaORM — relationship extraction (DeriveRelation enum)
 // ---------------------------------------------------------------------------
 
@@ -368,6 +387,66 @@ impl MigrationHarness<Pg> for MyMigrationRunner {
 // ---------------------------------------------------------------------------
 // Diesel — foreign_key_extraction
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Diesel — schema_extraction: columns + types (value-asserting)
+// ---------------------------------------------------------------------------
+
+func TestDiesel_SchemaColumns(t *testing.T) {
+	src := readFixture(t, "testdata/diesel_schema.rs")
+	ents := extract(t, "custom_rust_diesel", fi("schema.rs", "rust", src))
+
+	// Specific table.column entities must be emitted with the right names.
+	for _, want := range []string{
+		"diesel:column:users.id",
+		"diesel:column:users.name",
+		"diesel:column:users.email",
+		"diesel:column:posts.title",
+		"diesel:column:posts.user_id",
+	} {
+		if !containsEntity(ents, "SCOPE.Component", want) {
+			t.Errorf("expected schema_column %q", want)
+		}
+	}
+}
+
+func TestDiesel_SchemaColumnType(t *testing.T) {
+	// Assert the sql_type is captured by checking a column with a wrapped type.
+	src := `
+table! {
+    events (id) {
+        id -> Integer,
+        payload -> Nullable<Text>,
+    }
+}
+`
+	ents := extract(t, "custom_rust_diesel", fi("schema.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Component", "diesel:column:events.payload") {
+		t.Error("expected diesel:column:events.payload (Nullable<Text>)")
+	}
+	if !containsEntity(ents, "SCOPE.Component", "diesel:column:events.id") {
+		t.Error("expected diesel:column:events.id (Integer)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Diesel — SQL migration files (up.sql): CREATE TABLE + REFERENCES
+// ---------------------------------------------------------------------------
+
+func TestDiesel_SQLMigrationCreateTable(t *testing.T) {
+	src := readFixture(t, "testdata/diesel_up.sql")
+	ents := extract(t, "custom_rust_diesel", fi("migrations/2024_init/up.sql", "rust", src))
+
+	if !containsEntity(ents, "SCOPE.Component", "diesel:migration:create_table:users") {
+		t.Error("expected create_table:users from up.sql")
+	}
+	if !containsEntity(ents, "SCOPE.Component", "diesel:migration:create_table:posts") {
+		t.Error("expected create_table:posts from up.sql")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "diesel:migration:fk:users.id") {
+		t.Error("expected FK references users.id from up.sql REFERENCES clause")
+	}
+}
 
 func TestDiesel_ForeignKeyColumn(t *testing.T) {
 	src := `

@@ -152,7 +152,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🟢 1/1 | |
-| [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟢 1/1 | |
+| [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ✅ 1/1 | |
 | [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
 | [rust](../by-language/rust.md) | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟢 1/1 | |
