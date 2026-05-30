@@ -3,7 +3,11 @@
 // Extracted entities:
 //   - class_declaration     → Kind="SCOPE.Component", Subtype="class"
 //   - interface_declaration → Kind="SCOPE.Component", Subtype="interface"
+//     (+ CONTAINS edges to every method in the body)
+//   - trait_declaration     → Kind="SCOPE.Component", Subtype="trait"
+//     (+ CONTAINS edges to every method in the body)
 //   - enum_declaration      → Kind="SCOPE.Schema", Subtype="enum"  (PHP 8.1+)
+//     (backed enum case values stored in Properties)
 //   - method_declaration    → Kind="SCOPE.Operation", Subtype="method"
 //   - function_definition   → Kind="SCOPE.Operation", Subtype="function"
 //   - namespace_definition       → IMPORTS relationship (file → own namespace)
@@ -18,6 +22,10 @@
 // PHP 8.1 enums are extracted as SCOPE.Schema/enum, mirroring the Python and
 // TypeScript enum_extraction convention so cross-stack type queries join on
 // the same kind/subtype taxonomy.
+//
+// Backed enums (enum Status: string { case Active = 'active'; }) store case
+// values alongside names in Properties["enum_member_values"] (name=value CSV)
+// so downstream type queries can surface the wire values.
 //
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
@@ -89,20 +97,7 @@ func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *
 		classIdx := len(*out)
 		className := rec.Name
 		*out = append(*out, rec)
-		body := node.ChildByFieldName("body")
-		if body == nil {
-			// Tree-sitter PHP exposes the class body as the
-			// `declaration_list` child; the `body` field name was
-			// added in newer grammar revisions. Fall back to scanning
-			// children so the code is robust to grammar differences.
-			for i := range node.ChildCount() {
-				ch := node.Child(int(i))
-				if ch.Type() == "declaration_list" {
-					body = ch
-					break
-				}
-			}
-		}
+		body := phpDeclBody(node)
 		if body != nil {
 			before := len(*out)
 			for i := range body.ChildCount() {
@@ -129,9 +124,70 @@ func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *
 		return
 
 	case "interface_declaration":
-		if rec, ok := buildComponent(node, file, "interface"); ok {
-			*out = append(*out, rec)
+		// interface_extraction: emit entity + CONTAINS edges to every
+		// method declared in the interface body so the graph records both
+		// the structural type and its contract (method set).
+		rec, ok := buildComponent(node, file, "interface")
+		if !ok {
+			break
 		}
+		ifaceIdx := len(*out)
+		ifaceName := rec.Name
+		*out = append(*out, rec)
+		body := phpDeclBody(node)
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, ifaceName, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				toID := extractor.BuildOperationStructuralRef("php", file.Path, child.Name)
+				(*out)[ifaceIdx].Relationships = append((*out)[ifaceIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: toID,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
+
+	case "trait_declaration":
+		// type_extraction: PHP traits are first-class named types that
+		// define reusable method sets. Emit as SCOPE.Component/trait +
+		// CONTAINS edges to every method, mirroring the class convention.
+		rec, ok := buildComponent(node, file, "trait")
+		if !ok {
+			break
+		}
+		traitIdx := len(*out)
+		traitName := rec.Name
+		*out = append(*out, rec)
+		body := phpDeclBody(node)
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, traitName, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				toID := extractor.BuildOperationStructuralRef("php", file.Path, child.Name)
+				(*out)[traitIdx].Relationships = append((*out)[traitIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: toID,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "enum_declaration":
 		// PHP 8.1+ backed and pure enums.
@@ -217,35 +273,59 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 
 // buildEnum creates a SCOPE.Schema/enum entity for PHP 8.1+ enum_declaration
 // nodes. Backed enums (enum Status: string) and pure enums are both handled.
-// Case names are collected into the "enum_members" property (comma-separated).
+//
+// Properties emitted:
+//
+//	"pattern_type"       → "enum"
+//	"enum_members"       → comma-separated case names  (e.g. "Active,Inactive")
+//	"enum_member_values" → comma-separated name=value pairs for backed enums
+//	                       (e.g. "Active='active',Inactive='inactive'").
+//	                       Omitted for pure enums (no backing type).
+//	"enum_backing_type"  → "string" or "int" when a backing type is declared.
 func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
 	}
 
-	// Collect enum case names from the declaration body.
+	// Detect backing type: enum Status: string { ... }
+	// Tree-sitter PHP grammar exposes the backing type as the child after
+	// the `:` token; its node type is "named_type" or "primitive_type".
+	backingType := phpEnumBackingType(node, file.Content)
+
+	// Collect enum case names (and values for backed enums) from the body.
 	var members []string
-	body := node.ChildByFieldName("body")
-	if body == nil {
-		// Fallback: scan direct children for the declaration_list node.
-		for i := range node.ChildCount() {
-			ch := node.Child(int(i))
-			if ch.Type() == "declaration_list" || ch.Type() == "enum_declaration_list" {
-				body = ch
-				break
-			}
-		}
-	}
+	var memberValues []string // name=value pairs
+	body := phpDeclBody(node)
 	if body != nil {
 		for i := range body.ChildCount() {
 			ch := body.Child(int(i))
-			if ch.Type() == "enum_case" {
-				if n := childFieldText(ch, "name", file.Content); n != "" {
-					members = append(members, n)
-				}
+			if ch.Type() != "enum_case" {
+				continue
+			}
+			caseName := childFieldText(ch, "name", file.Content)
+			if caseName == "" {
+				continue
+			}
+			members = append(members, caseName)
+			// Backed enum: `case Active = 'active';`
+			// The value is in the "value" field of the enum_case node.
+			val := childFieldText(ch, "value", file.Content)
+			if val != "" {
+				memberValues = append(memberValues, caseName+"="+val)
 			}
 		}
+	}
+
+	props := map[string]string{
+		"pattern_type": "enum",
+		"enum_members": strings.Join(members, ","),
+	}
+	if backingType != "" {
+		props["enum_backing_type"] = backingType
+	}
+	if len(memberValues) > 0 {
+		props["enum_member_values"] = strings.Join(memberValues, ",")
 	}
 
 	rec := types.EntityRecord{
@@ -257,13 +337,55 @@ func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord,
 		StartLine:          int(node.StartPoint().Row) + 1,
 		EndLine:            int(node.EndPoint().Row) + 1,
 		EnrichmentRequired: false,
-		Properties: map[string]string{
-			"pattern_type": "enum",
-			"enum_members": strings.Join(members, ","),
-		},
+		Properties:         props,
 	}
 	rec.ID = rec.ComputeID()
 	return rec, true
+}
+
+// phpEnumBackingType returns the backing type text ("string"/"int") of a
+// backed PHP 8.1 enum, or "" for pure enums. Tree-sitter PHP grammar
+// places the backing type as a child node between `:` and the body.
+func phpEnumBackingType(node *sitter.Node, src []byte) string {
+	// Scan direct children for a named_type or primitive_type child that
+	// follows the colon token. The colon itself appears as a ":" leaf.
+	seenColon := false
+	for i := range node.ChildCount() {
+		ch := node.Child(int(i))
+		if ch.Type() == ":" {
+			seenColon = true
+			continue
+		}
+		if seenColon {
+			t := ch.Type()
+			if t == "named_type" || t == "primitive_type" || t == "name" {
+				return strings.TrimSpace(string(src[ch.StartByte():ch.EndByte()]))
+			}
+			// Stop looking once we hit the body.
+			if t == "declaration_list" || t == "enum_declaration_list" {
+				break
+			}
+		}
+	}
+	return ""
+}
+
+// phpDeclBody returns the declaration-list body child of a class/interface/
+// trait/enum node, trying the named "body" field first and falling back to
+// scanning for a declaration_list or enum_declaration_list child. This is
+// needed because older grammar revisions may not label the body field.
+func phpDeclBody(node *sitter.Node) *sitter.Node {
+	if body := node.ChildByFieldName("body"); body != nil {
+		return body
+	}
+	for i := range node.ChildCount() {
+		ch := node.Child(int(i))
+		switch ch.Type() {
+		case "declaration_list", "enum_declaration_list":
+			return ch
+		}
+	}
+	return nil
 }
 
 // buildOperation creates an Operation entity for method/function declarations.

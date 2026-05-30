@@ -42,10 +42,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go`<br>`internal/extractors/php/php.go` | PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go) |
-| Interface extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go`<br>`internal/extractors/php/php.go` | interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102 |
-| Type alias extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex |
-| Type extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go`<br>`internal/extractors/php/php.go` | class_declaration extracted via tree-sitter and regex; already in base extractor |
+| Enum extraction | ✅ `full` | — | — | `internal/extractors/php/php.go` | PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent. |
+| Interface extraction | ✅ `full` | — | — | `internal/extractors/php/php.go` | interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction. |
+| Type alias extraction | — `not_applicable` | — | — | `internal/extractors/php/php.go` | PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level. |
+| Type extraction | ✅ `full` | — | — | `internal/extractors/php/php.go` | class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter. |
 
 ### Testing
 

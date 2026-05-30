@@ -33618,28 +33618,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -33842,28 +33838,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -34066,28 +34058,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -34290,28 +34278,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -34514,28 +34498,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -34738,28 +34718,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -34962,28 +34938,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -35186,28 +35158,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -35410,28 +35378,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -35636,28 +35600,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -35860,28 +35820,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
@@ -36084,28 +36040,24 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHP 8.1+ enum_declaration via tree-sitter (php.go) and regex backup (frameworks.go)"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP 8.1+ backed and pure enums: tree-sitter enum_declaration → SCOPE.Schema/enum with case names (enum_members), backed values (enum_member_values), and backing type (enum_backing_type). Full language-level extraction, framework-independent."
           },
           "interface_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "interface_declaration extracted via tree-sitter and regex; already in base extractor since PR#102"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "interface_declaration → SCOPE.Component/interface with CONTAINS edges to all declared methods (dotted Interface.method naming). Framework-independent language-level extraction."
           },
           "type_alias_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "PHPStan @phpstan-type and Psalm @psalm-type docblock type aliases extracted via regex"
+            "status": "not_applicable",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "PHP has no native type alias syntax. @phpstan-type/@psalm-type docblock aliases exist as third-party static-analysis conventions only, not a language feature. not_applicable at the language level."
           },
           "type_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go","internal/extractors/php/php.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "class_declaration extracted via tree-sitter and regex; already in base extractor"
+            "status": "full",
+            "cites": ["internal/extractors/php/php.go"],
+            "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
         "Testing": {
