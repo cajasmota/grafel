@@ -7560,6 +7560,82 @@ records:
           issues_implemented: ["3508"]
           verified_at: "2026-05-31"
 
+  lang.rust.framework.utoipa:
+    capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/utoipa.go
+              functions: [Extract, rustBalancedParens]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath]
+          tests:
+            - file: internal/custom/rust/utoipa_test.go
+          issues_implemented: ["3538"]
+          verified_at: "2026-05-31"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/rust/utoipa.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/utoipa_test.go
+          issues_implemented: ["3538"]
+          verified_at: "2026-05-31"
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/custom/rust/utoipa.go
+              functions: [Extract, rustBalancedParens]
+          tests:
+            - file: internal/custom/rust/utoipa_test.go
+          issues_implemented: ["3538"]
+          verified_at: "2026-05-31"
+      Validation:
+        dto_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/utoipa.go
+              functions: [Extract, splitIdentList]
+            - file: internal/custom/rust/fw_validation.go
+              functions: [parseDTOFields, rustStructBody]
+          tests:
+            - file: internal/custom/rust/utoipa_test.go
+          issues_implemented: ["3538"]
+          verified_at: "2026-05-31"
+      Substrate:
+        request_shape_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/utoipa.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/utoipa_test.go
+          issues_implemented: ["3538"]
+          verified_at: "2026-05-31"
+        response_shape_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/utoipa.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/utoipa_test.go
+          issues_implemented: ["3538"]
+          verified_at: "2026-05-31"
+      Type System:
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/utoipa.go
+              functions: [Extract]
+            - file: internal/custom/rust/fw_validation.go
+              functions: [parseDTOFields]
+          tests:
+            - file: internal/custom/rust/utoipa_test.go
+          issues_implemented: ["3538"]
+          verified_at: "2026-05-31"
+
   lang.rust.framework.tonic:
     capabilities:
       Routing:

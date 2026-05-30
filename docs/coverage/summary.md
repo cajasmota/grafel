@@ -13,9 +13,9 @@
 | [java](by-language/java.md) | 19 | 10 | 14 | 3 |
 | [go](by-language/go.md) | 17 | 8 | 17 | 0 |
 | [C#](by-language/csharp.md) | 15 | 7 | 14 | 0 |
-| [kotlin](by-language/kotlin.md) | 15 | 0 | 7 | 0 |
+| [kotlin](by-language/kotlin.md) | 14 | 0 | 7 | 0 |
+| [rust](by-language/rust.md) | 14 | 6 | 14 | 0 |
 | [elixir](by-language/elixir.md) | 13 | 5 | 10 | 0 |
-| [rust](by-language/rust.md) | 13 | 6 | 14 | 0 |
 | [php](by-language/php.md) | 12 | 6 | 14 | 0 |
 | [scala](by-language/scala.md) | 11 | 3 | 6 | 0 |
 | [ruby](by-language/ruby.md) | 8 | 6 | 13 | 1 |

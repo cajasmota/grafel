@@ -49328,6 +49328,191 @@
       }
     },
     {
+      "id": "lang.rust.framework.utoipa",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "rust",
+      "label": "utoipa",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
+            "notes": "each #[utoipa::path] attribute -\u003e SCOPE.Operation endpoint (verb + canonical path)",
+            "verified_at": "2026-05-30"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
+            "notes": "handler fn name captured from the fn following each #[utoipa::path] attribute",
+            "verified_at": "2026-05-30"
+          },
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
+            "notes": "utoipa::path(verb, path=...) yields canonical verb+path (normalises {id}/:id/\u003cid\u003e); captures handler fn; enriches bare axum/actix routes with documented contract",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
+            "notes": "#[derive(ToSchema)]/IntoParams structs -\u003e SCOPE.Schema DTO with deep fields; request_body=/responses(body=) refs emitted as request/response DTOs",
+            "verified_at": "2026-05-30"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
+            "notes": "ToSchema struct fields parsed (name/type/wire_name) -\u003e schema_field entities",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
+            "notes": "request_body = \u003cDTO\u003e (incl inline()/content=) -\u003e request_dto tied to verb+path",
+            "verified_at": "2026-05-30"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
+            "notes": "responses((status=N, body=\u003cDTO\u003e)) -\u003e response_dto per status, tied to verb+path",
+            "verified_at": "2026-05-30"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.rust.framework.warp",
       "category": "http_framework",
       "subcategory": "http_backend",

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 196 records · **C/C++**: 19 · **C#**: 15 · **elixir**: 13 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 15 · **lua**: 2 · **php**: 12 · **python**: 21 · **ruby**: 8 · **rust**: 13 · **scala**: 11 · **swift**: 1
+**Total**: 196 records · **C/C++**: 19 · **C#**: 15 · **elixir**: 13 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 14 · **lua**: 2 · **php**: 12 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 11 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -121,6 +121,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [rust](../by-language/rust.md) | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | ✅ 3/3 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/20 | 🟡 1/7 | |
 | [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [rust](../by-language/rust.md) | [utoipa](../detail/lang.rust.framework.utoipa.md) | ✅ 3/3 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/20 | 🟡 1/7 | |
 | [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 
 
@@ -148,7 +149,6 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [kotlin](../by-language/kotlin.md) | [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 15/15 | |
 | [kotlin](../by-language/kotlin.md) | [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 15/15 | |
 | [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 15/15 | |
-| [kotlin](../by-language/kotlin.md) | [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 1/16 | |
 | [kotlin](../by-language/kotlin.md) | [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟢 1/1 | — | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 1/16 | |

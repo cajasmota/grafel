@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # rust
 
-**Frameworks**: 13 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
+**Frameworks**: 14 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -38,6 +38,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Warp](../detail/lang.rust.framework.warp.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | ✅ 3/3 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/20 | 🟡 1/7 | |
 | [hyper](../detail/lang.rust.framework.hyper.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [utoipa](../detail/lang.rust.framework.utoipa.md) | ✅ 3/3 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/20 | 🟡 1/7 | |
 
 
 ### Desktop
