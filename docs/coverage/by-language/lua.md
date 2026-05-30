@@ -26,5 +26,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [Lapis](../detail/lang.lua.framework.lapis.md) | 🟢 3/3 | 🟢 1/1 | 🟢 1/1 | 🟢 18/18 | 🟢 6/6 | |
-| [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟢 3/3 | 🟢 1/1 | 🟢 1/1 | 🟢 18/18 | 🟢 6/6 | |
+| [Lapis](../detail/lang.lua.framework.lapis.md) | 🟢 3/3 | 🟢 1/1 | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |
+| [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟢 3/3 | 🟢 1/1 | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |

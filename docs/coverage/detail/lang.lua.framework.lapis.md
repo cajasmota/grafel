@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/validation.go` | Regex extractor for ngx.req.get_post/uri_args, cjson.decode DTOs, lapis.validate/check_params/capture_errors, and resty.jsonschema schema validation. |
-| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/validation.go` | Regex extractor for ngx.req.get_post/uri_args, cjson.decode DTOs, lapis.validate/check_params/capture_errors, and resty.jsonschema schema validation. |
+| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/validation.go` | Captures Lapis params.<field> access and assert_valid field tuples (field name per tuple) plus cjson.decode DTO ingestion. Partial: no cross-file dataflow or type binding — the DTO's full shape/types are not resolved, only per-call-site field names. |
+| Request validation | ✅ `full` | — | — | `internal/custom/lua/validation.go` | Lapis assert_valid/validate.validate(self.params, { {"field", exists=true, min_length=3, matches_pattern=...} }) is walked per-tuple to emit one request_validation entity per (field, rule) pair capturing the SPECIFIC field name and validation rule; lapis.csrf / csrf.validate_token / @csrf emits a csrf_token entity. Also covers lapis.validate import + check_params/capture_errors signals. |
 
 ### Middleware
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/testing.go` | Regex extractor for busted describe/it/hooks/assertions/spies, luaunit testXxx methods, lapis.spec integration test patterns, and Kong spec.helpers. Partial: full TESTS-edge linkage requires multi-hop HTTP engine pass. |
+| Tests linkage | ✅ `full` | — | — | `internal/custom/lua/testing.go`<br>`internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks_lua.go`<br>`internal/extractors/cross/testmap/resolver.go` | busted (describe/it) + luaunit (TestClass:testXxx) registered in the shared testmap extractor: each test case emits a TESTS edge to the production symbol via direct-call resolution (high), describe-subject / Test<Subject> class fallback (medium), and *_spec.lua/*_test.lua naming convention (low). Lua block-body extractor balances function/if/do...end (quote+long-bracket aware); busted/luaunit assertion DSL stop-worded. custom/lua/testing.go still surfaces standalone test-pattern nodes. |
 
 ### Observability
 

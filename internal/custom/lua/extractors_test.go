@@ -217,6 +217,69 @@ end))
 	}
 }
 
+func TestLuaValidationLapisFieldRules(t *testing.T) {
+	src := `
+local validate = require("lapis.validate")
+app:post("/users", capture_errors(function(self)
+    validate.assert_valid(self.params, {
+        { "username", exists = true, min_length = 3 },
+        { "email", exists = true, matches_pattern = "^.+@.+$" }
+    })
+    return { json = { ok = true } }
+end))
+`
+	e := &luaValidationExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("app.lua", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Value assertion: the specific (field, rule) pairs must be captured.
+	want := map[string]bool{
+		"username.exists":       false,
+		"username.min_length":   false,
+		"email.exists":          false,
+		"email.matches_pattern": false,
+	}
+	for _, r := range got {
+		if r.Properties["kind"] != "field_rule" {
+			continue
+		}
+		key := r.Properties["field"] + "." + r.Properties["rule"]
+		if _, ok := want[key]; ok {
+			want[key] = true
+		}
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Errorf("missing field+rule entity %q", k)
+		}
+	}
+}
+
+func TestLuaValidationLapisCSRF(t *testing.T) {
+	src := `
+local csrf = require("lapis.csrf")
+app:post("/form", capture_errors(function(self)
+    csrf.assert_token(self)
+    return { redirect_to = "/" }
+end))
+`
+	e := &luaValidationExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("app.lua", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasCSRF := false
+	for _, r := range got {
+		if r.Properties["kind"] == "csrf_token" {
+			hasCSRF = true
+		}
+	}
+	if !hasCSRF {
+		t.Error("expected csrf_token validation entity")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Observability
 // ---------------------------------------------------------------------------

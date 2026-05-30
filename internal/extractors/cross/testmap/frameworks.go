@@ -2060,6 +2060,35 @@ var frameworkOrder = []frameworkEntry{
 		},
 		detect: detectScalaTest,
 	},
+	// Lua — busted (BDD) and luaunit (xUnit). #3485. busted is listed FIRST so a
+	// file that uses both `describe`/`it` and a luaunit require is attributed to
+	// busted (the describe/it surface is the test cases). luaunit catches the
+	// xUnit TestClass:testXxx style. Both detect by import token OR the
+	// *_spec.lua / *_test.lua filename convention, plus a /spec/ or /tests?/ path
+	// fallback for suites that require their helpers indirectly.
+	{
+		name:        "busted",
+		importHints: []string{"busted", "luassert", "say"},
+		filenameHints: []*regexp.Regexp{
+			regexp.MustCompile(`_spec\.lua$`),
+		},
+		pathHints: []*regexp.Regexp{
+			regexp.MustCompile(`/spec/.*\.lua$`),
+		},
+		detect: detectBusted,
+	},
+	{
+		name:        "luaunit",
+		importHints: []string{"luaunit"},
+		filenameHints: []*regexp.Regexp{
+			regexp.MustCompile(`_test\.lua$`),
+			regexp.MustCompile(`[Tt]est.*\.lua$`),
+		},
+		pathHints: []*regexp.Regexp{
+			regexp.MustCompile(`/tests?/.*\.lua$`),
+		},
+		detect: detectLuaunit,
+	},
 }
 
 // selectFramework picks the first framework whose import hints OR filename

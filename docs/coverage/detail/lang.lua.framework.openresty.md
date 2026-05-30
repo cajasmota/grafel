@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/validation.go` | Regex extractor for ngx.req.get_post/uri_args, ngx.req.read_body, cjson.decode, ngx.exit(400) guards, and resty.jsonschema schema validation. |
-| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/validation.go` | Regex extractor for ngx.req.get_post/uri_args, ngx.req.read_body, cjson.decode, ngx.exit(400) guards, and resty.jsonschema schema validation. |
+| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/validation.go` | OpenResty DTO extraction via ngx.req.get_post/uri_args() + ngx.req.read_body()/get_body_data() and cjson.decode JSON ingestion. Partial: no cross-file dataflow or type binding; DTO field set is not resolved from the decoded body. |
+| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/validation.go` | OpenResty request validation via ngx.exit(400/401/422/HTTP_BAD_REQUEST) guards and resty.jsonschema schema-validation import. Partial: regex guard/import heuristics without the specific field+rule binding the Lapis assert_valid path captures. |
 
 ### Middleware
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/testing.go` | Regex extractor for busted/luaunit test patterns and Kong spec.helpers. Partial: full TESTS-edge linkage requires multi-hop HTTP engine pass. |
+| Tests linkage | ✅ `full` | — | — | `internal/custom/lua/testing.go`<br>`internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks_lua.go`<br>`internal/extractors/cross/testmap/resolver.go` | busted (describe/it) + luaunit (TestClass:testXxx) registered in the shared testmap extractor: each test case emits a TESTS edge to the production symbol via direct-call resolution (high), describe-subject / Test<Subject> class fallback (medium), and *_spec.lua/*_test.lua naming convention (low). Lua block-body extractor balances function/if/do...end (quote+long-bracket aware); busted/luaunit assertion DSL stop-worded. custom/lua/testing.go still surfaces standalone test-pattern nodes. |
 
 ### Observability
 

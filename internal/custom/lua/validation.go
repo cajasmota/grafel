@@ -76,7 +76,81 @@ var (
 	// Lapis params shape: params.field_name access (DTO-like extraction)
 	reLapisParams = regexp.MustCompile(
 		`(?m)\bparams\s*\.\s*([a-z_]\w*)`)
+
+	// Lapis assert_valid / validate.validate field tuples. Captures the call so
+	// the per-field+rule scanner can walk the tuple table.
+	//   assert_valid(self.params, { {"name", exists=true}, {"email", ...} })
+	//   validate.assert_valid(self.params, { … })
+	//   validate.validate(self.params, { … })
+	reLapisAssertValidCall = regexp.MustCompile(
+		`(?m)\b(?:validate\s*\.\s*)?(?:assert_valid|validate)\s*\(`)
+
+	// A single field-spec tuple inside an assert_valid table:
+	//   { "name", exists = true, min_length = 3 }
+	//   { "email", matches_pattern = "..." }
+	// Group 1 = field name; group 2 = the remainder of the tuple (the rule list).
+	reLapisFieldTuple = regexp.MustCompile(
+		`\{\s*["']([a-zA-Z_]\w*)["']\s*,\s*([^}]*)\}`)
+
+	// A single validation rule key inside a field tuple: `exists = true`,
+	// `min_length = 3`, `matches_pattern = "..."`. Group 1 = rule name.
+	reLapisRuleKey = regexp.MustCompile(
+		`([a-zA-Z_]\w*)\s*=`)
+
+	// Lapis CSRF: lapis.csrf require, csrf.validate_token / @csrf annotations and
+	// the generate_token / assert_token helpers.
+	reLapisCSRF = regexp.MustCompile(
+		`(?m)\brequire\s*[("']lapis\.csrf["']?\)?|\bcsrf\s*\.\s*(?:validate_token|assert_token|generate_token)\s*\(|@csrf\b`)
 )
+
+// braceArg returns the first balanced `{ … }` table literal at or after startAt
+// in src, including the braces. It is quote-aware (single and double quotes with
+// backslash escapes) so a `}` inside a string literal does not close the table
+// prematurely. Returns "" when no balanced table is found.
+func braceArg(src string, startAt int) string {
+	n := len(src)
+	i := startAt
+	for i < n && src[i] != '{' {
+		// Stop if we hit a statement terminator before any table — the call has
+		// no table argument (e.g. assert_valid(self.params)).
+		if src[i] == ')' || src[i] == ';' || src[i] == '\n' {
+			// Allow newlines/whitespace before the table; only bail on ')'/';'.
+			if src[i] == ')' || src[i] == ';' {
+				return ""
+			}
+		}
+		i++
+	}
+	if i >= n {
+		return ""
+	}
+	depth := 0
+	start := i
+	for i < n {
+		c := src[i]
+		switch c {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[start : i+1]
+			}
+		case '"', '\'':
+			q := c
+			i++
+			for i < n && src[i] != q {
+				if src[i] == '\\' {
+					i += 2
+					continue
+				}
+				i++
+			}
+		}
+		i++
+	}
+	return ""
+}
 
 // Extract implements extractor.Extractor.
 func (e *luaValidationExtractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -90,7 +164,8 @@ func (e *luaValidationExtractor) Extract(_ context.Context, file extractor.FileI
 		strings.Contains(src, "json.decode") || strings.Contains(src, "ngx.exit") ||
 		strings.Contains(src, "jsonschema") || strings.Contains(src, "check_params") ||
 		strings.Contains(src, "capture_errors") || strings.Contains(src, "lapis.validate") ||
-		strings.Contains(src, "assert_valid") || strings.Contains(src, "yield_error")
+		strings.Contains(src, "assert_valid") || strings.Contains(src, "yield_error") ||
+		strings.Contains(src, "csrf") || strings.Contains(src, "@csrf")
 	if !hasValidation {
 		return nil, nil
 	}
@@ -152,6 +227,65 @@ func (e *luaValidationExtractor) Extract(_ context.Context, file extractor.FileI
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("lapis_capture_errors", string(types.EntityKindPattern), "request_validation", file.Path, "lua", ln)
 		setProps(&entity, "signal", "validation", "framework", "lapis", "kind", "capture_errors")
+		out = append(out, entity)
+	}
+
+	// Lapis: assert_valid / validate field+rule tuples. For each
+	// assert_valid(self.params, { {"field", rule=...}, ... }) call we walk the
+	// table argument and emit one request_validation entity per (field, rule)
+	// pair, capturing the SPECIFIC field name and validation rule (exists,
+	// min_length, matches_pattern, …) rather than a single opaque "capture_errors"
+	// signal. This is the value-asserting upgrade for request_validation.
+	for _, call := range reLapisAssertValidCall.FindAllStringIndex(src, -1) {
+		// The table argument follows the open paren — extract the balanced
+		// brace-delimited table that holds the field tuples.
+		table := braceArg(src, call[1])
+		if table == "" {
+			continue
+		}
+		tableOffset := strings.Index(src[call[1]:], table)
+		if tableOffset < 0 {
+			tableOffset = 0
+		}
+		base := call[1] + tableOffset
+		for _, ft := range reLapisFieldTuple.FindAllStringSubmatchIndex(table, -1) {
+			field := table[ft[2]:ft[3]]
+			rules := table[ft[4]:ft[5]]
+			ln := lineOf(src, base+ft[0])
+			seenRule := map[string]bool{}
+			emittedRule := false
+			for _, rk := range reLapisRuleKey.FindAllStringSubmatch(rules, -1) {
+				rule := rk[1]
+				if seenRule[rule] {
+					continue
+				}
+				seenRule[rule] = true
+				emittedRule = true
+				entity := makeEntity("assert_valid:"+field+"."+rule,
+					string(types.EntityKindPattern), "request_validation", file.Path, "lua", ln)
+				setProps(&entity, "signal", "validation", "framework", "lapis",
+					"kind", "field_rule", "field", field, "rule", rule)
+				out = append(out, entity)
+			}
+			if !emittedRule {
+				// Field tuple with no recognised rule key (e.g. just { "name" }):
+				// still record the field as a validated DTO field.
+				ln := lineOf(src, base+ft[0])
+				entity := makeEntity("assert_valid:"+field,
+					string(types.EntityKindPattern), "dto_field", file.Path, "lua", ln)
+				setProps(&entity, "signal", "validation", "framework", "lapis",
+					"kind", "field_rule", "field", field)
+				out = append(out, entity)
+			}
+		}
+	}
+
+	// Lapis: CSRF token validation (lapis.csrf, csrf.validate_token, @csrf).
+	if reLapisCSRF.MatchString(src) {
+		idx := reLapisCSRF.FindStringIndex(src)
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("lapis_csrf", string(types.EntityKindPattern), "request_validation", file.Path, "lua", ln)
+		setProps(&entity, "signal", "validation", "framework", "lapis", "kind", "csrf_token")
 		out = append(out, entity)
 	}
 

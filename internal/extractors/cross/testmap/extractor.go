@@ -244,6 +244,21 @@ func productionFileFromTestPath(filePath string) (prodFile, prodSymbol string) {
 				return path.Join(dir, prodStem+".cs"), prodStem
 			}
 		}
+	case ".lua":
+		// busted: foo_spec.lua → foo.lua; luaunit: foo_test.lua → foo.lua.
+		// Specs commonly live under spec/ mirroring the source tree
+		// (spec/user_spec.lua → user.lua in the same relative dir); we keep the
+		// same directory, which is the safe default for the resolver's
+		// byLocation lookup. The symbol guess is the bare stem (Lua modules and
+		// functions are lowercase by convention).
+		switch {
+		case strings.HasSuffix(lowerStem, "_spec"):
+			prodStem := stem[:len(stem)-len("_spec")]
+			return path.Join(dir, prodStem+".lua"), prodStem
+		case strings.HasSuffix(lowerStem, "_test"):
+			prodStem := stem[:len(stem)-len("_test")]
+			return path.Join(dir, prodStem+".lua"), prodStem
+		}
 	case ".rs":
 		// no standard filename convention for Rust tests — leave empty
 	case ".php":

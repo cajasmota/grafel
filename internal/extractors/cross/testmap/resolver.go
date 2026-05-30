@@ -283,6 +283,39 @@ var stopwords = map[string]bool{
 	"one_of": true, "constant": true, "integer": true, "binary": true,
 	"list_of": true, "map_of": true, "fixed_list": true,
 	"bind": true, "filter": true, "frequency": true, "tuple": true,
+	// Lua — busted (luassert) and luaunit assertion / lifecycle / spy DSL (#3485).
+	// These are test-harness identifiers and must never surface as the tested
+	// production subject. directCallRE captures the dotted forms (assert.equal,
+	// assert.are.equal, luaunit.assertEquals); the bare `assert`/`spy`/`stub`/
+	// `mock` are added too. Lower-cased (resolver lowercases before lookup).
+	// (`assert`, `assert.equal`, `assert.nil`, `assert.true`, `assert.false`,
+	// `assert.same`, `assert.contains`, `mock`, `setup`, `describe`, `it` are
+	// already covered by the generic blocks above.)
+	"assert.are": true, "assert.are.equal": true, "assert.are.same": true,
+	"assert.are_not": true, "assert.are_not.equal": true,
+	"assert.is": true, "assert.is.truthy": true, "assert.is.falsy": true,
+	"assert.is_true": true, "assert.is_false": true, "assert.is_nil": true,
+	"assert.is_not_nil": true, "assert.is_not": true,
+	"assert.truthy": true, "assert.falsy": true, "assert.has_error": true,
+	"assert.has.errors": true, "assert.has_no.errors": true,
+	"assert.no_error": true, "assert.near": true,
+	"assert.not_equal": true, "assert.not_same": true, "assert.spy": true,
+	"assert.stub": true, "assert.unique": true, "assert.message": true,
+	// busted spy / stub / mock DSL constructors and lifecycle (setup/teardown
+	// covered above; before_each/after_each are busted-specific).
+	"spy": true, "spy.on": true, "spy.new": true, "stub": true, "stub.new": true,
+	"before_each": true, "after_each": true, "before_all": true, "after_all": true,
+	"insulate": true, "expose": true, "randomize": true, "finally": true,
+	// luaunit — luaunit.assertXxx assertion family and runner entry points.
+	"luaunit.assertequals": true, "luaunit.assertnotequals": true,
+	"luaunit.asserttrue": true, "luaunit.assertfalse": true,
+	"luaunit.assertnil": true, "luaunit.assertnotnil": true,
+	"luaunit.assertis": true, "luaunit.assertnotis": true,
+	"luaunit.asserterror": true, "luaunit.asserterrormsgcontains": true,
+	"luaunit.assertstrcontains": true, "luaunit.assertitemsequals": true,
+	"luaunit.run": true, "lu.assertequals": true, "lu.asserttrue": true,
+	"lu.assertfalse": true, "lu.assertnil": true, "lu.assertnotnil": true,
+	"lu.run": true, "luaunit.assertalmostequals": true,
 	// Common language keywords that end up in call-like positions
 	"if": true, "for": true, "while": true, "switch": true, "return": true,
 	"func": true, "def": true, "class": true, "struct": true, "new": true,
@@ -294,6 +327,17 @@ var stopwords = map[string]bool{
 	"make": true, "len": true, "cap": true, "append": true, "copy": true,
 	"string": true, "int": true, "bool": true, "map": true, "list": true,
 	"range": true,
+	// Lua keywords and ubiquitous standard-library globals that appear in
+	// call-like positions inside test bodies but are never the production subject.
+	"function": true, "local": true, "end": true, "then": true, "elseif": true,
+	"else": true, "until": true, "repeat": true, "nil": true, "and": true,
+	"or": true, "not": true, "require": true, "pcall": true, "xpcall": true,
+	"pairs": true, "ipairs": true, "tostring": true, "tonumber": true,
+	"type": true, "select": true, "rawget": true, "rawset": true, "rawequal": true,
+	"setmetatable": true, "getmetatable": true, "next": true, "unpack": true,
+	"error": true, "assert_": true, "table.insert": true, "table.remove": true,
+	"table.concat": true, "table.sort": true, "string.format": true,
+	"string.match": true, "string.gmatch": true, "string.gsub": true,
 }
 
 // isStopword reports whether id is a test-helper, assertion, mock library,
