@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # lua
 
-**Frameworks**: 2 · **Tools**: 0 · **ORMs**: 0 · **Other**: 0
+**Frameworks**: 4 · **Tools**: 0 · **ORMs**: 0 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -24,7 +24,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Backend HTTP
 
-| Name | Routing | Auth | Testing | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|---|
-| [Lapis](../detail/lang.lua.framework.lapis.md) | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |
-| [OpenResty](../detail/lang.lua.framework.openresty.md) | ✅ 3/3 | ✅ 1/1 | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Apache APISIX](../detail/lang.lua.framework.apisix.md) | 🟡 2/3 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 3/7 | |
+| [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/3 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 3/7 | |
+| [Lapis](../detail/lang.lua.framework.lapis.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |
+| [OpenResty](../detail/lang.lua.framework.openresty.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟢 18/18 | 🟢 6/6 | |

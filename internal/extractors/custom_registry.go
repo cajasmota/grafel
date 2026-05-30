@@ -14,6 +14,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/custom/java"
 	_ "github.com/cajasmota/archigraph/internal/custom/javascript"
 	_ "github.com/cajasmota/archigraph/internal/custom/kotlin"
+	_ "github.com/cajasmota/archigraph/internal/custom/lua"
 	_ "github.com/cajasmota/archigraph/internal/custom/php"
 	_ "github.com/cajasmota/archigraph/internal/custom/python"
 	_ "github.com/cajasmota/archigraph/internal/custom/ruby"
