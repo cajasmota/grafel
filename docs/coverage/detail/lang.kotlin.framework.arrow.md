@@ -81,9 +81,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | Arrow Fx projects use SLF4J/kotlin-logging; the observability extractor covers all Kotlin files regardless of framework — file-local |
-| Metric extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | Micrometer meter builders in Arrow Fx service layers — file-local |
-| Trace extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | OTel @WithSpan / tracer.spanBuilder in Arrow Fx coroutine continuations — file-local |
+| Log extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/kotlin/observability.go` | SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger {} (logger val name captured), log.info/warn/error call sites and log.info { "..." } lazy-lambda message heads. Kept partial (honest): a logger declared in one file and used in another is not correlated, and message strings are commonly interpolated/dynamic. Same cross-file dataflow gap held partial for Java/PHP/Rust observability. |
+| Metric extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/observability.go` | Micrometer Counter/Timer/Gauge/DistributionSummary.builder("name"), <registry>.counter/timer/gauge/summary("name"), @Timed("name")/@Counted("name") with literal metric name captured at the call site (metric_name + metric_name_source provenance; defaults to fun name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local. |
+| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/observability.go` | OTel @WithSpan("name")/tracer.spanBuilder("name"), Spring Sleuth @NewSpan("name"), Micrometer Tracing @Observed(name="name") with literal span name captured at the call site (span_name + span_name_source provenance; defaults to fun/class name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local. |
 
 ### Data
 

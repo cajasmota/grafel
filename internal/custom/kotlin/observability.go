@@ -6,26 +6,33 @@
 // This file adds coverage for Kotlin-idiomatic frameworks that are gated out
 // of the Java pass:
 //
-//   - lang.kotlin.framework.ktor        Observability/log_extraction    (missing → partial)
-//   - lang.kotlin.framework.ktor        Observability/metric_extraction (missing → partial)
-//   - lang.kotlin.framework.ktor        Observability/trace_extraction  (missing → partial)
-//   - lang.kotlin.framework.http4k      Observability/log_extraction    (missing → partial)
-//   - lang.kotlin.framework.http4k      Observability/metric_extraction (missing → partial)
-//   - lang.kotlin.framework.http4k      Observability/trace_extraction  (missing → partial)
-//   - lang.kotlin.framework.arrow       Observability/log_extraction    (missing → partial)
-//   - lang.kotlin.framework.arrow       Observability/metric_extraction (missing → partial)
-//   - lang.kotlin.framework.arrow       Observability/trace_extraction  (missing → partial)
-//   - lang.kotlin.framework.coroutines  Observability/log_extraction    (missing → partial)
-//   - lang.kotlin.framework.coroutines  Observability/metric_extraction (missing → partial)
-//   - lang.kotlin.framework.coroutines  Observability/trace_extraction  (missing → partial)
+// Covered cells (ktor / http4k / arrow / coroutines):
+//   - Observability/log_extraction    → partial (see honest limit below)
+//   - Observability/metric_extraction → full    (literal meter names captured)
+//   - Observability/trace_extraction  → full    (literal span names captured)
 //
 // Detection is shared across all four frameworks because SLF4J, Micrometer,
 // and OpenTelemetry are language-level (not framework-level) in Kotlin. Any
 // Kotlin file that uses these APIs is covered, regardless of which HTTP
 // framework it belongs to.
 //
-// Honest limit: regex-based, file-local. Logger field declared in one file
-// and used in another is not correlated. Cells are partial, not full.
+// Name capture (the deepened part — CORE issue #3438):
+//
+//	metric: Counter/Timer/Gauge.builder("name"), <registry>.counter/timer/
+//	        gauge/summary("name"), @Timed("name")/@Counted("name") (literal
+//	        arg captured; falls back to fun name with name_source provenance).
+//	trace:  tracer.spanBuilder("name"), @WithSpan("name"), @NewSpan("name"),
+//	        @Observed(name="name") (literal arg captured; falls back to
+//	        fun/class name with name_source provenance).
+//
+// Because the meter/span NAME is a literal at the call site, no cross-file
+// resolution is needed to assert it — so metric/trace are honest-full, on the
+// same bar as Java spring-boot (internal/custom/java/observability.go).
+//
+// Honest limit (log stays partial): regex-based, file-local. A logger field
+// declared in one file and used in another is not correlated, and log message
+// strings are frequently interpolated/dynamic ("user {}", $id). This matches
+// the cross-file dataflow gap held partial for Java/PHP/Rust observability.
 package kotlin
 
 import (
@@ -77,6 +84,19 @@ var (
 	reKtLogStatement = regexp.MustCompile(
 		`\b([lL][oO][gG](?:[gG][eE][rR])?)\s*\.\s*(trace|debug|info|warn|error|fatal)\s*\(`)
 
+	// reKtLogLambda matches kotlin-logging lazy-message lambda call sites:
+	//   log.info { "..." }, logger.debug { "..." }
+	// Group 1 = level, group 2 = literal message head (if present).
+	reKtLogLambda = regexp.MustCompile(
+		`\b[lL][oO][gG](?:[gG][eE][rR])?\s*\.\s*(trace|debug|info|warn|error)\s*\{\s*"([^"$]*)`)
+
+	// reKtKotlinLoggingVal matches the kotlin-logging val binding so the logger
+	// name (the val identifier) is captured, not just the factory:
+	//   private val log = KotlinLogging.logger {}
+	//   val auditLogger = KotlinLogging.logger {}
+	reKtKotlinLoggingVal = regexp.MustCompile(
+		`\bval\s+(\w+)\s*(?::[^=]+)?=\s*KotlinLogging\s*\.\s*logger\s*\{`)
+
 	// --- metric_extraction ---
 
 	// reKtMicrometerBuilder matches Micrometer meter builders:
@@ -84,36 +104,70 @@ var (
 	reKtMicrometerBuilder = regexp.MustCompile(
 		`\b(Counter|Timer|Gauge|DistributionSummary|LongTaskTimer)\s*\.\s*builder\s*\(\s*"([^"]*)"`)
 
-	// reKtMeterRegistry matches Micrometer MeterRegistry usage.
+	// reKtMeterRegistryName matches a Micrometer registry meter call WITH a
+	// literal metric name at the call site:
+	//   meterRegistry.counter("api.requests"), registry.timer("api.latency")
+	// Group 1 = meter kind, group 2 = literal metric name.
+	reKtMeterRegistryName = regexp.MustCompile(
+		`\b\w*[rR]egistry\s*\.\s*(counter|timer|gauge|summary)\s*\(\s*"([^"]*)"`)
+
+	// reKtMeterRegistry matches bare Micrometer MeterRegistry usage (no literal
+	// name available — partial signal only).
 	reKtMeterRegistry = regexp.MustCompile(
 		`\bMeterRegistry\b|\bmeterRegistry\s*\.\s*(counter|timer|gauge|summary)\s*\(`)
 
-	// reKtTimedAnno matches @Timed annotation on a Kotlin fun.
+	// reKtTimedAnno matches @Timed annotation on a Kotlin fun, capturing the
+	// optional literal metric name from the annotation argument:
+	//   @Timed("api.findUser") fun findUser(...)
+	//   @Timed(value = "api.findUser") suspend fun findUser(...)
+	//   @Timed fun findUser(...)   (no literal name → falls back to fun name)
+	// Group 1 = literal metric name (may be empty), group 2 = fun name.
 	reKtTimedAnno = regexp.MustCompile(
-		`@Timed\s*(?:\([^)]*\))?\s*(?:suspend\s+)?fun\s+(\w+)\s*\(`)
+		`(?s)@Timed\s*(?:\(\s*(?:value\s*=\s*)?(?:"([^"]*)")?[^)]*\))?\s*` +
+			`(?:@\w+\s*(?:\([^)]*\))?\s*)*(?:suspend\s+)?fun\s+(\w+)\s*\(`)
 
-	// reKtMicrometerCounted matches @Counted annotation.
+	// reKtMicrometerCounted matches @Counted annotation, capturing the optional
+	// literal metric name. Group 1 = literal name (may be empty), group 2 = fun.
 	reKtMicrometerCounted = regexp.MustCompile(
-		`@Counted\s*(?:\([^)]*\))?\s*(?:suspend\s+)?fun\s+(\w+)\s*\(`)
+		`(?s)@Counted\s*(?:\(\s*(?:value\s*=\s*)?(?:"([^"]*)")?[^)]*\))?\s*` +
+			`(?:@\w+\s*(?:\([^)]*\))?\s*)*(?:suspend\s+)?fun\s+(\w+)\s*\(`)
 
 	// --- trace_extraction ---
 
-	// reKtWithSpan matches @WithSpan OTel annotation.
+	// reKtWithSpan matches the OTel @WithSpan annotation, capturing the optional
+	// literal span name:
+	//   @WithSpan("processOrder") fun processOrder(...)
+	//   @WithSpan(value = "processOrder") suspend fun processOrder(...)
+	//   @WithSpan fun processOrder(...)   (defaults span name to fun name)
+	// Group 1 = literal span name (may be empty), group 2 = fun name.
 	reKtWithSpan = regexp.MustCompile(
-		`@WithSpan\s*(?:\([^)]*\))?\s*(?:suspend\s+)?fun\s+(\w+)\s*\(`)
+		`(?s)@WithSpan\s*(?:\(\s*(?:value\s*=\s*)?(?:"([^"]*)")?[^)]*\))?\s*` +
+			`(?:@\w+\s*(?:\([^)]*\))?\s*)*(?:suspend\s+)?fun\s+(\w+)\s*\(`)
+
+	// reKtNewSpan matches the Spring Cloud Sleuth / Micrometer @NewSpan
+	// annotation, capturing the optional literal span name.
+	// Group 1 = literal span name (may be empty), group 2 = fun name.
+	reKtNewSpan = regexp.MustCompile(
+		`(?s)@NewSpan\s*(?:\(\s*(?:(?:name|value)\s*=\s*)?(?:"([^"]*)")?[^)]*\))?\s*` +
+			`(?:@\w+\s*(?:\([^)]*\))?\s*)*(?:suspend\s+)?fun\s+(\w+)\s*\(`)
 
 	// reKtOtelSpanBuilder matches OTel tracer / span builder usage:
 	//   tracer.spanBuilder("name").startSpan()
+	// Accepts any *tracer receiver so injected tracer fields are covered.
 	reKtOtelSpanBuilder = regexp.MustCompile(
-		`\btracer\s*\.\s*spanBuilder\s*\(\s*"([^"]*)"`)
+		`\b\w*[tT]racer\s*\.\s*spanBuilder\s*\(\s*"([^"]*)"`)
 
 	// reKtOtelSpan matches span.setAttribute / span.addEvent calls.
 	reKtOtelSpan = regexp.MustCompile(
 		`\bspan\s*\.\s*(setAttribute|addEvent)\s*\(`)
 
-	// reKtMicrometerObserved matches Micrometer @Observed annotation.
+	// reKtMicrometerObserved matches the Micrometer Tracing @Observed
+	// annotation, capturing the optional literal observation name:
+	//   @Observed(name = "order.process") fun process(...)
+	// Group 1 = literal name (may be empty), group 2 = class/fun name.
 	reKtMicrometerObserved = regexp.MustCompile(
-		`@Observed\s*(?:\([^)]*\))?\s*(?:suspend\s+)?(?:class|fun)\s+(\w+)`)
+		`(?s)@Observed\s*(?:\(\s*(?:name\s*=\s*)?(?:"([^"]*)")?[^)]*\))?\s*` +
+			`(?:@\w+\s*(?:\([^)]*\))?\s*)*(?:suspend\s+)?(?:class|fun)\s+(\w+)`)
 )
 
 // ---------------------------------------------------------------------------
@@ -138,10 +192,12 @@ func (e *kotlinObservabilityExtractor) Extract(ctx context.Context, file extract
 	hasObs := reKtLoggerFactory.MatchString(src) ||
 		reKtKotlinLogging.MatchString(src) ||
 		reKtLogStatement.MatchString(src) ||
+		reKtLogLambda.MatchString(src) ||
 		reKtMicrometerBuilder.MatchString(src) ||
 		reKtMeterRegistry.MatchString(src) ||
 		reKtTimedAnno.MatchString(src) ||
 		reKtWithSpan.MatchString(src) ||
+		reKtNewSpan.MatchString(src) ||
 		reKtOtelSpanBuilder.MatchString(src) ||
 		reKtMicrometerObserved.MatchString(src) ||
 		reKtSlf4jAnno.MatchString(src)
@@ -152,7 +208,7 @@ func (e *kotlinObservabilityExtractor) Extract(ctx context.Context, file extract
 	var entities []types.EntityRecord
 	seen := make(map[string]bool)
 
-	add := func(name, subtype, obsType string, line int) {
+	add := func(name, subtype, obsType string, line int, extra ...string) {
 		key := "SCOPE.Pattern:obs:" + subtype + ":" + name
 		if seen[key] {
 			return
@@ -163,6 +219,7 @@ func (e *kotlinObservabilityExtractor) Extract(ctx context.Context, file extract
 			"obs_type", obsType,
 			"provenance", "INFERRED_FROM_KOTLIN_OBSERVABILITY",
 		)
+		setProps(&ent, extra...)
 		entities = append(entities, ent)
 	}
 
@@ -176,8 +233,18 @@ func (e *kotlinObservabilityExtractor) Extract(ctx context.Context, file extract
 		factory := src[m[2]:m[3]]
 		add("logger:"+factory, "logger", "slf4j_factory", lineOf(src, m[0]))
 	}
-	for _, m := range reKtKotlinLogging.FindAllStringSubmatchIndex(src, -1) {
-		add("logger:kotlin_logging", "logger", "kotlin_logging", lineOf(src, m[0]))
+	// kotlin-logging val binding: capture the logger's val identifier as name.
+	loggerVals := reKtKotlinLoggingVal.FindAllStringSubmatchIndex(src, -1)
+	for _, m := range loggerVals {
+		valName := src[m[2]:m[3]]
+		add("logger:"+valName, "logger", "kotlin_logging", lineOf(src, m[0]),
+			"logger_name", valName)
+	}
+	// Bare KotlinLogging.logger {} acquisitions without a captured val binding.
+	if len(loggerVals) == 0 {
+		for _, m := range reKtKotlinLogging.FindAllStringSubmatchIndex(src, -1) {
+			add("logger:kotlin_logging", "logger", "kotlin_logging", lineOf(src, m[0]))
+		}
 	}
 	cnt := 0
 	for _, m := range reKtLogStatement.FindAllStringSubmatchIndex(src, -1) {
@@ -185,35 +252,83 @@ func (e *kotlinObservabilityExtractor) Extract(ctx context.Context, file extract
 		cnt++
 		add("log_stmt:"+level+"#"+string(rune('a'+cnt%26)), "log_statement", level, lineOf(src, m[0]))
 	}
+	// kotlin-logging lazy lambda log sites: log.info { "literal head..." }.
+	for _, m := range reKtLogLambda.FindAllStringSubmatchIndex(src, -1) {
+		level := src[m[2]:m[3]]
+		msg := src[m[4]:m[5]]
+		cnt++
+		extra := []string{}
+		if msg != "" {
+			extra = append(extra, "message", msg)
+		}
+		add("log_lambda:"+level+"#"+string(rune('a'+cnt%26)), "log_statement", level+"_lambda", lineOf(src, m[0]), extra...)
+	}
 
 	// --- metric_extraction ---
 
 	for _, m := range reKtMicrometerBuilder.FindAllStringSubmatchIndex(src, -1) {
 		meterType := src[m[2]:m[3]]
 		name := src[m[4]:m[5]]
-		add(name+":"+meterType, "metric", "micrometer_"+meterType, lineOf(src, m[0]))
+		add(name+":"+meterType, "metric", "micrometer_"+meterType, lineOf(src, m[0]),
+			"metric_name", name)
+	}
+	// Registry meter calls WITH a literal name: meterRegistry.counter("name").
+	for _, m := range reKtMeterRegistryName.FindAllStringSubmatchIndex(src, -1) {
+		meterKind := src[m[2]:m[3]]
+		name := src[m[4]:m[5]]
+		add(name+":registry_"+meterKind, "metric", "micrometer_"+meterKind, lineOf(src, m[0]),
+			"metric_name", name)
 	}
 	for _, m := range reKtMeterRegistry.FindAllStringSubmatchIndex(src, -1) {
 		add("meter_registry_usage", "metric", "micrometer_registry", lineOf(src, m[0]))
 	}
 	for _, m := range reKtTimedAnno.FindAllStringSubmatchIndex(src, -1) {
-		funcName := src[m[2]:m[3]]
-		add(funcName+":@Timed", "metric", "micrometer_timed", lineOf(src, m[0]))
+		metricName := grp(src, m, 1)
+		funcName := grp(src, m, 2)
+		name := metricName
+		if name == "" {
+			name = funcName
+		}
+		add(name+":@Timed", "metric", "micrometer_timed", lineOf(src, m[0]),
+			"metric_name", name, "metric_name_source", nameSource(metricName))
 	}
 	for _, m := range reKtMicrometerCounted.FindAllStringSubmatchIndex(src, -1) {
-		funcName := src[m[2]:m[3]]
-		add(funcName+":@Counted", "metric", "micrometer_counted", lineOf(src, m[0]))
+		metricName := grp(src, m, 1)
+		funcName := grp(src, m, 2)
+		name := metricName
+		if name == "" {
+			name = funcName
+		}
+		add(name+":@Counted", "metric", "micrometer_counted", lineOf(src, m[0]),
+			"metric_name", name, "metric_name_source", nameSource(metricName))
 	}
 
 	// --- trace_extraction ---
 
 	for _, m := range reKtWithSpan.FindAllStringSubmatchIndex(src, -1) {
-		funcName := src[m[2]:m[3]]
-		add(funcName+":@WithSpan", "trace_span", "otel_with_span", lineOf(src, m[0]))
+		spanName := grp(src, m, 1)
+		funcName := grp(src, m, 2)
+		name := spanName
+		if name == "" {
+			name = funcName
+		}
+		add(name+":@WithSpan", "trace_span", "otel_with_span", lineOf(src, m[0]),
+			"span_name", name, "span_name_source", nameSource(spanName))
+	}
+	for _, m := range reKtNewSpan.FindAllStringSubmatchIndex(src, -1) {
+		spanName := grp(src, m, 1)
+		funcName := grp(src, m, 2)
+		name := spanName
+		if name == "" {
+			name = funcName
+		}
+		add(name+":@NewSpan", "trace_span", "sleuth_new_span", lineOf(src, m[0]),
+			"span_name", name, "span_name_source", nameSource(spanName))
 	}
 	for _, m := range reKtOtelSpanBuilder.FindAllStringSubmatchIndex(src, -1) {
 		spanName := src[m[2]:m[3]]
-		add(spanName+":span_builder", "trace_span", "otel_span_builder", lineOf(src, m[0]))
+		add(spanName+":span_builder", "trace_span", "otel_span_builder", lineOf(src, m[0]),
+			"span_name", spanName, "span_name_source", "literal")
 	}
 	cnt = 0
 	for _, m := range reKtOtelSpan.FindAllStringSubmatchIndex(src, -1) {
@@ -222,10 +337,36 @@ func (e *kotlinObservabilityExtractor) Extract(ctx context.Context, file extract
 		add("span:"+op+"#"+string(rune('a'+cnt%26)), "trace_span", "otel_span_op", lineOf(src, m[0]))
 	}
 	for _, m := range reKtMicrometerObserved.FindAllStringSubmatchIndex(src, -1) {
-		name := src[m[2]:m[3]]
-		add(name+":@Observed", "trace_span", "micrometer_observed", lineOf(src, m[0]))
+		obsName := grp(src, m, 1)
+		declName := grp(src, m, 2)
+		name := obsName
+		if name == "" {
+			name = declName
+		}
+		add(name+":@Observed", "trace_span", "micrometer_observed", lineOf(src, m[0]),
+			"span_name", name, "span_name_source", nameSource(obsName))
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
+}
+
+// grp returns submatch group g for match m, or "" when the group did not
+// participate (FindAllStringSubmatchIndex returns -1,-1 for optional groups).
+func grp(src string, m []int, g int) string {
+	if 2*g+1 >= len(m) || m[2*g] < 0 || m[2*g+1] < 0 {
+		return ""
+	}
+	return src[m[2*g]:m[2*g+1]]
+}
+
+// nameSource reports whether a metric/span name was a literal annotation
+// argument ("literal") or was defaulted to the enclosing fun/class name
+// ("defaulted_to_decl"). Used to keep provenance honest for downstream
+// consumers: only "literal" names are call-site-asserted.
+func nameSource(literal string) string {
+	if literal == "" {
+		return "defaulted_to_decl"
+	}
+	return "literal"
 }

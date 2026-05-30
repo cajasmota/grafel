@@ -29697,19 +29697,20 @@
             "status": "partial",
             "cites": ["internal/custom/kotlin/observability.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Arrow Fx projects use SLF4J/kotlin-logging; the observability extractor covers all Kotlin files regardless of framework — file-local"
+            "notes": "SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger {} (logger val name captured), log.info/warn/error call sites and log.info { \"...\" } lazy-lambda message heads. Kept partial (honest): a logger declared in one file and used in another is not correlated, and message strings are commonly interpolated/dynamic. Same cross-file dataflow gap held partial for Java/PHP/Rust observability.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Micrometer meter builders in Arrow Fx service layers — file-local"
+            "notes": "Micrometer Counter/Timer/Gauge/DistributionSummary.builder(\"name\"), \u003cregistry\u003e.counter/timer/gauge/summary(\"name\"), @Timed(\"name\")/@Counted(\"name\") with literal metric name captured at the call site (metric_name + metric_name_source provenance; defaults to fun name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "OTel @WithSpan / tracer.spanBuilder in Arrow Fx coroutine continuations — file-local"
+            "notes": "OTel @WithSpan(\"name\")/tracer.spanBuilder(\"name\"), Spring Sleuth @NewSpan(\"name\"), Micrometer Tracing @Observed(name=\"name\") with literal span name captured at the call site (span_name + span_name_source provenance; defaults to fun/class name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -30289,19 +30290,20 @@
             "status": "partial",
             "cites": ["internal/custom/kotlin/observability.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Coroutine-based services use SLF4J/kotlin-logging; same extractor covers all Kotlin files — file-local"
+            "notes": "SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger {} (logger val name captured), log.info/warn/error call sites and log.info { \"...\" } lazy-lambda message heads. Kept partial (honest): a logger declared in one file and used in another is not correlated, and message strings are commonly interpolated/dynamic. Same cross-file dataflow gap held partial for Java/PHP/Rust observability.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Micrometer meters in coroutine service layers — file-local"
+            "notes": "Micrometer Counter/Timer/Gauge/DistributionSummary.builder(\"name\"), \u003cregistry\u003e.counter/timer/gauge/summary(\"name\"), @Timed(\"name\")/@Counted(\"name\") with literal metric name captured at the call site (metric_name + metric_name_source provenance; defaults to fun name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "OTel @WithSpan / tracer.spanBuilder in suspend functions — file-local"
+            "notes": "OTel @WithSpan(\"name\")/tracer.spanBuilder(\"name\"), Spring Sleuth @NewSpan(\"name\"), Micrometer Tracing @Observed(name=\"name\") with literal span name captured at the call site (span_name + span_name_source provenance; defaults to fun/class name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -30542,19 +30544,20 @@
             "status": "partial",
             "cites": ["internal/custom/kotlin/observability.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "SLF4J/kotlin-logging logger detection and log statement extraction — file-local"
+            "notes": "SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger {} (logger val name captured), log.info/warn/error call sites and log.info { \"...\" } lazy-lambda message heads. Kept partial (honest): a logger declared in one file and used in another is not correlated, and message strings are commonly interpolated/dynamic. Same cross-file dataflow gap held partial for Java/PHP/Rust observability.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Micrometer meter builders and @Timed annotation — file-local"
+            "notes": "Micrometer Counter/Timer/Gauge/DistributionSummary.builder(\"name\"), \u003cregistry\u003e.counter/timer/gauge/summary(\"name\"), @Timed(\"name\")/@Counted(\"name\") with literal metric name captured at the call site (metric_name + metric_name_source provenance; defaults to fun name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "OTel @WithSpan and tracer.spanBuilder — file-local"
+            "notes": "OTel @WithSpan(\"name\")/tracer.spanBuilder(\"name\"), Spring Sleuth @NewSpan(\"name\"), Micrometer Tracing @Observed(name=\"name\") with literal span name captured at the call site (span_name + span_name_source provenance; defaults to fun/class name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -31263,19 +31266,20 @@
             "status": "partial",
             "cites": ["internal/custom/kotlin/observability.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger, log.info/warn/error call sites — file-local"
+            "notes": "SLF4J LoggerFactory.getLogger, kotlin-logging KotlinLogging.logger {} (logger val name captured), log.info/warn/error call sites and log.info { \"...\" } lazy-lambda message heads. Kept partial (honest): a logger declared in one file and used in another is not correlated, and message strings are commonly interpolated/dynamic. Same cross-file dataflow gap held partial for Java/PHP/Rust observability.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Micrometer Counter/Timer/Gauge.builder, MeterRegistry usage, @Timed annotation — file-local"
+            "notes": "Micrometer Counter/Timer/Gauge/DistributionSummary.builder(\"name\"), \u003cregistry\u003e.counter/timer/gauge/summary(\"name\"), @Timed(\"name\")/@Counted(\"name\") with literal metric name captured at the call site (metric_name + metric_name_source provenance; defaults to fun name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "OpenTelemetry @WithSpan, tracer.spanBuilder, span.setAttribute — file-local"
+            "notes": "OTel @WithSpan(\"name\")/tracer.spanBuilder(\"name\"), Spring Sleuth @NewSpan(\"name\"), Micrometer Tracing @Observed(name=\"name\") with literal span name captured at the call site (span_name + span_name_source provenance; defaults to fun/class name when annotation arg absent). No cross-file resolution needed to assert the name. Same bar as Java spring-boot. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
