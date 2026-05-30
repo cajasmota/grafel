@@ -35,7 +35,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Magento](../detail/lang.php.framework.magento.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Phalcon](../detail/lang.php.framework.phalcon.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Slim](../detail/lang.php.framework.slim.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [Symfony](../detail/lang.php.framework.symfony.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | ✅ 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [WordPress](../detail/lang.php.framework.wordpress.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [Yii](../detail/lang.php.framework.yii.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 

@@ -158,6 +158,333 @@ func TestSymfonyNoMatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Symfony — deep: routing (method+name)
+// ---------------------------------------------------------------------------
+
+// TestSymfonyRouteAttributeWithMethod verifies that #[Route] attributes with
+// an explicit methods array emit method-prefixed endpoint names.
+func TestSymfonyRouteAttributeWithMethod(t *testing.T) {
+	src := `<?php
+class ProductController extends AbstractController
+{
+    #[Route('/products/{id}', methods: ['GET'], name: 'product_show')]
+    public function show(int $id): Response {}
+
+    #[Route('/products', methods: ['POST'], name: 'product_create')]
+    public function create(Request $request): Response {}
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("ProductController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /products/{id}") {
+		t.Error("expected GET /products/{id} endpoint with method prefix")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "POST /products") {
+		t.Error("expected POST /products endpoint with method prefix")
+	}
+}
+
+// TestSymfonyRouteAttributeMultiMethod verifies routes with multiple methods
+// emit one entity per method.
+func TestSymfonyRouteAttributeMultiMethod(t *testing.T) {
+	src := `<?php
+class ApiController extends AbstractController
+{
+    #[Route('/api/items', methods: ['GET', 'HEAD'], name: 'items_list')]
+    public function list(): Response {}
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("ApiController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /api/items") {
+		t.Error("expected GET /api/items")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "HEAD /api/items") {
+		t.Error("expected HEAD /api/items")
+	}
+}
+
+// TestSymfonyAnnotationRouteWithMethod verifies @Route annotation routes with
+// methods and name attributes are parsed correctly.
+func TestSymfonyAnnotationRouteWithMethod(t *testing.T) {
+	src := `<?php
+class LegacyController extends AbstractController
+{
+    /**
+     * @Route("/legacy/users", name="legacy_users", methods={"GET"})
+     */
+    public function index(): Response {}
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("LegacyController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Operation", "/legacy/users") {
+		t.Error("expected /legacy/users annotation route")
+	}
+}
+
+// TestSymfonyYAMLRoute verifies that config/routes.yaml route paths are
+// extracted with correct method and route name.
+func TestSymfonyYAMLRoute(t *testing.T) {
+	src := `product_show:
+    path: /products/{id}
+    controller: App\Controller\ProductController::show
+    methods: [GET]
+
+order_create:
+    path: /orders
+    controller: App\Controller\OrderController::create
+    methods: [POST]
+`
+	ents := extract(t, "custom_php_symfony", fi("config/routes.yaml", "yaml", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /products/{id}") {
+		t.Error("expected GET /products/{id} from YAML route")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "POST /orders") {
+		t.Error("expected POST /orders from YAML route")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Symfony — deep: auth
+// ---------------------------------------------------------------------------
+
+// TestSymfonyIsGrantedAttribute verifies #[IsGranted('ROLE_ADMIN')] is
+// extracted with the exact role value.
+func TestSymfonyIsGrantedAttribute(t *testing.T) {
+	src := `<?php
+use Symfony\Component\Security\Http\Attribute\IsGranted;
+
+class AdminController extends AbstractController
+{
+    #[IsGranted('ROLE_ADMIN')]
+    public function dashboard(): Response {}
+
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function superPanel(): Response {}
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("AdminController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "isgranted:ROLE_ADMIN") {
+		t.Error("expected isgranted:ROLE_ADMIN auth pattern")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "isgranted:ROLE_SUPER_ADMIN") {
+		t.Error("expected isgranted:ROLE_SUPER_ADMIN auth pattern")
+	}
+}
+
+// TestSymfonyDenyAccessUnlessGranted verifies $this->denyAccessUnlessGranted
+// calls emit auth patterns with the exact role.
+func TestSymfonyDenyAccessUnlessGranted(t *testing.T) {
+	src := `<?php
+class SecureController extends AbstractController
+{
+    public function edit(Post $post): Response
+    {
+        $this->denyAccessUnlessGranted('ROLE_USER');
+        $this->denyAccessUnlessGranted('edit', $post);
+        return new Response();
+    }
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("SecureController.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "deny_unless_granted:ROLE_USER") {
+		t.Error("expected deny_unless_granted:ROLE_USER auth pattern")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "deny_unless_granted:edit") {
+		t.Error("expected deny_unless_granted:edit auth pattern")
+	}
+}
+
+// TestSymfonyVoterClass verifies that Voter subclasses are extracted.
+func TestSymfonyVoterClass(t *testing.T) {
+	src := `<?php
+use Symfony\Component\Security\Core\Authorization\Voter\Voter;
+
+class PostVoter extends Voter
+{
+    const EDIT = 'edit';
+    const VIEW = 'view';
+
+    protected function supports(string $attribute, mixed $subject): bool
+    {
+        return in_array($attribute, [self::EDIT, self::VIEW]);
+    }
+
+    protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token): bool
+    {
+        switch ($attribute) {
+            case 'edit':
+                return $this->canEdit($subject, $token->getUser());
+            case 'view':
+                return true;
+        }
+    }
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("PostVoter.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "voter:PostVoter") {
+		t.Error("expected voter:PostVoter auth pattern")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Symfony — deep: validation (Assert constraints)
+// ---------------------------------------------------------------------------
+
+// TestSymfonyAssertConstraintsAttribute verifies PHP8 #[Assert\...] constraint
+// attributes are extracted with exact constraint names.
+func TestSymfonyAssertConstraintsAttribute(t *testing.T) {
+	src := `<?php
+use Symfony\Component\Validator\Constraints as Assert;
+
+class UserDTO
+{
+    #[Assert\NotBlank]
+    #[Assert\Length(min: 2, max: 100)]
+    public string $name = '';
+
+    #[Assert\Email]
+    public string $email = '';
+
+    #[Assert\NotBlank]
+    #[Assert\Positive]
+    public int $age = 0;
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("UserDTO.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "assert:NotBlank") {
+		t.Error("expected assert:NotBlank validation pattern")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "assert:Email") {
+		t.Error("expected assert:Email validation pattern")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "assert:Positive") {
+		t.Error("expected assert:Positive validation pattern")
+	}
+}
+
+// TestSymfonyAssertConstraintWithArgs verifies that constraints with arguments
+// include args in the entity name.
+func TestSymfonyAssertConstraintWithArgs(t *testing.T) {
+	src := `<?php
+use Symfony\Component\Validator\Constraints as Assert;
+
+class ProductInput
+{
+    #[Assert\Length(min: 2, max: 255)]
+    public string $title = '';
+
+    #[Assert\Range(min: 0, max: 9999)]
+    public float $price = 0.0;
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("ProductInput.php", "php", src))
+	// Entity name includes the args fragment
+	found := false
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Pattern" && len(e.Name) > 13 && e.Name[:13] == "assert:Length" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected assert:Length(...) constraint with args")
+	}
+}
+
+// TestSymfonyAssertAnnotationConstraint verifies @Assert\ annotation-style
+// constraints are extracted (Symfony 4/5 style).
+func TestSymfonyAssertAnnotationConstraint(t *testing.T) {
+	src := `<?php
+use Symfony\Component\Validator\Constraints as Assert;
+
+class OrderRequest
+{
+    /**
+     * @Assert\NotBlank()
+     * @Assert\Length(min=3)
+     */
+    public $reference;
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("OrderRequest.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "assert:NotBlank") {
+		t.Error("expected assert:NotBlank from annotation-style constraint")
+	}
+}
+
+// TestSymfonyValidatorValidateCall verifies $validator->validate($obj)
+// programmatic validation calls are detected.
+func TestSymfonyValidatorValidateCall(t *testing.T) {
+	src := `<?php
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+
+class RegistrationService
+{
+    public function __construct(private ValidatorInterface $validator) {}
+
+    public function register(UserDTO $user): void
+    {
+        $errors = $this->validator->validate($user);
+        if (count($errors) > 0) {
+            throw new ValidationException($errors);
+        }
+    }
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("RegistrationService.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "symfony:validator_validate") {
+		t.Error("expected symfony:validator_validate pattern for $validator->validate() call")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Symfony — deep: middleware (EventSubscriber + kernel listeners)
+// ---------------------------------------------------------------------------
+
+// TestSymfonyEventSubscriberWithEvents verifies EventSubscriberInterface
+// implementors are extracted along with their subscribed event names.
+func TestSymfonyEventSubscriberWithEvents(t *testing.T) {
+	src := `<?php
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
+use Symfony\Component\HttpKernel\KernelEvents;
+
+class AuthSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            KernelEvents::REQUEST => 'onKernelRequest',
+            'kernel.response' => 'onKernelResponse',
+        ];
+    }
+
+    public function onKernelRequest(RequestEvent $event): void {}
+    public function onKernelResponse(): void {}
+}
+`
+	ents := extract(t, "custom_php_symfony", fi("AuthSubscriber.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "AuthSubscriber") {
+		t.Error("expected AuthSubscriber event_subscriber pattern")
+	}
+}
+
+// TestSymfonyKernelEventListener verifies $eventDispatcher->addListener()
+// calls emit event patterns.
+func TestSymfonyKernelEventListener(t *testing.T) {
+	src := `<?php
+$eventDispatcher->addListener('kernel.request', [$listener, 'onKernelRequest']);
+$eventDispatcher->addListener('kernel.response', [$listener, 'onResponse']);
+`
+	ents := extract(t, "custom_php_symfony", fi("services.php", "php", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "event:kernel.request") {
+		t.Error("expected event:kernel.request pattern from addListener")
+	}
+	if !containsEntity(ents, "SCOPE.Pattern", "event:kernel.response") {
+		t.Error("expected event:kernel.response pattern from addListener")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Eloquent
 // ---------------------------------------------------------------------------
 

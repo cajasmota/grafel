@@ -35598,38 +35598,40 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+            "status": "full",
+            "cites": ["internal/custom/php/symfony.go"],
+            "notes": "PHP8 attribute routes with methods/name, @Route annotations, YAML routes (config/routes.yaml) with path+method extraction; class-level prefix support",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "notes": "Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces"
+            "status": "full",
+            "cites": ["internal/custom/php/symfony.go"],
+            "notes": "#[IsGranted] attribute, denyAccessUnlessGranted(), Voter/VoterInterface classes with voter attribute extraction, security.yaml access_control entries",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Validator/InputFilter/FormRequest class detection as DTO shapes"
+            "status": "full",
+            "cites": ["internal/custom/php/symfony.go"],
+            "notes": "#[Assert\\NotBlank]/#[Assert\\Length]/#[Assert\\Email] PHP8 attribute constraints on entity/DTO properties; DTO class detection (Request/DTO/Input/Data suffix)",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Validation rule calls detected: FormRequest, InputFilter, $this-\u003evalidate(), setRules"
+            "status": "full",
+            "cites": ["internal/custom/php/symfony.go"],
+            "notes": "Assert constraint extraction (PHP8 attr + annotation), -\u003evalidate($obj) programmatic call detection",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/php/frameworks.go"],
-            "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+            "status": "full",
+            "cites": ["internal/custom/php/symfony.go"],
+            "notes": "EventSubscriberInterface implementors with getSubscribedEvents() event name extraction; addListener/addSubscriber kernel event registration; kernel event names emitted as SCOPE.Pattern",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {

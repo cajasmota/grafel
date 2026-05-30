@@ -17,26 +17,26 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_php_producer.go`<br>`internal/engine/rules/php/frameworks/symfony.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_php_producer.go` | — |
-| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/php/symfony.go` | PHP8 attribute routes with methods/name, @Route annotations, YAML routes (config/routes.yaml) with path+method extraction; class-level prefix support |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Regex-based auth detection: Auth facades, middleware, ACL, capabilities, nonces |
+| Auth coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/php/symfony.go` | #[IsGranted] attribute, denyAccessUnlessGranted(), Voter/VoterInterface classes with voter attribute extraction, security.yaml access_control entries |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Validator/InputFilter/FormRequest class detection as DTO shapes |
-| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Validation rule calls detected: FormRequest, InputFilter, $this->validate(), setRules |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/php/symfony.go` | #[Assert\NotBlank]/#[Assert\Length]/#[Assert\Email] PHP8 attribute constraints on entity/DTO properties; DTO class detection (Request/DTO/Input/Data suffix) |
+| Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/php/symfony.go` | Assert constraint extraction (PHP8 attr + annotation), ->validate($obj) programmatic call detection |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns |
+| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/php/symfony.go` | EventSubscriberInterface implementors with getSubscribedEvents() event name extraction; addListener/addSubscriber kernel event registration; kernel event names emitted as SCOPE.Pattern |
 
 ### Type System
 
