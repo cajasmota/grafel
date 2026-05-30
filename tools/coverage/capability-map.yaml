@@ -7209,6 +7209,90 @@ records:
             Import/call-site heuristic; no cross-file dataflow binding tracer to exporter. Stays partial.
           verified_at: "2026-05-30"
 
+  lang.rust.validation.validator:
+    capabilities:
+      Schema:
+        schema_extraction:
+          # #[derive(Validate)] structs (validator crate) emitted as
+          # SCOPE.Schema validator_schema entities with struct_name + field_count.
+          # Reuses extractDTOs() from fw_validation.go but gated on hasValidate so
+          # plain serde DTOs are not counted here. Issue #3545.
+          status: full
+          symbols:
+            - file: internal/custom/rust/validator.go
+              functions: [Extract]
+            - file: internal/custom/rust/fw_validation.go
+              functions: [extractDTOs]
+          tests:
+            - file: internal/custom/rust/validator_test.go
+          issues_implemented: ["3545"]
+          verified_at: "2026-05-31"
+        nested_model_extraction:
+          # #[validate(nested)] field attribute emitted as SCOPE.Schema
+          # nested_validation entity capturing the field name + nested field_type;
+          # not double-counted as a generic constraint. Asserted in
+          # TestValidator_NestedExtraction. Issue #3545.
+          status: full
+          symbols:
+            - file: internal/custom/rust/validator.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/validator_test.go
+          issues_implemented: ["3545"]
+          verified_at: "2026-05-31"
+      Constraints:
+        constraint_extraction:
+          # Each #[validate(<rule>)] attribute emitted as one SCOPE.Constraint
+          # validator_constraint entity carrying the SPECIFIC field + constraint
+          # kind + bound(s)/regex (length min/max, range min/max, email, regex
+          # path). Typed parsing reused from parseValidateRules in fw_validation.go.
+          # Asserted value-by-value in TestValidator_{Email,Length,Range,Regex}*.
+          # Issue #3545.
+          status: full
+          symbols:
+            - file: internal/custom/rust/validator.go
+              functions: [Extract]
+            - file: internal/custom/rust/fw_validation.go
+              functions: [parseValidateRules, parseDTOFields]
+          tests:
+            - file: internal/custom/rust/validator_test.go
+          issues_implemented: ["3545"]
+          verified_at: "2026-05-31"
+        custom_validator_extraction:
+          # Field-level #[validate(custom = "fn")] and struct-level
+          # #[validate(schema(function = "fn"))] emitted as SCOPE.Pattern
+          # custom_validator entities with scope (field|struct) + function name.
+          # Asserted in TestValidator_FieldLevelCustom and
+          # TestValidator_StructLevelSchemaFn. Issue #3545.
+          status: full
+          symbols:
+            - file: internal/custom/rust/validator.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/validator_test.go
+          issues_implemented: ["3545"]
+          verified_at: "2026-05-31"
+      Coercion:
+        type_coercion_recognition:
+          # not_applicable: the validator crate validates but does not coerce
+          # types. Type coercion in Rust is serde's responsibility and is covered
+          # by dto_extraction in fw_validation.go. Issue #3545.
+          status: not_applicable
+          verified_at: "2026-05-31"
+      Testing:
+        tests_linkage:
+          # validator-specific fixtures assert the exact captured constraint values;
+          # the general Rust test-linkage substrate provides the TESTS edges.
+          # Issue #3545.
+          status: partial
+          symbols:
+            - file: internal/custom/rust/validator.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/validator_test.go
+          issues_implemented: ["3545"]
+          verified_at: "2026-05-31"
+
   lang.rust.framework.axum:
     capabilities:
       Substrate:

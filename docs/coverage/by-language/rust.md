@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # rust
 
-**Frameworks**: 14 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
+**Frameworks**: 14 · **Tools**: 6 · **ORMs**: 14 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -80,3 +80,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟢 1/1 | |
 | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
 | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟢 1/1 | |
+
+
+## Other
+
+
+### Validation
+
+| Name | Testing | Other capabilities | Notes |
+|---|---|---|---|
+| [validator](../detail/lang.rust.validation.validator.md) | 🟢 1/1 | ✅ 4/4 | |

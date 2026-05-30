@@ -50201,6 +50201,55 @@
       }
     },
     {
+      "id": "lang.rust.validation.validator",
+      "category": "validation",
+      "subcategory": "validation_lib",
+      "language": "rust",
+      "label": "validator",
+      "capabilities": {
+        "Schema": {
+          "nested_model_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/validator.go","internal/custom/rust/validator_test.go"],
+            "verified_at": "2026-05-30"
+          },
+          "schema_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/validator.go","internal/custom/rust/validator_test.go"],
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Constraints": {
+          "constraint_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/validator.go","internal/custom/rust/validator_test.go"],
+            "verified_at": "2026-05-30"
+          },
+          "custom_validator_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/validator.go","internal/custom/rust/validator_test.go"],
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Coercion": {
+          "type_coercion_recognition": {
+            "status": "not_applicable",
+            "notes": "validator does not coerce types; type coercion is serde's responsibility, covered by dto_extraction in fw_validation.go",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/validator_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3545",
+            "notes": "validator-specific fixtures assert exact constraint values; general rust test-linkage substrate provides edges",
+            "verified_at": "2026-05-30"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.scala.framework.akka-http",
       "category": "http_framework",
       "subcategory": "jvm_backend",
