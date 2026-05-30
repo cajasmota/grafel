@@ -29315,12 +29315,16 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: composeContextExtractor emits context_provider/context_consumer entities from CompositionLocal definitions (compositionLocalOf, staticCompositionLocalOf), CompositionLocalProvider usages, and LocalXxx.current access patterns. Partial because complex dynamic provision patterns may not be captured."
           }
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: composeDeepLinkExtractor emits deep_link entities from navDeepLink { uriPattern = ... } blocks and standalone uriPattern = ... declarations in Compose Navigation composable() blocks. Partial because activity-level intent-filter deep links in AndroidManifest.xml require separate XML parsing."
           },
           "navigation_extraction": {
             "status": "partial",
@@ -29342,12 +29346,16 @@
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: kotlinNativeImportsExtractor emits native_library and native_function entities from System.loadLibrary(), Runtime.getRuntime().load(), external fun declarations, and companion object JNI init patterns. Partial because ProGuard-renamed JNI entry points may not be resolved."
           }
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: kotlinBranchCondExtractor emits branch_condition entities from if(), when() (with is/enum branches), inline if ternary, and filter{}/takeIf{} lambdas. Covers Data Flow branch condition extraction for Compose Kotlin code. Partial because deeply nested or lambda-captured conditions may be missed."
           },
           "state_management": {
             "status": "partial",
@@ -29500,15 +29508,19 @@
       "capabilities": {
         "Process": {
           "ipc_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Compose Desktop runs on the JVM with a single process; it has no Electron-style main/renderer IPC tier. Desktop interprocess communication (if used) would go through JVM sockets or OS pipes — not a Compose Desktop framework concern. N/A is honest."
           },
           "main_renderer_split": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Compose Desktop is a JVM UI framework. There is no main-process/renderer-process split as found in Electron or Tauri. The entire application runs in a single JVM process. N/A is the accurate classification."
           }
         },
         "Native": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: kotlinNativeImportsExtractor covers Desktop JVM native patterns — System.loadLibrary() for SWT/native desktop libs, Runtime.getRuntime().load() for absolute paths, and external fun declarations for JNI. Partial because AWT/Swing JNI entry points via reflection may not be resolved."
           }
         },
         "Substrate": {
@@ -29572,15 +29584,19 @@
       "capabilities": {
         "Process": {
           "ipc_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Compose Multiplatform is a UI framework targeting Android, iOS, Desktop, and Web. It has no IPC tier — there is no message-passing boundary between processes in the CMP architecture. Platform-native IPC (Android Binder, iOS XPC) is outside the CMP scope. N/A is accurate."
           },
           "main_renderer_split": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Compose Multiplatform has no Electron/Tauri main/renderer process split. All targets (Android, iOS, Desktop, Web) run the UI in-process. N/A is the accurate classification."
           }
         },
         "Native": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: kotlinNativeImportsExtractor covers Compose Multiplatform native bridge — cinterop platform.*/cnames.structs.* imports for iOS/native targets, @CName exported symbols, and actual fun delegating to native. Android JNI (System.loadLibrary) also covered. Partial because .def cinterop file parsing is outside scope."
           }
         },
         "Substrate": {
@@ -30402,12 +30418,15 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: composeContextExtractor handles KMP expect/actual context patterns — expect class AppContext, actual class AppContext(val context: android.content.Context), and context factory functions. Partial because iOS-side CoreData/NSManagedObjectContext patterns may not be fully captured."
           }
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "KMP (Kotlin Multiplatform) is a shared code framework, not a navigation host. Deep links are a platform-specific concern handled by Compose Navigation (Android) or native iOS routing — not by the KMP shared module itself. N/A is the honest classification."
           },
           "navigation_extraction": {
             "status": "partial",
@@ -30429,12 +30448,16 @@
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: kotlinNativeImportsExtractor emits native_import entities from cinterop platform.* and cnames.structs.* imports, KMP actual fun delegating to native calls, and @CName exported symbols. These are the primary KMP native bridge patterns. Partial because C struct typedef resolution requires .def file parsing."
           }
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "Recording win via new extractor: kotlinBranchCondExtractor is the same agnostic Kotlin if/when/filter pass that runs on all Kotlin source including KMP shared modules. Branch conditions in expect/actual code are captured identically."
           },
           "state_management": {
             "status": "partial",
@@ -31717,14 +31740,18 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Recording win: hibernate.go ExtractHibernate() accepts ctx.Language==\"kotlin\" — @Entity/@Table on Kotlin data classes matched identically to Java. Partial because Kotlin-specific JPA idioms (constructor-param columns, data class shorthand) may not all be captured."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Recording win: hibernate.go hibAssociationRE matches @OneToMany/@ManyToOne/@OneToOne/@ManyToMany before Kotlin 'var/val' properties. jpa_fk_lazy.go ExtractJPAFKAndLazy also runs on Kotlin (language gate: java or kotlin). Partial because collection types differ from Java generics."
           },
           "foreign_key_extraction": {
             "status": "partial",
@@ -31751,7 +31778,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: kotlinJPAMigrationExtractor emits migration entities from Flyway versioned/repeatable class declarations (V2__...), BaseJavaMigration extends, Liquibase @ChangeSet annotations, flyway.migrate() calls, and config bean detection. Partial because SQL migration files (V1__init.sql) are handled by internal/extractors/sql/sql.go."
           }
         }
       }
@@ -31831,8 +31860,8 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "MongoDB is a schemaless document database. There is no DDL schema to extract — documents have arbitrary fields and there is no enforced schema at the database level. Spring Data MongoDB @Document annotations define class-level hints, not a database schema. N/A is honest."
           }
         },
         "Relationships": {
@@ -31941,14 +31970,18 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Recording win: hibernate.go accepts kotlin language with spring_data_jpa framework. Spring Data JPA entities use the same @Entity/@Table annotations as Hibernate — regex patterns match Kotlin data class declarations. spring_ecosystem.go is Java-only but the JPA schema layer is shared."
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Recording win: same as orm.hibernate — hibernate.go hibAssociationRE matches @OneToMany/@ManyToOne on Kotlin Spring Data JPA entities. @JoinColumn / @ForeignKey handled by jpa_fk_lazy.go ExtractJPAFKAndLazy."
           },
           "foreign_key_extraction": {
             "status": "partial",
@@ -31975,7 +32008,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
+            "notes": "New extractor: kotlinJPAMigrationExtractor covers Flyway/Liquibase migration declarations in Kotlin — same patterns apply to Spring Data JPA projects (both use Flyway/Liquibase for schema migration). SpringLiquibase bean detection is explicit."
           }
         }
       }
