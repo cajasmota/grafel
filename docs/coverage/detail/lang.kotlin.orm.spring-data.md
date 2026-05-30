@@ -23,9 +23,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go` | Recording win: same as orm.hibernate — hibernate.go hibAssociationRE matches @OneToMany/@ManyToOne on Kotlin Spring Data JPA entities. @JoinColumn / @ForeignKey handled by jpa_fk_lazy.go ExtractJPAFKAndLazy. |
-| Foreign key extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Lazy loading recognition | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Relationship extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Foreign key extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; same jpa_fk_lazy.go covers Spring Data JPA entities with @JoinColumn/@ForeignKey |
+| Lazy loading recognition | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; FetchType.LAZY/EAGER on Kotlin Spring Data JPA entities |
+| Relationship extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/hibernate.go`<br>`internal/custom/java/jpa_fk_lazy.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; @OneToMany/@ManyToOne on Kotlin Spring Data entities covered by hibernate.go hibAssociationRE |
 
 ### Queries
 

@@ -10440,12 +10440,12 @@ records:
           issues_implemented: ["2767"]
           verified_at: "2026-05-28"
         dead_code_detection:
-          status: full
+          status: partial
           symbols:
             - file: internal/links/reachability.go
               functions: [runReachabilityPass, isCodeBearing]
-            - file: internal/mcp/dead_code.go
-              functions: [handleDeadCode, computeDeadCodeLive, computeDeadCodeFromEntry, bfsLive]
+            - file: internal/substrate/entry_points_kotlin.go
+              functions: []
           issues_implemented: ["2767"]
           verified_at: "2026-05-28"
         db_effect:

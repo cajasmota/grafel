@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Handler attribution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Route extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; Kotlin trailing-lambda route DSL proven by TestKotlinJavalin_Routes_Issue3274 |
+| Handler attribution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; handler attribution proven by TestKotlinJavalin_Routes_Issue3274 |
+| Route extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274 |
 
 ### Auth
 

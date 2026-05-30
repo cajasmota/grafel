@@ -65,25 +65,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Transaction propagation | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Transaction rollback rules | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Transaction boundary extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; @Transactional (JTA/Spring) on Kotlin proven by TestKotlinTransactional_Quarkus_Issue3274 (JTA path covers micronaut too) |
+| Transaction propagation | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; propagation capture via transactional.go txFrameworks["micronaut"] |
+| Transaction rollback rules | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; rollbackFor rules parsed by transactional.go txFrameworks["micronaut"] |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Aspect extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Pointcut resolution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Advice attribution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/micronaut_aop.go` | java extractor language-gated to kotlin; Micronaut @Around/@InterceptorBean on Kotlin proven by TestKotlinMicronautAOP_Interceptor_Issue3274 |
+| Aspect extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/micronaut_aop.go` | java extractor language-gated to kotlin; Micronaut interceptor/aspect extraction proven by TestKotlinMicronautAOP_Interceptor_Issue3274 |
+| Pointcut resolution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/micronaut_aop.go` | java extractor language-gated to kotlin; proven by TestKotlinMicronautAOP_Interceptor_Issue3274 |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Metric extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Trace extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; SLF4J/@Slf4j on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274 (obsFrameworks["micronaut"]=true) |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; Micrometer @Timed on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274 (obsFrameworks["micronaut"]=true) |
+| Trace extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274 |
 
 ### Data
 

@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| DI injection point | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| DI scope resolution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| DI binding extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | java extractor language-gated to kotlin (ctx.Language=="kotlin" || ctx.Language=="java"); proven by TestKotlinSpringBoot_Component_Issue3274 and TestKotlinSpringBoot_Autowired_Issue3274 |
+| DI injection point | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | java extractor language-gated to kotlin; @Autowired constructor injection on Kotlin classes proven by TestKotlinSpringBoot_Autowired_Issue3274 |
+| DI scope resolution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | java extractor language-gated to kotlin; @Scope/@RequestScope/@SessionScope on Kotlin classes proven by TestKotlinSpringBoot_Scope_Issue3274 |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Transaction propagation | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Transaction rollback rules | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Transaction boundary extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; @Transactional on Kotlin fun proven by TestKotlinTransactional_Method_Issue3274 |
+| Transaction propagation | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; propagation attribute captured in TestKotlinTransactional_Method_Issue3274 |
+| Transaction rollback rules | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; rollbackFor=[Exception::class] captured in TestKotlinTransactional_Method_Issue3274 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Aspect extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Pointcut resolution | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Advice attribution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | java extractor language-gated to kotlin; @Aspect on Kotlin class proven by TestKotlinSpringAOP_Aspect_Issue3274 |
+| Aspect extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | java extractor language-gated to kotlin; aspect extraction proven by TestKotlinSpringAOP_Aspect_Issue3274 |
+| Pointcut resolution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | java extractor language-gated to kotlin; proven by TestKotlinSpringAOP_Aspect_Issue3274 |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Metric extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
-| Trace extraction | 🟢 `partial` | `2026-05-30` | 3274 | — | — |
+| Log extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Slf4j and SLF4J logger on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274 |
+| Metric extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Timed Micrometer on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274 |
+| Trace extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274 |
 
 ### Data
 
