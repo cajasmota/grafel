@@ -26,21 +26,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/15 | |
-| [Cask](../detail/lang.scala.framework.cask.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/15 | |
-| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟢 1/1 | — | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/3 | |
-| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/15 | |
-| [Lagom](../detail/lang.scala.framework.lagom.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/15 | |
-| [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/15 | |
-| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/15 | |
-| [http4s](../detail/lang.scala.framework.http4s.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/15 | |
+| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Cask](../detail/lang.scala.framework.cask.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
+| [Lagom](../detail/lang.scala.framework.lagom.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
+| [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
+| [http4s](../detail/lang.scala.framework.http4s.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 
 
 ### Meta Framework
 
-| Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|---|
-| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | 🔴 0/2 | 🔴 0/3 | 🔴 0/1 | 🟡 14/21 | 🔴 0/7 | |
+| Name | Routing | Type System | Testing | Substrate | Notes |
+|---|---|---|---|---|---|
+| [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | 🟢 2/2 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | |
 
 
 ## Tools
