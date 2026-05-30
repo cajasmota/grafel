@@ -198,6 +198,63 @@ func isTestSourceFile(filePath string) bool {
 	return false
 }
 
+// isNonAppSourceFile reports whether filePath is an obvious build/tooling/CLI
+// script that should never contribute http_endpoint_DEFINITION entities.
+//
+// Such files (a docs-build gate, a codegen helper, a release script) routinely
+// contain route STRINGS — `"/health"`, `"/api/v1/..."` — as data, not as
+// declared routes. The regex synthesizers can't tell a string literal in a
+// build script from a real route, so without this gate a `/health` literal in
+// `scripts/docs-check.mjs` is emitted as a phantom http_endpoint_definition;
+// because it shares the canonical synthetic ID with the REAL HealthController
+// route, it collides on entity-merge and can win source attribution — citing a
+// build script as the route's definition.
+//
+// The check is intentionally CONSERVATIVE so real application code is never
+// excluded:
+//   - directory segments `/scripts/`, `/tools/`, `/bin/` (canonical tooling
+//     homes across ecosystems), and
+//   - a standalone *.mjs / *.cjs file whose name reads like a config/check/build
+//     script (and which is NOT inside a recognised app-route tree).
+//
+// It is gated on PATH, not extension alone: a Next.js `app/api/**/route.mjs` or
+// any `.mjs` under `src/`/`app/`/`pages/`/`routes/`/`api/` is left untouched so
+// legitimate framework `.mjs` routes still synthesize.
+func isNonAppSourceFile(filePath string) bool {
+	slashed := "/" + filepath.ToSlash(strings.ToLower(filePath))
+
+	// Canonical tooling/build directories.
+	for _, seg := range []string{"/scripts/", "/tools/", "/bin/"} {
+		if strings.Contains(slashed, seg) {
+			return true
+		}
+	}
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if ext == ".mjs" || ext == ".cjs" {
+		// Inside a recognised app-route tree → treat as app code (don't exclude).
+		for _, seg := range []string{"/src/", "/app/", "/pages/", "/routes/", "/api/", "/server/", "/lib/", "/handlers/"} {
+			if strings.Contains(slashed, seg) {
+				return false
+			}
+		}
+		// Otherwise a standalone top-level *.mjs/*.cjs that looks like a
+		// config/check/build/tooling script.
+		base := strings.ToLower(filepath.Base(filePath))
+		stem := strings.TrimSuffix(base, ext)
+		for _, hint := range []string{
+			"check", "build", "gen", "codegen", "config", "release",
+			"setup", "lint", "docs", "script", "tool", "ci", "deploy",
+			"migrate", "seed",
+		} {
+			if strings.Contains(stem, hint) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // applyHTTPEndpointSynthesis runs after the existing route-composition
 // passes and APPENDS synthetic http_endpoint entities + edges to the
 // detector's output. It never modifies or removes existing entities or
@@ -237,6 +294,20 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	makeEmit := func(patternType, refPropKey string) emitFn {
 		return func(method, canonicalPath, framework, refKind, refName string) {
 			if canonicalPath == "" {
+				return
+			}
+			// #endpoint-undercount — never emit an http_endpoint_DEFINITION from
+			// an obvious build/tooling/CLI script (scripts/, tools/, bin/, or a
+			// standalone *.mjs/*.cjs config-/check-script). Such files contain
+			// route STRINGS (e.g. a "/health" literal in a docs-build gate) that
+			// the regex passes would otherwise mistake for a real route, which
+			// then collides on the synthetic ID with the real controller's
+			// endpoint and wins source attribution on entity merge. The exclusion
+			// is conservative (gated on PATH, not just extension) so legitimate
+			// app routes — including framework `.mjs` routes (Next.js etc.) — are
+			// never dropped. Consumer-side CALLS are intentionally NOT gated:
+			// a tooling script may legitimately call an HTTP endpoint.
+			if patternType == "http_endpoint_synthesis" && isNonAppSourceFile(path) {
 				return
 			}
 			id := httproutes.SyntheticID(method, canonicalPath)
@@ -3310,19 +3381,136 @@ var nestControllerRe = regexp.MustCompile(
 	"@Controller\\s*\\(\\s*(?:['\"`]([^'\"`\\n\\r]*)['\"`])?\\s*\\)",
 )
 
-// nestMethodDecoratorRe captures a NestJS HTTP-verb method decorator and the
-// following method name. The decorator path argument is optional. We allow
-// intervening decorators (e.g. @UseGuards, @HttpCode, @Param) and modifiers
-// (public/private/async/static) between the verb decorator and the method
-// declaration.
+// nestjsVerbPathRe captures a NestJS HTTP-verb method decorator and its
+// OPTIONAL first quoted path argument. It deliberately matches ONLY the verb
+// decorator itself — not the handler that follows it. Binding the handler is
+// done by a line-oriented forward scan (nestjsFindHandlerName) which is immune
+// to parens-in-strings inside intervening decorators (e.g. an @ApiOperation
+// description containing "(parity with legacy)"). The previous combined regex
+// used `[^)]*` to skip intervening decorator arguments and silently DROPPED any
+// route whose preceding decorator args contained a `)` inside a string.
 //
-// Capture groups: 1 = verb, 2 = optional decorator path, 3 = method name.
-var nestMethodDecoratorRe = regexp.MustCompile(
-	"@(Get|Post|Put|Delete|Patch|Head|Options|All)\\s*\\(\\s*(?:['\"`]([^'\"`\\n\\r]*)['\"`])?\\s*[^)]*\\)" +
-		"\\s*[\\r\\n]+(?:\\s*@[\\w.]+\\s*(?:\\([^)]*\\))?\\s*[\\r\\n]+)*" +
-		"\\s*(?:public\\s+|private\\s+|protected\\s+|static\\s+|readonly\\s+|async\\s+)*" +
+// The path argument uses a non-greedy quoted-string capture so a route segment
+// is captured even if other (non-string) chars follow inside the parens
+// (e.g. `@Get('x', { ... })`). A route path string practically never contains
+// an unescaped quote, so the `[^'"`]` body is safe.
+//
+// Capture groups: 1 = verb, 2 = optional decorator path.
+var nestjsVerbPathRe = regexp.MustCompile(
+	"@(Get|Post|Put|Delete|Patch|Head|Options|All)\\s*\\(\\s*(?:['\"`]([^'\"`\\r\\n]*)['\"`])?",
+)
+
+// nestjsHandlerNameRe matches a method declaration line and captures the method
+// name. Used by the line-oriented forward scan to bind a verb decorator to its
+// handler. Anchored to the start of a (trimmed) line.
+var nestjsHandlerNameRe = regexp.MustCompile(
+	"^\\s*(?:public\\s+|private\\s+|protected\\s+|static\\s+|readonly\\s+|abstract\\s+|override\\s+|async\\s+|get\\s+|set\\s+)*" +
 		"([A-Za-z_$][\\w$]*)\\s*\\(",
 )
+
+// nestjsFindHandlerName scans forward from `fromLine` (a line index into
+// `lines`) to find the handler method bound to a verb decorator. It skips
+// blank lines, comment lines (`//`, `*`, `/*`, `*/`, `/**`) and decorator lines
+// (`@...`) and returns the first line that looks like a method declaration.
+// Returns "" if no handler is found before the next verb decorator or EOF.
+//
+// This is the parens-in-strings-immune replacement for the old combined regex.
+func nestjsFindHandlerName(lines []string, fromLine int) string {
+	// depth tracks unbalanced ()/{}/[] carried over from a multi-line decorator
+	// argument (e.g. `@ApiOperation({` … `})` or `@ApiResponse(` … `)`). While
+	// depth > 0 we are INSIDE a decorator's argument list — those continuation
+	// lines (`summary: '...'`, `description: '...'`) are decorator data, not a
+	// handler, so we skip them. Crucially, bracket counting here is line-based
+	// but we deliberately keep it simple: a route path / description string with
+	// a stray bracket is rare AND, even if it momentarily mis-counts, the worst
+	// case is skipping one extra line — never binding a wrong handler, because
+	// the handler regex is anchored and specific.
+	depth := 0
+	for i := fromLine; i < len(lines); i++ {
+		raw := lines[i]
+		t := strings.TrimSpace(raw)
+		if t == "" {
+			continue
+		}
+		// Comment lines (single-line, block open/continuation/close, JSDoc).
+		if depth == 0 && (strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") ||
+			strings.HasPrefix(t, "/*") || strings.HasPrefix(t, "*/")) {
+			continue
+		}
+		// If we're inside a multi-line decorator argument, keep consuming until
+		// the brackets balance again.
+		if depth > 0 {
+			depth += nestjsBracketDelta(raw)
+			continue
+		}
+		// Decorator line. A decorator may open a multi-line argument list; track
+		// it so its continuation lines are skipped as data, not parsed as a
+		// handler.
+		if strings.HasPrefix(t, "@") {
+			depth += nestjsBracketDelta(raw)
+			if depth < 0 {
+				depth = 0
+			}
+			continue
+		}
+		if m := nestjsHandlerNameRe.FindStringSubmatch(t); m != nil {
+			name := m[1]
+			// Guard: never bind to `constructor` — a delegating/aliasing
+			// controller (e.g. UsersLoginController) declares its injected
+			// dependencies in a constructor that sits between the class
+			// opening and the first route; without this guard the scan would
+			// bind the verb decorator to `constructor` and the real handler
+			// would be lost. A multi-line constructor signature is consumed by
+			// the depth tracker below.
+			if name == "constructor" {
+				depth += nestjsBracketDelta(raw)
+				if depth < 0 {
+					depth = 0
+				}
+				continue
+			}
+			return name
+		}
+		// A non-blank, non-comment, non-decorator, non-handler line means we've
+		// walked past the handler region for this decorator (e.g. into the next
+		// class member without a recognisable signature). Stop to avoid binding
+		// a far-away symbol.
+		return ""
+	}
+	return ""
+}
+
+// nestjsBracketDelta returns the net change in (){}[]-nesting contributed by a
+// line, ignoring brackets inside single/double/back-quoted strings (so a
+// description string like "(parity with legacy)" or a path with "[id]" does not
+// skew the count). It is a deliberately small lexer: enough to track multi-line
+// decorator argument lists without a full TS parser.
+func nestjsBracketDelta(line string) int {
+	delta := 0
+	var quote byte // 0 = not in string; otherwise the opening quote char
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if quote != 0 {
+			if c == '\\' { // skip escaped char inside string
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case '(', '{', '[':
+			delta++
+		case ')', '}', ']':
+			delta--
+		}
+	}
+	return delta
+}
 
 func synthesizeNestJS(content string, emit emitFn) {
 	if !strings.Contains(content, "@Controller") {
@@ -3332,15 +3520,23 @@ func synthesizeNestJS(content string, emit emitFn) {
 	if m := nestControllerRe.FindStringSubmatch(content); len(m) >= 2 {
 		prefix = m[1]
 	}
-	for _, m := range nestMethodDecoratorRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
+	lines := strings.Split(content, "\n")
+	// Map each byte offset's line to an index for the forward scan. We re-find
+	// the verb decorators on a per-line basis so the handler scan starts from
+	// the line AFTER the verb decorator line.
+	for lineIdx, line := range lines {
+		m := nestjsVerbPathRe.FindStringSubmatch(line)
+		if m == nil {
 			continue
 		}
 		verb := strings.ToUpper(m[1])
 		methodPath := m[2]
-		methodName := m[3]
 		if verb == "ALL" {
 			verb = "ANY"
+		}
+		methodName := nestjsFindHandlerName(lines, lineIdx+1)
+		if methodName == "" {
+			continue
 		}
 		full := joinPathFragments("/"+strings.Trim(prefix, "/"), methodPath)
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, full)
