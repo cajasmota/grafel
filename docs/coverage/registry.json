@@ -32673,7 +32673,9 @@
             "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "db_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/OpenResty/Lapis effect sinks via resty.mysql/redis/pgmoon/lapis-db read+write sniffer"
           },
           "dead_code_detection": {
             "status": "partial",
@@ -32693,10 +32695,14 @@
             "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "fs_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/Lapis effect sinks via io.open/io.read/io.write/os.rename/os.remove sniffer"
           },
           "http_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/Lapis effect sinks via resty.http request/connect and ngx.location.capture sniffer"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -32711,7 +32717,9 @@
             "notes": "Language-agnostic Tarjan SCC pass over IMPORTS edges. Lua extractor emits IMPORTS edges for require() calls, feeding the cycle detector. Partial: cross-repo cycles not tracked."
           },
           "mutation_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/Lapis effect sinks via table-field assignment (t.x=…/t[k]=…) sniffer"
           },
           "pure_function_tagging": {
             "status": "partial",
@@ -32892,7 +32900,9 @@
             "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "db_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/OpenResty/Lapis effect sinks via resty.mysql/redis/pgmoon/lapis-db read+write sniffer"
           },
           "dead_code_detection": {
             "status": "partial",
@@ -32912,10 +32922,14 @@
             "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
           },
           "fs_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/OpenResty effect sinks via resty.*/io.*/table-mutation sniffer"
           },
           "http_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/OpenResty effect sinks via resty.http request/connect and ngx.location.capture sniffer"
           },
           "import_resolution_quality": {
             "status": "partial",
@@ -32930,7 +32944,9 @@
             "notes": "Language-agnostic Tarjan SCC pass over IMPORTS edges. Lua extractor emits IMPORTS edges for require() calls, feeding the cycle detector. Partial: cross-repo cycles not tracked."
           },
           "mutation_effect": {
-            "status": "not_applicable"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_lua.go"],
+            "notes": "Lua/OpenResty effect sinks via table-field assignment (t.x=…/t[k]=…) sniffer"
           },
           "pure_function_tagging": {
             "status": "partial",
