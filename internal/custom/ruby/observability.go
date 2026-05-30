@@ -2,13 +2,16 @@
 //
 // Covers the Observability lane for all 8 Ruby http_backend frameworks:
 //
-//	log_extraction   — Rails.logger.*, Logger.new, logger.info, SemanticLogger
-//	metric_extraction — prometheus-client, Datadog::Statsd, Yabeda, statsd-client
-//	trace_extraction  — OpenTelemetry::SDK, tracer.in_span, OpenTracing, Skylight
+//	log_extraction   — Rails.logger.*, Logger.new, logger.info, SemanticLogger,
+//	                   logger.tagged, ActiveSupport::TaggedLogging, lograge config
+//	metric_extraction — prometheus-client, Datadog::Statsd, Yabeda (configure +
+//	                   counters/gauges/histograms), statsd-client
+//	trace_extraction  — OpenTelemetry::SDK, tracer.in_span, OpenTracing, Skylight,
+//	                   ddtrace/Datadog::Tracing, ActiveSupport::Notifications.instrument
 //
 // Detection is import/require-heuristic: the extractor recognises library
 // requires and canonical call-site patterns but does NOT perform cross-file
-// dataflow, so all cells are flipped to `partial` rather than `full`. This
+// dataflow, so all cells remain `partial` rather than `full`. This
 // matches the honesty discipline established by the Java and Python observability
 // extractors (internal/custom/java/observability.go,
 // internal/custom/python/observability.go).
@@ -16,7 +19,7 @@
 // A single extractor key "ruby_observability" is registered; the extractor
 // runs on any Ruby file regardless of framework.
 //
-// Part of issue #3282.
+// Part of issues #3282, #3343.
 package ruby
 
 import (
@@ -143,6 +146,38 @@ var (
 	// OpenTracing.start_span("name") / OpenTracing.global_tracer
 	rbOpenTracingCallRe = regexp.MustCompile(
 		`(?m)\bOpenTracing\.(?:start_span|global_tracer|start_active_span)\s*\(`)
+
+	// --------------- Rails-specific log patterns ---------------
+
+	// logger.tagged("tag1", "tag2") { ... } — Rails tagged logging
+	rbRailsLoggerTaggedRe = regexp.MustCompile(
+		`(?m)\b(\w+)\.tagged\s*\(`)
+
+	// ActiveSupport::TaggedLogging.new(logger)
+	rbRailsTaggedLoggingRe = regexp.MustCompile(
+		`(?m)\bActiveSupport::TaggedLogging\.new\s*\(`)
+
+	// Lograge config: config.lograge.enabled = true / require 'lograge'
+	rbLogrageRequireRe = regexp.MustCompile(
+		`(?m)\brequire\s+['"]lograge['"]`)
+	rbLogrageConfigRe = regexp.MustCompile(
+		`(?m)\bconfig\.lograge\b`)
+
+	// --------------- Rails-specific metric patterns ---------------
+
+	// Yabeda.configure do ... end — configuration block
+	rbYabedaConfigureRe = regexp.MustCompile(
+		`(?m)\bYabeda\.configure\s*(?:do|\{)`)
+
+	// --------------- Rails-specific trace patterns ---------------
+
+	// ActiveSupport::Notifications.instrument("event.name") { ... }
+	rbASNInstrumentRe = regexp.MustCompile(
+		`(?m)\bActiveSupport::Notifications\.instrument\s*\(\s*['"]([^'"]+)['"]`)
+
+	// ActiveSupport::Notifications.subscribe("event.name") { ... }
+	rbASNSubscribeRe = regexp.MustCompile(
+		`(?m)\bActiveSupport::Notifications\.subscribe\s*\(\s*['"]([^'"]+)['"]`)
 )
 
 // ---------------------------------------------------------------------------
@@ -162,14 +197,16 @@ func (e *rubyObservabilityExtractor) Extract(ctx context.Context, file extractor
 
 	// Fast guard: skip files that contain none of the observability library tokens.
 	hasLog := strings.Contains(src, "logger") || strings.Contains(src, "Logger") ||
-		strings.Contains(src, "SemanticLogger") || strings.Contains(src, "Rails.logger")
+		strings.Contains(src, "SemanticLogger") || strings.Contains(src, "Rails.logger") ||
+		strings.Contains(src, "TaggedLogging") || strings.Contains(src, "lograge")
 	hasMetric := strings.Contains(src, "prometheus") || strings.Contains(src, "Prometheus") ||
 		strings.Contains(src, "Datadog::Statsd") || strings.Contains(src, "Yabeda") ||
 		strings.Contains(src, "StatsD") || strings.Contains(src, "statsd")
 	hasTrace := strings.Contains(src, "OpenTelemetry") || strings.Contains(src, "opentelemetry") ||
 		strings.Contains(src, "ddtrace") || strings.Contains(src, "Datadog::Tracing") ||
 		strings.Contains(src, "Skylight") || strings.Contains(src, "OpenTracing") ||
-		strings.Contains(src, "opentracing")
+		strings.Contains(src, "opentracing") ||
+		strings.Contains(src, "ActiveSupport::Notifications")
 
 	if !hasLog && !hasMetric && !hasTrace {
 		return nil, nil
@@ -179,6 +216,9 @@ func (e *rubyObservabilityExtractor) Extract(ctx context.Context, file extractor
 	out = append(out, extractRubyLogging(src, file.Path)...)
 	out = append(out, extractRubyMetrics(src, file.Path)...)
 	out = append(out, extractRubyTracing(src, file.Path)...)
+	out = append(out, extractRailsObsLogging(src, file.Path)...)
+	out = append(out, extractRailsObsMetrics(src, file.Path)...)
+	out = append(out, extractRailsObsTracing(src, file.Path)...)
 	return out, nil
 }
 
@@ -432,6 +472,113 @@ func extractRubyTracing(src, fp string) []types.EntityRecord {
 			setProps(&e, "signal", "trace", "library", "opentracing", "kind", "require")
 			out = append(out, e)
 		}
+	}
+
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// extractRailsObsLogging — Rails-specific log patterns
+// ---------------------------------------------------------------------------
+
+// extractRailsObsLogging handles logger.tagged, ActiveSupport::TaggedLogging,
+// and lograge configuration — patterns specific to the Rails ecosystem.
+func extractRailsObsLogging(src, fp string) []types.EntityRecord {
+	var out []types.EntityRecord
+
+	// logger.tagged("RequestID", request_id) { ... }
+	for _, idx := range rbRailsLoggerTaggedRe.FindAllStringSubmatchIndex(src, -1) {
+		receiver := src[idx[2]:idx[3]]
+		// Skip non-logging receivers (common false positives)
+		if receiver == "response" || receiver == "resp" || receiver == "request" ||
+			receiver == "req" || receiver == "scope" || receiver == "result" {
+			continue
+		}
+		ln := lineOf(src, idx[0])
+		e := makeEntity(receiver+".tagged", string(types.EntityKindPattern), "log_statement", fp, "ruby", ln)
+		setProps(&e, "signal", "log", "library", "rails_tagged_logging",
+			"kind", "tagged_block", "receiver", receiver)
+		out = append(out, e)
+	}
+
+	// ActiveSupport::TaggedLogging.new(logger)
+	for _, idx := range rbRailsTaggedLoggingRe.FindAllStringSubmatchIndex(src, -1) {
+		ln := lineOf(src, idx[0])
+		e := makeEntity("ActiveSupport::TaggedLogging", string(types.EntityKindPattern), "logger", fp, "ruby", ln)
+		setProps(&e, "signal", "log", "library", "active_support_tagged_logging",
+			"kind", "instantiation")
+		out = append(out, e)
+	}
+
+	// lograge: require 'lograge'
+	if rbLogrageRequireRe.MatchString(src) {
+		loc := rbLogrageRequireRe.FindStringIndex(src)
+		ln := lineOf(src, loc[0])
+		e := makeEntity("lograge", string(types.EntityKindPattern), "logger", fp, "ruby", ln)
+		setProps(&e, "signal", "log", "library", "lograge", "kind", "require")
+		out = append(out, e)
+	}
+
+	// lograge: config.lograge.enabled / config.lograge.formatter etc.
+	for _, idx := range rbLogrageConfigRe.FindAllStringSubmatchIndex(src, -1) {
+		// Skip duplicates if we already emitted a require entity
+		ln := lineOf(src, idx[0])
+		e := makeEntity("config.lograge", string(types.EntityKindPattern), "logger", fp, "ruby", ln)
+		setProps(&e, "signal", "log", "library", "lograge", "kind", "config")
+		out = append(out, e)
+	}
+
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// extractRailsObsMetrics — Rails-specific metric patterns
+// ---------------------------------------------------------------------------
+
+// extractRailsObsMetrics handles Yabeda.configure blocks — the main way
+// Rails apps wire up yabeda instrumentation.
+func extractRailsObsMetrics(src, fp string) []types.EntityRecord {
+	var out []types.EntityRecord
+
+	// Yabeda.configure do ... end
+	for _, idx := range rbYabedaConfigureRe.FindAllStringSubmatchIndex(src, -1) {
+		ln := lineOf(src, idx[0])
+		e := makeEntity("Yabeda.configure", string(types.EntityKindPattern), "metric", fp, "ruby", ln)
+		setProps(&e, "signal", "metric", "library", "yabeda", "kind", "configure_block")
+		out = append(out, e)
+	}
+
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// extractRailsObsTracing — Rails-specific trace patterns
+// ---------------------------------------------------------------------------
+
+// extractRailsObsTracing handles ActiveSupport::Notifications.instrument and
+// ActiveSupport::Notifications.subscribe — the Rails built-in instrumentation
+// bus used for request lifecycle events, cache events, SQL queries, etc.
+func extractRailsObsTracing(src, fp string) []types.EntityRecord {
+	var out []types.EntityRecord
+
+	// ActiveSupport::Notifications.instrument("sql.active_record") { ... }
+	for _, idx := range rbASNInstrumentRe.FindAllStringSubmatchIndex(src, -1) {
+		eventName := src[idx[2]:idx[3]]
+		ln := lineOf(src, idx[0])
+		e := makeEntity(eventName, string(types.EntityKindPattern), "trace_span", fp, "ruby", ln)
+		setProps(&e, "signal", "trace", "library", "active_support_notifications",
+			"kind", "instrument", "event_name", eventName)
+		out = append(out, e)
+	}
+
+	// ActiveSupport::Notifications.subscribe("sql.active_record") { ... }
+	for _, idx := range rbASNSubscribeRe.FindAllStringSubmatchIndex(src, -1) {
+		eventName := src[idx[2]:idx[3]]
+		ln := lineOf(src, idx[0])
+		e := makeEntity(eventName, string(types.EntityKindPattern), "trace_span", fp, "ruby", ln)
+		setProps(&e, "signal", "trace", "library", "active_support_notifications",
+			"kind", "subscribe", "event_name", eventName)
+		out = append(out, e)
 	}
 
 	return out
