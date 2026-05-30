@@ -51,16 +51,23 @@ func (e *slickExtractor) Language() string { return "custom_scala_slick" }
 
 var (
 	// slickTableClassRe: class Users(tag: Tag) extends Table[User](tag, "users")
+	// Captures the table class name (1), the row type (2), and the SQL table
+	// name string literal (3). The schema name (optional "schema"."table") is
+	// tolerated by allowing a comma-separated pair before the final literal.
 	slickTableClassRe = regexp.MustCompile(
-		`(?m)class\s+(\w+)\s*\([^)]*Tag[^)]*\)\s+extends\s+Table\[(\w+)\]`)
+		`(?m)class\s+(\w+)\s*\([^)]*Tag[^)]*\)\s+extends\s+Table\[(\w+)\]\s*\(\s*\w+\s*,\s*(?:"[^"]+"\s*,\s*)?"([^"]+)"`)
 
 	// slickColumnRe: def id = column[Long]("id", O.PrimaryKey)
+	// Captures the Scala def name (1), the column Scala type (2), and the SQL
+	// column name string literal (3).
 	slickColumnRe = regexp.MustCompile(
-		`(?m)def\s+(\w+)\s*=\s*column\[([^\]]+)\]\s*\(`)
+		`(?m)def\s+(\w+)\s*=\s*column\[([^\]]+)\]\s*\(\s*"([^"]+)"([^)]*)`)
 
 	// slickForeignKeyRe: def fkUserId = foreignKey("fk_user_id", userId, userTable)
+	// Captures def name (1), constraint name (2), local column (3) and the
+	// target table query (4).
 	slickForeignKeyRe = regexp.MustCompile(
-		`(?m)def\s+(\w+)\s*=\s*foreignKey\s*\(\s*"([^"]+)"`)
+		`(?m)def\s+(\w+)\s*=\s*foreignKey\s*\(\s*"([^"]+)"\s*,\s*(\w+)\s*,\s*(\w+)`)
 
 	// slickTableQueryRe: val userTable = TableQuery[Users]
 	slickTableQueryRe = regexp.MustCompile(
@@ -69,6 +76,11 @@ var (
 	// slickMigrationRe: schema.create / schema.createIfNotExists / DBIO.seq
 	slickMigrationRe = regexp.MustCompile(
 		`(?m)(?:schema\.create(?:IfNotExists)?|DBIO\.seq)\s*[({]`)
+
+	// slickSchemaDDLRe: users.schema.create / orders.schema.drop — captures the
+	// TableQuery receiver (1) and the DDL verb (2).
+	slickSchemaDDLRe = regexp.MustCompile(
+		`(?m)(\w+)\.schema\.(create(?:IfNotExists)?|drop(?:IfExists)?)`)
 )
 
 func (e *slickExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -106,25 +118,32 @@ func (e *slickExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 
 	// Table class definitions → SCOPE.Schema
 	for _, m := range slickTableClassRe.FindAllStringSubmatchIndex(src, -1) {
-		tableName := src[m[2]:m[3]]
+		className := src[m[2]:m[3]]
 		rowType := src[m[4]:m[5]]
-		ent := makeEntity(tableName, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
+		sqlTableName := src[m[6]:m[7]]
+		ent := makeEntity(className, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "slick",
 			"provenance", "INFERRED_FROM_SLICK_TABLE_CLASS",
 			"row_type", rowType,
+			"table_name", sqlTableName,
 			"pattern_type", "table_class")
 		add(ent)
 	}
 
 	// Column definitions → SCOPE.Schema
 	for _, m := range slickColumnRe.FindAllStringSubmatchIndex(src, -1) {
-		colName := src[m[2]:m[3]]
+		defName := src[m[2]:m[3]]
 		colType := src[m[4]:m[5]]
-		ent := makeEntity("col:"+colName, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
+		sqlColName := src[m[6]:m[7]]
+		options := src[m[8]:m[9]]
+		ent := makeEntity("col:"+sqlColName, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "slick",
 			"provenance", "INFERRED_FROM_SLICK_COLUMN_DEF",
-			"column_name", colName,
+			"def_name", defName,
+			"column_name", sqlColName,
 			"column_type", colType,
+			"primary_key", boolStr(strings.Contains(options, "O.PrimaryKey")),
+			"auto_inc", boolStr(strings.Contains(options, "O.AutoInc")),
 			"pattern_type", "column_def")
 		add(ent)
 	}
@@ -133,11 +152,15 @@ func (e *slickExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 	for _, m := range slickForeignKeyRe.FindAllStringSubmatchIndex(src, -1) {
 		defName := src[m[2]:m[3]]
 		fkName := src[m[4]:m[5]]
+		localCol := src[m[6]:m[7]]
+		targetTable := src[m[8]:m[9]]
 		ent := makeEntity("fk:"+fkName, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "slick",
 			"provenance", "INFERRED_FROM_SLICK_FOREIGN_KEY",
 			"fk_def_name", defName,
 			"fk_constraint_name", fkName,
+			"local_column", localCol,
+			"target_table", targetTable,
 			"pattern_type", "foreign_key")
 		add(ent)
 	}
@@ -155,11 +178,25 @@ func (e *slickExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		add(ent)
 	}
 
-	// Migration patterns → SCOPE.Schema
+	// Migration patterns → SCOPE.Schema (generic DBIO.seq / schema.create signal)
 	for _, m := range slickMigrationRe.FindAllStringSubmatchIndex(src, -1) {
 		ent := makeEntity("migration:schema_ddl", "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "slick",
 			"provenance", "INFERRED_FROM_SLICK_SCHEMA_DDL",
+			"pattern_type", "migration")
+		add(ent)
+	}
+
+	// Per-table schema DDL → migration entity carrying the TableQuery receiver
+	// and the DDL verb (create / drop).
+	for _, m := range slickSchemaDDLRe.FindAllStringSubmatchIndex(src, -1) {
+		receiver := src[m[2]:m[3]]
+		verb := strings.ToLower(src[m[4]:m[5]])
+		ent := makeEntity("migration:"+verb+":"+receiver, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "slick",
+			"provenance", "INFERRED_FROM_SLICK_SCHEMA_DDL_TABLE",
+			"table_query", receiver,
+			"ddl_verb", verb,
 			"pattern_type", "migration")
 		add(ent)
 	}
@@ -203,6 +240,31 @@ var (
 	doobieCaseClassRe = regexp.MustCompile(
 		`(?m)case\s+class\s+(\w+)\s*\(([^)]+)\)`)
 )
+
+// sqlTableRe extracts the primary table name from a SQL statement body
+// (FROM <t>, INTO <t>, UPDATE <t>, JOIN <t>). Case-insensitive; tolerates
+// schema-qualified names and back-tick/quote wrapping.
+var sqlTableRe = regexp.MustCompile(
+	`(?i)\b(?:from|into|update|join)\s+["` + "`" + `]?([A-Za-z_][\w.]*)["` + "`" + `]?`)
+
+// sqlVerbRe captures the leading SQL verb to classify the operation.
+var sqlVerbRe = regexp.MustCompile(`(?i)^\s*(select|insert|update|delete|create|alter|drop|with)\b`)
+
+// firstSQLTable returns the first table referenced in a SQL body, or "".
+func firstSQLTable(body string) string {
+	if m := sqlTableRe.FindStringSubmatch(body); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// sqlVerb returns the lowercased leading SQL verb, or "".
+func sqlVerb(body string) string {
+	if m := sqlVerbRe.FindStringSubmatch(body); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return ""
+}
 
 func (e *doobieExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/scala")
@@ -251,6 +313,8 @@ func (e *doobieExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		ent := makeEntity("sql:"+preview, "SCOPE.Operation", "query", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "doobie",
 			"provenance", "INFERRED_FROM_DOOBIE_SQL_FRAGMENT",
+			"sql_verb", sqlVerb(body),
+			"table_name", firstSQLTable(body),
 			"pattern_type", "sql_fragment")
 		add(ent)
 	}
@@ -317,6 +381,15 @@ var (
 	quillQuoteQueryRe = regexp.MustCompile(
 		`(?m)quote\s*\{[^}]*query\[(\w+)\]`)
 
+	// quillJoinRe: join(query[Address]).on(...) — captures the joined entity for
+	// relationship/association extraction.
+	quillJoinRe = regexp.MustCompile(
+		`(?m)(?:join|leftJoin|rightJoin|fullJoin)\s*\(\s*query\[(\w+)\]`)
+
+	// quillColRemapRe: _.userId -> "user_id" column remapping inside querySchema.
+	quillColRemapRe = regexp.MustCompile(
+		`(?m)_\.(\w+)\s*->\s*"([^"]+)"`)
+
 	// quillCtxRunRe: ctx.run(...)
 	quillCtxRunRe = regexp.MustCompile(
 		`(?m)ctx\.run\s*\(`)
@@ -358,16 +431,43 @@ func (e *quillExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		}
 	}
 
-	// querySchema[T]("table") → schema_extraction
+	// querySchema[T]("table", _.col -> "db_col") → schema_extraction. Capture the
+	// table name plus any column remappings declared on the same statement (we
+	// scan the rest of the line for `_.field -> "name"` pairs).
 	for _, m := range quillQuerySchemaRe.FindAllStringSubmatchIndex(src, -1) {
 		entityType := src[m[2]:m[3]]
 		tableName := src[m[4]:m[5]]
+		// Look at the remainder of the querySchema call (until end of line) for
+		// column remappings.
+		lineEnd := strings.IndexByte(src[m[1]:], '\n')
+		tail := ""
+		if lineEnd >= 0 {
+			tail = src[m[1] : m[1]+lineEnd]
+		} else {
+			tail = src[m[1]:]
+		}
+		var remaps []string
+		for _, rm := range quillColRemapRe.FindAllStringSubmatch(tail, -1) {
+			remaps = append(remaps, rm[1]+"="+rm[2])
+		}
 		ent := makeEntity("schema:"+entityType, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "quill",
 			"provenance", "INFERRED_FROM_QUILL_QUERY_SCHEMA",
 			"entity_type", entityType,
 			"table_name", tableName,
+			"column_remaps", strings.Join(remaps, ","),
 			"pattern_type", "query_schema")
+		add(ent)
+	}
+
+	// join(query[T]) inside quote blocks → relationship/association extraction.
+	for _, m := range quillJoinRe.FindAllStringSubmatchIndex(src, -1) {
+		joined := src[m[2]:m[3]]
+		ent := makeEntity("join:"+joined, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "quill",
+			"provenance", "INFERRED_FROM_QUILL_JOIN",
+			"joined_entity", joined,
+			"pattern_type", "join_association")
 		add(ent)
 	}
 
@@ -443,6 +543,14 @@ var (
 	// scalikejdbcCaseClassRe: case class as model
 	scalikejdbcCaseClassRe = regexp.MustCompile(
 		`(?m)case\s+class\s+(\w+)\s*\(([^)]+)\)`)
+
+	// scalikejdbcTableNameRe: override val tableName = "members"
+	scalikejdbcTableNameRe = regexp.MustCompile(
+		`(?m)(?:override\s+)?(?:val|def)\s+tableName\s*=\s*"([^"]+)"`)
+
+	// scalikejdbcDDLRe: CREATE TABLE / ALTER TABLE / DROP TABLE inside a DB block
+	scalikejdbcDDLRe = regexp.MustCompile(
+		`(?i)\b(create|alter|drop)\s+table\s+["` + "`" + `]?([A-Za-z_][\w.]*)`)
 )
 
 func (e *scalikejdbcExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -476,6 +584,12 @@ func (e *scalikejdbcExtractor) Extract(ctx context.Context, file extractor.FileI
 		}
 	}
 
+	// tableName override, if any, applies to the SQLSyntaxSupport object(s).
+	tableName := ""
+	if tm := scalikejdbcTableNameRe.FindStringSubmatch(src); tm != nil {
+		tableName = tm[1]
+	}
+
 	// SQLSyntaxSupport companion objects → model schema
 	for _, m := range scalikejdbcSyntaxSupportRe.FindAllStringSubmatchIndex(src, -1) {
 		objName := src[m[2]:m[3]]
@@ -484,6 +598,7 @@ func (e *scalikejdbcExtractor) Extract(ctx context.Context, file extractor.FileI
 		setProps(&ent, "framework", "scalikejdbc",
 			"provenance", "INFERRED_FROM_SCALIKEJDBC_SYNTAX_SUPPORT",
 			"model_type", modelType,
+			"table_name", tableName,
 			"pattern_type", "syntax_support")
 		add(ent)
 	}
@@ -504,6 +619,8 @@ func (e *scalikejdbcExtractor) Extract(ctx context.Context, file extractor.FileI
 		ent := makeEntity("sql:"+preview, "SCOPE.Operation", "query", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "scalikejdbc",
 			"provenance", "INFERRED_FROM_SCALIKEJDBC_SQL",
+			"sql_verb", sqlVerb(body),
+			"table_name", firstSQLTable(body),
 			"pattern_type", "sql_query")
 		add(ent)
 	}
@@ -527,6 +644,20 @@ func (e *scalikejdbcExtractor) Extract(ctx context.Context, file extractor.FileI
 		setProps(&ent, "framework", "scalikejdbc",
 			"provenance", "INFERRED_FROM_SCALIKEJDBC_DB_BLOCK",
 			"pattern_type", "db_session_block")
+		add(ent)
+	}
+
+	// DDL statements (CREATE/ALTER/DROP TABLE) → migration entities carrying the
+	// affected table name and DDL verb.
+	for _, m := range scalikejdbcDDLRe.FindAllStringSubmatchIndex(src, -1) {
+		ddlVerb := strings.ToLower(src[m[2]:m[3]])
+		ddlTable := src[m[4]:m[5]]
+		ent := makeEntity("ddl:"+ddlVerb+":"+ddlTable, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "scalikejdbc",
+			"provenance", "INFERRED_FROM_SCALIKEJDBC_DDL",
+			"ddl_verb", ddlVerb,
+			"table_name", ddlTable,
+			"pattern_type", "migration")
 		add(ent)
 	}
 

@@ -12,6 +12,14 @@ func lineOf(source string, offset int) int {
 	return strings.Count(source[:offset], "\n") + 1
 }
 
+// boolStr renders a bool as a stable "true"/"false" string for entity props.
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
 func makeEntity(name, kind, subtype, filePath, language string, lineNum int) types.EntityRecord {
 	e := types.EntityRecord{
 		Name:             name,

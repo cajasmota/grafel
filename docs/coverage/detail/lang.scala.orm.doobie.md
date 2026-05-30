@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/doobie.yaml` | — |
-| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | doobieQueryRe captures .query[T] row type mappings; doobieCaseClassRe captures case class row models; doobieSQLRe captures sql"..." fragments |
+| Schema extraction | ✅ `full` | — | — | `internal/custom/scala/orm_extractors.go` | doobieQueryRe captures .query[T] row type mappings; doobieCaseClassRe captures case class row models; doobieSQLRe captures sql"..." fragments |
 
 ### Relationships
 
