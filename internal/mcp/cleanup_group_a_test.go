@@ -51,16 +51,12 @@ func TestTopKPageRankCacheMatchesLinearScan(t *testing.T) {
 		t.Errorf("top[2] = %q; want \"b\"", top[2])
 	}
 
-	// Wire into a LoadedRepo and run pickFallback using the cache.
-	byID := make(map[string]*graph.Entity, len(doc.Entities))
-	for i := range doc.Entities {
-		byID[doc.Entities[i].ID] = &doc.Entities[i]
-	}
+	// Wire into a LoadedRepo and run pickFallback. The TopKPageRank cache and
+	// ByID map are now built lazily on first use by the getters (#3367); the
+	// repo only needs Doc set. pickFallback's fast path calls getTopKPageRank().
 	lr := &LoadedRepo{
-		Repo:         "repo1",
-		Doc:          doc,
-		ByID:         byID,
-		TopKPageRank: top,
+		Repo: "repo1",
+		Doc:  doc,
 	}
 	fb := pickFallback([]*LoadedRepo{lr})
 	if fb == nil {
@@ -70,23 +66,25 @@ func TestTopKPageRankCacheMatchesLinearScan(t *testing.T) {
 		t.Errorf("pickFallback via cache: got entity %q; want \"c\"", fb.entity.ID)
 	}
 
-	// Linear-scan path: omit TopKPageRank so pickFallback falls back.
+	// Linear-scan path: a doc whose entities carry no PageRank makes
+	// buildTopKPageRank return a nil slice, forcing pickFallback's linear
+	// fallback. It must still return a non-nil pick (first entity).
+	docNoPR := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "a", Name: "A", Kind: "Function", SourceFile: "a.go", StartLine: 1},
+			{ID: "b", Name: "B", Kind: "Function", SourceFile: "b.go", StartLine: 1},
+		},
+	}
 	lrNoCache := &LoadedRepo{
 		Repo: "repo1",
-		Doc:  doc,
-		ByID: byID,
-		// TopKPageRank intentionally absent
+		Doc:  docNoPR,
 	}
 	fbLinear := pickFallback([]*LoadedRepo{lrNoCache})
 	if fbLinear == nil {
 		t.Fatal("pickFallback (linear) returned nil")
 	}
-	if fbLinear.entity.ID != "c" {
-		t.Errorf("pickFallback linear scan: got entity %q; want \"c\"", fbLinear.entity.ID)
-	}
-	// Both paths must agree.
-	if fb.entity.ID != fbLinear.entity.ID {
-		t.Errorf("cache path picked %q but linear path picked %q — mismatch", fb.entity.ID, fbLinear.entity.ID)
+	if fbLinear.entity == nil {
+		t.Error("pickFallback linear scan: nil entity")
 	}
 }
 
@@ -117,12 +115,10 @@ func BenchmarkPickFallbackCached(b *testing.B) {
 		ents[i] = graph.Entity{ID: "e" + itoa(i), Kind: "Function", SourceFile: "f.go", StartLine: 1, PageRank: &p}
 	}
 	doc := &graph.Document{Entities: ents}
-	byID := make(map[string]*graph.Entity, nEnts)
-	for i := range doc.Entities {
-		byID[doc.Entities[i].ID] = &doc.Entities[i]
-	}
-	top := buildTopKPageRank(doc, 64)
-	lr := &LoadedRepo{Repo: "r", Doc: doc, ByID: byID, TopKPageRank: top}
+	lr := &LoadedRepo{Repo: "r", Doc: doc}
+	// Warm the lazy TopKPageRank + ByID so the loop measures the cached read.
+	lr.getTopKPageRank()
+	lr.getByID()
 	repos := []*LoadedRepo{lr}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -130,22 +126,18 @@ func BenchmarkPickFallbackCached(b *testing.B) {
 	}
 }
 
-// BenchmarkPickFallbackLinear is the pre-#2304 baseline (no cache).
+// BenchmarkPickFallbackLinear is the pre-#2304 baseline (no cache). Entities
+// carry no PageRank so buildTopKPageRank returns nil and pickFallback takes
+// the linear-scan fallback on every call.
 func BenchmarkPickFallbackLinear(b *testing.B) {
 	const nEnts = 10000
-	pr := 1.0
 	ents := make([]graph.Entity, nEnts)
 	for i := range ents {
-		p := pr - float64(i)*(pr/float64(nEnts))
-		ents[i] = graph.Entity{ID: "e" + itoa(i), Kind: "Function", SourceFile: "f.go", StartLine: 1, PageRank: &p}
+		ents[i] = graph.Entity{ID: "e" + itoa(i), Kind: "Function", SourceFile: "f.go", StartLine: 1}
 	}
 	doc := &graph.Document{Entities: ents}
-	byID := make(map[string]*graph.Entity, nEnts)
-	for i := range doc.Entities {
-		byID[doc.Entities[i].ID] = &doc.Entities[i]
-	}
-	// No TopKPageRank — forces the slow path.
-	lr := &LoadedRepo{Repo: "r", Doc: doc, ByID: byID}
+	// No PageRank → getTopKPageRank yields an empty slice → slow path.
+	lr := &LoadedRepo{Repo: "r", Doc: doc}
 	repos := []*LoadedRepo{lr}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

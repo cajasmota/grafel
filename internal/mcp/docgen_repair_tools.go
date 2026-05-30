@@ -356,6 +356,7 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 		if r == nil || r.Doc == nil {
 			continue
 		}
+		byID := r.getByID()
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
 			// Scope: IMPORTS only — matches countEdgesForFidelity and audit.AuditPath.
@@ -369,13 +370,11 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			disp := unresolvedImportDisposition(rel)
 			byDisp[disp]++
 
-			// Language: from the source entity when the ByID index is available,
-			// otherwise from rel.Properties["language"].
+			// Language: from the source entity when available, otherwise from
+			// rel.Properties["language"].
 			lang := ""
-			if r.ByID != nil {
-				if ent := r.ByID[rel.FromID]; ent != nil {
-					lang = strings.ToLower(ent.Language)
-				}
+			if ent := byID[rel.FromID]; ent != nil {
+				lang = strings.ToLower(ent.Language)
 			}
 			if lang == "" && rel.Properties != nil {
 				lang = strings.ToLower(rel.Properties["language"])

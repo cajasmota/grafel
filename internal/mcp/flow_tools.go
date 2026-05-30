@@ -177,7 +177,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		if target == "" {
 			target = entityID
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		if _, ok := byID[target]; !ok {
 			continue
 		}
@@ -194,7 +194,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		// edges (e.g. `core/admin.py` REFERENCES Models, `views.py` IMPORTS
 		// HasPermission, `__init__.py` IMPORTS a re-exported module). The
 		// noiseContainer filter below must NOT drop those.
-		adj := r.Adjacency
+		adj := r.getAdjacency()
 		visited := map[string]int{target: 0}
 		// discoveredVia[id] = edge kind via which `id` was first reached on
 		// the inbound BFS. Used below to decide whether to allow file/module
@@ -445,13 +445,13 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		if target == "" {
 			target = entityID
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		if _, ok := byID[target]; !ok {
 			continue
 		}
 
 		// BFS over outbound-only adjacency.
-		adj := r.Adjacency
+		adj := r.getAdjacency()
 		visited := map[string]int{target: 0}
 		frontier := []string{target}
 		for d := 0; d < depth; d++ {
@@ -637,7 +637,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 		if target == "" {
 			target = entityID
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		if _, ok := byID[target]; !ok {
 			continue
 		}
@@ -668,7 +668,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 
 		// Impact radius = entities that transitively depend on `target`.
 		// We walk the INBOUND graph from target: callers of callers.
-		adj := r.Adjacency
+		adj := r.getAdjacency()
 		visited := map[string]int{target: 0}
 		frontier := []string{target}
 		for d := 0; d < hops; d++ {
@@ -826,13 +826,13 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 		if target == "" {
 			target = entityID
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		if _, ok := byID[target]; !ok {
 			continue
 		}
-		adj := r.Adjacency
+		adj := r.getAdjacency()
 		visited := bfs(adj, target, depth, nil)
-		byID2 := r.ByID
+		byID2 := r.getByID()
 		type nodeOut struct {
 			EntityID   string `json:"entity_id"`
 			Name       string `json:"name"`
@@ -929,13 +929,13 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		if target == "" {
 			target = entityID
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		root, ok := byID[target]
 		if !ok {
 			continue
 		}
 
-		adj := r.Adjacency
+		adj := r.getAdjacency()
 
 		// Gather inbound callers (depth hops).
 		inVisited := map[string]int{}
@@ -1476,7 +1476,7 @@ func entityExistsAnywhere(lg *LoadedGroup, id string) bool {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		if _, ok := r.ByID[probe]; ok {
+		if _, ok := r.getByID()[probe]; ok {
 			return true
 		}
 		for i := range r.Doc.Entities {
@@ -1518,6 +1518,7 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 		if r.Doc == nil {
 			continue
 		}
+		byID := r.getByID()
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
 			if rel.Kind != "NAVIGATES_TO" {
@@ -1556,7 +1557,7 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 				ParamsKeys: paramsKeys,
 				HopCount:   1,
 			}
-			if e := r.ByID[rel.FromID]; e != nil {
+			if e := byID[rel.FromID]; e != nil {
 				rc.Name = e.Name
 				rc.SourceFile = e.SourceFile
 			}

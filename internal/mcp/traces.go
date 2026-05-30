@@ -261,16 +261,16 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 		}
 		// #1656: O(1) lookup via cached ByID instead of an O(N) scan over
 		// every entity in the repo to find the entry point.
-		entryEnt := r.ByID[target]
+		byID := r.getByID()
+		entryEnt := byID[target]
 		if entryEnt == nil {
 			continue
 		}
-		chains := followCallsBFS(target, maxDepth, branch, r.CallsAdj)
+		chains := followCallsBFS(target, maxDepth, branch, r.getCallsAdj())
 		// Materialise the chains into step lists with labels.
 		// Default (verbose=false): step_index, node_id, name, file, line.
 		// Verbose (verbose=true): also includes kind.
 		out := make([]map[string]any, 0, len(chains))
-		byID := r.ByID
 		for _, c := range chains {
 			steps := make([]map[string]any, 0, len(c))
 			for i, id := range c {
@@ -338,10 +338,10 @@ func buildGroupCrossRepoLookup(lg *LoadedGroup, seedRepo string) crossRepoLookup
 	}
 	var companions []companion
 	for slug, r := range lg.Repos {
-		if slug == seedRepo || r == nil || r.ByID == nil {
+		if slug == seedRepo || r == nil || r.Doc == nil {
 			continue
 		}
-		companions = append(companions, companion{slug, r.ByID})
+		companions = append(companions, companion{slug, r.getByID()})
 	}
 	sort.Slice(companions, func(i, j int) bool { return companions[i].slug < companions[j].slug })
 
@@ -384,7 +384,7 @@ func buildProcessSteps(r *LoadedRepo, proc *graph.Entity, verbose ...bool) []map
 func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo crossRepoLookup, verbose ...bool) []map[string]any {
 	wantVerbose := len(verbose) > 0 && verbose[0]
 	repo := r.Repo
-	byID := r.ByID
+	byID := r.getByID()
 	type indexed struct {
 		idx int
 		id  string
@@ -392,7 +392,7 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 	var ordered []indexed
 	// Consume the pre-built STEP_IN_PROCESS adjacency index (#2417).
 	// StepAdj is always populated by reloadLocked (state.go) since PR #2439.
-	for _, se := range r.StepAdj[proc.ID] {
+	for _, se := range r.getStepAdj()[proc.ID] {
 		ordered = append(ordered, indexed{se.idx, se.toID})
 	}
 	if len(ordered) == 0 {

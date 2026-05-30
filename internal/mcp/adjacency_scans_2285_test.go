@@ -243,17 +243,15 @@ func itoa(i int) string {
 
 func BenchmarkArchigraphAgentResolvedEdges(b *testing.B) {
 	doc := benchDoc(10000)
-	byID := make(map[string]*graph.Entity, len(doc.Entities))
-	for i := range doc.Entities {
-		byID[doc.Entities[i].ID] = &doc.Entities[i]
-	}
 	lr := &LoadedRepo{
 		Repo:       "repo1",
 		Doc:        doc,
 		LabelIndex: BuildLabelIndex(doc),
-		Adjacency:  buildAdjacency(doc, "repo1"),
-		ByID:       byID,
 	}
+	// Warm the lazy indexes once so the benchmark loop measures the query, not
+	// the one-time build (#3367).
+	lr.getAdjacency()
+	lr.getByID()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = agentResolvedEdgesForEntity(lr, "src", true)

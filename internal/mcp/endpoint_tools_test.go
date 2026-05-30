@@ -1267,7 +1267,7 @@ func TestEndpointResolution_DefinitionIDs(t *testing.T) {
 	// Use a minimal LoadedGroup with no links.
 	lg := &LoadedGroup{}
 	repos := []*LoadedRepo{
-		{Repo: "test", Doc: doc, Adjacency: buildAdjacency(doc, "test")},
+		{Repo: "test", Doc: doc},
 	}
 
 	res := newEndpointResolution(repos, lg, false)

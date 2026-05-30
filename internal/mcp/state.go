@@ -205,10 +205,12 @@ func (l CrossRepoLink) EffectiveKind() string {
 
 // LoadedRepo is one repo's graph plus index plus mtime tracking.
 //
-// Pre-computed indexes (LabelIndex, BM25, Adjacency, CallsAdj, StepAdj, ByID)
-// are rebuilt only when the graph file mtime changes. This eliminates the
-// O(N) + O(R) cost per MCP query that handlers used to pay by calling
-// indexByID / buildAdjacency on every invocation (#1656).
+// LabelIndex and BM25 are rebuilt eagerly when the graph file mtime changes.
+// The derived traversal indexes (Adjacency, CallsAdj, StepAdj, ByID,
+// TopKPageRank) are built LAZILY on first use via the getter methods and
+// cached until the next reload re-arms them (#3367) — see the field block
+// below. This keeps the cheap-call path (whoami / stats / feedback_event)
+// off the heavy O(R) adjacency scan and the iterative PageRank sort entirely.
 //
 // S8 (#2159): Reader is an mmap'd fbreader.Reader kept open for the
 // lifetime of the cached slot. MCP query paths that only need to
@@ -217,23 +219,147 @@ func (l CrossRepoLink) EffectiveKind() string {
 // transient field-decode wrapper. Reader is nil when graph.fb is not
 // present (JSON-only fallback or old index format).
 type LoadedRepo struct {
-	Repo           string
-	Path           string
-	GraphFile      string
-	Doc            *graph.Document
-	Reader         *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
-	LabelIndex     *LabelIndex
-	BM25           *BM25Index
-	Adjacency      *adjacency               // in/out neighbor lists (#1656)
-	CallsAdj       map[string][]string      // CALLS-only forward adjacency (#1656)
-	StepAdj        map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
-	ByID           map[string]*graph.Entity // entity ID -> entity (#1656)
-	TopKPageRank   []string                 // entity IDs sorted descending by PageRank (#2304)
-	Semantic       *embed.Store             // per-repo vector index (nil when no embeddings.bin)
-	TestsEdgeCount int                      // count of TESTS-kind relationships; cached at load time
-	semMtime       time.Time
-	mtime          time.Time
-	loadErr        string // populated when last reload failed; doc may be stale
+	Repo       string
+	Path       string
+	GraphFile  string
+	Doc        *graph.Document
+	Reader     *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	LabelIndex *LabelIndex
+	BM25       *BM25Index
+	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
+	// TestsEdgeCount is a cheap O(R) count of TESTS-kind relationships, computed
+	// eagerly at reload so archigraph_whoami returns it in O(1) (#3325). Kept
+	// eager because it is O(R) with no allocation — far cheaper than the derived
+	// indexes below and read by the hot whoami path.
+	TestsEdgeCount int
+
+	// Derived indexes below are built LAZILY on first use via the getter methods
+	// (getAdjacency/getCallsAdj/getStepAdj/getByID/getTopKPageRank) rather than
+	// eagerly in reloadLocked (#3367). The live indexer rewrites graph.fb
+	// constantly; eagerly rebuilding all of these — especially the iterative
+	// TopKPageRank — on every reload imposed a ~400ms floor on EVERY MCP call,
+	// including cheap tools (feedback_event/stats/whoami) that read none of
+	// them. Each index is guarded by idxOnce[...] so it is built at most once
+	// per reload; resetIndexes() (called under s.mu during reload) re-arms the
+	// Once values so the next access rebuilds against the fresh Doc.
+	//
+	// All access MUST go through the getters — never read these fields directly,
+	// because a nil value is indistinguishable from "not yet built". The getters
+	// are safe under concurrent handler goroutines (idxMu serialises the build).
+	idxMu        sync.Mutex
+	adjOnce      sync.Once
+	callsOnce    sync.Once
+	stepOnce     sync.Once
+	byIDOnce     sync.Once
+	pagerankOnce sync.Once
+	adjacency    *adjacency               // in/out neighbor lists (#1656)
+	callsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
+	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
+	byID         map[string]*graph.Entity // entity ID -> entity (#1656)
+	topKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
+
+	semMtime time.Time
+	mtime    time.Time
+	loadErr  string // populated when last reload failed; doc may be stale
+}
+
+// resetIndexes re-arms every lazy-index sync.Once and clears the cached
+// derived indexes so the next getter call rebuilds against the current Doc.
+// MUST be called whenever lr.Doc is replaced during reload, while the caller
+// holds State.mu (which serialises reload against handler snapshots). It also
+// takes idxMu so a getter that raced in just before the swap cannot observe a
+// half-reset state.
+func (lr *LoadedRepo) resetIndexes() {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.adjOnce = sync.Once{}
+	lr.callsOnce = sync.Once{}
+	lr.stepOnce = sync.Once{}
+	lr.byIDOnce = sync.Once{}
+	lr.pagerankOnce = sync.Once{}
+	lr.adjacency = nil
+	lr.callsAdj = nil
+	lr.stepAdj = nil
+	lr.byID = nil
+	lr.topKPageRank = nil
+}
+
+// getByID returns the entity-ID → *Entity map, building it on first use.
+// Reuses LabelIndex.ByID when present (the LabelIndex is built eagerly at
+// reload and carries an identical map), avoiding a second O(N) pass.
+func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.byIDOnce.Do(func() {
+		if lr.LabelIndex != nil && lr.LabelIndex.ByID != nil {
+			lr.byID = lr.LabelIndex.ByID
+			return
+		}
+		if lr.Doc == nil {
+			lr.byID = map[string]*graph.Entity{}
+			return
+		}
+		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
+		for i := range lr.Doc.Entities {
+			m[lr.Doc.Entities[i].ID] = &lr.Doc.Entities[i]
+		}
+		lr.byID = m
+	})
+	return lr.byID
+}
+
+// getAdjacency returns the in/out neighbor index, building it on first use.
+func (lr *LoadedRepo) getAdjacency() *adjacency {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.adjOnce.Do(func() {
+		if lr.Doc == nil {
+			lr.adjacency = &adjacency{out: map[string][]edge{}, in: map[string][]edge{}}
+			return
+		}
+		lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
+	})
+	return lr.adjacency
+}
+
+// getCallsAdj returns the CALLS-only forward adjacency, building it on first use.
+func (lr *LoadedRepo) getCallsAdj() map[string][]string {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.callsOnce.Do(func() {
+		if lr.Doc == nil {
+			lr.callsAdj = map[string][]string{}
+			return
+		}
+		lr.callsAdj = buildCallsAdjacency(lr.Doc)
+	})
+	return lr.callsAdj
+}
+
+// getStepAdj returns the STEP_IN_PROCESS forward adjacency, building it on first use.
+func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.stepOnce.Do(func() {
+		if lr.Doc == nil {
+			lr.stepAdj = map[string][]stepEdge{}
+			return
+		}
+		lr.stepAdj = buildStepAdjacency(lr.Doc)
+	})
+	return lr.stepAdj
+}
+
+// getTopKPageRank returns the top-K PageRank-ordered entity IDs, building the
+// sorted slice on first use. This is the heaviest derived index and feeds only
+// pickFallback (#2304); building it lazily keeps it off the cheap-call path.
+func (lr *LoadedRepo) getTopKPageRank() []string {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.pagerankOnce.Do(func() {
+		lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
+	})
+	return lr.topKPageRank
 }
 
 // LoadedGroup holds all loaded repos for a group plus cross-repo links.
@@ -483,22 +609,17 @@ func (s *State) reloadLocked() (int, bool, error) {
 				lr.loadErr = ""
 				lr.LabelIndex = BuildLabelIndex(doc)
 				lr.BM25 = BuildBM25(doc)
-				lr.ByID = make(map[string]*graph.Entity, len(doc.Entities))
-				for i := range doc.Entities {
-					lr.ByID[doc.Entities[i].ID] = &doc.Entities[i]
-				}
-				// Pre-build adjacency once per reload. Eliminates the per-query
-				// O(R)=117k scan that every flow/traversal handler used to pay
-				// via buildAdjacency(r.Doc, r.Repo). (#1656)
-				lr.Adjacency = buildAdjacency(doc, lr.Repo)
-				// CALLS-only forward adjacency for traces.followCallsBFS, which
-				// previously rebuilt this on every traces=follow query. (#1656)
-				lr.CallsAdj = buildCallsAdjacency(doc)
-				// STEP_IN_PROCESS forward adjacency for buildProcessStepsWithCrossRepo,
-				// which previously scanned Doc.Relationships at query time. (#2417)
-				lr.StepAdj = buildStepAdjacency(doc)
+				// Re-arm the lazy derived indexes (Adjacency / CallsAdj / StepAdj /
+				// ByID / TopKPageRank). They are NO LONGER built eagerly here — the
+				// live indexer rewrites graph.fb constantly, so an eager rebuild on
+				// every reload imposed a ~400ms floor (dominated by the iterative
+				// TopKPageRank) on every MCP call, including cheap tools that read
+				// none of them. Each index is now built on first use by its getter
+				// and cached until the next reload re-arms the Once here (#3367).
+				lr.resetIndexes()
 				// TESTS-edge count cached once per reload so archigraph_whoami can
-				// return it in O(1) without rescanning all relationships. (#3325 perf)
+				// return it in O(1) without rescanning all relationships. This is a
+				// cheap O(R) count with no allocation, so it stays eager (#3325).
 				testsCount := 0
 				for i := range doc.Relationships {
 					if doc.Relationships[i].Kind == "TESTS" {
@@ -506,10 +627,6 @@ func (s *State) reloadLocked() (int, bool, error) {
 					}
 				}
 				lr.TestsEdgeCount = testsCount
-				// Top-K PageRank-ordered entity ID cache for pickFallback (#2304).
-				// Eliminates the O(|Entities|) scan inside pickFallback by building
-				// the sorted slice once at index-load time.
-				lr.TopKPageRank = buildTopKPageRank(doc, 64)
 				// S8 (#2159): open the mmap reader alongside the Document.
 				// Best-effort: failures leave Reader nil; callers fall back to
 				// doc.Entities / doc.Relationships.
@@ -648,9 +765,9 @@ func readLinks(path string) ([]CrossRepoLink, error) {
 }
 
 // buildTopKPageRank returns a slice of the top-k entity IDs sorted by
-// descending PageRank. Built once at index-load time and cached on
-// LoadedRepo.TopKPageRank (#2304). pickFallback reads from this slice
-// instead of iterating Doc.Entities on every call.
+// descending PageRank. Built lazily on first ranking use via
+// LoadedRepo.getTopKPageRank() (#3367, formerly eager #2304). pickFallback
+// reads from this slice instead of iterating Doc.Entities on every call.
 func buildTopKPageRank(doc *graph.Document, k int) []string {
 	if doc == nil || len(doc.Entities) == 0 {
 		return nil

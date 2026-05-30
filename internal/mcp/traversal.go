@@ -49,9 +49,10 @@ func (a *adjacency) Incoming(id string) []edge {
 
 // buildAdjacency constructs in/out neighbor lists for one repo.
 //
-// Called ONCE per reload (cached on LoadedRepo.Adjacency, #1656). Handlers
-// must NOT call this per-query — they pay an O(R)=117k scan plus thousands
-// of allocations every time. Use repo.Adjacency instead.
+// Built ONCE per reload, lazily on first use via repo.getAdjacency()
+// (#3367, formerly eager #1656). Handlers must NOT call this per-query — they
+// pay an O(R)=117k scan plus thousands of allocations every time. Use
+// repo.getAdjacency() instead, which caches the result until the next reload.
 //
 // Edge weight: defaults to 1.0 but reads Properties["count"] or
 // Properties["weight"] when present. Extractors that deduplicate call sites
@@ -100,8 +101,8 @@ type stepEdge struct {
 }
 
 // buildStepAdjacency precomputes the forward STEP_IN_PROCESS adjacency
-// consumed by buildProcessStepsWithCrossRepo. Built ONCE per reload
-// (cached on LoadedRepo.StepAdj, #2417). Eliminates the O(R) scan over
+// consumed by buildProcessStepsWithCrossRepo. Built ONCE per reload, lazily on
+// first use via repo.getStepAdj() (#3367, formerly eager #2417). Eliminates the O(R) scan over
 // Doc.Relationships that the function previously paid on every
 // process-flow query.
 func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
@@ -122,8 +123,8 @@ func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
 }
 
 // buildCallsAdjacency precomputes the forward CALLS adjacency consumed by
-// traces.followCallsBFS. Built ONCE per reload (cached on
-// LoadedRepo.CallsAdj, #1656). Targets within each entry are pre-sorted so
+// traces.followCallsBFS. Built ONCE per reload, lazily on first use via
+// repo.getCallsAdj() (#3367, formerly eager #1656). Targets within each entry are pre-sorted so
 // callers don't need to sort.Strings on the hot path.
 func buildCallsAdjacency(doc *graph.Document) map[string][]string {
 	adj := make(map[string][]string)

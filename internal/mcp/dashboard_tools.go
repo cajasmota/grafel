@@ -249,7 +249,7 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		if lookup == "" {
 			lookup = topicID
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		topicEnt, ok := byID[lookup]
 		if !ok {
 			// Fall back: resolve by entity name or qualified name.
@@ -338,7 +338,7 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 		if r.Doc == nil {
 			continue
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		// Build outbound CALLS set.
 		hasOutCalls := map[string]bool{}
 		for i := range r.Doc.Relationships {
@@ -459,7 +459,7 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 		if target == "" {
 			target = pid
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		var procEnt *graph.Entity
 		for i := range r.Doc.Entities {
 			if r.Doc.Entities[i].Kind == processEntityKind && r.Doc.Entities[i].ID == target {
@@ -674,7 +674,7 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 		if target == "" {
 			target = patternID
 		}
-		byID := r.ByID
+		byID := r.getByID()
 		e, ok := byID[target]
 		if !ok || (e.Kind != "SCOPE.Pattern" && e.Kind != "Pattern") {
 			continue
@@ -1016,8 +1016,8 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 	expand := func(node string) []edge {
 		slug, local, r := canonicalRepoOf(node)
 		out := []edge{}
-		if r != nil && r.Doc != nil && r.Adjacency != nil {
-			a := r.Adjacency
+		if r != nil && r.Doc != nil {
+			a := r.getAdjacency()
 			for _, e := range a.out[local] {
 				out = append(out, edge{
 					target: prefixedID(slug, e.target),

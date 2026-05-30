@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,15 +16,39 @@ import (
 	mcpsrv "github.com/mark3labs/mcp-go/server"
 )
 
-// reloadDebounceInterval is the minimum wall-clock gap between consecutive
-// reloadBeforeCall() executions. Any call arriving within this window is
-// served from the already-loaded in-memory state without re-statting disk
-// or forking git subprocesses. 200ms matches the watcher debounce granularity
-// so no real index update is silenced, but N rapid-fire tool calls (e.g.
-// 100×whoami in a benchmark) pay the reload cost at most once per interval.
+// defaultReloadDebounceMS is the default minimum wall-clock gap (milliseconds)
+// between consecutive reloadBeforeCall() executions. Any call arriving within
+// this window is served from the already-loaded in-memory state without
+// re-statting disk, forking git subprocesses, or re-reading the graph. Because
+// the live indexer rewrites graph.fb constantly, each reload that does fire
+// re-reads the Document and re-arms the lazy indexes — so a wider window
+// directly bounds how often the warm path pays that cost (staleness ≤ window).
 //
-// Env override: ARCHIGRAPH_RELOAD_DEBOUNCE_MS (0 = disabled, unlimited re-check).
-const reloadDebounceInterval = 200 * time.Millisecond
+// 2000ms (#3367, was 200ms #2550) trades a small bounded staleness for keeping
+// the common path off the reload entirely under a constantly-churning graph.
+//
+// Env overrides (first non-empty wins): ARCHIGRAPH_MCP_RELOAD_DEBOUNCE_MS,
+// then the legacy ARCHIGRAPH_RELOAD_DEBOUNCE_MS. 0 disables the debounce
+// (every call re-checks mtime); negative/garbage values fall back to default.
+const defaultReloadDebounceMS = 2000
+
+// resolveReloadDebounce returns the configured debounce window, reading the
+// env overrides once at server construction. A value of 0 (debounce disabled)
+// is honoured and returned as a zero Duration.
+func resolveReloadDebounce() time.Duration {
+	for _, key := range []string{"ARCHIGRAPH_MCP_RELOAD_DEBOUNCE_MS", "ARCHIGRAPH_RELOAD_DEBOUNCE_MS"} {
+		v := os.Getenv(key)
+		if v == "" {
+			continue
+		}
+		ms, err := strconv.Atoi(v)
+		if err != nil || ms < 0 {
+			break // malformed → fall through to default
+		}
+		return time.Duration(ms) * time.Millisecond
+	}
+	return defaultReloadDebounceMS * time.Millisecond
+}
 
 // mcpInstructions is the handshake text returned to MCP clients on initialize.
 // It tells agents to call archigraph_whoami first and act on suggested_action.
@@ -60,13 +85,17 @@ type Server struct {
 	activityBroker *MCPActivityBroker
 
 	// reloadDebounceMu / reloadLastAt implement the per-call reload debounce
-	// (#2550). reloadLastAt is the Unix-nano timestamp of the most recent
-	// reloadBeforeCall() that actually ran. Subsequent calls within
-	// reloadDebounceInterval are skipped. atomic int64 for the fast-path
+	// (#2550, widened #3367). reloadLastAt is the Unix-nano timestamp of the
+	// most recent reloadBeforeCall() attempt that actually ran. Subsequent
+	// calls within reloadDebounce are skipped. atomic int64 for the fast-path
 	// read; mu serialises the slow path so exactly one goroutine enters
 	// reloadLocked() when the window expires.
+	//
+	// reloadDebounce is resolved once at construction from the env (see
+	// resolveReloadDebounce). A zero value disables the debounce.
 	reloadDebounceMu sync.Mutex
 	reloadLastAt     atomic.Int64 // Unix nano; 0 = never run
+	reloadDebounce   time.Duration
 }
 
 // SetActivityBroker wires the MCP activity broker into the server so that
@@ -109,7 +138,7 @@ func NewServer(cfg Config) (*Server, error) {
 		mcpsrv.WithToolCapabilities(true),
 		mcpsrv.WithInstructions(mcpInstructions))
 
-	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg}
+	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg, reloadDebounce: resolveReloadDebounce()}
 	s.registerTools()
 	return s, nil
 }
@@ -147,17 +176,17 @@ func (s *Server) Stop() {
 // previous reload, emit notifications/tools/list_changed so MCP clients
 // re-issue tools/list.
 //
-// #2550: debounce — skip the reload if one completed within the last
-// reloadDebounceInterval. The debounce eliminates the per-call overhead
-// of stat'ing every repo's graph file and forking git subprocesses via
-// gitmeta.Capture (called transitively from daemon.FindGraphFile →
-// daemon.StateDirForRepo → gitmeta.Capture). Before this fix every tool
-// — including trivial ones like whoami — paid ~500ms because the
-// reloadLocked scan ran on every call.
+// #2550 / #3367: debounce — skip the reload (the per-call stat of every repo's
+// graph file, the git subprocesses forked via gitmeta.Capture, the re-read of
+// the Document, and the re-arm of the lazy indexes) if one ran within the last
+// s.reloadDebounce window. Tracks lastReloadAttempt per server in reloadLastAt;
+// within the window the in-memory copy is served (bounded staleness ≤ window).
+// A zero window disables the debounce and re-checks mtime on every call.
 func (s *Server) reloadBeforeCall() {
+	debounce := s.reloadDebounce
 	now := time.Now().UnixNano()
 	last := s.reloadLastAt.Load()
-	if last != 0 && time.Duration(now-last) < reloadDebounceInterval {
+	if debounce > 0 && last != 0 && time.Duration(now-last) < debounce {
 		// Fast path: within debounce window — skip reload entirely.
 		return
 	}
@@ -169,7 +198,7 @@ func (s *Server) reloadBeforeCall() {
 	defer s.reloadDebounceMu.Unlock()
 	now = time.Now().UnixNano()
 	last = s.reloadLastAt.Load()
-	if last != 0 && time.Duration(now-last) < reloadDebounceInterval {
+	if debounce > 0 && last != 0 && time.Duration(now-last) < debounce {
 		return
 	}
 

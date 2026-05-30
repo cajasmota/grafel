@@ -58,19 +58,14 @@ func newTestServer(t *testing.T, docs ...*graph.Document) *Server {
 	lg := &LoadedGroup{Name: "test", Repos: map[string]*LoadedRepo{}}
 	for _, nd := range named {
 		doc := nd.doc
-		byID := make(map[string]*graph.Entity, len(doc.Entities))
-		for i := range doc.Entities {
-			byID[doc.Entities[i].ID] = &doc.Entities[i]
-		}
+		// Derived indexes (Adjacency/CallsAdj/StepAdj/ByID/TopKPageRank) are
+		// built lazily on first use by the getters (#3367) — only Doc + the
+		// eager LabelIndex/BM25 need to be set here.
 		lg.Repos[nd.name] = &LoadedRepo{
 			Repo:       nd.name,
 			Doc:        doc,
 			LabelIndex: BuildLabelIndex(doc),
 			BM25:       BuildBM25(doc),
-			Adjacency:  buildAdjacency(doc, nd.name),
-			CallsAdj:   buildCallsAdjacency(doc),
-			StepAdj:    buildStepAdjacency(doc),
-			ByID:       byID,
 		}
 	}
 	st.groups["test"] = lg

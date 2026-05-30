@@ -613,8 +613,9 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 			if qHave && len(qVec) == r.Semantic.Dims {
 				semIDs := r.Semantic.Search(qVec, 10)
 				semHits := make([]Hit, 0, len(semIDs))
+				byID := r.getByID()
 				for _, s := range semIDs {
-					if e, ok := r.ByID[s.ID]; ok {
+					if e, ok := byID[s.ID]; ok {
 						semHits = append(semHits, Hit{Entity: e, Score: s.Score, Source: "semantic"})
 					}
 				}
@@ -775,7 +776,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	}
 	if mode != "none" {
 		for _, sc := range keep {
-			adj := sc.repo.Adjacency // cached at reload (#1656)
+			adj := sc.repo.getAdjacency() // built lazily, cached until reload (#3367)
 			vis := bfs(adj, sc.hit.Entity.ID, depth, contextFilter)
 			for nid, d := range vis {
 				if nid == sc.hit.Entity.ID {
@@ -798,7 +799,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 				if !seen[prefixedID(sc.repo.Repo, nid)] {
 					continue
 				}
-				for _, e := range sc.repo.Adjacency.Outgoing(nid) {
+				for _, e := range adj.Outgoing(nid) {
 					if !seen[prefixedID(sc.repo.Repo, e.target)] {
 						continue
 					}
@@ -872,11 +873,12 @@ type fallbackPick struct {
 	entity *graph.Entity
 }
 
-// pickFallback reads from the pre-built TopKPageRank cache on each LoadedRepo
-// (#2304) rather than iterating Doc.Entities on every call. The cache is built
-// once at index-load time by buildTopKPageRank (state.go) alongside Adjacency.
-// Falls back to a full linear scan when the cache is empty (e.g. in unit tests
-// that construct LoadedRepo directly without calling buildTopKPageRank).
+// pickFallback reads from the TopKPageRank cache on each LoadedRepo (#2304)
+// rather than iterating Doc.Entities on every call. The cache is built LAZILY
+// on first ranking use via r.getTopKPageRank() (#3367) — pickFallback is the
+// only consumer, so the heavy PageRank sort never runs on the cheap-call path.
+// Falls back to a full linear scan when the cache is empty (e.g. a repo whose
+// entities carry no PageRank, where buildTopKPageRank returns a nil slice).
 func pickFallback(repos []*LoadedRepo) *fallbackPick {
 	var best *fallbackPick
 	bestPR := -1.0
@@ -884,10 +886,10 @@ func pickFallback(repos []*LoadedRepo) *fallbackPick {
 		if r.Doc == nil {
 			continue
 		}
-		// Fast path: use pre-sorted cache.
-		if len(r.TopKPageRank) > 0 {
-			topID := r.TopKPageRank[0]
-			e := r.ByID[topID]
+		// Fast path: use pre-sorted cache (built lazily on first ranking use).
+		if topK := r.getTopKPageRank(); len(topK) > 0 {
+			topID := topK[0]
+			e := r.getByID()[topID]
 			if e == nil {
 				continue
 			}
@@ -1147,7 +1149,7 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 	// suffice for the agent-repair filter).
 	out := []map[string]any(nil)
 	rels := lr.Doc.Relationships
-	for _, e := range lr.Adjacency.Outgoing(entityID) {
+	for _, e := range lr.getAdjacency().Outgoing(entityID) {
 		if e.relIdx < 0 || e.relIdx >= len(rels) {
 			continue
 		}
@@ -1222,7 +1224,8 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 	}
 	out := []map[string]any{}
 	rels := lr.Doc.Relationships
-	for _, ed := range lr.Adjacency.Outgoing(e.ID) {
+	byID := lr.getByID()
+	for _, ed := range lr.getAdjacency().Outgoing(e.ID) {
 		if !strings.EqualFold(ed.kind, "CALLS") {
 			continue
 		}
@@ -1235,7 +1238,7 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 			"target_path": "",
 		}
 		// Resolve target path from entity index.
-		if tgt := lr.ByID[ed.target]; tgt != nil {
+		if tgt := byID[ed.target]; tgt != nil {
 			entry["target_path"] = tgt.SourceFile
 			entry["target"] = tgt.Name
 			if !scopeIsOne {
@@ -1285,12 +1288,13 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 
 	out := []map[string]any{}
 	rels := lr.Doc.Relationships
-	for _, ed := range lr.Adjacency.Incoming(e.ID) {
+	byID := lr.getByID()
+	for _, ed := range lr.getAdjacency().Incoming(e.ID) {
 		if !strings.EqualFold(ed.kind, "CALLS") {
 			continue
 		}
 		callerID := ed.target // Incoming: ed.target is the FromID (the caller)
-		callerEntity := lr.ByID[callerID]
+		callerEntity := byID[callerID]
 
 		sourceID := callerID
 		sourcePath := ""
@@ -1396,13 +1400,14 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 		_ = otherIsTarget // direction encoded by which adjacency list we walked
 		out = append(out, entry)
 	}
-	for _, ed := range lr.Adjacency.Outgoing(e.ID) {
+	adj := lr.getAdjacency()
+	for _, ed := range adj.Outgoing(e.ID) {
 		if !strings.EqualFold(ed.kind, "DISCRIMINATES_ON") {
 			continue
 		}
 		emit(ed, true)
 	}
-	for _, ed := range lr.Adjacency.Incoming(e.ID) {
+	for _, ed := range adj.Incoming(e.ID) {
 		if !strings.EqualFold(ed.kind, "DISCRIMINATES_ON") {
 			continue
 		}
@@ -1537,7 +1542,7 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 	if start == nil {
 		return mcpapi.NewToolResultError("node not found: " + key), nil
 	}
-	adj := startRepo.Adjacency // cached at reload (#1656)
+	adj := startRepo.getAdjacency() // built lazily, cached until reload (#3367)
 	vis := bfs(adj, start.ID, depth, nil)
 	out := []map[string]any{}
 	for nid, d := range vis {
@@ -1639,7 +1644,7 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 		repo, local := splitPrefixed(node)
 		out := []edge{}
 		if r, ok := lg.Repos[repo]; ok && r.Doc != nil {
-			a := r.Adjacency
+			a := r.getAdjacency()
 			for _, e := range a.out[local] {
 				out = append(out, edge{
 					target: prefixedID(repo, e.target),

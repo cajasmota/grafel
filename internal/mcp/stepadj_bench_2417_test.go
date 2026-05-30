@@ -133,12 +133,14 @@ func BenchmarkBuildProcessSteps_Adj(b *testing.B) {
 	}
 	procEnt := byID[procID]
 	lr := &LoadedRepo{
-		Repo:      "bench",
-		Doc:       doc,
-		ByID:      byID,
-		StepAdj:   buildStepAdjacency(doc),
-		Adjacency: buildAdjacency(doc, "bench"),
+		Repo:       "bench",
+		Doc:        doc,
+		LabelIndex: BuildLabelIndex(doc),
 	}
+	// Warm the lazy indexes so the loop measures the query, not the build (#3367).
+	lr.getStepAdj()
+	lr.getAdjacency()
+	lr.getByID()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = buildProcessStepsWithCrossRepo(lr, procEnt, nil)

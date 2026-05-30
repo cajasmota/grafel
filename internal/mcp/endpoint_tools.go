@@ -295,7 +295,7 @@ func isOrphanDefinition(r *LoadedRepo, localID string, res endpointResolution) b
 	if res.linkedTargets[prefixed] || res.linkedTargets[localID] {
 		return false
 	}
-	for _, e := range r.Adjacency.Incoming(localID) {
+	for _, e := range r.getAdjacency().Incoming(localID) {
 		if strings.EqualFold(e.kind, kindFETCHES) {
 			return false
 		}
@@ -496,7 +496,7 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 			continue
 		}
 		// Build a quick local-id → entity map for sample-file/line resolution.
-		byID := r.ByID
+		byID := r.getByID()
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
 			if rel.Kind != "NAVIGATES_TO" {

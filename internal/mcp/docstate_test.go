@@ -807,17 +807,10 @@ func makeLoadedGroupWithFile(t *testing.T, groupName, repoName, repoDir, relFile
 			{ID: "e1", Name: "Foo", SourceFile: relFile, StartLine: 1, EndLine: 5},
 		},
 	}
-	byID := make(map[string]*graph.Entity, len(doc.Entities))
-	for i := range doc.Entities {
-		byID[doc.Entities[i].ID] = &doc.Entities[i]
-	}
 	lr := &LoadedRepo{
-		Repo:      repoName,
-		Path:      repoDir,
-		Doc:       doc,
-		ByID:      byID,
-		Adjacency: buildAdjacency(doc, repoName),
-		CallsAdj:  buildCallsAdjacency(doc),
+		Repo: repoName,
+		Path: repoDir,
+		Doc:  doc,
 	}
 	return &LoadedGroup{
 		Name:  groupName,

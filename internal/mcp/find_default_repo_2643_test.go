@@ -46,19 +46,11 @@ func newTestServerWithPaths(t *testing.T, docs ...*graph.Document) (*Server, []s
 	lg := &LoadedGroup{Name: "test", Repos: map[string]*LoadedRepo{}}
 	for _, nd := range named {
 		doc := nd.doc
-		byID := make(map[string]*graph.Entity, len(doc.Entities))
-		for i := range doc.Entities {
-			byID[doc.Entities[i].ID] = &doc.Entities[i]
-		}
 		lg.Repos[nd.name] = &LoadedRepo{
 			Repo:       nd.name,
 			Doc:        doc,
 			LabelIndex: BuildLabelIndex(doc),
 			BM25:       BuildBM25(doc),
-			Adjacency:  buildAdjacency(doc, nd.name),
-			CallsAdj:   buildCallsAdjacency(doc),
-			StepAdj:    buildStepAdjacency(doc),
-			ByID:       byID,
 		}
 	}
 	st.groups["test"] = lg

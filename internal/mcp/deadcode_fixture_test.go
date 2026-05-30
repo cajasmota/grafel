@@ -42,18 +42,11 @@ func TestFindDeadCode_RealFixturePrecision(t *testing.T) {
 			t.Logf("skip %s: %v", slug, err)
 			continue
 		}
-		byID := make(map[string]*graph.Entity, len(doc.Entities))
-		for i := range doc.Entities {
-			byID[doc.Entities[i].ID] = &doc.Entities[i]
-		}
 		repos[slug] = &LoadedRepo{
 			Repo:       slug,
 			Doc:        doc,
 			LabelIndex: BuildLabelIndex(doc),
 			BM25:       BuildBM25(doc),
-			Adjacency:  buildAdjacency(doc, slug),
-			CallsAdj:   buildCallsAdjacency(doc),
-			ByID:       byID,
 		}
 	}
 	if len(repos) == 0 {
