@@ -11,12 +11,12 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 
 | Language | Name | Other capabilities | Notes |
 |---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🔴 0/8 | |
+| [C/C++](../by-language/c-cpp.md) | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🔴 0/3 | |
 | [C/C++](../by-language/c-cpp.md) | [ODB](../detail/lang.c-cpp.orm.odb.md) | 🔴 0/8 | |
 | [C/C++](../by-language/c-cpp.md) | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🔴 0/8 | |
-| [C/C++](../by-language/c-cpp.md) | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🔴 0/8 | |
-| [C/C++](../by-language/c-cpp.md) | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🔴 0/8 | |
-| [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/8 | |
+| [C/C++](../by-language/c-cpp.md) | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🔴 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🔴 0/3 | |
+| [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/3 | |
 | [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🔴 0/8 | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/2 | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/2 | |
@@ -94,7 +94,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [kotlin](../by-language/kotlin.md) | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟡 2/8 | |
 | [kotlin](../by-language/kotlin.md) | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟡 5/8 | |
 | [kotlin](../by-language/kotlin.md) | [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟡 2/8 | |
-| [kotlin](../by-language/kotlin.md) | [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟡 2/7 | |
+| [kotlin](../by-language/kotlin.md) | [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟡 2/3 | |
 | [kotlin](../by-language/kotlin.md) | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟡 2/8 | |
 | [kotlin](../by-language/kotlin.md) | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟡 2/8 | |
 | [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 5/8 | |
@@ -145,17 +145,17 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 5/8 | |
 | [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🔴 0/8 | |
 | [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 6/8 | |
-| [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 1/6 | |
-| [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟡 1/6 | |
+| [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 1/2 | |
+| [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟡 1/2 | |
 | [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 2/8 | |
-| [rust](../by-language/rust.md) | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟡 1/6 | |
+| [rust](../by-language/rust.md) | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟡 1/2 | |
 | [scala](../by-language/scala.md) | [Doobie](../detail/lang.scala.orm.doobie.md) | 🟡 2/8 | |
 | [scala](../by-language/scala.md) | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟡 2/7 | |
 | [scala](../by-language/scala.md) | [Quill](../detail/lang.scala.orm.quill.md) | 🟡 2/8 | |

@@ -1749,20 +1749,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -1772,7 +1772,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "raw driver — no built-in migration system"
           }
         }
       }
@@ -1795,20 +1796,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -1818,7 +1819,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "raw driver — no built-in migration system"
           }
         }
       }
@@ -1841,20 +1843,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -1864,7 +1866,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "raw driver — no built-in migration system"
           }
         }
       }
@@ -1887,20 +1890,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -1910,7 +1913,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "raw driver — no built-in migration system"
           }
         }
       }
@@ -31425,20 +31429,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -42884,20 +42888,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -42932,20 +42936,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -42980,20 +42984,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -43028,20 +43032,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -43076,20 +43080,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -43124,20 +43128,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -43172,20 +43176,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -43220,20 +43224,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -43268,20 +43272,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {
@@ -45572,20 +45576,20 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           }
         },
         "Queries": {

@@ -85,10 +85,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🔴 0/8 | |
+| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🔴 0/3 | |
 | [ODB](../detail/lang.c-cpp.orm.odb.md) | 🔴 0/8 | |
 | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🔴 0/8 | |
-| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🔴 0/8 | |
-| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🔴 0/8 | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/8 | |
+| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🔴 0/3 | |
+| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🔴 0/3 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🔴 0/3 | |
 | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🔴 0/8 | |
