@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects Deserialize/Validate derives; serde_json body deserialization |
-| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects #[validate] attrs and serde_json deserialization in tower handlers |
+| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go` | serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow. |
+| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go` | serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow. |
 
 ### Middleware
 

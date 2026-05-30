@@ -25,12 +25,20 @@ func extract(t *testing.T, name string, file extreg.FileInput) []entitySummary {
 	}
 	var out []entitySummary
 	for _, ent := range ents {
-		out = append(out, entitySummary{Kind: ent.Kind, Subtype: ent.Subtype, Name: ent.Name})
+		out = append(out, entitySummary{
+			Kind:    ent.Kind,
+			Subtype: ent.Subtype,
+			Name:    ent.Name,
+			Props:   ent.Properties,
+		})
 	}
 	return out
 }
 
-type entitySummary struct{ Kind, Subtype, Name string }
+type entitySummary struct {
+	Kind, Subtype, Name string
+	Props               map[string]string
+}
 
 func containsEntity(ents []entitySummary, kind, name string) bool {
 	for _, e := range ents {

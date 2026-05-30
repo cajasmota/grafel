@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects Json/Form/MsgPack<T> extractors and Deserialize derives |
-| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects impl FromRequest guards, Json/Form extractors, validator derives |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/fw_validation.go` | Detects Json/Form/MsgPack<T> extractors and Deserialize derives |
+| Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/fw_validation.go` | Detects impl FromRequest guards, Json/Form extractors, validator derives |
 
 ### Middleware
 

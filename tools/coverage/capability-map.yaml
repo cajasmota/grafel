@@ -7433,11 +7433,18 @@ records:
           verified_at: "2026-05-30"
       Validation:
         dto_extraction:
-          status: partial
+          status: full
           symbols:
-            - file: internal/custom/rust/axum.go
-              functions: [Extract]
-          issues_implemented: ["3268"]
+            - file: internal/custom/rust/fw_validation.go
+              functions: [Extract, extractDTOs, parseDTOFields, applyRenameAll]
+          issues_implemented: ["3268", "3413"]
+          verified_at: "2026-05-30"
+        request_validation:
+          status: full
+          symbols:
+            - file: internal/custom/rust/fw_validation.go
+              functions: [Extract, parseValidateRules, parseDTOFields]
+          issues_implemented: ["3413"]
           verified_at: "2026-05-30"
 
   lang.rust.framework.actix:
@@ -7664,11 +7671,18 @@ records:
           verified_at: "2026-05-30"
       Validation:
         dto_extraction:
-          status: partial
+          status: full
           symbols:
-            - file: internal/custom/rust/actix_web.go
-              functions: [Extract]
-          issues_implemented: ["3268"]
+            - file: internal/custom/rust/fw_validation.go
+              functions: [Extract, extractDTOs, parseDTOFields, applyRenameAll]
+          issues_implemented: ["3268", "3413"]
+          verified_at: "2026-05-30"
+        request_validation:
+          status: full
+          symbols:
+            - file: internal/custom/rust/fw_validation.go
+              functions: [Extract, parseValidateRules, parseDTOFields]
+          issues_implemented: ["3413"]
           verified_at: "2026-05-30"
 
   lang.rust.framework.gotham:
@@ -8499,6 +8513,21 @@ records:
           tests:
             - file: internal/custom/rust/extractors_test.go
           issues_implemented: ["3268"]
+          verified_at: "2026-05-30"
+      Validation:
+        dto_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/fw_validation.go
+              functions: [Extract, extractDTOs, parseDTOFields, applyRenameAll]
+          issues_implemented: ["3413"]
+          verified_at: "2026-05-30"
+        request_validation:
+          status: full
+          symbols:
+            - file: internal/custom/rust/fw_validation.go
+              functions: [Extract, parseValidateRules, parseDTOFields]
+          issues_implemented: ["3413"]
           verified_at: "2026-05-30"
 
   lang.rust.framework.salvo:

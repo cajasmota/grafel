@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects #[derive(Deserialize)] and #[derive(Validate)] structs; actix web::Json/Query/Form/Path<T> extractors |
-| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/fw_validation.go`<br>`internal/custom/rust/fw_validation_test.go` | Detects #[validate(...)] field attrs, .validate() calls, actix extractor types |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/fw_validation.go` | Detects #[derive(Deserialize)] and #[derive(Validate)] structs; actix web::Json/Query/Form/Path<T> extractors |
+| Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/fw_validation.go` | Detects #[validate(...)] field attrs, .validate() calls, actix extractor types |
 
 ### Middleware
 

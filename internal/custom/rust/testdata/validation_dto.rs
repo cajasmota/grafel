@@ -11,13 +11,19 @@ pub struct CreateUserRequest {
     pub email: String,
 }
 
-/// DTO with serde + Validate
+/// DTO with serde + Validate, rename_all + per-field rules
 #[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateUserRequest {
     #[validate(length(min = 1, max = 100))]
-    pub name: String,
+    pub display_name: String,
     #[validate(email)]
     pub email: String,
+    #[validate(range(min = 0, max = 150))]
+    pub age: u8,
+    #[serde(rename = "pwd")]
+    #[validate(length(min = 8))]
+    pub password: String,
 }
 
 /// Axum-style handler with Json extractor

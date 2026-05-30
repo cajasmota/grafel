@@ -45134,16 +45134,14 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "notes": "Detects #[derive(Deserialize)] and #[derive(Validate)] structs; actix web::Json/Query/Form/Path\u003cT\u003e extractors",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "notes": "Detects #[validate(...)] field attrs, .validate() calls, actix extractor types",
             "verified_at": "2026-05-30"
           }
@@ -45351,16 +45349,14 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "notes": "Detects serde Deserialize/Validate structs; axum Json/Query/Form/Path\u003cT\u003e extractors",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "notes": "Detects #[validate(...)] field attrs and axum extractor types",
             "verified_at": "2026-05-30"
           }
@@ -45569,16 +45565,16 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           }
         },
@@ -45786,16 +45782,16 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           }
         },
@@ -46003,16 +45999,16 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           }
         },
@@ -46219,16 +46215,14 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "notes": "Detects Json/Form/MsgPack\u003cT\u003e extractors and Deserialize derives",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "notes": "Detects impl FromRequest guards, Json/Form extractors, validator derives",
             "verified_at": "2026-05-30"
           }
@@ -46437,16 +46431,16 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           }
         },
@@ -46735,16 +46729,16 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           }
         },
@@ -46953,16 +46947,16 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects Deserialize/Validate derives; serde_json body deserialization",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects #[validate] attrs and serde_json deserialization in tower handlers",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           }
         },
@@ -47170,16 +47164,16 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
             "status": "partial",
-            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "cites": ["internal/custom/rust/fw_validation.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "notes": "serde/validator DTO field+constraint decomposition (field name, type, #[serde] rename_all/rename/default/skip/flatten, #[validate(length/range/email/regex/custom/nested)] with specific bounds) is implemented in fw_validation.go and proven by value-asserting tests. Flipped full only for flagship axum/actix/rocket where DTOs are typed extractor payloads (Json/Form). This framework's body-deser path is value-untyped at the extraction site (serde_json::from_slice / body_json), so DTO-to-extractor binding is not statically proven here — honest-partial pending cross-file type-flow.",
             "verified_at": "2026-05-30"
           }
         },
