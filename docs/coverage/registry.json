@@ -17949,10 +17949,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "notes": "JUnit 5 tests in JAX-RS projects; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestJakartaEE_TestsLinkage_Issue2996 value-asserting (same JUnit 5 extractor gates on jaxrs)",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -17998,62 +17998,62 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
-            "verified_at": "2026-05-29"
+            "notes": "@Transactional class/method boundaries; jaxrs in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies jaxrs",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
-            "verified_at": "2026-05-29"
+            "notes": "propagation/TxType; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
+            "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
-            "verified_at": "2026-05-29"
+            "notes": "rollbackFor/noRollbackFor; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
+            "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "status": "full",
+            "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/cdi_interceptors_test.go"],
+            "notes": "CDI @Interceptor + @AroundInvoke/@AroundConstruct methods extracted as SCOPE.Pattern(subtype=advice) with advice_type (around_invoke/around_construct) + aspect + framework properties; OWNS edge; value-asserting TestCDI_JAXRS_InterceptorClass_Issue3082",
+            "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "status": "full",
+            "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/cdi_interceptors_test.go"],
+            "notes": "@Interceptor-annotated classes detected as SCOPE.Pattern(subtype=aspect, kind=cdi_interceptor) with framework=jaxrs; TestCDI_JAXRS_InterceptorClass_Issue3082 value-asserting",
+            "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "status": "full",
+            "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/cdi_interceptors_test.go"],
+            "notes": "@InterceptorBinding annotation type declarations extracted as SCOPE.Pattern(subtype=pointcut, kind=interceptor_binding); REFERENCES edge from advice to binding; value-asserting TestCDI_JAXRS_InterceptorBinding_Issue3082",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "Same extractor as spring-boot; jaxrs in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies jaxrs",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "Micrometer + @Timed + @Counted/@Metered/@Gauge; jaxrs in obsFrameworks",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); jaxrs in obsFrameworks",
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {
@@ -18279,10 +18279,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "backfill:dictionary-completeness",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "notes": "@MicronautTest + JUnit 5; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestMicronaut_TestsLinkage_Issue2995 value-asserting",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -18328,65 +18328,62 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
-            "verified_at": "2026-05-29"
+            "notes": "@Transactional class/method boundaries; micronaut in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies micronaut activation",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
-            "verified_at": "2026-05-29"
+            "notes": "propagation/TxType captured; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
+            "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
-            "verified_at": "2026-05-29"
+            "notes": "rollbackFor/noRollbackFor; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
+            "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go","testdata/fixtures/sources/java/micronaut/LoggingInterceptor.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3084",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go"],
+            "notes": "Micronaut AOP: @InterceptorBean binding + intercept() method extracted as SCOPE.Pattern(subtype=advice) with advice_type=around + binding property; OWNS edge from interceptor class; REFERENCES edge to pointcut; value-asserting tests TestMicronautAOP_AdviceAttribution_Issue3084",
+            "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go","testdata/fixtures/sources/java/micronaut/LoggingInterceptor.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3084",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go"],
+            "notes": "@Around @interface + MethodInterceptor-implementing classes detected as SCOPE.Pattern(subtype=aspect); TestMicronautAOP_AspectExtraction_Issue3084 proves binding annotation + interceptor class both emitted",
+            "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go","testdata/fixtures/sources/java/micronaut/LoggingInterceptor.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3084",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go"],
+            "notes": "@Around-annotated binding annotation type emitted as SCOPE.Pattern(subtype=pointcut); REFERENCES edge from advice to pointcut; TestMicronautAOP_PointcutResolution_Issue3084 value-asserting",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "Same extractor as spring-boot; micronaut in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies micronaut",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "Micrometer + @Timed + @Counted/@Metered/@Gauge; micronaut in obsFrameworks",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); micronaut in obsFrameworks",
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {
@@ -19388,11 +19385,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "#2991",
-            "notes": "Spring Boot test classes use JUnit 5 (@SpringBootTest/@WebMvcTest); @Test/@ParameterizedTest/@RepeatedTest methods extracted as SCOPE.Operation entities with test_annotation property and OWNS edges from test class. TESTS multi-hop via HTTP layer requires separate work.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "notes": "@Test/@ParameterizedTest/@RepeatedTest methods extracted; @BeforeEach/@AfterEach lifecycle methods captured; @Nested classes emitted; @ExtendWith extensions; OWNS edge from class to test method; @SpringBootTest/@WebMvcTest class-level annotations recognised; value-asserting test TestSpringBoot_TestsLinkage_Issue2991",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -19438,68 +19434,62 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
-            "verified_at": "2026-05-29"
+            "notes": "@Transactional on class/method detected; class-level boundary + method-level SCOPE.Pattern(subtype=transaction_boundary) with declaring_class, framework; OWNS edges from class to method boundaries; Jakarta/JTA TxType positional form handled; value-asserting fixture TestTransactional_Boundary_Propagation_Rollback_Issue3003",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
-            "verified_at": "2026-05-29"
+            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) extracted into propagation property; isolation + readOnly also captured; all Spring propagation modes + JTA TxType modes covered; value-asserting test TestTransactional_Boundary_Propagation_Rollback_Issue3003",
+            "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
-            "verified_at": "2026-05-29"
+            "notes": "rollbackFor/noRollbackFor X.class single + {A.class,B.class} list captured as rollback_for/no_rollback_for properties; value-asserting test covers single + multi-class rollback + noRollbackFor",
+            "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_aop.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3004",
-            "notes": "Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect-\u003eadvice/pointcut and REFERENCES advice-\u003enamed pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "notes": "Spring AOP: @Aspect classes, @Before/@After/@Around/@AfterReturning/@AfterThrowing advice methods extracted as SCOPE.Pattern(subtype=advice) with advice_type+pointcut_expression+aspect properties; OWNS edge from aspect; REFERENCES edge for named pointcuts; all 5 advice types covered; value-asserting tests in TestSpringAOP_AdviceAttribution_Issue3004",
+            "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_aop.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3004",
-            "notes": "Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect-\u003eadvice/pointcut and REFERENCES advice-\u003enamed pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "notes": "@Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect) with kind=aspect + framework properties; Spring Boot + Spring WebFlux gated; value-asserting tests in TestSpringAOP_Fixture_Issue3004",
+            "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_aop.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3004",
-            "notes": "Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect-\u003eadvice/pointcut and REFERENCES advice-\u003enamed pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "notes": "@Pointcut declarations detected as SCOPE.Pattern(subtype=pointcut) with pointcut_expression; named pointcut references resolved via REFERENCES edges from advice; inline AspectJ execution() excluded from named-reference resolution; value-asserting tests",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "SLF4J @Slf4j logger + LoggerFactory.getLogger, Log4j LogManager.getLogger, JUL Logger.getLogger; log statement calls (log.info/debug/warn/error/trace) per call site; library + framework + log_level properties; value-asserting tests TestObservability_Slf4jLogging_Issue3006 + TestObservability_LoggerFactoryVariants_Issue3006",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "Micrometer Counter/Timer/Gauge/DistributionSummary.builder(), MeterRegistry usage, @Timed annotation; MicroProfile @Counted/@Metered/@Gauge; metric_type + metric_name + library + framework properties; value-asserting tests TestObservability_MicrometerMetrics_Issue3006 + TestObservability_MicroProfileMetrics_Issue3006",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "OTel @WithSpan + tracer.spanBuilder(); Micrometer Tracing @Observed + tracer.nextSpan(); span_kind (annotation/programmatic) + span_name + library + framework; value-asserting tests TestObservability_OtelTracing_Issue3006 + TestObservability_MicrometerTracing_Issue3006",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -19695,11 +19685,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "#2991",
-            "notes": "Spring WebFlux test classes use JUnit 5 (@WebFluxTest); @Test/@ParameterizedTest/@RepeatedTest methods extracted as SCOPE.Operation entities with test_annotation property and OWNS edges. TESTS multi-hop via reactive router not yet implemented.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "notes": "@Test/@WebFluxTest; @Test/@ParameterizedTest/@RepeatedTest methods extracted; OWNS edge class-\u003emethod; TestSpringWebFlux_TestsLinkage_Issue2991 value-asserting",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
@@ -19748,68 +19737,62 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
-            "verified_at": "2026-05-29"
+            "notes": "@Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
-            "verified_at": "2026-05-29"
+            "notes": "propagation=Propagation.\u003cMODE\u003e and TxType.\u003cMODE\u003e; isolation + readOnly; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
+            "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
-            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
-            "verified_at": "2026-05-29"
+            "notes": "rollbackFor/noRollbackFor single + list; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
+            "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_aop.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3004",
-            "notes": "Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect-\u003eadvice/pointcut and REFERENCES advice-\u003enamed pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "notes": "Spring AOP shares same extractor as spring-boot; all 5 advice types (@Before/@After/@Around/@AfterReturning/@AfterThrowing) with advice_type+pointcut_expression+aspect; OWNS+REFERENCES edges; spring-webflux in aopFrameworks gate; value-asserting tests TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework",
+            "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_aop.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3004",
-            "notes": "Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect-\u003eadvice/pointcut and REFERENCES advice-\u003enamed pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "notes": "@Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect); spring-webflux is explicitly gated in aopFrameworks; same extraction as spring-boot; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework",
+            "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "partial",
-            "cites": ["internal/custom/java/spring_aop.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3004",
-            "notes": "Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect-\u003eadvice/pointcut and REFERENCES advice-\u003enamed pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "notes": "@Pointcut declarations extracted; named reference resolution via REFERENCES; spring-webflux in aopFrameworks; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework",
+            "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "Same extractor as spring-boot; spring-webflux in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies spring-webflux",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "Micrometer builders + MeterRegistry + @Timed; MicroProfile @Counted/@Metered/@Gauge; spring-webflux in obsFrameworks",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
-            "verified_at": "2026-05-29"
+            "notes": "OTel @WithSpan + spanBuilder(); Micrometer Tracing @Observed + nextSpan(); spring-webflux in obsFrameworks",
+            "verified_at": "2026-05-30"
           }
         },
         "Data": {

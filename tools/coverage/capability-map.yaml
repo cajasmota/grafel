@@ -2299,76 +2299,97 @@ records:
     capabilities:
       Observability:
         log_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_Slf4jLogging_Issue3006, TestObservability_LoggerFactoryVariants_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         metric_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_MicrometerMetrics_Issue3006, TestObservability_MicroProfileMetrics_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         trace_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractTracing, canonicalObsFramework]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_OtelTracing_Issue3006, TestObservability_MicrometerTracing_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
       AOP:
         aspect_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/spring_aop.go
               functions: [ExtractSpringAOP]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestSpringAOP_Fixture_Issue3004, TestSpringAOP_AllAdviceTypes_Issue3004, TestSpringAOP_FrameworkGating_Issue3004]
           issues_implemented: ["3004"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         advice_attribution:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/spring_aop.go
               functions: [ExtractSpringAOP, aopAdviceType, aopAdviceMethodName, findEnclosingAspect]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestSpringAOP_Fixture_Issue3004, TestSpringAOP_AllAdviceTypes_Issue3004]
           issues_implemented: ["3004"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         pointcut_resolution:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/spring_aop.go
               functions: [ExtractSpringAOP, aopReferencedPointcut]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestSpringAOP_Fixture_Issue3004]
           issues_implemented: ["3004"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
       Transactions:
         transaction_boundary_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/transactional.go
               functions: [ExtractTransactional, txParseAttributes, classRefList]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003, TestTransactional_JakartaJTA_Issue3003, TestTransactional_FrameworkGating_Issue3003]
           issues_implemented: ["3003"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         transaction_propagation:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/transactional.go
               functions: [txParseAttributes]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003, TestTransactional_JakartaJTA_Issue3003]
           issues_implemented: ["3003"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         transaction_rollback_rules:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/transactional.go
               functions: [txParseAttributes, classRefList]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003]
           issues_implemented: ["3003"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
       Routing:
         endpoint_synthesis:
           status: full
@@ -6193,54 +6214,66 @@ records:
     capabilities:
       Observability:
         log_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_Slf4jLogging_Issue3006, TestObservability_LoggerFactoryVariants_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         metric_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_MicrometerMetrics_Issue3006, TestObservability_MicroProfileMetrics_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         trace_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractTracing, canonicalObsFramework]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_OtelTracing_Issue3006, TestObservability_MicrometerTracing_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
       AOP:
         aspect_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/spring_aop.go
               functions: [ExtractSpringAOP]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestSpringAOP_AllAdviceTypes_Issue3004, TestSpringAOP_FrameworkGating_Issue3004]
           issues_implemented: ["3004"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         advice_attribution:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/spring_aop.go
               functions: [ExtractSpringAOP, aopAdviceType, aopAdviceMethodName, findEnclosingAspect]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestSpringAOP_AllAdviceTypes_Issue3004]
           issues_implemented: ["3004"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         pointcut_resolution:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/spring_aop.go
               functions: [ExtractSpringAOP, aopReferencedPointcut]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestSpringAOP_Fixture_Issue3004, TestSpringAOP_AllAdviceTypes_Issue3004]
           issues_implemented: ["3004"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
 
   lang.ruby.framework.rails:
     capabilities:
@@ -11756,62 +11789,192 @@ records:
     capabilities:
       Observability:
         log_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_Slf4jLogging_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         metric_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_MicrometerMetrics_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         trace_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractTracing, canonicalObsFramework]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_OtelTracing_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
+      AOP:
+        aspect_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/cdi_interceptors.go
+              functions: [ExtractCDIInterceptors]
+          tests:
+            - file: internal/custom/java/cdi_interceptors_test.go
+              functions: [TestCDI_JAXRS_InterceptorClass_Issue3082, TestCDI_FrameworkGating_Issue3082]
+          issues_implemented: ["3082"]
+          verified_at: "2026-05-30"
+        advice_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/java/cdi_interceptors.go
+              functions: [ExtractCDIInterceptors]
+          tests:
+            - file: internal/custom/java/cdi_interceptors_test.go
+              functions: [TestCDI_JAXRS_InterceptorClass_Issue3082]
+          issues_implemented: ["3082"]
+          verified_at: "2026-05-30"
+        pointcut_resolution:
+          status: full
+          symbols:
+            - file: internal/custom/java/cdi_interceptors.go
+              functions: [ExtractCDIInterceptors]
+          tests:
+            - file: internal/custom/java/cdi_interceptors_test.go
+              functions: [TestCDI_JAXRS_InterceptorBinding_Issue3082]
+          issues_implemented: ["3082"]
+          verified_at: "2026-05-30"
+      Transactions:
+        transaction_boundary_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, txParseAttributes, classRefList]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003, TestTransactional_FrameworkGating_Issue3003]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-30"
+        transaction_propagation:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003, TestTransactional_FrameworkGating_Issue3003]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-30"
+        transaction_rollback_rules:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-30"
   lang.java.framework.micronaut:
     capabilities:
       Observability:
         log_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractLogging, logLibraryFor, obsFieldNameNear]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_Slf4jLogging_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         metric_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractMetrics, obsMeterType, obsMetricAnnoType]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_MicrometerMetrics_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
         trace_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/java/observability.go
               functions: [ExtractObservability, extractTracing, canonicalObsFramework]
           tests:
             - file: internal/custom/java/extractors_test.go
+              functions: [TestObservability_OtelTracing_Issue3006, TestObservability_FrameworkGating_Issue3006]
           issues_implemented: ["3006"]
-          verified_at: "2026-05-29"
+          verified_at: "2026-05-30"
+      AOP:
+        aspect_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/micronaut_aop.go
+              functions: [ExtractMicronautAOP]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestMicronautAOP_AspectExtraction_Issue3084, TestMicronautAOP_NoFalsePositive_Issue3084]
+          issues_implemented: ["3084"]
+          verified_at: "2026-05-30"
+        advice_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/java/micronaut_aop.go
+              functions: [ExtractMicronautAOP]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestMicronautAOP_AdviceAttribution_Issue3084]
+          issues_implemented: ["3084"]
+          verified_at: "2026-05-30"
+        pointcut_resolution:
+          status: full
+          symbols:
+            - file: internal/custom/java/micronaut_aop.go
+              functions: [ExtractMicronautAOP]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestMicronautAOP_PointcutResolution_Issue3084]
+          issues_implemented: ["3084"]
+          verified_at: "2026-05-30"
+      Transactions:
+        transaction_boundary_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, txParseAttributes, classRefList]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003, TestTransactional_FrameworkGating_Issue3003]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-30"
+        transaction_propagation:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003, TestTransactional_FrameworkGating_Issue3003]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-30"
+        transaction_rollback_rules:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList]
+          tests:
+            - file: internal/custom/java/extractors_test.go
+              functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003]
+          issues_implemented: ["3003"]
+          verified_at: "2026-05-30"
   lang.java.framework.quarkus:
     capabilities:
       Observability:

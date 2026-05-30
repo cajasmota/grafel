@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-29` | [link](#2991) | `internal/custom/java/junit5.go` | Spring WebFlux test classes use JUnit 5 (@WebFluxTest); @Test/@ParameterizedTest/@RepeatedTest methods extracted as SCOPE.Operation entities with test_annotation property and OWNS edges. TESTS multi-hop via reactive router not yet implemented. |
+| Tests linkage | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | @Test/@WebFluxTest; @Test/@ParameterizedTest/@RepeatedTest methods extracted; OWNS edge class->method; TestSpringWebFlux_TestsLinkage_Issue2991 value-asserting |
 
 ### Type System
 
@@ -65,25 +65,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3003) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface |
-| Transaction propagation | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3003) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> (Spring) and TxType.<MODE> (JTA) captured into propagation property; isolation + readOnly also captured |
-| Transaction rollback rules | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3003) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties |
+| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation |
+| Transaction propagation | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> and TxType.<MODE>; isolation + readOnly; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction rollback rules | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor single + list; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3004) | `internal/custom/java/spring_aop.go` | Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect->advice/pointcut and REFERENCES advice->named pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented. |
-| Aspect extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3004) | `internal/custom/java/spring_aop.go` | Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect->advice/pointcut and REFERENCES advice->named pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented. |
-| Pointcut resolution | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3004) | `internal/custom/java/spring_aop.go` | Spring AOP / AspectJ: @Aspect classes, @Pointcut declarations, and @Before/@After/@Around/@AfterReturning/@AfterThrowing advice extracted as SCOPE.Pattern entities (subtype aspect/pointcut/advice) with advice_type + pointcut expression; OWNS aspect->advice/pointcut and REFERENCES advice->named pointcut. Regex-based, single-file scope; cross-file pointcut resolution not implemented. |
+| Advice attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | Spring AOP shares same extractor as spring-boot; all 5 advice types (@Before/@After/@Around/@AfterReturning/@AfterThrowing) with advice_type+pointcut_expression+aspect; OWNS+REFERENCES edges; spring-webflux in aopFrameworks gate; value-asserting tests TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
+| Aspect extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect); spring-webflux is explicitly gated in aopFrameworks; same extraction as spring-boot; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
+| Pointcut resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut declarations extracted; named reference resolution via REFERENCES; spring-webflux in aopFrameworks; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Log extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Same extractor as spring-boot; spring-webflux in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies spring-webflux |
+| Metric extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer builders + MeterRegistry + @Timed; MicroProfile @Counted/@Metered/@Gauge; spring-webflux in obsFrameworks |
+| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + spanBuilder(); Micrometer Tracing @Observed + nextSpan(); spring-webflux in obsFrameworks |
 
 ### Data
 
