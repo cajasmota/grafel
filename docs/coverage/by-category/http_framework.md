@@ -115,7 +115,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [rust](../by-language/rust.md) | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 8/21 | 🔴 0/6 | |
+| [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 
 
 ## JVM Backend
