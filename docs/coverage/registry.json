@@ -42814,11 +42814,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -42826,13 +42828,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -42872,7 +42876,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -42896,7 +42901,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -42905,7 +42911,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -42947,7 +42954,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -43003,11 +43011,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -43015,13 +43025,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -43061,7 +43073,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -43085,7 +43098,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -43094,7 +43108,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -43136,7 +43151,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -43192,11 +43208,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -43204,13 +43222,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -43250,7 +43270,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -43274,7 +43295,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -43283,7 +43305,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -43325,7 +43348,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -43381,11 +43405,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -43393,13 +43419,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -43439,7 +43467,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -43463,7 +43492,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -43472,7 +43502,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -43514,7 +43545,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -43570,11 +43602,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -43582,13 +43616,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -43628,7 +43664,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -43652,7 +43689,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -43661,7 +43699,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -43703,7 +43742,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -43759,11 +43799,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -43771,13 +43813,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -43817,7 +43861,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -43841,7 +43886,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -43850,7 +43896,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -43892,7 +43939,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -43944,11 +43992,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -43956,13 +44006,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -44002,7 +44054,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -44026,7 +44079,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -44035,7 +44089,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -44077,7 +44132,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -44115,8 +44171,8 @@
             "verified_at": "2026-05-28"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go"]
           },
           "db_effect": {
             "status": "partial",
@@ -44129,8 +44185,8 @@
             "verified_at": "2026-05-28"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/substrate/rust.go"]
           },
           "fs_effect": {
             "status": "partial",
@@ -44143,7 +44199,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/substrate/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -44204,11 +44261,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -44216,13 +44275,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -44262,7 +44323,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -44286,7 +44348,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -44295,7 +44358,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -44337,7 +44401,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -44389,11 +44454,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -44401,13 +44468,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -44447,7 +44516,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -44471,7 +44541,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -44480,7 +44551,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -44522,7 +44594,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {
@@ -44578,11 +44651,13 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "interface_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "type_alias_extraction": {
@@ -44590,13 +44665,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "type_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/rust/rust.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
             "issue": "backfill:dictionary-completeness"
           }
         },
@@ -44636,7 +44713,8 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "env_fallback_recognition": {
@@ -44660,7 +44738,8 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
@@ -44669,7 +44748,8 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "reachability_analysis": {
@@ -44711,7 +44791,8 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_rust.go"],
             "issue": "backfill:dictionary-completeness"
           },
           "vulnerability_finding": {

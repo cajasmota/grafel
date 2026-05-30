@@ -26,23 +26,23 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
+| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | 🔴 0/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🔴 0/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 2/3 | 🔴 0/1 | 🟡 3/4 | 🟢 1/1 | 🟢 21/21 | 🔴 0/6 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | 🟡 7/10 | 🔴 0/3 | |
+| [Tauri (desktop)](../detail/lang.rust.framework.tauri.md) | 🟢 10/10 | 🔴 0/3 | |
 
 
 ## Tools
