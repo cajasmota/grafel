@@ -26,20 +26,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟡 2/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟡 2/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟡 2/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟡 2/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 1/6 | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟡 2/3 | 🟢 1/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟡 2/3 | 🟢 1/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🔴 0/3 | 🟢 1/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🔴 0/3 | 🟢 1/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟡 2/3 | 🟢 1/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🔴 0/3 | 🟢 1/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟡 2/3 | 🟢 1/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/4 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
 
 
 ### UI Frontend
