@@ -5775,7 +5775,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/auth.go"],
+            "notes": "[Authorize]/[AllowAnonymous]/RequireAuthorization/AddPolicy regex extractor; heuristic"
           }
         },
         "Validation": {
@@ -5821,16 +5823,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "template_pattern sniffer captures _logger.Log\u003cLevel\u003e/Console.WriteLine; recording-win, no dedicated emitter"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel Meter/CreateCounter/CreateHistogram regex extractor; heuristic"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel ActivitySource/StartActivity/Activity.Current regex extractor; heuristic"
           }
         },
         "Substrate": {
@@ -5970,7 +5978,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/auth.go"],
+            "notes": "[Authorize]/[AllowAnonymous]/RequireAuthorization/AddPolicy regex extractor; heuristic"
           }
         },
         "Validation": {
@@ -6014,16 +6024,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "template_pattern sniffer captures _logger.Log\u003cLevel\u003e/Console.WriteLine; recording-win, no dedicated emitter"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel Meter/CreateCounter/CreateHistogram regex extractor; heuristic"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel ActivitySource/StartActivity/Activity.Current regex extractor; heuristic"
           }
         },
         "Substrate": {
@@ -6660,7 +6676,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/auth.go"],
+            "notes": "[Authorize]/[AllowAnonymous]/RequireAuthorization/AddPolicy regex extractor; heuristic"
           }
         },
         "Validation": {
@@ -6704,16 +6722,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "template_pattern sniffer captures _logger.Log\u003cLevel\u003e/Console.WriteLine; recording-win, no dedicated emitter"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel Meter/CreateCounter/CreateHistogram regex extractor; heuristic"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel ActivitySource/StartActivity/Activity.Current regex extractor; heuristic"
           }
         },
         "Substrate": {
@@ -6849,7 +6873,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/auth.go"],
+            "notes": "[Authorize]/[AllowAnonymous]/RequireAuthorization/AddPolicy regex extractor; heuristic"
           }
         },
         "Validation": {
@@ -6893,16 +6919,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "template_pattern sniffer captures _logger.Log\u003cLevel\u003e/Console.WriteLine; recording-win, no dedicated emitter"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel Meter/CreateCounter/CreateHistogram regex extractor; heuristic"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel ActivitySource/StartActivity/Activity.Current regex extractor; heuristic"
           }
         },
         "Substrate": {
@@ -7176,7 +7208,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/auth.go"],
+            "notes": "[Authorize]/[AllowAnonymous]/RequireAuthorization/AddPolicy regex extractor; heuristic"
           }
         },
         "Validation": {
@@ -7220,16 +7254,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "template_pattern sniffer captures _logger.Log\u003cLevel\u003e/Console.WriteLine; recording-win, no dedicated emitter"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel Meter/CreateCounter/CreateHistogram regex extractor; heuristic"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel ActivitySource/StartActivity/Activity.Current regex extractor; heuristic"
           }
         },
         "Substrate": {
@@ -7539,7 +7579,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/auth.go"],
+            "notes": "[Authorize]/[AllowAnonymous]/RequireAuthorization/AddPolicy regex extractor; heuristic"
           }
         },
         "Validation": {
@@ -7583,16 +7625,22 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/template_pattern_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "template_pattern sniffer captures _logger.Log\u003cLevel\u003e/Console.WriteLine; recording-win, no dedicated emitter"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel Meter/CreateCounter/CreateHistogram regex extractor; heuristic"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/observability.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "OTel ActivitySource/StartActivity/Activity.Current regex extractor; heuristic"
           }
         },
         "Substrate": {
