@@ -32,7 +32,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟢 3/3 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 2/2 | |
 | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 1/1 | |
 | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
+| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ✅ 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
 | [Plug](../detail/lang.elixir.framework.plug.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
 
 

@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Route extraction | 🟢 `partial` | — | — | `internal/custom/elixir/phoenix.go`<br>`internal/engine/phoenix_routes.go` | live/1 macro routes extracted as SCOPE.Operation/endpoint with route_type=live; scope context preserved |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/elixir/phoenix.go`<br>`internal/engine/elixir_routes.go`<br>`internal/engine/elixir_routes_test.go`<br>`internal/engine/phoenix_routes.go` | synthesizePhoenixLive emits the initial-GET http_endpoint for each Phoenix LiveView 'live "/path", Module, :action' route, composing the active scope prefix and normalising :id->{id}; live-module :action attributed as handler (route_type=live). Value-asserting tests (TestPhoenixLive_Routes proves GET /dashboard + GET /users/{id} with handler attribution; TestPhoenixLive_NoAction covers the action-less form). |
 | Router pattern | 🟢 `partial` | — | — | `internal/custom/elixir/phoenix.go` | Phoenix scope blocks extracted as SCOPE.Pattern/scope; pipeline declarations as SCOPE.Pattern; live_session not yet separately tracked |
 
 ### Build

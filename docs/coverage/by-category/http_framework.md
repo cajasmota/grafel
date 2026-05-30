@@ -37,7 +37,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [elixir](../by-language/elixir.md) | [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟢 3/3 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 2/2 | |
 | [elixir](../by-language/elixir.md) | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 1/1 | |
 | [elixir](../by-language/elixir.md) | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
+| [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | ✅ 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
 | [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | 🟢 3/3 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
 | [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
