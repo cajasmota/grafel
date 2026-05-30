@@ -14,6 +14,7 @@ import (
 	"context"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -732,6 +733,13 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 	minConfidence := argMinConfidence(req) // #2769 Phase 1C
 	ql := strings.ToLower(query)
+	// #2828: optional terse output + token budget for this high-volume tool
+	// (248 calls in live telemetry). format="terse" emits one compact line per
+	// hit under `lines` (id, name, kind, file:line) instead of the per-record
+	// object map; the default shape (`results` array) is unchanged for callers
+	// that machine-parse fields. token_budget caps the returned list bytes.
+	terse := strings.EqualFold(argString(req, "format", ""), "terse")
+	tokenBudget := argInt(req, "token_budget", 0)
 
 	type item struct {
 		EntityID      string `json:"entity_id"`
@@ -794,12 +802,39 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
-	return jsonResult(map[string]any{
-		"results":   out,
+	if tokenBudget > 0 {
+		out = capByRenderedBytes(out, tokenBudget*4, terse)
+	}
+	resp := map[string]any{
 		"count":     len(out),
 		"total":     total,
 		"truncated": total > len(out),
-	}), nil
+	}
+	if terse {
+		lines := make([]string, 0, len(out))
+		for _, it := range out {
+			var b strings.Builder
+			b.WriteString(it.EntityID)
+			b.WriteString("  ")
+			b.WriteString(it.EntityName)
+			b.WriteString("  ")
+			b.WriteString(stripScopePrefix(it.Kind))
+			if it.SourceFile != "" {
+				b.WriteString("  ")
+				b.WriteString(it.SourceFile)
+				if it.StartLine > 0 {
+					b.WriteByte(':')
+					b.WriteString(strconv.Itoa(it.StartLine))
+				}
+			}
+			lines = append(lines, b.String())
+		}
+		resp["format"] = "terse"
+		resp["lines"] = lines
+	} else {
+		resp["results"] = out
+	}
+	return jsonResult(resp), nil
 }
 
 // reverseTraversalEdgeKinds is the set of edge kinds where the BFS in

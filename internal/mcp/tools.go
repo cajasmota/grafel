@@ -1876,7 +1876,11 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 	if nodeID == "" {
 		return mcpapi.NewToolResultError("missing required argument: entity_id"), nil
 	}
-	contextLines := argInt(req, "context_lines", 20)
+	// #2828: default context_lines lowered 20→8. Live telemetry showed
+	// get_source at ~1,035 tok/call; 40 lines of surrounding padding per call
+	// dominated the cost while the entity's own span is what callers read.
+	// Callers that need more surrounding context pass context_lines explicitly.
+	contextLines := argInt(req, "context_lines", 8)
 	_, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return errRes, nil

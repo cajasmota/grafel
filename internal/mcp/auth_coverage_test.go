@@ -123,6 +123,16 @@ func buildAuthCoverageDoc() *graph.Document {
 
 func callAuthCoverageTool(t *testing.T, s *Server, args map[string]any) map[string]any {
 	t.Helper()
+	// #2828: terse is now the production default. The legacy structural tests in
+	// this file assert on the full per-endpoint `endpoints` array, so default
+	// these calls to format=full unless the test explicitly chooses a format.
+	// Dedicated terse/limit/budget assertions live in auth_coverage_2828_test.go
+	// and pass their own format/args.
+	if _, ok := args["format"]; !ok {
+		if _, ok := args["verbose"]; !ok {
+			args["format"] = "full"
+		}
+	}
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = args
 	res, err := s.handleAuthCoverage(context.Background(), req)
