@@ -422,16 +422,53 @@ func groupIndexCounts(lg *LoadedGroup) (entities, relationships, testsEdges int)
 // that an explicit group= query returns the queried group's ref/sha rather than
 // the cwd's ref/sha.
 //
+// Performance (#3372): the loaded graph already stores the ref/SHA it was
+// indexed at in Doc.IndexedRef / Doc.IndexedSHA. Reading those fields is O(1)
+// with no subprocess. This is also MORE correct: indexed_sha should reflect
+// the SHA the graph was actually built from, not the current HEAD (which may
+// be ahead of what is indexed).
+//
+// gitmeta.Capture is retained ONLY as a fallback for graphs built before the
+// IndexedSHA field was added (pre-PH0, #2088) — those will have an empty SHA.
+//
 // Returns ("", "") when the group is unknown or has no loaded repos.
 func groupIndexedRefSHA(s *State, groupName string) (ref, sha string) {
 	if s == nil {
 		return "", ""
 	}
+
+	// Fast path: read ref/SHA from the resident loaded graph (O(1), no subprocess).
+	lg := s.Group(groupName)
+	if lg != nil && len(lg.Repos) > 0 {
+		slugs := make([]string, 0, len(lg.Repos))
+		for slug := range lg.Repos {
+			slugs = append(slugs, slug)
+		}
+		sort.Strings(slugs)
+		for _, slug := range slugs {
+			lr := lg.Repos[slug]
+			if lr == nil || lr.Doc == nil {
+				continue
+			}
+			if lr.Doc.IndexedSHA != "" {
+				// Graph was indexed after PH0 (#2088) — use the stored values.
+				return lr.Doc.IndexedRef, lr.Doc.IndexedSHA
+			}
+			// Graph predates the IndexedSHA field — fall through to gitmeta.
+			if lr.Path != "" {
+				meta := gitmeta.Capture(lr.Path)
+				return meta.Ref, meta.SHA
+			}
+		}
+	}
+
+	// Fallback: no loaded group yet (graph not yet read into memory). Resolve
+	// via the registry entry so the first-ever whoami call before graph load
+	// still returns something meaningful.
 	gentry, ok := s.registry.Groups[groupName]
 	if !ok {
 		return "", ""
 	}
-	// Pick the first repo alphabetically for deterministic output.
 	slugs := make([]string, 0, len(gentry.Repos))
 	for slug := range gentry.Repos {
 		slugs = append(slugs, slug)

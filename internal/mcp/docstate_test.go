@@ -797,6 +797,74 @@ func TestHandleWhoami_explicitGroup_indexState(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Fix #3372 — whoami indexed_sha must come from the loaded graph, not git
+// ---------------------------------------------------------------------------
+
+// TestHandleWhoami_indexedSHAFromGraph asserts that indexed_sha / indexed_ref
+// in the whoami response are read from the loaded graph's Doc.IndexedSHA /
+// Doc.IndexedRef fields (O(1), no subprocess) rather than from a live
+// gitmeta.Capture call. The test stores a known SHA in the graph document and
+// checks that the same value appears verbatim in the whoami output — proving
+// the value is graph-sourced (a live git call would return a different or empty
+// SHA in the test directory which is not a real git worktree).
+func TestHandleWhoami_indexedSHAFromGraph(t *testing.T) {
+	tmp := t.TempDir()
+	setTestHome(t, tmp)
+	t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", "")
+
+	const wantSHA = "cafebabe1234"
+	const wantRef = "feat/perf-fix-3372"
+
+	repoDir := filepath.Join(tmp, "repo-sha-test")
+	doc := &graph.Document{
+		Repo:       "repo-sha-test",
+		IndexedSHA: wantSHA,
+		IndexedRef: wantRef,
+		Entities: []graph.Entity{
+			{ID: "e1", Name: "SomeFunc", Kind: "function", SourceFile: "main.go", StartLine: 1, EndLine: 5},
+		},
+	}
+	writeGraph(t, repoDir, doc)
+
+	regPath := makeRegistry(t, tmp, map[string]map[string]string{
+		"sha-group": {"repo-sha-test": repoDir},
+	})
+
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "sha-group"}
+	res, herr := srv.handleWhoami(context.Background(), req)
+	if herr != nil {
+		t.Fatalf("handleWhoami: %v", herr)
+	}
+	out := extractResultJSON(t, res)
+
+	// Top-level fields.
+	if got, _ := out["indexed_sha"].(string); got != wantSHA {
+		t.Errorf("indexed_sha: got %q want %q (must come from graph metadata, not git subprocess)", got, wantSHA)
+	}
+	if got, _ := out["indexed_ref"].(string); got != wantRef {
+		t.Errorf("indexed_ref: got %q want %q (must come from graph metadata, not git subprocess)", got, wantRef)
+	}
+
+	// index{} block must mirror the same values.
+	idx, _ := out["index"].(map[string]any)
+	if idx == nil {
+		t.Fatal("index block missing from whoami response")
+	}
+	if got, _ := idx["indexed_sha"].(string); got != wantSHA {
+		t.Errorf("index.indexed_sha: got %q want %q", got, wantSHA)
+	}
+	if got, _ := idx["indexed_ref"].(string); got != wantRef {
+		t.Errorf("index.indexed_ref: got %q want %q", got, wantRef)
+	}
+}
+
 // makeLoadedGroupWithFile builds a minimal LoadedGroup with one repo whose
 // entity graph has the given source file path relative to repoDir.
 func makeLoadedGroupWithFile(t *testing.T, groupName, repoName, repoDir, relFile string) *LoadedGroup {
