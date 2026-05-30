@@ -47702,30 +47702,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }
@@ -47986,30 +47982,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }
@@ -48254,30 +48246,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }
@@ -48536,30 +48524,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }
@@ -48827,30 +48811,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }
@@ -49109,30 +49089,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }
@@ -49386,19 +49362,19 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
@@ -49610,30 +49586,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }
@@ -49892,30 +49864,26 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
             "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
             "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
             "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/scala/type_system.go"],
-            "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
             "verified_at": "2026-05-30"
           }

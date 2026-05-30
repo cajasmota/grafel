@@ -143,14 +143,14 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 15/15 | |
 | [kotlin](../by-language/kotlin.md) | [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟢 1/1 | — | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [scala](../by-language/scala.md) | [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [scala](../by-language/scala.md) | [Cask](../detail/lang.scala.framework.cask.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [scala](../by-language/scala.md) | [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟢 1/1 | — | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
-| [scala](../by-language/scala.md) | [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
-| [scala](../by-language/scala.md) | [Lagom](../detail/lang.scala.framework.lagom.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
-| [scala](../by-language/scala.md) | [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
-| [scala](../by-language/scala.md) | [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
-| [scala](../by-language/scala.md) | [http4s](../detail/lang.scala.framework.http4s.md) | 🟢 3/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [scala](../by-language/scala.md) | [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [scala](../by-language/scala.md) | [Cask](../detail/lang.scala.framework.cask.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [scala](../by-language/scala.md) | [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟢 1/1 | — | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 3/3 | |
+| [scala](../by-language/scala.md) | [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
+| [scala](../by-language/scala.md) | [Lagom](../detail/lang.scala.framework.lagom.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
+| [scala](../by-language/scala.md) | [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [scala](../by-language/scala.md) | [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
+| [scala](../by-language/scala.md) | [http4s](../detail/lang.scala.framework.http4s.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 21/21 | 🟢 6/6 | |
 
 
 ## UI Frontend
@@ -181,7 +181,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 8/8 | |
-| [scala](../by-language/scala.md) | [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | 🟢 2/2 | 🟢 3/3 | 🟢 1/1 | 🟢 21/21 | — | |
+| [scala](../by-language/scala.md) | [Play Framework (Scala)](../detail/lang.scala.framework.play.md) | 🟢 2/2 | ✅ 3/3 | 🟢 1/1 | 🟢 21/21 | — | |
 
 
 ## Mobile
