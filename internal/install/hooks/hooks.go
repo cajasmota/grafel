@@ -83,6 +83,11 @@ func Uninstall(repo string) error {
 // BlockFor returns the managed hook body for a single hook name.
 // When group is non-empty the block also refreshes the cross-repo
 // links table by invoking `archigraph links pass <group>`.
+//
+// The generated script resolves the repo path at runtime via
+// `git rev-parse --show-toplevel` so that hooks shared through
+// .git/hooks across worktrees index the worktree that fired the
+// hook, not the hardcoded registered main-repo path.
 func BlockFor(hookName, binPath, repo string, group ...string) string {
 	g := ""
 	if len(group) > 0 {
@@ -90,17 +95,19 @@ func BlockFor(hookName, binPath, repo string, group ...string) string {
 	}
 	if g == "" {
 		return fmt.Sprintf(`%s
-# archigraph %s — re-index the repo after %s.
-%q index %q >/dev/null 2>&1 || true
+# archigraph %s — re-index the repo (or worktree) after %s.
+_ag_repo="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -n "$_ag_repo" ] && %q index "$_ag_repo" >/dev/null 2>&1 || true
 %s
-`, MarkerBegin, hookName, hookName, binPath, repo, MarkerEnd)
+`, MarkerBegin, hookName, hookName, binPath, MarkerEnd)
 	}
 	return fmt.Sprintf(`%s
-# archigraph %s — re-index the repo and refresh cross-repo links for group %s.
-%q index %q >/dev/null 2>&1 || true
+# archigraph %s — re-index the repo (or worktree) and refresh cross-repo links for group %s.
+_ag_repo="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -n "$_ag_repo" ] && %q index "$_ag_repo" >/dev/null 2>&1 || true
 %q links pass %q >/dev/null 2>&1 || true
 %s
-`, MarkerBegin, hookName, g, binPath, repo, binPath, g, MarkerEnd)
+`, MarkerBegin, hookName, g, binPath, binPath, g, MarkerEnd)
 }
 
 func hooksDir(repo string) (string, error) {
