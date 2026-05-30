@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/scalikejdbc.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | scalikejdbcSyntaxSupportRe captures SQLSyntaxSupport[T] companion objects; scalikejdbcCaseClassRe captures row case classes |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | scalikejdbcHasManyRe captures hasMany/hasManyThrough/hasOne/belongsTo relationship declarations → SCOPE.Schema entities |
+| Foreign key extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | ScalikeJDBC has no FK declaration DSL; FKs live in the DB schema and are not declared in ScalikeJDBC model code |
+| Lazy loading recognition | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | ScalikeJDBC uses explicit DB session blocks; no transparent lazy-loading proxies — queries are always explicit |
+| Relationship extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | hasMany/hasManyThrough/hasOne/belongsTo DSL extracted; DB session block patterns captured for join-query sites |
 
 ### Queries
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | — | — | — |
+| Migration parsing | 🟢 `partial` | — | — | `internal/custom/scala/orm_extractors.go` | scalikejdbcDBMigrationRe captures DB autoCommit/localTx blocks which can contain DDL; scalikejdbc-play-support includes DB evolution integration |
 
 ## Provenance
 

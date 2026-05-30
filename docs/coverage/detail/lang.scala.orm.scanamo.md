@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/scanamo.yaml` | — |
-| Schema extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/scala/orm_extractors.go` | scanamoTableRe captures Table[T]("name") DynamoDB table defs; scanamoDynamoFormatRe captures DynamoFormat[T] implicit derivations; scanamoCaseClassRe captures item case classes |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Foreign key extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Lazy loading recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Relationship extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Association extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | DynamoDB is a NoSQL key-value store; relational associations/joins are not_applicable — item relationships modeled via single-table design or denormalization |
+| Foreign key extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | DynamoDB has no foreign key concept; Scanamo provides no FK declarations |
+| Lazy loading recognition | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Scanamo uses explicit IO-based queries (cats-effect / ZIO); no ORM-style lazy-loading proxies |
+| Relationship extraction | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | DynamoDB NoSQL — no relational relationship declarations in Scanamo; item access patterns are modeled via GSI/LSI index design, not FK relationships |
 
 ### Queries
 
