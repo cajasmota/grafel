@@ -62,11 +62,16 @@ public class UsersController : ControllerBase
 }
 `
 	ents := extract(t, "custom_csharp_aspnet_core", fi("UsersController.cs", "csharp", src))
-	if !containsEntity(ents, "SCOPE.Operation", "GET api/[controller]") {
-		t.Error("expected GET route from [HttpGet]")
+	// [controller] token must be expanded: UsersController → "users"
+	if !containsEntity(ents, "SCOPE.Operation", "GET api/users") {
+		t.Error("expected GET api/users from [HttpGet] (with [controller] token expanded)")
 	}
-	if !containsEntity(ents, "SCOPE.Operation", "POST api/[controller]") {
-		t.Error("expected POST route from [HttpPost]")
+	if !containsEntity(ents, "SCOPE.Operation", "POST api/users") {
+		t.Error("expected POST api/users from [HttpPost] (with [controller] token expanded)")
+	}
+	// DELETE with sub-path: api/users/{id}
+	if !containsEntity(ents, "SCOPE.Operation", "DELETE api/users/{id}") {
+		t.Error("expected DELETE api/users/{id} from [HttpDelete(\"{id}\")]")
 	}
 }
 

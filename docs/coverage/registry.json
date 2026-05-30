@@ -6153,9 +6153,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/aspnet_core.go"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/csharp/aspnet_core.go","internal/engine/aspnet_core_routes.go"],
             "notes": "Minimal-API app.MapGet/Post/Put/Delete route path strings extracted via reAspNetMinimalAPI; attribute routes via reAspNetHTTPMethod; route_path property set on each emitted entity."
           }
         },
@@ -6367,9 +6366,8 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/aspnet_core.go","internal/engine/rules/csharp/frameworks/asp_net_mvc.yaml"],
-            "issue": "backfill:dictionary-completeness",
+            "status": "full",
+            "cites": ["internal/custom/csharp/aspnet_core.go","internal/engine/aspnet_core_routes.go","internal/engine/rules/csharp/frameworks/asp_net_mvc.yaml"],
             "notes": "MVC controller [Route] + [HttpGet/Post/Put/Delete/Patch] attribute routes extracted; route path strings captured by asp_net_mvc.yaml source_patterns and aspnet_core.go reAspNetHTTPMethod/reAspNetMinimalAPI."
           }
         },
