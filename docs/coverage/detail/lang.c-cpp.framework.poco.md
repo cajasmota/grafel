@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🔴 `missing` | — | — | — | — |
-| Handler attribution | 🔴 `missing` | — | — | — | — |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/cpp/poco_routes.go` | SCOPE.Operation entities from POCO handler registration; partial = regex |
+| Handler attribution | 🟢 `partial` | — | — | `internal/custom/cpp/poco_routes.go` | Handler class names extracted from addHandler<T> and server.addHandler; partial = regex |
+| Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/poco_routes.go` | Paths from addHandler<T>/router.add/server.addHandler; partial = regex heuristic |
 
 ### Auth
 
@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DTO extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | DTO_FIELD macro (oatpp) and JSON field access patterns detected; partial = regex heuristic, no schema inference |
+| Request validation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/validation.go` | Request parameter extraction patterns detected (getParam, getParameter, JSON field access); partial = regex heuristic, no validation-logic inference |
 
 ### Middleware
 
@@ -43,8 +43,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/cpp/extractor.go` | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Interface extraction | — `not_applicable` | — | — | — | C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction) |
+| Type alias extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/cpp/type_alias.go` | typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution |
 | Type extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/cpp/extractor.go` | — |
 
 ### Testing

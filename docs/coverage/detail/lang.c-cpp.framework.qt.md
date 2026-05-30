@@ -38,8 +38,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Enum extraction | 🟢 `partial` | — | — | `internal/extractors/cpp/extractor.go` | — |
-| Interface extraction | 🔴 `missing` | — | — | — | — |
-| Type alias extraction | 🔴 `missing` | — | — | — | — |
+| Interface extraction | — `not_applicable` | — | — | — | C/C++ has no interface keyword; closest construct is pure-virtual abstract class (covered under type_extraction) |
+| Type alias extraction | 🟢 `partial` | — | — | `internal/custom/cpp/type_alias.go` | typedef and using-alias declarations extracted by regex; partial = heuristic, no full type resolution |
 
 ### Lifecycle
 
