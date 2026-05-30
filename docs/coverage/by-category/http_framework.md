@@ -66,8 +66,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 8/8 | |
-| [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/17 | 🔴 0/6 | |
-| [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/17 | 🔴 0/6 | |
+| [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 14/14 | 🟢 6/6 | |
+| [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟢 14/14 | 🟢 6/6 | |
 | [php](../by-language/php.md) | [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [php](../by-language/php.md) | [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
 | [php](../by-language/php.md) | [Drupal](../detail/lang.php.framework.drupal.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 17/21 | 🔴 0/6 | |
