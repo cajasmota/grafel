@@ -12250,6 +12250,45 @@ records:
 
   lang.elixir.framework.phoenix:
     capabilities:
+      Type System:
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/elixir/typespec.go
+              functions: [Extract, parseEnforceKeys]
+            - file: internal/custom/elixir/helpers.go
+              functions: [submatch1, uniqueStrings]
+          tests:
+            - file: internal/custom/elixir/typespec_test.go
+          issues_implemented: ["3471"]
+          verified_at: "2026-05-31"
+        type_alias_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/elixir/typespec.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/elixir/typespec_test.go
+          issues_implemented: ["3471"]
+          verified_at: "2026-05-31"
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/elixir/typespec.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/elixir/typespec_test.go
+          issues_implemented: ["3471"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/elixir/typespec.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/elixir/typespec_test.go
+          issues_implemented: ["3471"]
+          verified_at: "2026-05-31"
       Substrate:
         constant_propagation:
           status: full

@@ -9533,26 +9533,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "Elixir atoms serve as enum-like values; Absinthe enum() schema not statically extracted"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback + @behaviour + defprotocol extracted; Absinthe interfaces not yet parsed as distinct cap"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type alias forms extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@spec declarations extracted; Absinthe type objects (object/input/enum) not yet separately parsed"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
@@ -9748,26 +9749,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "Elixir atoms; Ash :atom_type enums not statically extracted"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback + @behaviour extracted; Ash Api/Resource behaviours captured"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type alias forms extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@spec declarations extracted; Ash :attribute type declarations not yet separately parsed"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
@@ -9956,26 +9958,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "Elixir atoms; no dedicated enum type"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback + @behaviour extracted; Bandit implements Plug behaviour"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type alias forms extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@spec declarations in Bandit source files extracted"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
@@ -10168,26 +10171,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "No enum keyword in Elixir"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback + @behaviour (cowboy_handler etc) extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type alias forms extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@spec extracted from Cowboy handler modules"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
@@ -10373,26 +10377,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "No enum keyword in Elixir"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback + @behaviour (GenServer/Supervisor) extracted for Nerves components"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type alias forms extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@spec declarations in Nerves system modules extracted"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
@@ -10582,26 +10587,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "No enum keyword in Elixir; Oban job states are atoms"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback (perform/1, new/1, max_attempts/0 etc) extracted from Oban.Worker behaviour"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type alias forms extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@spec declarations in Oban worker modules extracted"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
@@ -10799,26 +10805,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "Elixir has no enum keyword; atoms serve as discriminants but are not declared types. Static atom-set extraction not implemented."
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback declarations in behaviour modules extracted; defprotocol extracted as SCOPE.Component/interface; @behaviour attrs mark implementing modules"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@typep/@opaque declarations extracted as SCOPE.Schema/type entities; @spec annotations captured"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
@@ -11018,18 +11025,22 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "No enum keyword in Elixir; atom discriminants not statically enumerable as declared sets"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "notes": "@callback + @behaviour attrs extracted; defprotocol → SCOPE.Component/interface"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "notes": "@type Name :: OtherType simple alias forms extracted"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           }
         },
         "Lifecycle": {
@@ -11217,26 +11228,27 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "No enum keyword in Elixir; atom discriminants not statically enumerable"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "Elixir has no enum keyword. Literal atom-union typespecs (@type role :: :admin | :member | :guest) are the idiomatic enum analogue and ARE captured as SCOPE.Schema/enum with enum_members/member_count props, value-asserted (TestTypespecAtomUnionEnum). Partial (not full): only literal-union typespecs qualify; runtime atom sets / Ecto.Enum field options not statically resolved."
           },
           "interface_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@callback + @behaviour (including @behaviour Plug) extracted; defprotocol as interface"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@callback declarations + @behaviour attrs extracted; defprotocol -\u003e SCOPE.Component/interface. Partial: callback arities and per-argument typespecs not parsed into structured signatures."
           },
           "type_alias_extraction": {
             "status": "partial",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type Name :: Target alias forms extracted as SCOPE.Schema/type_alias"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3471",
+            "notes": "@type Name :: OtherType simple alias forms extracted as SCOPE.Schema/type_alias with alias_target. Partial: parametric/compound RHS (unions, maps, tuples) not decomposed."
           },
           "type_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "@type/@typep/@opaque declarations extracted as SCOPE.Schema/type entities"
+            "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
         "Testing": {
