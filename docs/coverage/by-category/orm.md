@@ -32,7 +32,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C#](../by-language/csharp.md) | [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🟢 1/1 | |
 | [C#](../by-language/csharp.md) | [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🟢 1/1 | |
 | [C#](../by-language/csharp.md) | [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟢 1/1 | |
-| [elixir](../by-language/elixir.md) | [Ecto](../detail/lang.elixir.orm.ecto.md) | 🟢 7/7 | |
+| [elixir](../by-language/elixir.md) | [Ecto](../detail/lang.elixir.orm.ecto.md) | ✅ 7/7 | |
 | [elixir](../by-language/elixir.md) | [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🟢 1/1 | |
 | [elixir](../by-language/elixir.md) | [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🟢 1/1 | |
 | [elixir](../by-language/elixir.md) | [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🟢 1/1 | |
