@@ -50200,6 +50200,245 @@
       }
     },
     {
+      "id": "lang.scala.framework.pekko-http",
+      "category": "http_framework",
+      "subcategory": "jvm_backend",
+      "language": "scala",
+      "label": "Apache Pekko HTTP",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks: pekko-http routes synthesized as http_route entities; cross-file route-tree composition not resolved.",
+            "verified_at": "2026-05-30"
+          },
+          "handler_attribution": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks: pekko-http route directives detected; complete(...) handler binding is file-local and not resolved to a named handler cross-file.",
+            "verified_at": "2026-05-30"
+          },
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
+            "notes": "custom_scala_frameworks: pekko-http detected as its own framework (org.apache.pekko import) and routed through the shared akka-http branch (case akka-http,pekko-http). path(\"users\"/LongNumber)/pathPrefix + method directives combined via nearest-path positional context, canonicalScalaPathExpr ({id} from LongNumber). Value-asserting test TestPekkoHttpRoute pins GET:/api/users/{id} + POST + framework=pekko-http. File-local.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks deep extractor: pekko-http shares the akka-http auth branch — authenticateBasic/OAuth2(+Async/PF) stamp auth_method+realm (paren-safe quoted capture), authorize/authorizeAsync. Value-asserting test TestPekkoHttpAuthDirective asserts auth_method=basic, realm=secure, framework=pekko-http. File-local.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "custom_scala_frameworks: field-level case-class DTO modeling via extractScalaDTOFields (fields, Option nullability, circe/play-json/zio-json codec, wire-name overrides) runs for pekko-http files. File-local.",
+            "verified_at": "2026-05-30"
+          },
+          "request_validation": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/validation.go"],
+            "notes": "custom_scala_frameworks: field-level request validation via extractScalaValidation (refined/cats Validated/accord/octopus) + entity(as[T]) body directive runs for pekko-http. File-local.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks deep extractor: pekko-http shares the akka-http middleware branch — handleRejections/handleExceptions(+named handler), cors(), transform directives (mapRequest/mapResponse/encodeResponse/...). pekko-http-cors recognised. File-local.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks (shared): test suites detected (ScalaTest/Specs2/MUnit/TestKit incl PekkoSpec/ScalaTestWithActorTestKit/ZIOSpec). PARTIAL: test-\u003eroute linkage not resolved cross-file.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Transactions": {
+          "transaction_boundary_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_rollback_rules": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "AOP": {
+          "advice_attribution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "aspect_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pointcut_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks (shared): log statement call sites detected (SLF4J/scala-logging/Play/Akka-Pekko/Cats-ZIO). HONEST PARTIAL: logger identity + message\u003c-\u003elogger binding need cross-file dataflow.",
+            "verified_at": "2026-05-30"
+          },
+          "metric_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks (shared): reScalaMetricNamed captures literal metric name per call site (Kamon/Micrometer/Dropwizard). Runs for all Scala frameworks. metric_name in props.",
+            "verified_at": "2026-05-30"
+          },
+          "trace_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks (shared): reScalaTraceNamed captures literal span name per call site (Kamon/OTel/natchez). Runs for all Scala frameworks. span_name in props.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.scala.framework.play",
       "category": "http_framework",
       "subcategory": "meta_framework",
@@ -50690,6 +50929,244 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_scala.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.scala.framework.tapir",
+      "category": "http_framework",
+      "subcategory": "jvm_backend",
+      "language": "scala",
+      "label": "tapir (endpoint DSL)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go"],
+            "notes": "custom_scala_frameworks: tapir endpoint values synthesized into http_route entities backend-agnostically (akka/pekko/http4s/netty). method+path+DTO refs+handler in one entity. File-local.",
+            "verified_at": "2026-05-30"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go"],
+            "notes": "custom_scala_frameworks: tapir .serverLogic/.serverLogicSuccess/Pure(handler) bound to the endpoint, stamped as handler + handler_attribution prop. Value-asserting test asserts handler=handleGetUser/createUserHandler. File-local (handler def may live cross-file).",
+            "verified_at": "2026-05-30"
+          },
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go"],
+            "notes": "custom_scala_frameworks: tapir endpoint-DSL. Each endpoint(.get/.post/.method(Method.X)).in(\"seg\" / path[T](\"name\")).in(query[T]) chain parsed into one http_route with http_method + canonical http_path ({name} from path[T], query params separate). Value-asserting tests TestTapirEndpointRouteAndDTOs/PostRequestBodyDTO/MethodExplicitForm/NamedPathParam pin verb+path. File-local.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go","internal/custom/scala/validation.go"],
+            "notes": "custom_scala_frameworks: tapir jsonBody[T]/plainBody/xmlBody under .in (request) / .out (response) / .errorOut (error) → dto_ref entities with role+dto+route; PLUS field-level case-class DTO modeling via extractScalaDTOFields (fields, Option nullability, circe/play-json/zio-json codec). Value-asserting tests assert response_dto=User, request_dto=CreateUserRequest, error_dto=ErrorInfo + dto_ref entities. File-local.",
+            "verified_at": "2026-05-30"
+          },
+          "request_validation": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go","internal/custom/scala/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks: field-level request validation via extractScalaValidation (refined types, cats Validated, accord, octopus) runs for tapir case-class DTOs. PARTIAL: tapir's own .validate()/Validator combinator chain not yet parsed; cross-file.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks (shared): test suites detected (ScalaTest/Specs2/MUnit/TestKit incl PekkoSpec/ScalaTestWithActorTestKit/ZIOSpec). PARTIAL: test-\u003eroute linkage not resolved cross-file.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Transactions": {
+          "transaction_boundary_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_rollback_rules": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "AOP": {
+          "advice_attribution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "aspect_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pointcut_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks (shared): log statement call sites detected (SLF4J/scala-logging/Play/Akka-Pekko/Cats-ZIO). HONEST PARTIAL: logger identity + message\u003c-\u003elogger binding need cross-file dataflow.",
+            "verified_at": "2026-05-30"
+          },
+          "metric_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks (shared): reScalaMetricNamed captures literal metric name per call site (Kamon/Micrometer/Dropwizard). Runs for all Scala frameworks. metric_name in props.",
+            "verified_at": "2026-05-30"
+          },
+          "trace_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks (shared): reScalaTraceNamed captures literal span name per call site (Kamon/OTel/natchez). Runs for all Scala frameworks. span_name in props.",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go","internal/custom/scala/validation.go"],
+            "notes": "custom_scala_frameworks: tapir .in(jsonBody[T]) request body DTO captured as request_dto + dto_ref(role=request). Value-asserting test asserts request_dto=CreateUserRequest. File-local.",
+            "verified_at": "2026-05-30"
+          },
+          "response_shape_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go","internal/custom/scala/validation.go"],
+            "notes": "custom_scala_frameworks: tapir .out(jsonBody[T]) / .errorOut(jsonBody[T]) captured as response_dto/error_dto + dto_ref(role=response/error). Value-asserting test asserts response_dto=User, error_dto=ErrorInfo. File-local.",
+            "verified_at": "2026-05-30"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }

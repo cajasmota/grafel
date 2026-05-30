@@ -508,6 +508,14 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 	// Routing extraction
 	// ---------------------------------------------------------------------------
 	switch framework {
+	case "tapir":
+		// tapir endpoint-DSL: routes + request/response/error DTO refs + handler
+		// attribution are parsed from each `endpoint`(.get/.post/...).in(...).out(...)
+		// chain (backend-agnostic). See tapir.go.
+		for _, ent := range extractTapirEndpoints(src, fileMeta{Path: file.Path, Language: file.Language}) {
+			add(ent)
+		}
+
 	case "akka-http", "pekko-http":
 		// Positional combination: associate each HTTP method directive with the nearest
 		// preceding pathPrefix and path segment directives (within a 512-char window).
@@ -1083,7 +1091,20 @@ func max0(a int) int {
 // detectScalaFramework returns the dominant framework based on imports/code patterns.
 func detectScalaFramework(src string) string {
 	switch {
-	case strings.Contains(src, "akka.http") || strings.Contains(src, "pekko.http"):
+	// tapir is endpoint-DSL: routes + DTOs live in `endpoint` values regardless
+	// of the serving backend (it can run ON akka/pekko/http4s/netty). Detect it
+	// FIRST so a tapir file backed by akka/pekko/http4s is labelled `tapir`, not
+	// the backend, since the route/DTO shape is the tapir endpoint chain.
+	case isTapirSource(src):
+		return "tapir"
+	// Apache Pekko is the Apache fork of Akka; same routing DSL, package
+	// org.apache.pekko.* . Detect it as its OWN framework (distinct from akka)
+	// so the registry can track Pekko coverage separately. Checked before the
+	// akka branch because a pekko file never contains `akka.http`.
+	case strings.Contains(src, "org.apache.pekko") || strings.Contains(src, "pekko.http") ||
+		strings.Contains(src, "import org.apache.pekko"):
+		return "pekko-http"
+	case strings.Contains(src, "akka.http"):
 		return "akka-http"
 	case strings.Contains(src, "org.http4s"):
 		return "http4s"
