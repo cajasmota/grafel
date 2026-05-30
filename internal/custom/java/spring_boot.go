@@ -71,6 +71,39 @@ var (
 	sbAnnotationNameRE = regexp.MustCompile(`@(\w+)`)
 	sbMappingPathRE    = regexp.MustCompile(`"([^"]*)"`)
 	sbRequestMethodRE  = regexp.MustCompile(`method\s*=\s*RequestMethod\.(\w+)`)
+
+	// --- Kotlin-specific DI injection (#3435) ---------------------------------
+	// Java's sbConstructorInjectionRE requires a `public|protected ... { body`
+	// signature and sbAutowiredFieldRE requires a trailing `;`. Neither shape
+	// exists in idiomatic Kotlin, where dependencies are declared on the primary
+	// constructor (`class Foo @Autowired constructor(private val x: Bar)`) or as
+	// `@Autowired lateinit var x: Bar` properties with no semicolon. These
+	// Kotlin-gated patterns recover that injection so di_injection_point is not
+	// silently empty for Kotlin Spring Boot sources.
+
+	// sbKotlinPrimaryCtorRE matches a Kotlin class header that declares a primary
+	// constructor parameter list, capturing the class name (group 1) and the raw
+	// parameter list (group 2). Handles both `class Foo(...)` and
+	// `class Foo @Autowired constructor(...)`. The class name capture stops
+	// before any superclass/annotation noise, and the `(?s)` flag lets the
+	// optional `@Autowired constructor` span newlines.
+	sbKotlinPrimaryCtorRE = regexp.MustCompile(
+		`(?s)\bclass\s+(\w+)\s*(?:@\w+(?:\([^)]*\))?\s*)*(?:constructor\s*)?\(([^)]*)\)`)
+
+	// sbKotlinCtorParamRE pulls each typed parameter out of a Kotlin constructor
+	// parameter list. Captures the optional binding keyword (val/var, group 1
+	// unused) and the parameter type (group 2) from `[private] [val|var] name: Type`.
+	// The default-value tail (`= ...`) and generic arguments are tolerated.
+	sbKotlinCtorParamRE = regexp.MustCompile(
+		`(?:@\w+(?:\([^)]*\))?\s+)*(?:(?:private|protected|public|internal)\s+)?` +
+			`(?:(val|var)\s+)?\w+\s*:\s*([A-Z]\w*)`)
+
+	// sbKotlinAutowiredPropRE matches a Kotlin `@Autowired` field/property
+	// injection: `@Autowired [lateinit] (var|val) name: Type`. Captures the
+	// property name (group 1) and the injected type (group 2). No semicolon —
+	// the Java sbAutowiredFieldRE cannot match this.
+	sbKotlinAutowiredPropRE = regexp.MustCompile(
+		`(?s)@Autowired\b\s*(?:lateinit\s+)?(?:var|val)\s+(\w+)\s*:\s*([A-Z][\w<>, ]*)`)
 )
 
 // stereotypeInfo holds Spring Boot stereotype class metadata.
@@ -355,6 +388,65 @@ func ExtractSpringBoot(ctx PatternContext) PatternResult {
 				SourceRef: ownerRef, TargetRef: targetRef,
 				RelationshipType: "DEPENDS_ON",
 				Properties:       map[string]string{"injected_type": injectedType, "injection_kind": "constructor"},
+			})
+		}
+	}
+
+	// 4b. Kotlin DI: primary-constructor injection + @Autowired properties.
+	//     Java's constructor/field regexes don't match Kotlin syntax, so resolve
+	//     Kotlin injection explicitly. Gated to Kotlin to leave Java untouched.
+	if ctx.Language == "kotlin" {
+		// Primary-constructor injection: class Foo(@Autowired)constructor(private val x: Bar)
+		for _, m := range sbKotlinPrimaryCtorRE.FindAllStringSubmatchIndex(source, -1) {
+			ctorClass := source[m[2]:m[3]]
+			paramsStr := source[m[4]:m[5]]
+
+			ownerRef := ""
+			if info, ok := componentClasses[ctorClass]; ok {
+				ownerRef = "scope:component:spring_boot_" + info.kind + ":" + fp + ":" + ctorClass
+				if info.kind == "controller" {
+					ownerRef = "scope:component:spring_boot_controller:" + fp + ":" + ctorClass
+				}
+			} else if ci, ok := configClasses[ctorClass]; ok {
+				ownerRef = ci.ref
+			}
+			if ownerRef == "" {
+				continue
+			}
+
+			for _, pm := range sbKotlinCtorParamRE.FindAllStringSubmatch(paramsStr, -1) {
+				injectedType := pm[2]
+				if primitiveTypes[injectedType] {
+					continue
+				}
+				targetRef := findRefForType(injectedType, fp, "spring_boot", &result)
+				addRel(&result, seenRels, Relationship{
+					SourceRef: ownerRef, TargetRef: targetRef,
+					RelationshipType: "DEPENDS_ON",
+					Properties: map[string]string{
+						"injected_type": injectedType, "injection_kind": "constructor",
+					},
+				})
+			}
+		}
+
+		// @Autowired property injection: @Autowired lateinit var x: Bar
+		for _, m := range sbKotlinAutowiredPropRE.FindAllStringSubmatchIndex(source, -1) {
+			injectedType := trimRight(source[m[4]:m[5]], " ")
+			if primitiveTypes[injectedType] {
+				continue
+			}
+			ownerRef := findOwningClassRef(source, m[0], fp, componentClasses, configClasses)
+			if ownerRef == "" {
+				continue
+			}
+			targetRef := findRefForType(injectedType, fp, "spring_boot", &result)
+			addRel(&result, seenRels, Relationship{
+				SourceRef: ownerRef, TargetRef: targetRef,
+				RelationshipType: "DEPENDS_ON",
+				Properties: map[string]string{
+					"injected_type": injectedType, "injection_kind": "field",
+				},
 			})
 		}
 	}

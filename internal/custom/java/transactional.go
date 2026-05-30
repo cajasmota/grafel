@@ -72,8 +72,10 @@ var (
 	// scanning the matched body separately via txClassRefRE.
 	txRollbackRE   = regexp.MustCompile(`rollbackFor\s*=\s*\{?([^}]*?)\}?(?:,\s*\w+\s*=|\)|$)`)
 	txNoRollbackRE = regexp.MustCompile(`noRollbackFor\s*=\s*\{?([^}]*?)\}?(?:,\s*\w+\s*=|\)|$)`)
-	// txClassRefRE pulls each `Foo.class` token out of a rollbackFor list body.
-	txClassRefRE = regexp.MustCompile(`(\w+)\.class`)
+	// txClassRefRE pulls each class token out of a rollbackFor list body. Accepts
+	// both the Java `Foo.class` form and the Kotlin `Foo::class` form so Kotlin
+	// @Transactional(rollbackFor = [Foo::class]) rollback rules are captured.
+	txClassRefRE = regexp.MustCompile(`(\w+)\s*(?:\.|::)class`)
 
 	// txReadOnlyRE extracts readOnly=true|false.
 	txReadOnlyRE = regexp.MustCompile(`readOnly\s*=\s*(true|false)`)

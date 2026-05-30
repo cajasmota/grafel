@@ -31206,16 +31206,16 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Koin module{} single/factory/scoped bindings — file-local, does not resolve cross-file module wiring"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go","internal/custom/kotlin/ktor_di_transactions_test.go"],
+            "notes": "Koin module{ single/factory/scoped\u003cT\u003e }; each binding emitted named after its bound type, asserted by TestKtorDI_BindingTypeNames_3435 (UserService, UserRepository, CacheService)",
+            "verified_at": "2026-05-30"
           },
           "di_injection_point": {
-            "status": "partial",
-            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Koin 'by inject()' property injection detection — file-local"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go","internal/custom/kotlin/ktor_di_transactions_test.go"],
+            "notes": "Koin 'val repo: T by inject()' injection point captured as field:type; asserted by TestKtorDI_BindingTypeNames_3435 (repo:UserRepository)",
+            "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
             "status": "partial",
@@ -31226,10 +31226,10 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/kotlin/ktor_di_transactions.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Exposed transaction{} and newSuspendedTransaction{} boundary detection — file-local"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/ktor_di_transactions.go","internal/custom/kotlin/ktor_di_transactions_test.go"],
+            "notes": "Exposed transaction { } / newSuspendedTransaction { } boundaries + isolation level; SERIALIZABLE captured, asserted by TestKtorTransactions_BoundaryAndIsolation_3435",
+            "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
             "status": "partial",
@@ -32031,70 +32031,61 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin (ctx.Language==\"kotlin\" || ctx.Language==\"java\"); proven by TestKotlinSpringBoot_Component_Issue3274 and TestKotlinSpringBoot_Autowired_Issue3274",
+            "notes": "Kotlin Spring Boot @Service/@Repository/@Component stereotypes + @Bean methods; value-asserted by TestKotlinSpringBoot_DI_BindingNames_3435 (stereotype=service/repository, bean_method=passwordEncoder/config_class=AppConfig)",
             "verified_at": "2026-05-30"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; @Autowired constructor injection on Kotlin classes proven by TestKotlinSpringBoot_Autowired_Issue3274",
+            "notes": "Kotlin primary-constructor injection (class Foo @Autowired constructor(private val x: Bar)) + @Autowired lateinit var props now captured (new Kotlin-gated regexes in spring_boot.go); injected_type+injection_kind asserted by TestKotlinSpringBoot_DI_ConstructorInjection_3435 and _PrimaryCtorNoAnnotation_3435",
             "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; @Scope/@RequestScope/@SessionScope on Kotlin classes proven by TestKotlinSpringBoot_Scope_Issue3274",
+            "notes": "@RequestScope/@Scope(\"prototype\") on Kotlin classes; spring_scope value asserted by TestKotlinSpringBoot_DI_ScopeValues_3435 (request, prototype)",
             "verified_at": "2026-05-30"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; @Transactional on Kotlin fun proven by TestKotlinTransactional_Method_Issue3274",
+            "notes": "@Transactional on Kotlin fun/class; method/class boundary names asserted by TestKotlinTransactional_Attributes_3435 (getOrders, processPayment, reconcile)",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; propagation attribute captured in TestKotlinTransactional_Method_Issue3274",
+            "notes": "propagation=Propagation.REQUIRES_NEW captured + asserted by TestKotlinTransactional_Attributes_3435; readOnly=true also asserted",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; rollbackFor=[Exception::class] captured in TestKotlinTransactional_Method_Issue3274",
+            "notes": "Kotlin rollbackFor=[X::class]/noRollbackFor + isolation captured (txClassRefRE now accepts ::class); rollback_for=PaymentException, no_rollback_for=WarnException, isolation=SERIALIZABLE asserted by TestKotlinTransactional_Attributes_3435",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; @Aspect on Kotlin class proven by TestKotlinSpringAOP_Aspect_Issue3274",
+            "notes": "@Before/@Around advice on Kotlin fun; advice_type (before/around) + method names asserted by TestKotlinSpringAOP_Attributes_3435",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; aspect extraction proven by TestKotlinSpringAOP_Aspect_Issue3274",
+            "notes": "@Aspect on Kotlin class; aspect name=LoggingAspect asserted by TestKotlinSpringAOP_Attributes_3435",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
-            "issue": "3274",
-            "notes": "java extractor language-gated to kotlin; proven by TestKotlinSpringAOP_Aspect_Issue3274",
+            "notes": "@Pointcut expression + advice-\u003enamed-pointcut REFERENCES edge asserted by TestKotlinSpringAOP_Attributes_3435 (execution(* com.example.service.*.*(..)))",
             "verified_at": "2026-05-30"
           }
         },

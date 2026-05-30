@@ -57,25 +57,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | java extractor language-gated to kotlin (ctx.Language=="kotlin" || ctx.Language=="java"); proven by TestKotlinSpringBoot_Component_Issue3274 and TestKotlinSpringBoot_Autowired_Issue3274 |
-| DI injection point | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | java extractor language-gated to kotlin; @Autowired constructor injection on Kotlin classes proven by TestKotlinSpringBoot_Autowired_Issue3274 |
-| DI scope resolution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | java extractor language-gated to kotlin; @Scope/@RequestScope/@SessionScope on Kotlin classes proven by TestKotlinSpringBoot_Scope_Issue3274 |
+| DI binding extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | Kotlin Spring Boot @Service/@Repository/@Component stereotypes + @Bean methods; value-asserted by TestKotlinSpringBoot_DI_BindingNames_3435 (stereotype=service/repository, bean_method=passwordEncoder/config_class=AppConfig) |
+| DI injection point | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | Kotlin primary-constructor injection (class Foo @Autowired constructor(private val x: Bar)) + @Autowired lateinit var props now captured (new Kotlin-gated regexes in spring_boot.go); injected_type+injection_kind asserted by TestKotlinSpringBoot_DI_ConstructorInjection_3435 and _PrimaryCtorNoAnnotation_3435 |
+| DI scope resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | @RequestScope/@Scope("prototype") on Kotlin classes; spring_scope value asserted by TestKotlinSpringBoot_DI_ScopeValues_3435 (request, prototype) |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; @Transactional on Kotlin fun proven by TestKotlinTransactional_Method_Issue3274 |
-| Transaction propagation | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; propagation attribute captured in TestKotlinTransactional_Method_Issue3274 |
-| Transaction rollback rules | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; rollbackFor=[Exception::class] captured in TestKotlinTransactional_Method_Issue3274 |
+| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on Kotlin fun/class; method/class boundary names asserted by TestKotlinTransactional_Attributes_3435 (getOrders, processPayment, reconcile) |
+| Transaction propagation | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.REQUIRES_NEW captured + asserted by TestKotlinTransactional_Attributes_3435; readOnly=true also asserted |
+| Transaction rollback rules | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | Kotlin rollbackFor=[X::class]/noRollbackFor + isolation captured (txClassRefRE now accepts ::class); rollback_for=PaymentException, no_rollback_for=WarnException, isolation=SERIALIZABLE asserted by TestKotlinTransactional_Attributes_3435 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | java extractor language-gated to kotlin; @Aspect on Kotlin class proven by TestKotlinSpringAOP_Aspect_Issue3274 |
-| Aspect extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | java extractor language-gated to kotlin; aspect extraction proven by TestKotlinSpringAOP_Aspect_Issue3274 |
-| Pointcut resolution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | java extractor language-gated to kotlin; proven by TestKotlinSpringAOP_Aspect_Issue3274 |
+| Advice attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Before/@Around advice on Kotlin fun; advice_type (before/around) + method names asserted by TestKotlinSpringAOP_Attributes_3435 |
+| Aspect extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect on Kotlin class; aspect name=LoggingAspect asserted by TestKotlinSpringAOP_Attributes_3435 |
+| Pointcut resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut expression + advice->named-pointcut REFERENCES edge asserted by TestKotlinSpringAOP_Attributes_3435 (execution(* com.example.service.*.*(..))) |
 
 ### Observability
 

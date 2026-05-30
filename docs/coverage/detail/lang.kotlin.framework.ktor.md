@@ -57,15 +57,15 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Koin module{} single/factory/scoped bindings — file-local, does not resolve cross-file module wiring |
-| DI injection point | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Koin 'by inject()' property injection detection — file-local |
+| DI binding extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/ktor_di_transactions.go`<br>`internal/custom/kotlin/ktor_di_transactions_test.go` | Koin module{ single/factory/scoped<T> }; each binding emitted named after its bound type, asserted by TestKtorDI_BindingTypeNames_3435 (UserService, UserRepository, CacheService) |
+| DI injection point | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/ktor_di_transactions.go`<br>`internal/custom/kotlin/ktor_di_transactions_test.go` | Koin 'val repo: T by inject()' injection point captured as field:type; asserted by TestKtorDI_BindingTypeNames_3435 (repo:UserRepository) |
 | DI scope resolution | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Koin scope keyword (single=singleton, factory, scoped) extraction — file-local |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed transaction{} and newSuspendedTransaction{} boundary detection — file-local |
+| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/ktor_di_transactions.go`<br>`internal/custom/kotlin/ktor_di_transactions_test.go` | Exposed transaction { } / newSuspendedTransaction { } boundaries + isolation level; SERIALIZABLE captured, asserted by TestKtorTransactions_BoundaryAndIsolation_3435 |
 | Transaction propagation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed transaction propagation defaults to REQUIRED; newSuspendedTransaction is coroutine-aware — file-local |
 | Transaction rollback rules | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed isolation level hints (Connection.TRANSACTION_*) extracted as rollback context — file-local |
 
