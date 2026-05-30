@@ -547,6 +547,18 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// Append-only — cannot regress the surrounding pipeline's bug-rate.
 	applyPass(applyIaCSNSEdges)
 
+	// Kubernetes cross-resource edge synthesis (#3517 / epic #3512). The yaml
+	// extractor already extracts K8s resources + sub-resources well but emits no
+	// edges BETWEEN resources. This pass re-reads the manifest (file-scoped) and
+	// synthesises: Service.spec.selector → matching workload (ROUTES_TO via pod-
+	// template-label superset match), container env/envFrom + volume references →
+	// ConfigMap/Secret/PVC (USES), Ingress backend → Service (ROUTES_TO), HPA
+	// scaleTargetRef → workload and ownerReferences → parent (DEPENDS_ON). All
+	// endpoints use the same QualifiedName the extractor minted so the resolver's
+	// byQualifiedName index binds them. Append-only — cannot regress the yaml
+	// extractor's output or the surrounding pipeline's bug-rate.
+	applyPass(applyKubernetesEdges)
+
 	// Debezium / Kafka-Connect CDC connector edges (#1708). Parses the
 	// JSON config of a CDC connector and emits a SCOPE.Component
 	// (cdc_connector) plus CAPTURES → captured-table and PUBLISHES_TO →

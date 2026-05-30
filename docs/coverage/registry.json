@@ -1245,8 +1245,8 @@
       "capabilities": {
         "dependency_attribution": {
           "status": "full",
-          "cites": ["internal/extractors/yaml/extractor.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/kubernetes_edges.go","internal/extractors/yaml/extractor.go"],
+          "verified_at": "2026-05-30"
         },
         "resource_extraction": {
           "status": "full",
