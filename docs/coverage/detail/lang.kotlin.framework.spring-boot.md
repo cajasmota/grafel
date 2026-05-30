@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/spring_middleware.go` | Spring Security filter chain (@Bean SecurityFilterChain), OncePerRequestFilter, HandlerInterceptor, WebMvcConfigurer.addInterceptors — regex-based, file-local |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/kotlin/spring_middleware.go` | @Bean SecurityFilterChain + OncePerRequestFilter/HandlerInterceptor/WebMvcConfigurer.addInterceptors/WebFilter captured by name — value-asserted, file-local; cross-file filter chain order is honest gap |
 
 ### Testing
 

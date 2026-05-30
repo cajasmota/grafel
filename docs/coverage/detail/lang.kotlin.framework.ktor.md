@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/ktor.go` | authenticate{} blocks with scheme detection via Ktor built-in install(Authentication) — file-local |
+| Auth coverage | ✅ `full` | — | — | `internal/custom/kotlin/ktor_auth_middleware.go` | install(Authentication){jwt/basic/oauth/bearer/session/digest} provider-method detection + authenticate("name") guards — value-asserted; cross-block provider-to-guard binding is honest file-local |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/ktor.go` | install(Plugin) Ktor plugin middleware extraction — file-local |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/kotlin/ktor_auth_middleware.go` | ordered install(Plugin) pipeline (CORS/CallLogging/ContentNegotiation/...) + custom intercept(ApplicationCallPipeline.Phase) interceptors — value-asserted names+order, file-local |
 
 ### Testing
 

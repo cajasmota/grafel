@@ -23,6 +23,7 @@ package kotlin
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/otel"
@@ -59,8 +60,14 @@ var (
 		`\brequest\s*\.\s*header\s*\(\s*"Authorization"\s*\)|\bAuthorization\b`)
 
 	// reHttp4kThen matches Filter.then(handler) composition — the fundamental
-	// http4k middleware chain pattern.
-	reHttp4kThen = regexp.MustCompile(`\b(\w+)\s*\.\s*then\s*\(`)
+	// http4k middleware chain pattern. http4k chains are usually written as
+	// method calls (`ServerFilters.Cors(p).then(...)`), so the left-hand side of
+	// `.then(` ends in `)`; we capture the dotted call name that produced it.
+	// It also matches a bare identifier head (`myFilter.then(...)`).
+	//   group 1 (optional): dotted name of a call whose result is being chained
+	//   group 2 (optional): bare identifier head
+	reHttp4kThen = regexp.MustCompile(
+		`(?:([A-Za-z_][\w.]*)\s*\([^()]*\)|\b([A-Za-z_]\w*))\s*\.\s*then\s*\(`)
 
 	// reHttp4kServerFiltersMiddleware matches ServerFilters non-auth helpers:
 	// ServerFilters.CatchLensFailure, ServerFilters.RequestTracing, etc.
@@ -149,6 +156,36 @@ func (e *http4kAuthMiddlewareExtractor) Extract(ctx context.Context, file extrac
 	for _, m := range reHttp4kFilterLambda.FindAllStringSubmatchIndex(src, -1) {
 		cnt++
 		add("filter_lambda#"+strings.Repeat("x", cnt%100), "middleware", "custom_filter", lineOf(src, m[0]))
+	}
+
+	// Filter composition order: `a.then(b).then(handler)` declares the ordered
+	// middleware chain. We record each left-hand filter name with its position
+	// so the composition order — http4k's core middleware semantics — is
+	// value-assertable, not just a presence flag.
+	for _, m := range reHttp4kThen.FindAllStringSubmatchIndex(src, -1) {
+		lhs := ""
+		if m[2] >= 0 {
+			lhs = src[m[2]:m[3]]
+		} else if m[4] >= 0 {
+			lhs = src[m[4]:m[5]]
+		}
+		if lhs == "" {
+			continue
+		}
+		key := "SCOPE.Pattern:http4k:then:" + lhs
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		ent := makeEntity("then:"+lhs, "SCOPE.Pattern", "middleware", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent,
+			"framework", "http4k",
+			"middleware_type", "filter_composition",
+			"filter_name", lhs,
+			"composition_order", strconv.Itoa(len(seen)),
+			"provenance", "INFERRED_FROM_HTTP4K_THEN",
+		)
+		entities = append(entities, ent)
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))

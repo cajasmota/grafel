@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/http4k_auth_middleware.go` | ServerFilters.BearerAuth/BasicAuth/ApiKey, BearerAuthFilter, custom Authorization header checks — file-local |
+| Auth coverage | ✅ `full` | — | — | `internal/custom/kotlin/http4k_auth_middleware.go` | ServerFilters.BearerAuth/BasicAuth/ApiKey + BearerAuthFilter/OAuthFilter named auth filters — value-asserted by name, file-local |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/http4k_auth_middleware.go` | ServerFilters.RequestTracing/GZip/Cors/OpenTelemetry, Filter{next->} lambda composition — file-local |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/kotlin/http4k_auth_middleware.go` | ServerFilters.Cors/RequestTracing/GZip + Filter{next->} lambdas + .then() composition order — value-asserted names+chain order, file-local |
 
 ### Testing
 

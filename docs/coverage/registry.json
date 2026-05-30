@@ -30442,9 +30442,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/http4k_auth_middleware.go"],
-            "notes": "ServerFilters.BearerAuth/BasicAuth/ApiKey, BearerAuthFilter, custom Authorization header checks — file-local"
+            "notes": "ServerFilters.BearerAuth/BasicAuth/ApiKey + BearerAuthFilter/OAuthFilter named auth filters — value-asserted by name, file-local"
           }
         },
         "Validation": {
@@ -30461,9 +30461,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/http4k_auth_middleware.go"],
-            "notes": "ServerFilters.RequestTracing/GZip/Cors/OpenTelemetry, Filter{next-\u003e} lambda composition — file-local"
+            "notes": "ServerFilters.Cors/RequestTracing/GZip + Filter{next-\u003e} lambdas + .then() composition order — value-asserted names+chain order, file-local"
           }
         },
         "Testing": {
@@ -31151,9 +31151,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/kotlin/ktor.go"],
-            "notes": "authenticate{} blocks with scheme detection via Ktor built-in install(Authentication) — file-local"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/ktor_auth_middleware.go"],
+            "notes": "install(Authentication){jwt/basic/oauth/bearer/session/digest} provider-method detection + authenticate(\"name\") guards — value-asserted; cross-block provider-to-guard binding is honest file-local"
           }
         },
         "Validation": {
@@ -31170,9 +31170,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
-            "cites": ["internal/custom/kotlin/ktor.go"],
-            "notes": "install(Plugin) Ktor plugin middleware extraction — file-local"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/ktor_auth_middleware.go"],
+            "notes": "ordered install(Plugin) pipeline (CORS/CallLogging/ContentNegotiation/...) + custom intercept(ApplicationCallPipeline.Phase) interceptors — value-asserted names+order, file-local"
           }
         },
         "Testing": {
@@ -31416,9 +31416,9 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
-            "notes": "@Secured, @RolesAllowed, @PermitAll/@Unauthenticated — Kotlin Micronaut annotation-based security"
+            "notes": "@Secured(rule)/@RolesAllowed(roles)/@PermitAll — specific rule + role strings captured by quoted-string match, value-asserted, file-local"
           }
         },
         "Validation": {
@@ -31435,9 +31435,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/micronaut_quarkus.go"],
-            "notes": "@Filter/@ServerFilter HttpServerFilter implementation detection — file-local"
+            "notes": "@Filter/@ServerFilter HttpServerFilter classes captured by name — value-asserted, file-local"
           }
         },
         "Testing": {
@@ -31995,9 +31995,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/kotlin/spring_middleware.go"],
-            "notes": "Spring Security filter chain (@Bean SecurityFilterChain), OncePerRequestFilter, HandlerInterceptor, WebMvcConfigurer.addInterceptors — regex-based, file-local"
+            "notes": "@Bean SecurityFilterChain + OncePerRequestFilter/HandlerInterceptor/WebMvcConfigurer.addInterceptors/WebFilter captured by name — value-asserted, file-local; cross-file filter chain order is honest gap"
           }
         },
         "Testing": {

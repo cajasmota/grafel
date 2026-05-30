@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/micronaut_quarkus.go` | @Secured, @RolesAllowed, @PermitAll/@Unauthenticated — Kotlin Micronaut annotation-based security |
+| Auth coverage | ✅ `full` | — | — | `internal/custom/kotlin/micronaut_quarkus.go` | @Secured(rule)/@RolesAllowed(roles)/@PermitAll — specific rule + role strings captured by quoted-string match, value-asserted, file-local |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/kotlin/micronaut_quarkus.go` | @Filter/@ServerFilter HttpServerFilter implementation detection — file-local |
+| Middleware coverage | ✅ `full` | — | — | `internal/custom/kotlin/micronaut_quarkus.go` | @Filter/@ServerFilter HttpServerFilter classes captured by name — value-asserted, file-local |
 
 ### Testing
 

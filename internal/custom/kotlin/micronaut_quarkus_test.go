@@ -180,6 +180,54 @@ func TestKotlinMicronaut_Middleware(t *testing.T) {
 	}
 }
 
+func TestKotlinMicronaut_AuthSpecificMethodAndRole(t *testing.T) {
+	// Registry target: lang.kotlin.framework.micronaut Auth/auth_coverage → full
+	// Value-asserting: the SPECIFIC @Secured rule string and the SPECIFIC role
+	// from @RolesAllowed must appear in entity names — not just a count.
+	ents := extract(t, "custom_kotlin_micronaut", fi("AdminController.kt", "kotlin", mnAuthSrc))
+	wantSecured := false   // @Secured("isAuthenticated()")
+	wantRoles := false     // @RolesAllowed("ADMIN", "SUPER_ADMIN")
+	wantPermitAll := false // @PermitAll
+	for _, e := range ents {
+		if e.Subtype != "auth_policy" {
+			continue
+		}
+		if e.Name == `@Secured:isAuthenticated()` {
+			wantSecured = true
+		}
+		if e.Name == `@RolesAllowed:"ADMIN", "SUPER_ADMIN"` {
+			wantRoles = true
+		}
+		if e.Name == "@PermitAll" {
+			wantPermitAll = true
+		}
+	}
+	if !wantSecured {
+		t.Errorf("[micronaut_auth] expected @Secured rule 'isAuthenticated()' captured by name, got: %v", ents)
+	}
+	if !wantRoles {
+		t.Errorf("[micronaut_auth] expected @RolesAllowed roles 'ADMIN, SUPER_ADMIN' captured by name, got: %v", ents)
+	}
+	if !wantPermitAll {
+		t.Errorf("[micronaut_auth] expected @PermitAll auth policy, got: %v", ents)
+	}
+}
+
+func TestKotlinMicronaut_MiddlewareSpecificFilterName(t *testing.T) {
+	// Registry target: lang.kotlin.framework.micronaut Middleware/middleware_coverage → full
+	// Value-asserting: the SPECIFIC HttpServerFilter class name is recorded.
+	ents := extract(t, "custom_kotlin_micronaut", fi("LoggingFilter.kt", "kotlin", mnMiddlewareSrc))
+	found := false
+	for _, e := range ents {
+		if e.Subtype == "middleware" && e.Name == "LoggingFilter" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("[micronaut_mw] expected middleware entity 'LoggingFilter' (HttpServerFilter), got: %v", ents)
+	}
+}
+
 func TestKotlinMicronaut_EmptyFile(t *testing.T) {
 	ents := extract(t, "custom_kotlin_micronaut", fi("Empty.kt", "kotlin", ""))
 	if len(ents) != 0 {
