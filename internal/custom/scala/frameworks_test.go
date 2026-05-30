@@ -210,8 +210,8 @@ trait UserService extends Service {
 `
 	ents := extract(t, "custom_scala_frameworks", fi("UserService.scala", "scala", src))
 	got := dumpEntities(ents)
-	if !containsRouteEntity(ents, "lagom_service_call", "lagom:/api/users/:id") {
-		t.Errorf("expected lagom_service_call lagom:/api/users/:id from lagom; got:%s", got)
+	if !containsRouteEntity(ents, "lagom_service_call", "lagom:/api/users/{id}") {
+		t.Errorf("expected lagom_service_call lagom:/api/users/{id} from lagom; got:%s", got)
 	}
 	if !containsRouteEntity(ents, "lagom_service_call", "lagom:/api/users") {
 		t.Errorf("expected lagom_service_call lagom:/api/users from lagom; got:%s", got)
@@ -245,8 +245,8 @@ GET     /users/:id              controllers.UserController.get(id: Long)
 	if !containsRouteEntity(ents, "http_route", "POST:/users") {
 		t.Errorf("expected http_route POST:/users from play; got:%s", got)
 	}
-	if !containsRouteEntity(ents, "http_route", "GET:/users/:id") {
-		t.Errorf("expected http_route GET:/users/:id from play; got:%s", got)
+	if !containsRouteEntity(ents, "http_route", "GET:/users/{id}") {
+		t.Errorf("expected http_route GET:/users/{id} from play; got:%s", got)
 	}
 }
 
@@ -353,6 +353,160 @@ val app = Http.collect[Request] {
 	}
 	if !containsRouteEntity(ents, "http_route", "route:POST:/users") {
 		t.Errorf("expected http_route route:POST:/users from zio-http; got:%s", got)
+	}
+}
+
+// ===========================================================================
+// Deep-grind path-parameter normalisation + prefix composition (#3452).
+//
+// Every Scala framework's native path-parameter syntax must normalise to the
+// project-wide canonical `{name}` form so routes bucket identically with their
+// cross-stack peers. These tests assert EXACT (verb, canonical-path) pairs.
+// ===========================================================================
+
+// akka-http: pathPrefix("api") { path("users" / LongNumber) { get/post } }
+// PathMatcher LongNumber → {id}; prefix composed with segment.
+func TestFrameworksAkkaHttpPathParam(t *testing.T) {
+	src := `
+import akka.http.scaladsl.server.Directives._
+val route =
+  pathPrefix("api") {
+    path("users" / LongNumber) {
+      get { complete(user) } ~
+      delete { complete("ok") }
+    }
+  }
+`
+	ents := extract(t, "custom_scala_frameworks", fi("UserRoutes.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "GET:/api/users/{id}") {
+		t.Errorf("expected http_route GET:/api/users/{id} from akka-http LongNumber; got:%s", got)
+	}
+	if !containsRouteEntity(ents, "http_route", "DELETE:/api/users/{id}") {
+		t.Errorf("expected http_route DELETE:/api/users/{id} from akka-http LongNumber; got:%s", got)
+	}
+}
+
+// akka-http: path("users" / Segment / "posts") → /users/{segment}/posts.
+func TestFrameworksAkkaHttpSegmentMatcher(t *testing.T) {
+	src := `
+import akka.http.scaladsl.server.Directives._
+val route = path("users" / Segment / "posts") { get { complete("posts") } }
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Routes.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "GET:/users/{segment}/posts") {
+		t.Errorf("expected http_route GET:/users/{segment}/posts from akka-http Segment; got:%s", got)
+	}
+}
+
+// http4s: case GET -> Root / "users" / LongVar(id) => ... → /users/{id}.
+func TestFrameworksHttp4sPathParam(t *testing.T) {
+	src := `
+import org.http4s._
+import org.http4s.dsl.io._
+val routes = HttpRoutes.of[IO] {
+  case GET -> Root / "users" / LongVar(id) => Ok(user(id))
+  case GET -> Root / "users" / id @ UUIDVar(_) => Ok(byUuid(id))
+}
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Routes.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "route:GET:/users/{id}") {
+		t.Errorf("expected http_route route:GET:/users/{id} from http4s LongVar; got:%s", got)
+	}
+}
+
+// zio-http (collect DSL): case Method.GET -> Root / "users" / int("id") => ...
+func TestFrameworksZioHttpPathParam(t *testing.T) {
+	src := `
+import zio._
+import zio.http._
+val app = Http.collect[Request] {
+  case Method.GET -> Root / "users" / int("id") => Response.ok
+}
+`
+	ents := extract(t, "custom_scala_frameworks", fi("App.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "route:GET:/users/{id}") {
+		t.Errorf("expected http_route route:GET:/users/{id} from zio-http int(); got:%s", got)
+	}
+}
+
+// zio-http (Scala-3 Routes DSL): Method.GET / "users" / int("id") -> handler.
+func TestFrameworksZioRoutesDSLPathParam(t *testing.T) {
+	src := `
+import zio.http._
+val routes = Routes(
+  Method.GET / "users" / int("id") -> handler { (id: Int, req: Request) => Response.ok },
+  Method.POST / "users" -> handler(Response.ok)
+)
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Routes.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "route:GET:/users/{id}") {
+		t.Errorf("expected http_route route:GET:/users/{id} from zio Routes DSL; got:%s", got)
+	}
+	if !containsRouteEntity(ents, "http_route", "route:POST:/users") {
+		t.Errorf("expected http_route route:POST:/users from zio Routes DSL; got:%s", got)
+	}
+}
+
+// scalatra: get("/users/:id") → /users/{id}.
+func TestFrameworksScalatraPathParam(t *testing.T) {
+	src := `
+import org.scalatra._
+class UserServlet extends ScalatraServlet {
+  get("/users/:id") { params("id") }
+}
+`
+	ents := extract(t, "custom_scala_frameworks", fi("UserServlet.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "get:/users/{id}") {
+		t.Errorf("expected http_route get:/users/{id} from scalatra :id; got:%s", got)
+	}
+}
+
+// cask: @cask.get("/users/:id") → /users/{id}.
+func TestFrameworksCaskPathParam(t *testing.T) {
+	src := `
+import cask._
+object Main extends cask.MainRoutes {
+  @cask.get("/users/:id")
+  def getUser(id: String) = id
+}
+`
+	ents := extract(t, "custom_scala_frameworks", fi("Main.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "get:/users/{id}") {
+		t.Errorf("expected http_route get:/users/{id} from cask :id; got:%s", got)
+	}
+}
+
+// finatra: @Get("/users/:id") → /users/{id}.
+func TestFrameworksFinatraPathParam(t *testing.T) {
+	src := `
+import com.twitter.finatra.http._
+class UserController extends HttpController {
+  @Get("/users/:id")
+  def getUser(request: Request): Response = ???
+}
+`
+	ents := extract(t, "custom_scala_frameworks", fi("UserController.scala", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "Get:/users/{id}") {
+		t.Errorf("expected http_route Get:/users/{id} from finatra :id; got:%s", got)
+	}
+}
+
+// play: $id<regex> dollar-param form normalises to {id}.
+func TestFrameworksPlayDollarParam(t *testing.T) {
+	src := `GET     /users/$id<[0-9]+>      controllers.UserController.get(id: Long)
+`
+	ents := extract(t, "custom_scala_frameworks", fi("routes", "scala", src))
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "GET:/users/{id}") {
+		t.Errorf("expected http_route GET:/users/{id} from play $id<regex>; got:%s", got)
 	}
 }
 

@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: Cask @cask.get/@cask.post routes synthesized into SCOPE.Operation/http_route entities with method+path. |
 | Handler attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: Cask route annotation detected in context of the enclosing object/class — handler method attributed to route. |
-| Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: @cask.get/@cask.post annotation routes with path extraction. File-local. |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/routing.go` | custom_scala_frameworks extractor: @cask.get/@cask.post annotation routes with path extraction. File-local. |
 
 ### Auth
 
