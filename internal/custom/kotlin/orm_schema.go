@@ -73,8 +73,8 @@ var (
 	//   val userId = (integer("user_id") references Users.id)
 	// Captures: (field_name, referenced_table)
 	reExposedReference = regexp.MustCompile(
-		`(?m)^\s+val\s+([a-z][A-Za-z0-9_]*)\s*=\s*(?:reference\s*\(\s*"[^"]*"\s*,\s*([A-Za-z0-9_]+)|` +
-			`[a-z]+\s*\([^)]+\)\s+references\s+([A-Za-z0-9_]+))`)
+		`(?m)^\s+val\s+([a-z][A-Za-z0-9_]*)\s*=\s*\(?\s*(?:reference\s*\(\s*"[^"]*"\s*,\s*([A-Za-z0-9_]+)|` +
+			`[a-z]+\s*\([^)]*\)\s+references\s+([A-Za-z0-9_]+))`)
 
 	// reExposedMigration matches SchemaUtils.create / addMissingColumnsStatements patterns.
 	reExposedMigration = regexp.MustCompile(
@@ -291,8 +291,11 @@ func (e *kotlinRoomSchemaExtractor) Language() string { return "custom_kotlin_ro
 
 var (
 	// reRoomEntity matches @Entity annotated data class / class declarations.
+	// The optional annotation argument list may contain one level of nested
+	// parens (e.g. foreignKeys = [ForeignKey(entity = User::class, ...)]), so
+	// the argument group tolerates inner (...) groups before the closing paren.
 	reRoomEntity = regexp.MustCompile(
-		`@Entity\s*(?:\([^)]*\))?\s*(?:data\s+)?class\s+([A-Z][A-Za-z0-9_]*)`)
+		`(?s)@Entity\s*(?:\((?:[^()]|\([^()]*\))*\))?\s*(?:data\s+)?class\s+([A-Z][A-Za-z0-9_]*)`)
 
 	// reRoomTableName extracts tableName from @Entity(tableName = "...").
 	reRoomTableName = regexp.MustCompile(

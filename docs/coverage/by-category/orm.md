@@ -94,7 +94,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [kotlin](../by-language/kotlin.md) | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟢 7/7 | |
 | [kotlin](../by-language/kotlin.md) | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟢 8/8 | |
 | [kotlin](../by-language/kotlin.md) | [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟢 7/7 | |
-| [kotlin](../by-language/kotlin.md) | [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟢 2/2 | |
+| [kotlin](../by-language/kotlin.md) | [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | ✅ 2/2 | |
 | [kotlin](../by-language/kotlin.md) | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟢 7/7 | |
 | [kotlin](../by-language/kotlin.md) | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟢 7/7 | |
 | [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟢 8/8 | |

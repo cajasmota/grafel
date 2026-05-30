@@ -62,7 +62,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟢 7/7 | |
 | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟢 8/8 | |
 | [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟢 7/7 | |
-| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟢 2/2 | |
+| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | ✅ 2/2 | |
 | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟢 7/7 | |
 | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟢 7/7 | |
 | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟢 8/8 | |

@@ -59,16 +59,42 @@ object Orders : IntIdTable("orders") {
 }
 `
 	ents := extract(t, "custom_kotlin_exposed_schema", fi("Orders.kt", "kotlin", src))
-	// Should have a foreign_key relationship.
-	hasFk := false
-	for _, e := range ents {
-		if e.Subtype == "foreign_key" {
-			hasFk = true
-			break
+	// Value-asserting: the FK must name the specific field and referenced table.
+	if !containsEntity(ents, "SCOPE.Relationship", "userId -> Users") {
+		t.Errorf("exposed: expected 'userId -> Users' foreign_key entity; got %v", ents)
+	}
+}
+
+func TestExposed_InfixReference(t *testing.T) {
+	// The (integer(...) references Table.id) infix form.
+	src := `
+object LineItems : IntIdTable("line_items") {
+    val orderId = (integer("order_id") references Orders.id)
+}
+`
+	ents := extract(t, "custom_kotlin_exposed_schema", fi("LineItems.kt", "kotlin", src))
+	if !containsEntity(ents, "SCOPE.Relationship", "orderId -> Orders") {
+		t.Errorf("exposed: expected 'orderId -> Orders' foreign_key from infix references; got %v", ents)
+	}
+}
+
+func TestExposed_ColumnTypes(t *testing.T) {
+	// Specific column names must be emitted (value-asserting, not len>0).
+	src := `
+object Accounts : Table("accounts") {
+    val id = integer("id")
+    val balance = decimal("balance", 12, 2)
+    val owner = varchar("owner", 100)
+}
+`
+	ents := extract(t, "custom_kotlin_exposed_schema", fi("Accounts.kt", "kotlin", src))
+	for _, col := range []string{"id", "balance", "owner"} {
+		if !containsEntity(ents, "SCOPE.Schema", col) {
+			t.Errorf("exposed: expected column %q; got %v", col, ents)
 		}
 	}
-	if !hasFk {
-		t.Errorf("exposed: expected foreign_key entity for reference; got %v", ents)
+	if !containsEntity(ents, "SCOPE.Schema", "Accounts") {
+		t.Errorf("exposed: expected Accounts table; got %v", ents)
 	}
 }
 
@@ -79,15 +105,9 @@ fun createTables() {
 }
 `
 	ents := extract(t, "custom_kotlin_exposed_schema", fi("Schema.kt", "kotlin", src))
-	hasMigration := false
-	for _, e := range ents {
-		if e.Subtype == "migration" {
-			hasMigration = true
-			break
-		}
-	}
-	if !hasMigration {
-		t.Error("exposed: expected migration entity for SchemaUtils.create")
+	// Value-asserting: the migration entity names the specific SchemaUtils op.
+	if !containsEntity(ents, "SCOPE.Schema", "migration:create:Schema.kt") {
+		t.Errorf("exposed: expected 'migration:create:Schema.kt' migration entity; got %v", ents)
 	}
 }
 
@@ -124,8 +144,11 @@ object Employees : Table<Employee>("t_employee") {
 	if !containsEntity(ents, "SCOPE.Schema", "Employees") {
 		t.Error("ktorm: expected Employees table entity")
 	}
-	if !containsEntity(ents, "SCOPE.Schema", "name") {
-		t.Error("ktorm: expected 'name' column entity")
+	// Value-asserting: specific column names from .bindTo bindings.
+	for _, col := range []string{"id", "name", "hireDate"} {
+		if !containsEntity(ents, "SCOPE.Schema", col) {
+			t.Errorf("ktorm: expected %q column entity; got %v", col, ents)
+		}
 	}
 }
 
@@ -142,15 +165,14 @@ object Employees : Table<Employee>("t_employee") {
 }
 `
 	ents := extract(t, "custom_kotlin_ktorm_schema", fi("Schema.kt", "kotlin", src))
-	hasFk := false
-	for _, e := range ents {
-		if e.Subtype == "foreign_key" {
-			hasFk = true
-			break
-		}
+	// Value-asserting: name the specific field and referenced table.
+	if !containsEntity(ents, "SCOPE.Relationship", "deptId -> Departments") {
+		t.Errorf("ktorm: expected 'deptId -> Departments' foreign_key; got %v", ents)
 	}
-	if !hasFk {
-		t.Errorf("ktorm: expected foreign_key entity for .references(); got %v", ents)
+	// Both tables must be extracted by their object names.
+	if !containsEntity(ents, "SCOPE.Schema", "Departments") ||
+		!containsEntity(ents, "SCOPE.Schema", "Employees") {
+		t.Errorf("ktorm: expected Departments and Employees tables; got %v", ents)
 	}
 }
 
@@ -218,15 +240,13 @@ data class Order(
 )
 `
 	ents := extract(t, "custom_kotlin_room_schema", fi("Order.kt", "kotlin", src))
-	hasFk := false
-	for _, e := range ents {
-		if e.Subtype == "foreign_key" {
-			hasFk = true
-			break
-		}
+	// Value-asserting: FK names the referenced entity class.
+	if !containsEntity(ents, "SCOPE.Relationship", "fk -> User") {
+		t.Errorf("room: expected 'fk -> User' foreign_key entity; got %v", ents)
 	}
-	if !hasFk {
-		t.Errorf("room: expected foreign_key for ForeignKey(entity=User::class); got %v", ents)
+	// The orders table (from tableName) must be extracted.
+	if !containsEntity(ents, "SCOPE.Schema", "orders") {
+		t.Errorf("room: expected 'orders' table; got %v", ents)
 	}
 }
 
@@ -242,15 +262,9 @@ data class UserWithOrders(
 )
 `
 	ents := extract(t, "custom_kotlin_room_schema", fi("UserWithOrders.kt", "kotlin", src))
-	hasAssoc := false
-	for _, e := range ents {
-		if e.Subtype == "association" {
-			hasAssoc = true
-			break
-		}
-	}
-	if !hasAssoc {
-		t.Errorf("room: expected association entity for @Relation; got %v", ents)
+	// Value-asserting: the association names the parent/entity columns.
+	if !containsEntity(ents, "SCOPE.Relationship", "relation:id -> user_id") {
+		t.Errorf("room: expected 'relation:id -> user_id' association; got %v", ents)
 	}
 }
 
@@ -324,6 +338,12 @@ CREATE TABLE IF NOT EXISTS users (
 	if !containsEntity(ents, "SCOPE.Schema", "users") {
 		t.Error("sqldelight: expected 'users' table entity")
 	}
+	// Value-asserting: specific column names from the CREATE TABLE body.
+	for _, col := range []string{"id", "name", "email"} {
+		if !containsEntity(ents, "SCOPE.Schema", col) {
+			t.Errorf("sqldelight: expected %q column entity; got %v", col, ents)
+		}
+	}
 }
 
 func TestSQLDelight_ForeignKey(t *testing.T) {
@@ -335,15 +355,12 @@ CREATE TABLE orders (
 );
 `
 	ents := extract(t, "custom_kotlin_sqldelight_schema", fi("orders.sq", "sql", src))
-	hasFk := false
-	for _, e := range ents {
-		if e.Subtype == "foreign_key" {
-			hasFk = true
-			break
-		}
+	// Value-asserting: FK names local column, referenced table and column.
+	if !containsEntity(ents, "SCOPE.Relationship", "user_id -> users.id") {
+		t.Errorf("sqldelight: expected 'user_id -> users.id' foreign_key; got %v", ents)
 	}
-	if !hasFk {
-		t.Errorf("sqldelight: expected foreign_key entity; got %v", ents)
+	if !containsEntity(ents, "SCOPE.Schema", "orders") {
+		t.Errorf("sqldelight: expected 'orders' table; got %v", ents)
 	}
 }
 
