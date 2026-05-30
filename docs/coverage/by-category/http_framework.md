@@ -97,14 +97,14 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [Tornado](../detail/lang.python.framework.tornado.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [aiohttp](../detail/lang.python.framework.aiohttp.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | 🔴 0/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟡 2/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/6 | |
-| [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟡 1/2 | — | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 3/5 | |
+| [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | 🟡 1/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | 🟢 3/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟢 3/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟢 3/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | 🟢 3/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟢 3/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟢 3/3 | 🟢 1/1 | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟡 5/6 | |
+| [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟢 2/2 | — | 🔴 0/1 | 🟢 1/1 | 🟢 21/21 | 🟢 5/5 | |
 | [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
 | [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |
 | [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 2/3 | 🟢 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 21/21 | 🟡 4/6 | |

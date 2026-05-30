@@ -40722,8 +40722,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -41013,8 +41015,10 @@
             "status": "missing"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -41026,12 +41030,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -41213,8 +41221,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -41224,12 +41234,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -41413,8 +41427,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -41426,12 +41442,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -41615,8 +41635,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -41628,12 +41650,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -41817,8 +41843,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -41830,12 +41858,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -42019,8 +42051,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -42032,12 +42066,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -42221,8 +42259,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -42234,12 +42274,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -42423,8 +42467,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -42436,12 +42482,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/validation.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -42675,8 +42725,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/activerecord.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -42728,8 +42780,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -42778,8 +42832,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -42831,8 +42887,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/ruby/routes.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
