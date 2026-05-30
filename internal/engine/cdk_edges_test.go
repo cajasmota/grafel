@@ -227,16 +227,161 @@ func TestCDK_NonCDKFileEmitsNothing(t *testing.T) {
 	}
 }
 
-// TestCDK_NonJSLanguageSkipped asserts non-JS/TS languages are skipped (this PR
-// scopes CDK to TypeScript/JavaScript).
-func TestCDK_NonJSLanguageSkipped(t *testing.T) {
-	src := `from aws_cdk import Stack
-class DataStack(Stack):
-    def __init__(self, scope, id):
-        bucket = s3.Bucket(self, "DataBucket")
+// TestCDK_UnsupportedLanguageSkipped asserts languages without a CDK
+// implementation (Java/Go/C#) are skipped.
+func TestCDK_UnsupportedLanguageSkipped(t *testing.T) {
+	src := `import software.amazon.awscdk.Stack;
+class DataStack extends Stack {
+    DataStack() {
+        Bucket bucket = Bucket.Builder.create(this, "DataBucket").build();
+    }
+}
 `
-	ents, rels := runCDKDetect(t, "python", "stack.py", src)
+	ents, rels := runCDKDetect(t, "java", "DataStack.java", src)
 	if len(ents) != 0 || len(rels) != 0 {
-		t.Errorf("non-JS/TS language should be skipped, got %d entities %d rels", len(ents), len(rels))
+		t.Errorf("unsupported language should be skipped, got %d entities %d rels", len(ents), len(rels))
+	}
+}
+
+// TestCDKPython_MarqueeFixture is the #3528 value-asserting test: a CDK-Python
+// Stack with a Bucket 'Data', a Function 'Fn', and a grant_read produces both
+// resources plus a Fn→Data DEPENDS_ON edge.
+func TestCDKPython_MarqueeFixture(t *testing.T) {
+	src := `from aws_cdk import Stack
+from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_lambda as _lambda
+from constructs import Construct
+
+
+class DataStack(Stack):
+    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+
+        data = s3.Bucket(self, "Data", versioned=True)
+
+        fn = _lambda.Function(
+            self, "Fn",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            code=_lambda.Code.from_asset("lambda"),
+        )
+
+        data.grant_read(fn)
+`
+	ents, rels := runCDKDetect(t, "python", "stacks/data_stack.py", src)
+
+	data := cdkResourceByName(ents, "Data")
+	if data == nil {
+		t.Fatalf("expected SCOPE.InfraResource named 'Data', got %+v", ents)
+	}
+	if data.props["construct_type"] != "s3.Bucket" {
+		t.Errorf("Data construct_type = %q, want s3.Bucket", data.props["construct_type"])
+	}
+	if data.props["iac_tool"] != "aws-cdk" {
+		t.Errorf("Data iac_tool = %q, want aws-cdk", data.props["iac_tool"])
+	}
+	if data.props["resource_scope"] != "datastore" {
+		t.Errorf("Data resource_scope = %q, want datastore", data.props["resource_scope"])
+	}
+
+	fn := cdkResourceByName(ents, "Fn")
+	if fn == nil {
+		t.Fatalf("expected SCOPE.InfraResource named 'Fn', got %+v", ents)
+	}
+	if fn.props["construct_type"] != "_lambda.Function" {
+		t.Errorf("Fn construct_type = %q, want _lambda.Function", fn.props["construct_type"])
+	}
+
+	deps := relsByKind(rels, "DEPENDS_ON")
+	var found *relResult
+	for i := range deps {
+		if deps[i].from == "SCOPE.InfraResource:Fn" && deps[i].to == "SCOPE.InfraResource:Data" {
+			found = &deps[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected DEPENDS_ON edge Fn→Data (grant_read), got %+v", deps)
+	}
+	if found.props["reason"] != "grant" || found.props["grant"] != "grant_read" {
+		t.Errorf("grant edge props = %+v, want reason=grant grant=grant_read", found.props)
+	}
+}
+
+// TestCDKPython_AddEventSource asserts `fn.add_event_source(SqsEventSource(q))`
+// produces a DEPENDS_ON edge from the function to the queue.
+func TestCDKPython_AddEventSource(t *testing.T) {
+	src := `from aws_cdk import Stack
+from aws_cdk import aws_sqs as sqs
+from aws_cdk import aws_lambda as _lambda
+from aws_cdk.aws_lambda_event_sources import SqsEventSource
+
+
+class WorkerStack(Stack):
+    def __init__(self, scope, construct_id):
+        super().__init__(scope, construct_id)
+        jobs = sqs.Queue(self, "Jobs")
+        worker = _lambda.Function(self, "Worker", runtime="x", handler="h", code="c")
+        worker.add_event_source(SqsEventSource(jobs))
+`
+	ents, rels := runCDKDetect(t, "python", "stacks/worker.py", src)
+	q := cdkResourceByName(ents, "Jobs")
+	if q == nil {
+		t.Fatalf("expected SCOPE.InfraResource 'Jobs', got %+v", ents)
+	}
+	if q.props["resource_scope"] != "queue" {
+		t.Errorf("Jobs resource_scope = %q, want queue", q.props["resource_scope"])
+	}
+	deps := relsByKind(rels, "DEPENDS_ON")
+	var ok bool
+	for _, d := range deps {
+		if d.from == "SCOPE.InfraResource:Worker" && d.to == "SCOPE.InfraResource:Jobs" &&
+			d.props["reason"] == "event_source" {
+			ok = true
+		}
+	}
+	if !ok {
+		t.Errorf("expected DEPENDS_ON Worker→Jobs (event_source), got %+v", deps)
+	}
+}
+
+// TestCDKPython_KwargRef asserts a construct passed as a keyword argument
+// (`bucket=data`) yields a props_ref DEPENDS_ON edge.
+func TestCDKPython_KwargRef(t *testing.T) {
+	src := `from aws_cdk import Stack
+from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_lambda as _lambda
+
+
+class AppStack(Stack):
+    def __init__(self, scope, construct_id):
+        super().__init__(scope, construct_id)
+        data = s3.Bucket(self, "Data")
+        fn = _lambda.Function(self, "Api", runtime="x", handler="h", code="c", bucket=data)
+`
+	_, rels := runCDKDetect(t, "python", "stacks/app.py", src)
+	deps := relsByKind(rels, "DEPENDS_ON")
+	var ok bool
+	for _, d := range deps {
+		if d.from == "SCOPE.InfraResource:Api" && d.to == "SCOPE.InfraResource:Data" &&
+			d.props["reason"] == "props_ref" {
+			ok = true
+		}
+	}
+	if !ok {
+		t.Errorf("expected DEPENDS_ON Api→Data (props_ref), got %+v", deps)
+	}
+}
+
+// TestCDKPython_NonCDKFileEmitsNothing asserts the pre-filter gate: a plain
+// Python file with a `X(self, "id")` idiom but no CDK import emits nothing.
+func TestCDKPython_NonCDKFileEmitsNothing(t *testing.T) {
+	src := `class Widget:
+    def __init__(self):
+        child = SomeThing(self, "Foo", enabled=True)
+`
+	ents, rels := runCDKDetect(t, "python", "widget.py", src)
+	if len(ents) != 0 || len(rels) != 0 {
+		t.Errorf("non-CDK Python file should emit nothing, got %d entities %d rels", len(ents), len(rels))
 	}
 }

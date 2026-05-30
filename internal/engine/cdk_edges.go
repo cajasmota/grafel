@@ -1,4 +1,5 @@
-// AWS CDK (TypeScript) resource + dependency extraction — part of #3512.
+// AWS CDK (TypeScript + Python) resource + dependency extraction — part of
+// #3512 / #3528.
 //
 // Background / the gap this closes
 // --------------------------------
@@ -51,9 +52,13 @@
 // -----------
 // Append-only: this pass never modifies or removes existing entities or edges,
 // so it cannot regress the surrounding pipeline's bug-rate. Establishes the
-// per-language-bucket pattern that CDK-Python / Pulumi / CDK8s reuse.
+// per-language-bucket pattern that Pulumi (pulumi_edges.go) / CDK8s reuse.
 //
-// Refs #3512.
+// CDK-Python (#3528) extends this same pass via applyCDKEdgesPython, reusing the
+// shared emit closures and var→LogicalId binding map but matching the Python
+// idioms (no `new`, `self` scope, snake_case grants, keyword-argument props).
+//
+// Refs #3512, #3528.
 package engine
 
 import (
@@ -74,17 +79,22 @@ const cdkResourceKind = "SCOPE.InfraResource"
 // kind so CDK and Terraform dependency edges are uniform across IaC tools.
 const cdkDependsOnEdgeKind = "DEPENDS_ON"
 
-// cdkSupportsLanguage reports whether applyCDKEdges scans `lang`. This PR scopes
-// CDK to TypeScript/JavaScript (the flagship CDK language); CDK-Python/Java/Go/C#
-// follow later under their own language buckets.
+// cdkSupportsLanguage reports whether applyCDKEdges scans `lang`. TypeScript/
+// JavaScript (the flagship CDK language) and Python are implemented; CDK-Java/
+// Go/C# follow later under their own language buckets.
 func cdkSupportsLanguage(lang string) bool {
 	switch lang {
-	case "javascript", "typescript":
+	case "javascript", "typescript", "python":
 		return true
 	default:
 		return false
 	}
 }
+
+// cdkIsPython reports whether the language uses the Python CDK idioms
+// (`s3.Bucket(self, "Id", versioned=True)`) rather than the JS/TS
+// `new s3.Bucket(this, 'Id', {...})` form.
+func cdkIsPython(lang string) bool { return lang == "python" }
 
 // cdkResourceCoarseScope maps a CDK construct type (e.g. "s3.Bucket",
 // "lambda.Function", "sqs.Queue", "dynamodb.Table", "CfnDBInstance") to a coarse
@@ -165,8 +175,64 @@ var cdkPropsRefRe = regexp.MustCompile(
 	`(?:[A-Za-z_$][\w$]*\s*:\s*([A-Za-z_$][\w$]*)|\b([A-Za-z_$][\w$]*)\b)`,
 )
 
+// ---------------------------------------------------------------------------
+// CDK-Python idioms. Python CDK drops the `new` keyword, uses `self` as the
+// scope, snake_case methods, and keyword arguments instead of a props object:
+//
+//	data_bucket = s3.Bucket(self, "DataBucket", versioned=True)
+//	handler     = _lambda.Function(self, "Fn", runtime=..., handler=...)
+//	data_bucket.grant_read(handler)
+//	handler.add_event_source(SqsEventSource(queue))
+//	fn = _lambda.Function(self, "Fn", bucket=data_bucket)
+//
+// ---------------------------------------------------------------------------
+
+// cdkPyConstructDeclRe captures `VAR = ns.Type(self, "LogicalId"`.
+// Group 1 = Python var name, group 2 = construct type (ns.Type, e.g.
+// "s3.Bucket" or "_lambda.Function"), group 3 = the "LogicalId" string literal.
+// The namespace segment allows a leading underscore (`_lambda`) since `lambda`
+// is a Python keyword and CDK aliases it as `_lambda`/`lambda_`.
+var cdkPyConstructDeclRe = regexp.MustCompile(
+	`([A-Za-z_][\w]*)\s*=\s*([A-Za-z_][\w.]*)\s*\(\s*(?:self|scope|stack|[A-Za-z_][\w]*)\s*,\s*['"]([^'"\n\r]+)['"]`,
+)
+
+// cdkPyConstructAnonRe captures an UNASSIGNED Python construct instantiation
+// `ns.Type(self, "LogicalId"`. Group 1 = construct type, group 2 = "LogicalId".
+var cdkPyConstructAnonRe = regexp.MustCompile(
+	`([A-Za-z_][\w.]*)\s*\(\s*(?:self|scope|stack|[A-Za-z_][\w]*)\s*,\s*['"]([^'"\n\r]+)['"]`,
+)
+
+// cdkPyGrantRe captures a snake_case grant call `<resVar>.grant_read(<grantee>`.
+// Group 1 = resource var, group 2 = grant method (grant_read / grant_write /
+// grant_read_write / grant / ...), group 3 = grantee var. The grantee
+// DEPENDS_ON the resource.
+var cdkPyGrantRe = regexp.MustCompile(
+	`([A-Za-z_][\w]*)\s*\.\s*(grant[A-Za-z_]*)\s*\(\s*([A-Za-z_][\w]*)`,
+)
+
+// cdkPyAddEventSourceRe captures `<fn>.add_event_source(SqsEventSource(<res>`
+// (no `new`). Group 1 = function var, group 2 = wrapped resource var.
+var cdkPyAddEventSourceRe = regexp.MustCompile(
+	`([A-Za-z_][\w]*)\s*\.\s*add_event_source\s*\(\s*[A-Za-z_][\w.]*\s*\(\s*([A-Za-z_][\w]*)`,
+)
+
+// cdkPyConstructPropsRe matches a full Python construct instantiation and
+// captures its keyword-argument body. Group 1 = the construct's LogicalId,
+// group 2 = the raw args text after the id (kwargs). Bounded scan, not a parse.
+var cdkPyConstructPropsRe = regexp.MustCompile(
+	`[A-Za-z_][\w.]*\s*\(\s*(?:self|scope|stack|[A-Za-z_][\w]*)\s*,\s*['"]([^'"\n\r]+)['"]\s*,([\s\S]{0,600}?)\)`,
+)
+
+// cdkPyKwargRefRe finds construct variables referenced as keyword-argument
+// VALUES inside a Python construct body (`bucket=data_bucket`, `queue=jobs`).
+// Group 1 = the value identifier. Only the RHS is captured so the kwarg keyword
+// itself is never mistaken for a construct reference.
+var cdkPyKwargRefRe = regexp.MustCompile(
+	`[A-Za-z_][\w]*\s*=\s*([A-Za-z_][\w]*)`,
+)
+
 // applyCDKEdges APPENDS SCOPE.InfraResource entities + DEPENDS_ON edges for AWS
-// CDK constructs in TypeScript/JavaScript. Append-only.
+// CDK constructs in TypeScript/JavaScript and Python. Append-only.
 func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 	lang := args.Lang
 	content := args.Content
@@ -182,8 +248,10 @@ func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 	src := string(content)
 
 	// Fast pre-filter: a CDK construct file imports from aws-cdk-lib (v2) or
-	// @aws-cdk/* (v1) and instantiates constructs with `new`. Guards against
-	// matching the generic `new X(this,'id',...)` idiom in non-CDK files.
+	// @aws-cdk/* (v1, JS/TS) / aws_cdk (Python) and instantiates constructs.
+	// Guards against matching the generic `X(self,'id',...)` / `new X(this,…)`
+	// idiom in non-CDK files. Python CDK imports read `from aws_cdk import ...`
+	// or `import aws_cdk as cdk`.
 	if !strings.Contains(src, "aws-cdk") && !strings.Contains(src, "aws_cdk") &&
 		!strings.Contains(src, "constructs") {
 		return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -258,6 +326,11 @@ func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 			Kind:       cdkDependsOnEdgeKind,
 			Properties: props,
 		})
+	}
+
+	if cdkIsPython(lang) {
+		applyCDKEdgesPython(src, path, lang, emitResource, emitDependsOn, varToLogical, logicalIDs)
+		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
 	// Pass 1: assigned construct declarations — `const X = new ns.Type(this,'Id'`.
@@ -338,4 +411,88 @@ func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
+}
+
+// applyCDKEdgesPython runs the CDK extraction passes against the Python idioms,
+// reusing the shared emitResource / emitDependsOn closures (which append to the
+// caller's entities/relationships) and the shared var→LogicalId / logicalIDs
+// maps. Mirrors the five JS/TS passes:
+//
+//	Pass 1  VAR = ns.Type(self, "Id", ...)         → resource + var binding
+//	Pass 2  ns.Type(self, "Id", ...) (anonymous)   → resource
+//	Pass 3  res.grant_read(grantee)                → grantee DEPENDS_ON res
+//	Pass 4  fn.add_event_source(Src(res))          → fn DEPENDS_ON res
+//	Pass 5  Type(self,"Id", kw=otherVar)           → enclosing DEPENDS_ON other
+func applyCDKEdgesPython(
+	src, path, lang string,
+	emitResource func(logicalID, constructType string, offset int),
+	emitDependsOn func(fromLogical, toLogical, reason, detail string),
+	varToLogical map[string]string,
+	logicalIDs map[string]bool,
+) {
+	// Pass 1: assigned construct declarations — `VAR = ns.Type(self, "Id"`.
+	for _, m := range cdkPyConstructDeclRe.FindAllStringSubmatchIndex(src, -1) {
+		varName := extractGroupFromIndex(src, m, 1)
+		constructType := extractGroupFromIndex(src, m, 2)
+		logicalID := extractGroupFromIndex(src, m, 3)
+		if logicalID == "" || constructType == "" {
+			continue
+		}
+		// Skip pure builtins that look like constructs but aren't (e.g. a bare
+		// `range(self, ...)` is implausible; the aws_cdk import pre-filter plus
+		// the requirement of a string-literal id keep this tight enough).
+		emitResource(logicalID, constructType, m[0])
+		if varName != "" {
+			varToLogical[varName] = logicalID
+		}
+	}
+
+	// Pass 2: anonymous construct instantiations — `ns.Type(self, "Id"`.
+	for _, m := range cdkPyConstructAnonRe.FindAllStringSubmatchIndex(src, -1) {
+		constructType := extractGroupFromIndex(src, m, 1)
+		logicalID := extractGroupFromIndex(src, m, 2)
+		if logicalID == "" || constructType == "" {
+			continue
+		}
+		emitResource(logicalID, constructType, m[0])
+	}
+
+	// Pass 3: grant edges — `res.grant_read(grantee)`. Grantee DEPENDS_ON res.
+	for _, m := range cdkPyGrantRe.FindAllStringSubmatch(src, -1) {
+		resourceVar, grantMethod, granteeVar := m[1], m[2], m[3]
+		resLogical := varToLogical[resourceVar]
+		granteeLogical := varToLogical[granteeVar]
+		if resLogical == "" || granteeLogical == "" {
+			continue
+		}
+		emitDependsOn(granteeLogical, resLogical, "grant", grantMethod)
+	}
+
+	// Pass 4: event-source edges — `fn.add_event_source(Src(res))`.
+	for _, m := range cdkPyAddEventSourceRe.FindAllStringSubmatch(src, -1) {
+		fnVar, resourceVar := m[1], m[2]
+		fnLogical := varToLogical[fnVar]
+		resLogical := varToLogical[resourceVar]
+		if fnLogical == "" || resLogical == "" {
+			continue
+		}
+		emitDependsOn(fnLogical, resLogical, "event_source", "")
+	}
+
+	// Pass 5: kwarg-passed construct references — `Type(self,"Id", bucket=other)`.
+	for _, m := range cdkPyConstructPropsRe.FindAllStringSubmatch(src, -1) {
+		enclosingLogical := m[1]
+		argsBody := m[2]
+		if !logicalIDs[enclosingLogical] || argsBody == "" {
+			continue
+		}
+		for _, rm := range cdkPyKwargRefRe.FindAllStringSubmatch(argsBody, -1) {
+			ref := rm[1]
+			passedLogical, ok := varToLogical[ref]
+			if !ok || passedLogical == enclosingLogical {
+				continue
+			}
+			emitDependsOn(enclosingLogical, passedLogical, "props_ref", ref)
+		}
+	}
 }

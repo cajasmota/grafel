@@ -1,0 +1,64 @@
+frameworks:
+  name: AWS CDK (Python)
+  vendor: Amazon Web Services
+  category: infrastructure_as_code
+  current_version_2025: 2.140.x
+  registry: PyPI (aws-cdk-lib), constructs.dev (construct hub)
+  detection:
+    file_extensions:
+      - .py
+    config_files:
+      - cdk.json
+      - cdk.context.json
+    content_patterns:
+      - aws_cdk
+      - "from aws_cdk import"
+      - "import aws_cdk"
+  notes: >-
+    AWS CDK (Python). This rule set fires on real .py files via the python
+    language bucket. Resource extraction (`s3.Bucket(self, "LogicalId", ...)`)
+    and dependency edges (grant_read / add_event_source / kwarg refs) are
+    handled by the dedicated Go pass applyCDKEdges (internal/engine/cdk_edges.go,
+    Python branch applyCDKEdgesPython), which captures the "LogicalId" string
+    literal as the resource NAME, the construct TYPE, and the var→LogicalId
+    binding needed to resolve grant / event-source / kwarg edges — none of which
+    a single-capture regex source_pattern can express.
+
+    SCOPE NOTE: this YAML only declares the Stack / App scope idioms; it must NOT
+    re-emit constructs as resources (that would double-emit alongside the Go
+    pass and mis-name them by construct type instead of LogicalId).
+
+# ---------------------------------------------------------------------------
+# Extraction schema — Stack/App scope only (resources live in the Go pass).
+# ---------------------------------------------------------------------------
+
+source_patterns:
+  # Stack class (Python): class MyStack(Stack) / class MyStack(cdk.Stack)
+  - pattern: "class\\s+(\\w+)\\s*\\(\\s*(?:cdk\\.)?Stack\\b"
+    entity_type: Component
+    name_group: 1
+    scope: class
+  # Construct/Stage/NestedStack subclass
+  - pattern: "class\\s+(\\w+)\\s*\\(\\s*(?:cdk\\.)?(?:Construct|Stage|NestedStack)\\b"
+    entity_type: Component
+    name_group: 1
+    scope: class
+  # App instantiation: cdk.App() / App()
+  - pattern: "(?:cdk\\.)?App\\s*\\(\\s*\\)"
+    entity_type: Config
+    name_group: 0
+    scope: file
+  # CfnOutput: CfnOutput(self, "OutputId", ...)
+  - pattern: "(?:cdk\\.)?CfnOutput\\s*\\(\\s*\\w+\\s*,\\s*[\"']([^\"']+)[\"']"
+    entity_type: Config
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # App instantiates stacks: MyStack(app, "StackId", ...) → app CALLS stack
+  - pattern: "(\\w+Stack)\\s*\\(\\s*(\\w+)\\s*,"
+    source_type: Config
+    target_type: Component
+    relationship: CALLS
+    source_group: 2
+    target_group: 1

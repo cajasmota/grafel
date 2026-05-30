@@ -583,6 +583,19 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// nested `AWS::CloudFormation::Stack` TemplateURL → IMPORTS. Append-only —
 	// cannot regress the surrounding pipeline's bug-rate.
 	applyPass(applyCloudFormationEdges)
+	// Pulumi (TypeScript + Python) resource + dependency extraction (#3528,
+	// epic #3512). Emits one SCOPE.InfraResource per resource constructor
+	// (`new aws.s3.Bucket("name",…)` TS / `aws.s3.Bucket("name",…)` Python),
+	// NAMED by its logical-name string literal and tagged with the resource type
+	// + a coarse scope class, plus DEPENDS_ON edges for output references
+	// (`other.arn`/`.id` passed into args), explicit dependsOn/depends_on lists,
+	// and `StackReference("org/proj/stack")` cross-stack nodes (collapsed onto a
+	// shared pulumi-stack:<ref> node). ComponentResource subclasses become a
+	// component-scoped resource node. Mirrors the hcl extractor's depends_on →
+	// DEPENDS_ON edge kind so Pulumi, CDK and Terraform dependency edges are
+	// uniform. TS/JS + Python (Go/C#/Java follow under their own buckets).
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	applyPass(applyPulumiEdges)
 
 	// Debezium / Kafka-Connect CDC connector edges (#1708). Parses the
 	// JSON config of a CDC connector and emits a SCOPE.Component

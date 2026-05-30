@@ -1,0 +1,45 @@
+frameworks:
+  name: Pulumi (Python)
+  vendor: Pulumi Corporation
+  category: infrastructure_as_code
+  current_version_2025: 3.x (latest 3.120+)
+  registry: PyPI (pulumi, pulumi-aws, …)
+  detection:
+    file_extensions:
+      - .py
+    config_files:
+      - Pulumi.yaml
+      - Pulumi.json
+      - __main__.py
+    content_patterns:
+      - "import pulumi"
+      - "pulumi_aws"
+      - "pulumi.ComponentResource"
+  notes: >-
+    Pulumi (Python). This rule set fires on real .py files via the python
+    language bucket; the rules/pulumi/ bucket is dormant because the loader keys
+    rules by top-level directory name ("pulumi") while real files are tagged
+    "python".
+
+    SCOPE NOTE: resource extraction (`aws.s3.Bucket("name", …)` /
+    `pulumi_aws.s3.Bucket(…)`) and dependency edges (`.arn` output refs /
+    `pulumi.ResourceOptions(depends_on=[…])` / StackReference) are handled by the
+    dedicated Go pass applyPulumiEdges (internal/engine/pulumi_edges.go, Python
+    branch applyPulumiEdgesPython). This YAML only declares program-scope idioms;
+    it must NOT re-emit resources (that would double-emit alongside the Go pass).
+
+# ---------------------------------------------------------------------------
+# Extraction schema — program/stack scope only (resources live in the Go pass).
+# ---------------------------------------------------------------------------
+
+source_patterns:
+  # Pulumi config: pulumi.Config("namespace") / pulumi.Config()
+  - pattern: "(?:pulumi\\.)?Config\\s*\\(\\s*[\"']([^\"']*)[\"']"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # Stack output export: pulumi.export("name", value)
+  - pattern: "pulumi\\.export\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Config
+    name_group: 1
+    scope: file

@@ -1,0 +1,48 @@
+frameworks:
+  name: Pulumi (TypeScript/JavaScript)
+  vendor: Pulumi Corporation
+  category: infrastructure_as_code
+  current_version_2025: 3.x (latest 3.120+)
+  registry: npm (@pulumi/pulumi, @pulumi/aws, …)
+  detection:
+    file_extensions:
+      - .ts
+      - .js
+    config_files:
+      - Pulumi.yaml
+      - Pulumi.json
+    content_patterns:
+      - "@pulumi/"
+      - "import * as pulumi"
+      - "extends pulumi.ComponentResource"
+  notes: >-
+    Pulumi (TypeScript/JavaScript). This rule set fires on real .ts/.js files
+    via the javascript_typescript → typescript/javascript bucket alias in
+    detector.compile(); the older rules/pulumi/ bucket is dormant because the
+    loader keys rules by top-level directory name ("pulumi") while real files
+    are tagged "typescript"/"javascript".
+
+    SCOPE NOTE: resource extraction (`new aws.s3.Bucket("name", {…})`) and
+    dependency edges (output refs / dependsOn / StackReference) are handled by
+    the dedicated Go pass applyPulumiEdges (internal/engine/pulumi_edges.go),
+    which captures the logical-name string literal as the resource NAME, the
+    resource TYPE, and the var→name binding needed to resolve dependency edges —
+    none of which a single-capture regex source_pattern can express. This YAML
+    only declares the program-scope idioms; it must NOT re-emit resources (that
+    would double-emit alongside the Go pass and mis-name them).
+
+# ---------------------------------------------------------------------------
+# Extraction schema — program/stack scope only (resources live in the Go pass).
+# ---------------------------------------------------------------------------
+
+source_patterns:
+  # Pulumi config: new pulumi.Config("namespace") / pulumi.Config()
+  - pattern: "new\\s+(?:pulumi\\.)?Config\\s*\\(\\s*[\"']([^\"']*)[\"']"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # Stack output export: export const x = ... (pulumi exports top-level consts)
+  - pattern: "export\\s+const\\s+(\\w+)\\s*="
+    entity_type: Config
+    name_group: 1
+    scope: file

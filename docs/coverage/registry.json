@@ -1315,15 +1315,15 @@
           "status": "partial",
           "cites": ["internal/engine/cdk_edges.go"],
           "issue": "https://github.com/cajasmota/archigraph/issues/3512",
-          "notes": "CDK-TS dependency edges implemented: DEPENDS_ON from grant calls (bucket.grantRead(fn)), Lambda addEventSource, and construct vars passed through props; mirrors the hcl extractor's depends_on-\u003eDEPENDS_ON edge kind. CDK-Python/Java/Go/C# pending. Was citing the dormant rules/cdk/_manifest.yaml.",
-          "verified_at": "2026-05-30"
+          "notes": "CDK-TS + CDK-Python dependency edges implemented: DEPENDS_ON from grant calls (bucket.grantRead(fn) / data.grant_read(fn)), Lambda event sources (addEventSource / add_event_source), and construct vars passed through props/kwargs; mirrors the hcl extractor's depends_on-\u003eDEPENDS_ON edge kind. CDK-Java/Go/C# pending. Python branch: applyCDKEdgesPython.",
+          "verified_at": "2026-05-31"
         },
         "resource_extraction": {
           "status": "partial",
           "cites": ["internal/engine/cdk_edges.go","internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml"],
           "issue": "https://github.com/cajasmota/archigraph/issues/3512",
-          "notes": "CDK-TS implemented (applyCDKEdges): SCOPE.InfraResource per construct named by LogicalId. Stack/App scope via rules/javascript_typescript/frameworks/aws_cdk.yaml. CDK-Python/Java/Go/C# pending. Was citing the dormant rules/cdk/_manifest.yaml (knowledge metadata, never fired).",
-          "verified_at": "2026-05-30"
+          "notes": "CDK-TS + CDK-Python implemented (applyCDKEdges / applyCDKEdgesPython): SCOPE.InfraResource per construct named by its 'LogicalId' literal (construct_type + coarse resource_scope). Stack/App scope via rules/{javascript_typescript,python}/frameworks/aws_cdk.yaml. CDK-Java/Go/C# pending.",
+          "verified_at": "2026-05-31"
         }
       }
     },
@@ -1353,13 +1353,17 @@
       "capabilities": {
         "dependency_attribution": {
           "status": "partial",
-          "cites": ["internal/engine/rules/pulumi/_manifest.yaml"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/pulumi_edges.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3528",
+          "notes": "Pulumi-TS + Pulumi-Python dependency edges implemented (applyPulumiEdges / applyPulumiEdgesPython): DEPENDS_ON from output references (other.arn/.id/.url passed into a resource's args), explicit dependsOn/depends_on lists, and StackReference cross-stack nodes (collapsed onto pulumi-stack:\u003cref\u003e). Mirrors the hcl extractor's DEPENDS_ON edge kind. Pulumi-Go/C#/Java pending. Was citing the dormant rules/pulumi/_manifest.yaml (never fired: loader keys rules by top-level dir, no file is tagged 'pulumi').",
+          "verified_at": "2026-05-31"
         },
         "resource_extraction": {
           "status": "partial",
-          "cites": ["internal/engine/rules/pulumi/_manifest.yaml"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/pulumi_edges.go","internal/engine/rules/javascript_typescript/frameworks/pulumi.yaml","internal/engine/rules/python/frameworks/pulumi.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3528",
+          "notes": "Pulumi-TS + Pulumi-Python implemented (applyPulumiEdges / applyPulumiEdgesPython): SCOPE.InfraResource per resource constructor named by its logical-name string literal (construct_type + coarse resource_scope); ComponentResource subclasses recorded as component-scoped nodes. Program-scope idioms via rules/{javascript_typescript,python}/frameworks/pulumi.yaml. Pulumi-Go/C#/Java pending. Was over-stamped via the dormant rules/pulumi/_manifest.yaml.",
+          "verified_at": "2026-05-31"
         }
       }
     },
@@ -1564,10 +1568,10 @@
       "capabilities": {
         "resource_extraction": {
           "status": "partial",
-          "cites": ["internal/engine/cdk_edges.go","internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml"],
+          "cites": ["internal/engine/cdk_edges.go","internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml","internal/engine/rules/python/frameworks/aws_cdk.yaml"],
           "issue": "https://github.com/cajasmota/archigraph/issues/3512",
-          "notes": "CDK-TS only: applyCDKEdges emits SCOPE.InfraResource per construct named by its 'LogicalId' literal (construct_type + coarse resource_scope). CDK-Python/Java/Go/C# not yet implemented. Previously over-stamped full citing the hcl/Terraform extractor, which cannot parse .ts.",
-          "verified_at": "2026-05-30"
+          "notes": "CDK-TS + CDK-Python: applyCDKEdges (TS) / applyCDKEdgesPython emit SCOPE.InfraResource per construct named by its 'LogicalId' literal (construct_type + coarse resource_scope). CDK-Java/Go/C# not yet implemented. Previously over-stamped full citing the hcl/Terraform extractor, which cannot parse .ts/.py.",
+          "verified_at": "2026-05-31"
         }
       }
     },
@@ -1622,9 +1626,11 @@
       "label": "Pulumi",
       "capabilities": {
         "resource_extraction": {
-          "status": "full",
-          "cites": ["internal/extractors/hcl/extractor.go"],
-          "verified_at": "2026-05-28"
+          "status": "partial",
+          "cites": ["internal/engine/pulumi_edges.go","internal/engine/rules/javascript_typescript/frameworks/pulumi.yaml","internal/engine/rules/python/frameworks/pulumi.yaml"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3528",
+          "notes": "Pulumi-TS + Pulumi-Python only: applyPulumiEdges emits SCOPE.InfraResource per resource constructor named by its logical-name string literal (construct_type + coarse resource_scope). Pulumi-Go/C#/Java not yet implemented. Previously over-stamped full citing the hcl/Terraform extractor, which cannot parse .ts/.py.",
+          "verified_at": "2026-05-31"
         }
       }
     },
