@@ -45844,6 +45844,195 @@
       }
     },
     {
+      "id": "lang.rust.framework.async-graphql",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "rust",
+      "label": "async-graphql",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go"],
+            "notes": "Synthesizes verb GRAPHQL endpoints from resolver impl blocks; Schema::build root captured as SCOPE.Service",
+            "verified_at": "2026-05-30"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go"],
+            "notes": "handler_name=\u003cRoot\u003e.\u003cfield\u003e attributed per resolver method",
+            "verified_at": "2026-05-30"
+          },
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go"],
+            "notes": "Each #[Object] impl Query/Mutation/Subscription resolver method becomes a GRAPHQL endpoint at /graphql/\u003cRoot\u003e/\u003cfield\u003e; operation kind derived from impl root",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go"],
+            "notes": "#[derive(SimpleObject/InputObject/MergedObject)] structs + #[derive(Enum)] enums emitted as SCOPE.Schema DTOs with role (object/input/enum)",
+            "verified_at": "2026-05-30"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go"],
+            "notes": "#[derive(Enum)] GraphQL enums recovered as DTOs",
+            "verified_at": "2026-05-30"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go"],
+            "notes": "GraphQL DTO type names recovered from derive macros",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go"],
+            "issue": "3508",
+            "notes": "InputObject DTO type names recovered; per-field shape of the input struct not statically chased",
+            "verified_at": "2026-05-30"
+          },
+          "response_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go"],
+            "issue": "3508",
+            "notes": "Resolver return DTO type names recovered via SimpleObject derive; field-level shape not chased",
+            "verified_at": "2026-05-30"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.rust.framework.axum",
       "category": "http_framework",
       "subcategory": "http_backend",
@@ -47450,6 +47639,196 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_rust.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.rust.framework.tonic",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "rust",
+      "label": "Tonic",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go","internal/custom/rust/tonic.go"],
+            "notes": "RPC endpoints synthesized per async method; .add_service(\u003cSvc\u003eServer::new) captured as SCOPE.Service registration",
+            "verified_at": "2026-05-30"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go","internal/custom/rust/tonic.go"],
+            "notes": "handler_name=\u003cImplType\u003e.\u003cmethod\u003e attributed per RPC method",
+            "verified_at": "2026-05-30"
+          },
+          "route_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go","internal/custom/rust/tonic.go"],
+            "notes": "#[tonic::async_trait] impl \u003cService\u003e for \u003cType\u003e RPC methods become RPC endpoints at /\u003cService\u003e/\u003cMethod\u003e; verb=RPC, rpc_protocol=grpc",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go","internal/custom/rust/tonic.go"],
+            "notes": "Request\u003cT\u003e/Response\u003cT\u003e message types emitted as SCOPE.Schema DTOs with grpc_message_role request/response",
+            "verified_at": "2026-05-30"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/tonic.go"],
+            "issue": "3508",
+            "notes": "Service trait NAME recovered from impl \u003cService\u003e for \u003cType\u003e; the trait itself is tonic-build-generated and not statically present",
+            "verified_at": "2026-05-30"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go","internal/custom/rust/tonic.go"],
+            "notes": "gRPC message type names recovered from Request\u003cT\u003e/Response\u003cT\u003e wrappers",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/tonic.go"],
+            "issue": "3508",
+            "notes": "Request\u003cT\u003e message type NAME recovered; field shapes live in tonic-build-generated structs (build.rs OUT_DIR), not statically present in source",
+            "verified_at": "2026-05-30"
+          },
+          "response_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/tonic.go"],
+            "issue": "3508",
+            "notes": "Response\u003cT\u003e message type NAME recovered; generated message field shapes not statically resolvable",
+            "verified_at": "2026-05-30"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }

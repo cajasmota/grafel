@@ -7477,6 +7477,167 @@ records:
           issues_implemented: ["3416"]
           verified_at: "2026-05-30"
 
+  lang.rust.framework.async-graphql:
+    capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract, agqlBlockBody, agqlOperationForRoot]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestAsyncGraphQLResolverFields]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract, agqlSplitRoots]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestAsyncGraphQLResolverFields, TestAsyncGraphQLSchemaRoot]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestAsyncGraphQLResolverFields]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+      Validation:
+        dto_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract, agqlDTORole]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestAsyncGraphQLDTOs]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+      Type System:
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestAsyncGraphQLDTOs]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestAsyncGraphQLDTOs]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+      Substrate:
+        request_shape_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract, agqlDTORole]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        response_shape_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/async_graphql.go
+              functions: [Extract, agqlDTORole]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+
+  lang.rust.framework.tonic:
+    capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract, tonicBlockBody, tonicResponseType]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestTonicRpcMethods]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        endpoint_synthesis:
+          status: full
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestTonicRpcMethods, TestTonicAddService]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        handler_attribution:
+          status: full
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestTonicRpcMethods]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+      Validation:
+        dto_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract, tonicAddDTO]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestTonicMessageDTOs]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+      Type System:
+        type_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract, tonicAddDTO]
+          tests:
+            - file: internal/custom/rust/graphql_grpc_test.go
+              functions: [TestTonicMessageDTOs]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        interface_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+      Substrate:
+        request_shape_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract, tonicAddDTO]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+        response_shape_extraction:
+          status: partial
+          symbols:
+            - file: internal/custom/rust/tonic.go
+              functions: [Extract, tonicResponseType, tonicAddDTO]
+          issues_implemented: ["3508"]
+          verified_at: "2026-05-31"
+
   lang.rust.framework.actix:
     capabilities:
       Substrate:
