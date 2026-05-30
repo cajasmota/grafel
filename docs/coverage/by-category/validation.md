@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # validation
 
-**Total**: 4 records · **java**: 1 · **python**: 3
+**Total**: 5 records · **C/C++**: 1 · **java**: 1 · **python**: 3
 
 Back to [summary](../summary.md). Bucket: **Other**.
 

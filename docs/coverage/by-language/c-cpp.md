@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # C/C++
 
-**Frameworks**: 17 · **Tools**: 16 · **ORMs**: 7 · **Other**: 0
+**Frameworks**: 19 · **Tools**: 16 · **ORMs**: 7 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -57,6 +57,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟢 10/10 | 🟢 2/2 | |
 
 
+### RPC Framework
+
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🟡 2/21 | 🟡 3/4 | |
+| [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | 🟡 2/21 | 🟢 4/4 | |
+
+
 ## Tools
 
 | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
@@ -92,3 +100,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟢 3/3 | |
 | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | ✅ 1/1 | |
 | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | ✅ 3/3 | |
+
+
+## Other
+
+
+### Validation
+
+| Name | Testing | Other capabilities | Notes |
+|---|---|---|---|
+| [nlohmann/json (C++)](../detail/lang.c-cpp.framework.nlohmann-json.md) | ✅ 1/1 | 🟡 3/5 | |

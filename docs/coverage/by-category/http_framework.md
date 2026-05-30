@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 189 records · **C/C++**: 17 · **C#**: 15 · **elixir**: 9 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 14 · **lua**: 2 · **php**: 12 · **python**: 21 · **ruby**: 8 · **rust**: 13 · **scala**: 11 · **swift**: 1
+**Total**: 191 records · **C/C++**: 19 · **C#**: 15 · **elixir**: 9 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 14 · **lua**: 2 · **php**: 12 · **python**: 21 · **ruby**: 8 · **rust**: 13 · **scala**: 11 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -227,6 +227,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|
+| [C/C++](../by-language/c-cpp.md) | [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🟡 2/21 | 🟡 3/4 | |
+| [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | 🟡 2/21 | 🟢 4/4 | |
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | 🟢 21/21 | 🟢 4/4 | |
 | [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🟢 21/21 | ✅ 3/3 | |
 | [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | 🟢 21/21 | ✅ 4/4 | |

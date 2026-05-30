@@ -3251,6 +3251,141 @@
       }
     },
     {
+      "id": "lang.c-cpp.framework.grpc",
+      "category": "http_framework",
+      "subcategory": "rpc_framework",
+      "language": "c-cpp",
+      "label": "gRPC C++ (grpc++)",
+      "capabilities": {
+        "Schema": {
+          "procedure_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc.go","internal/custom/cpp/grpc_protobuf_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "each overridden Status RPC method -\u003e SCOPE.Operation endpoint",
+            "verified_at": "2026-05-30"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc.go","internal/custom/cpp/grpc_protobuf_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "req/resp messages emitted as SCOPE.Schema DTO refs (names only)",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Codegen": {
+          "client_codegen": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc.go","internal/custom/cpp/grpc_protobuf_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Service::NewStub(channel) client-stub site detected",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Transport": {
+          "transport_binding": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc.go","internal/custom/cpp/grpc_protobuf_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "RPC endpoint synthesis from service-impl override methods + RegisterService; regex, no AST",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc.go","internal/custom/cpp/grpc_protobuf_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "request message type name from RPC method args; field shapes are protoc-generated",
+            "verified_at": "2026-05-30"
+          },
+          "response_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc.go","internal/custom/cpp/grpc_protobuf_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "response message type name from RPC method args; field shapes are protoc-generated",
+            "verified_at": "2026-05-30"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.c-cpp.framework.libev",
       "category": "http_framework",
       "subcategory": "http_backend",
@@ -3876,6 +4011,57 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_c_cpp.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.nlohmann-json",
+      "category": "validation",
+      "subcategory": "validation_lib",
+      "language": "c-cpp",
+      "label": "nlohmann/json (C++)",
+      "capabilities": {
+        "Schema": {
+          "nested_model_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/nlohmann_json.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "to_json/from_json free-function pairs bind a struct type as serialize/deserialize/bidirectional; nested member C++ types not resolved",
+            "verified_at": "2026-05-30"
+          },
+          "schema_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/nlohmann_json.go"],
+            "notes": "NLOHMANN_DEFINE_TYPE(_INTRUSIVE/_NON_INTRUSIVE/_WITH_DEFAULT) -\u003e SCOPE.Schema DTO + per-member field entities; member list is the serialization contract",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Constraints": {
+          "constraint_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "custom_validator_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Coercion": {
+          "type_coercion_recognition": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/nlohmann_json.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "serialization_direction (to_json/from_json) recorded; field C++ types declared in struct body, not resolved here",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "full",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/nlohmann_json.go"],
+            "notes": "value-asserting fixtures assert DTO + exact field list + macro variant + free-function direction",
+            "verified_at": "2026-05-30"
           }
         }
       }
@@ -4532,6 +4718,137 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_c_cpp.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.c-cpp.framework.protobuf",
+      "category": "http_framework",
+      "subcategory": "rpc_framework",
+      "language": "c-cpp",
+      "label": "Protocol Buffers (C++)",
+      "capabilities": {
+        "Schema": {
+          "procedure_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/protobuf.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "each .proto rpc -\u003e SCOPE.Operation endpoint /\u003cService\u003e/\u003cMethod\u003e",
+            "verified_at": "2026-05-30"
+          },
+          "schema_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/protobuf.go"],
+            "notes": ".proto messages+fields fully parsed (name/type/number/label); generated .pb.h message classes recovered by name",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Codegen": {
+          "client_codegen": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Transport": {
+          "transport_binding": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/protobuf.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": ".proto service+rpc -\u003e SCOPE.Service + RPC SCOPE.Operation endpoints with streaming kind",
+            "verified_at": "2026-05-30"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/protobuf.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "rpc request message names from .proto service rpc decls",
+            "verified_at": "2026-05-30"
+          },
+          "response_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/protobuf.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "rpc response message names from .proto service rpc decls",
+            "verified_at": "2026-05-30"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }

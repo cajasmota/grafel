@@ -50,17 +50,23 @@ var customPrefixForLanguage = map[string]string{
 	// path/language-gates internally and no-ops on files it does not own.
 	"prisma": "custom_js_",
 	"sql":    "custom_js_",
-	"java":       "custom_java_",
-	"kotlin":     "custom_kotlin_",
-	"scala":      "custom_scala_",
-	"ruby":       "custom_ruby_",
-	"php":        "custom_php_",
-	"rust":       "custom_rust_",
-	"swift":      "custom_swift_",
-	"dart":       "custom_dart_",
-	"elixir":     "custom_elixir_",
-	"csharp":     "custom_csharp_",
-	"cpp":        "custom_cpp_",
+	"java":   "custom_java_",
+	"kotlin": "custom_kotlin_",
+	"scala":  "custom_scala_",
+	"ruby":   "custom_ruby_",
+	"php":    "custom_php_",
+	"rust":   "custom_rust_",
+	"swift":  "custom_swift_",
+	"dart":   "custom_dart_",
+	"elixir": "custom_elixir_",
+	"csharp": "custom_csharp_",
+	"cpp":    "custom_cpp_",
+	// Protocol Buffers IDL files (.proto) are classified as their own
+	// "protobuf" language but carry message/service definitions parsed by the
+	// C/C++ protobuf custom extractor (which path/language-gates internally and
+	// no-ops on non-proto files). Route them to the C++ extractor set, mirroring
+	// the prisma/sql → JS routing above.
+	"protobuf": "custom_cpp_",
 }
 
 // CustomExtractorsFor returns all registered custom/framework extractors
