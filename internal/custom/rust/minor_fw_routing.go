@@ -91,7 +91,7 @@ func (e *poemExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 
 	// 1. .at("/path", get(handler)) -> endpoint + handler attribution
 	for _, m := range rePoemAt.FindAllStringSubmatchIndex(src, -1) {
-		path := src[m[2]:m[3]]
+		path := rustNormalizePath(src[m[2]:m[3]])
 		method := strings.ToUpper(src[m[4]:m[5]])
 		handler := src[m[6]:m[7]]
 		name := method + " " + path
@@ -165,15 +165,23 @@ var (
 )
 
 func normWarpPath(raw string) string {
-	// Convert `"users" / "id"` -> /users/id
+	// Convert warp::path!("users" / u32 / "comments") segments to a canonical
+	// path. String-literal segments are kept verbatim; bare (unquoted) segments
+	// are typed path params (e.g. u32, String, Uuid) and become {param}.
 	raw = strings.TrimSpace(raw)
 	parts := strings.Split(raw, "/")
 	var segs []string
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		p = strings.Trim(p, `"`)
-		if p != "" {
-			segs = append(segs, p)
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(p, `"`) {
+			// String literal segment.
+			segs = append(segs, strings.Trim(p, `"`))
+		} else {
+			// Typed param segment — canonicalise to {type} lower-cased.
+			segs = append(segs, "{"+strings.ToLower(p)+"}")
 		}
 	}
 	return "/" + strings.Join(segs, "/")
@@ -310,7 +318,7 @@ func (e *tideExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 
 	// 1. .at("/path").get(handler) -> endpoint
 	for _, m := range reTideAt.FindAllStringSubmatchIndex(src, -1) {
-		path := src[m[2]:m[3]]
+		path := rustNormalizePath(src[m[2]:m[3]])
 		method := strings.ToUpper(src[m[4]:m[5]])
 		handler := src[m[6]:m[7]]
 		name := method + " " + path
@@ -398,7 +406,7 @@ func (e *gothamExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	// 1. route.get("/path").to(handler) -> endpoint + handler attribution
 	for _, m := range reGothamRoute.FindAllStringSubmatchIndex(src, -1) {
 		method := strings.ToUpper(src[m[2]:m[3]])
-		path := src[m[4]:m[5]]
+		path := rustNormalizePath(src[m[4]:m[5]])
 		handler := src[m[6]:m[7]]
 		name := method + " " + path
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
@@ -582,7 +590,7 @@ func (e *salvoExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 	for _, m := range reSalvoPath.FindAllStringSubmatchIndex(src, -1) {
 		path := ""
 		if m[2] >= 0 {
-			path = src[m[2]:m[3]]
+			path = rustNormalizePath(src[m[2]:m[3]])
 		}
 		method := strings.ToUpper(src[m[4]:m[5]])
 		handler := src[m[6]:m[7]]
@@ -601,7 +609,7 @@ func (e *salvoExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 
 	// 2. .path("/segment") -> SCOPE.Component
 	for _, m := range reSalvoPathOnly.FindAllStringSubmatchIndex(src, -1) {
-		seg := src[m[2]:m[3]]
+		seg := rustNormalizePath(src[m[2]:m[3]])
 		ent := makeEntity("path:"+seg, "SCOPE.Component", "route_segment", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "salvo", "provenance", "INFERRED_FROM_SALVO_PATH", "route_pattern", seg)
 		add(ent)

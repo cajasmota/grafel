@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_axum.go`<br>`internal/engine/rules/rust/frameworks/axum.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_axum.go` | — |
-| Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/axum.go`<br>`internal/custom/rust/extractors_test.go` | Regex extracts .route(path, method(handler)) paths and methods |
+| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/axum.go`<br>`internal/custom/rust/extractors_test.go`<br>`internal/custom/rust/helpers.go` | Extracts verb+path; normalises :id/<id>/{id} to canonical {id}; composes .nest() prefix; expands chained method routers get(h).post(h) |
 
 ### Auth
 

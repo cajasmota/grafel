@@ -45118,10 +45118,9 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/actix_web.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Route path+method extraction from macros and builder calls",
+            "status": "full",
+            "cites": ["internal/custom/rust/actix_web.go","internal/custom/rust/extractors_test.go","internal/custom/rust/helpers.go"],
+            "notes": "Extracts attribute-macro and manual web::get().to() routes; normalises path params; composes web::scope() prefix onto manual routes",
             "verified_at": "2026-05-30"
           }
         },
@@ -45333,10 +45332,9 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/axum.go","internal/custom/rust/extractors_test.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extracts .route(path, method(handler)) paths and methods",
+            "status": "full",
+            "cites": ["internal/custom/rust/axum.go","internal/custom/rust/extractors_test.go","internal/custom/rust/helpers.go"],
+            "notes": "Extracts verb+path; normalises :id/\u003cid\u003e/{id} to canonical {id}; composes .nest() prefix; expands chained method routers get(h).post(h)",
             "verified_at": "2026-05-30"
           }
         },
@@ -45548,10 +45546,9 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "route.verb(path).to(h); :id params normalised to {id}; verb+path+handler asserted",
             "verified_at": "2026-05-30"
           }
         },
@@ -45768,7 +45765,7 @@
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "notes": "Extracts (\u0026Method::VERB, \"/path\") match-arm routes; raw hyper paths are literal string matches with no param syntax, so param normalisation is N/A and dynamic-segment routes (manual path splitting) are not recovered",
             "verified_at": "2026-05-30"
           }
         },
@@ -45982,10 +45979,9 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "Route::new().at(path, verb(h)); #[handler] attribution; :id params normalised to {id}",
             "verified_at": "2026-05-30"
           }
         },
@@ -46199,10 +46195,9 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/extractors_test.go","internal/custom/rust/rocket.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extracts #[get/post/...] route macros with path and handler",
+            "status": "full",
+            "cites": ["internal/custom/rust/extractors_test.go","internal/custom/rust/helpers.go","internal/custom/rust/rocket.go"],
+            "notes": "Extracts #[verb(path, data=..)] macros; normalises \u003cid\u003e to {id}; composes .mount(prefix, routes![]) onto handler paths",
             "verified_at": "2026-05-30"
           }
         },
@@ -46414,10 +46409,9 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "Router with_path/.path().verb(h); \u003cid\u003e path params normalised to {id}",
             "verified_at": "2026-05-30"
           }
         },
@@ -46712,10 +46706,9 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "app.at(path).verb(h); :id params normalised to {id}; verb+path+handler asserted",
             "verified_at": "2026-05-30"
           }
         },
@@ -46933,7 +46926,7 @@
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "notes": "tower is a middleware/service-composition layer, not a router: ServiceBuilder.layer()/.service() are extracted but tower defines no verb+path routes, so route_extraction is structurally partial",
             "verified_at": "2026-05-30"
           }
         },
@@ -47147,10 +47140,9 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "status": "full",
+            "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "warp::path! filter chains; typed segments (u32) normalised to {param}; verb+path+handler attribution",
             "verified_at": "2026-05-30"
           }
         },

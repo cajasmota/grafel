@@ -22,8 +22,18 @@ type axumExtractor struct{}
 func (e *axumExtractor) Language() string { return "custom_rust_axum" }
 
 var (
+	// .route("/path", get(handler).post(handler2)) — captures the full
+	// method-router argument (a verb(handler) call, optionally chained with
+	// further .verb(handler) calls). Inner verbs are re-scanned with
+	// reAxumMethodRouter so each yields its own endpoint. The verb-argument
+	// body excludes parens/semicolons so the match cannot run past the close
+	// of the method-router into the next .route(...) on the same line.
 	reAxumRoute = regexp.MustCompile(
-		`\.route\s*\(\s*"([^"]+)"\s*,\s*(get|post|put|delete|patch|head|options)\s*\(\s*(\w+)\s*\)`,
+		`\.route\s*\(\s*"([^"]+)"\s*,\s*((?:get|post|put|delete|patch|head|options|trace)\s*\([^();]*\)(?:\s*\.\s*(?:get|post|put|delete|patch|head|options|trace)\s*\([^();]*\))*)`,
+	)
+	// Individual verb(handler) calls inside a method-router argument.
+	reAxumMethodRouter = regexp.MustCompile(
+		`(get|post|put|delete|patch|head|options|trace)\s*\(\s*(\w+)\s*\)`,
 	)
 	reAxumNest = regexp.MustCompile(
 		`\.nest\s*\(\s*"([^"]+)"\s*,\s*(\w+)`,
@@ -50,6 +60,35 @@ var (
 		`WebSocketUpgrade`,
 	)
 )
+
+// reAxumLetRouter matches `let <var> = ` immediately preceding (somewhere
+// before) a Router::new() so we can attribute routes to a router variable.
+var reAxumLetRouter = regexp.MustCompile(`(?m)let\s+(?:mut\s+)?(\w+)\s*(?::[^=]+)?=`)
+
+// axumRouteNestPrefix returns the nest prefix that should be composed onto a
+// .route(...) found at routeOff. It walks backwards to the nearest preceding
+// `let <var> =` binding and, if that variable was nested under a prefix,
+// returns it. Conservative: returns "" when the binding/router can't be tied
+// to a known nest prefix (keeps unnested routes verbatim).
+func axumRouteNestPrefix(src string, routeOff int, nestPrefix map[string]string) string {
+	if len(nestPrefix) == 0 {
+		return ""
+	}
+	// Find the closest `let <var> =` binding starting at or before routeOff.
+	best := -1
+	var bestVar string
+	for _, lm := range reAxumLetRouter.FindAllStringSubmatchIndex(src, -1) {
+		if lm[0] > routeOff {
+			break
+		}
+		best = lm[0]
+		bestVar = src[lm[2]:lm[3]]
+	}
+	if best < 0 {
+		return ""
+	}
+	return nestPrefix[bestVar]
+}
 
 func (e *axumExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/rust")
@@ -82,21 +121,44 @@ func (e *axumExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		entities = append(entities, ent)
 	}
 
-	// 1. .route("/path", get(handler)) -> SCOPE.Operation/endpoint
+	// Build a map of router-variable -> nest prefix so routes declared on a
+	// sub-router can be composed with the prefix they are mounted under.
+	//   let api = Router::new().route("/users", ...);
+	//   let app = Router::new().nest("/api", api);
+	// => GET /api/users
+	nestPrefix := map[string]string{}
+	for _, m := range reAxumNest.FindAllStringSubmatchIndex(src, -1) {
+		prefix := rustNormalizePath(src[m[2]:m[3]])
+		routerVar := src[m[4]:m[5]]
+		nestPrefix[routerVar] = prefix
+	}
+
+	// 1. .route("/path", get(handler).post(handler2)) -> SCOPE.Operation/endpoint
+	// Each verb in the method-router chain becomes its own endpoint, with the
+	// path normalised to canonical {param} form and any nest prefix composed in.
 	for _, m := range reAxumRoute.FindAllStringSubmatchIndex(src, -1) {
-		path := src[m[2]:m[3]]
-		method := strings.ToUpper(src[m[4]:m[5]])
-		handler := src[m[6]:m[7]]
-		name := method + " " + path
-		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "axum", "provenance", "INFERRED_FROM_AXUM_ROUTE",
-			"http_method", method, "route_path", path, "handler_name", handler)
-		add(ent)
+		rawPath := src[m[2]:m[3]]
+		path := rustNormalizePath(rawPath)
+		methodRouter := src[m[4]:m[5]]
+		prefix := axumRouteNestPrefix(src, m[0], nestPrefix)
+		fullPath := rustJoinPaths(prefix, path)
+		for _, vm := range reAxumMethodRouter.FindAllStringSubmatch(methodRouter, -1) {
+			method := strings.ToUpper(vm[1])
+			handler := vm[2]
+			name := method + " " + fullPath
+			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "axum", "provenance", "INFERRED_FROM_AXUM_ROUTE",
+				"http_method", method, "route_path", fullPath, "handler_name", handler)
+			if prefix != "" {
+				setProps(&ent, "nest_prefix", prefix)
+			}
+			add(ent)
+		}
 	}
 
 	// 2. .nest("/api", sub_router) -> SCOPE.Component
 	for _, m := range reAxumNest.FindAllStringSubmatchIndex(src, -1) {
-		prefix := src[m[2]:m[3]]
+		prefix := rustNormalizePath(src[m[2]:m[3]])
 		routerVar := src[m[4]:m[5]]
 		ent := makeEntity("nest:"+prefix, "SCOPE.Component", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "axum", "provenance", "INFERRED_FROM_AXUM_NEST",

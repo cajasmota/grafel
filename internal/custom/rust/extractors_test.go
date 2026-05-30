@@ -221,3 +221,95 @@ func TestRocketNoMatch(t *testing.T) {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Deep route-extraction tests (value-asserting): param normalisation,
+// nest/scope/mount prefix composition, axum method-router chains.
+// ---------------------------------------------------------------------------
+
+// Axum 0.7+ brace params are kept canonical; the exact (verb, path) is asserted.
+func TestAxumBraceParam(t *testing.T) {
+	src := `let app = Router::new().route("/users/{id}", get(get_user));`
+	ents := extract(t, "custom_rust_axum", fi("router.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users/{id}") {
+		t.Error("expected GET /users/{id}")
+	}
+}
+
+// Axum 0.6 colon params are normalised to canonical {id} form.
+func TestAxumColonParamNormalised(t *testing.T) {
+	src := `let app = Router::new().route("/users/:id", get(get_user));`
+	ents := extract(t, "custom_rust_axum", fi("router.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users/{id}") {
+		t.Error("expected GET /users/{id} from :id param")
+	}
+}
+
+// A chained method router get(h).post(h2).delete(h3) yields one endpoint per verb.
+func TestAxumMethodRouterChain(t *testing.T) {
+	src := `let app = Router::new()
+        .route("/users/{id}", get(get_user).post(update_user).delete(delete_user));`
+	ents := extract(t, "custom_rust_axum", fi("router.rs", "rust", src))
+	for _, want := range []string{"GET /users/{id}", "POST /users/{id}", "DELETE /users/{id}"} {
+		if !containsEntity(ents, "SCOPE.Operation", want) {
+			t.Errorf("expected %q", want)
+		}
+	}
+}
+
+// .nest("/api", api) composes the prefix onto routes of the api sub-router.
+func TestAxumNestPrefixComposed(t *testing.T) {
+	src := `
+let api = Router::new()
+    .route("/users/{id}", get(get_user));
+let app = Router::new()
+    .nest("/api", api);
+`
+	ents := extract(t, "custom_rust_axum", fi("router.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /api/users/{id}") {
+		t.Error("expected nest prefix composed: GET /api/users/{id}")
+	}
+}
+
+// actix attribute macro carries typed path param; normalised path asserted.
+func TestActixAttrMacroParam(t *testing.T) {
+	src := `
+#[get("/users/{id}")]
+async fn get_user(path: web::Path<u32>) -> impl Responder { HttpResponse::Ok() }
+`
+	ents := extract(t, "custom_rust_actix_web", fi("h.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users/{id}") {
+		t.Error("expected GET /users/{id}")
+	}
+}
+
+// web::scope("/api") composes onto manual .route(...) on the same chain.
+func TestActixScopePrefixComposed(t *testing.T) {
+	src := `
+let api = web::scope("/api").route("/users/{id}", web::get().to(get_user));
+`
+	ents := extract(t, "custom_rust_actix_web", fi("app.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /api/users/{id}") {
+		t.Error("expected scope prefix composed: GET /api/users/{id}")
+	}
+}
+
+// Rocket <id> param normalised to {id}; mount prefix composed.
+func TestRocketParamAndMount(t *testing.T) {
+	src := `
+#[get("/users/<id>")]
+fn get_user(id: u32) -> &'static str { "u" }
+
+#[post("/users", data = "<new>")]
+fn create_user(new: Json<User>) -> Status { Status::Created }
+
+rocket::build().mount("/api", routes![get_user, create_user]);
+`
+	ents := extract(t, "custom_rust_rocket", fi("routes.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /api/users/{id}") {
+		t.Error("expected GET /api/users/{id} (param + mount composed)")
+	}
+	if !containsEntity(ents, "SCOPE.Operation", "POST /api/users") {
+		t.Error("expected POST /api/users (data= kwarg tolerated, mount composed)")
+	}
+}

@@ -45,6 +45,35 @@ var (
 	)
 )
 
+// actixScopePrefix returns the web::scope("/prefix") that lexically encloses a
+// manual .route(...) found at routeOff. actix chains routes onto a scope:
+//
+//	web::scope("/api").route("/users", web::get().to(h))
+//
+// We take the nearest preceding web::scope on the same statement (no `;`
+// between the scope and the route). Returns "" when the route is not scoped.
+func actixScopePrefix(src string, routeOff int) string {
+	locs := reActixScope.FindAllStringSubmatchIndex(src, -1)
+	best := -1
+	var prefix string
+	for _, sm := range locs {
+		if sm[0] > routeOff {
+			break
+		}
+		// Reject if a statement terminator separates this scope from the route,
+		// which would mean they are not on the same chain.
+		if strings.ContainsAny(src[sm[1]:routeOff], ";") {
+			continue
+		}
+		best = sm[0]
+		prefix = rustNormalizePath(src[sm[2]:sm[3]])
+	}
+	if best < 0 {
+		return ""
+	}
+	return prefix
+}
+
 func (e *actixWebExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/rust")
 	_, span := tracer.Start(ctx, "indexer.actix_web_extractor.extract",
@@ -77,9 +106,12 @@ func (e *actixWebExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	}
 
 	// 1. Macro-annotated HTTP routes -> SCOPE.Operation/endpoint
+	// Attribute macros (#[get("/users/{id}")]) carry the full path; actix
+	// already uses {param} syntax so normalisation is a no-op but applied for
+	// consistency. Scopes do not prefix attribute-macro paths in actix.
 	for _, m := range reActixRouteMacro.FindAllStringSubmatchIndex(src, -1) {
 		method := strings.ToUpper(src[m[2]:m[3]])
-		path := src[m[4]:m[5]]
+		path := rustNormalizePath(src[m[4]:m[5]])
 		handler := src[m[6]:m[7]]
 		name := method + " " + path
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
@@ -89,14 +121,20 @@ func (e *actixWebExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	}
 
 	// 2. Manual .route() registrations -> SCOPE.Operation/endpoint
+	// These can be nested inside a web::scope("/prefix"); compose the prefix.
 	for _, m := range reActixRouteManual.FindAllStringSubmatchIndex(src, -1) {
-		path := src[m[2]:m[3]]
+		path := rustNormalizePath(src[m[2]:m[3]])
 		method := strings.ToUpper(src[m[4]:m[5]])
 		handler := src[m[6]:m[7]]
-		name := method + " " + path
+		prefix := actixScopePrefix(src, m[0])
+		fullPath := rustJoinPaths(prefix, path)
+		name := method + " " + fullPath
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "actix_web", "provenance", "INFERRED_FROM_ACTIX_ROUTE",
-			"http_method", method, "route_pattern", path, "handler_name", handler)
+			"http_method", method, "route_pattern", fullPath, "handler_name", handler)
+		if prefix != "" {
+			setProps(&ent, "scope_prefix", prefix)
+		}
 		add(ent)
 	}
 

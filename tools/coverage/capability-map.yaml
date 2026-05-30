@@ -7415,13 +7415,15 @@ records:
           verified_at: "2026-05-30"
       Routing:
         route_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/rust/axum.go
-              functions: [Extract]
+              functions: [Extract, axumRouteNestPrefix]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath, rustJoinPaths]
           tests:
             - file: internal/custom/rust/extractors_test.go
-          issues_implemented: ["3268"]
+          issues_implemented: ["3268", "3410"]
           verified_at: "2026-05-30"
       Middleware:
         middleware_coverage:
@@ -7653,13 +7655,15 @@ records:
           verified_at: "2026-05-30"
       Routing:
         route_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/rust/actix_web.go
-              functions: [Extract]
+              functions: [Extract, actixScopePrefix]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath, rustJoinPaths]
           tests:
             - file: internal/custom/rust/extractors_test.go
-          issues_implemented: ["3268"]
+          issues_implemented: ["3268", "3410"]
           verified_at: "2026-05-30"
       Middleware:
         middleware_coverage:
@@ -7687,6 +7691,18 @@ records:
 
   lang.rust.framework.gotham:
     capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/minor_fw_routing.go
+              functions: [Extract]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath]
+          tests:
+            - file: internal/custom/rust/minor_fw_routing_test.go
+          issues_implemented: ["3410"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full
@@ -7892,6 +7908,19 @@ records:
 
   lang.rust.framework.hyper:
     capabilities:
+      Routing:
+        route_extraction:
+          # Match-arm routes (&Method::VERB, "/path") extracted; raw hyper paths
+          # are literal string matches with no param syntax, so dynamic-segment
+          # routes (manual path splitting) are not recovered — honest partial.
+          status: partial
+          symbols:
+            - file: internal/custom/rust/minor_fw_routing.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/minor_fw_routing_test.go
+          issues_implemented: ["3410"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full
@@ -8097,6 +8126,18 @@ records:
 
   lang.rust.framework.poem:
     capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/minor_fw_routing.go
+              functions: [Extract]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath]
+          tests:
+            - file: internal/custom/rust/minor_fw_routing_test.go
+          issues_implemented: ["3410"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full
@@ -8506,13 +8547,15 @@ records:
           verified_at: "2026-05-30"
       Routing:
         route_extraction:
-          status: partial
+          status: full
           symbols:
             - file: internal/custom/rust/rocket.go
               functions: [Extract]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath, rustJoinPaths]
           tests:
             - file: internal/custom/rust/extractors_test.go
-          issues_implemented: ["3268"]
+          issues_implemented: ["3268", "3410"]
           verified_at: "2026-05-30"
       Validation:
         dto_extraction:
@@ -8532,6 +8575,18 @@ records:
 
   lang.rust.framework.salvo:
     capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/minor_fw_routing.go
+              functions: [Extract]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath]
+          tests:
+            - file: internal/custom/rust/minor_fw_routing_test.go
+          issues_implemented: ["3410"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full
@@ -8737,6 +8792,18 @@ records:
 
   lang.rust.framework.tide:
     capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/minor_fw_routing.go
+              functions: [Extract]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath]
+          tests:
+            - file: internal/custom/rust/minor_fw_routing_test.go
+          issues_implemented: ["3410"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full
@@ -8942,6 +9009,19 @@ records:
 
   lang.rust.framework.tower:
     capabilities:
+      Routing:
+        route_extraction:
+          # tower is a middleware/service-composition layer, not a router:
+          # ServiceBuilder.layer()/.service() are extracted but tower defines no
+          # verb+path routes, so route_extraction is structurally partial.
+          status: partial
+          symbols:
+            - file: internal/custom/rust/minor_fw_routing.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/rust/minor_fw_routing_test.go
+          issues_implemented: ["3410"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full
@@ -9147,6 +9227,18 @@ records:
 
   lang.rust.framework.warp:
     capabilities:
+      Routing:
+        route_extraction:
+          status: full
+          symbols:
+            - file: internal/custom/rust/minor_fw_routing.go
+              functions: [Extract, normWarpPath]
+            - file: internal/custom/rust/helpers.go
+              functions: [rustNormalizePath]
+          tests:
+            - file: internal/custom/rust/minor_fw_routing_test.go
+          issues_implemented: ["3410"]
+          verified_at: "2026-05-30"
       Substrate:
         constant_propagation:
           status: full

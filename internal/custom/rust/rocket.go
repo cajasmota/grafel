@@ -22,8 +22,15 @@ type rocketExtractor struct{}
 func (e *rocketExtractor) Language() string { return "custom_rust_rocket" }
 
 var (
+	// Rocket route macro. The first string literal is the path; the macro may
+	// carry extra kwargs (data = "<x>", rank = N, format = "...") before the
+	// closing paren — `[^)]*` consumes them so the handler fn is still captured.
 	reRocketRoute = regexp.MustCompile(
-		`#\[(get|post|put|delete|patch|head|options)\s*\(\s*"([^"]+)"\s*\)\][\s\S]*?fn\s+(\w+)\s*\(`,
+		`#\[(get|post|put|delete|patch|head|options)\s*\(\s*"([^"]+)"[^)]*\)\][\s\S]*?fn\s+(\w+)\s*\(`,
+	)
+	// .mount("/prefix", routes![a, b, c]) — Rocket mount-point prefix.
+	reRocketMount = regexp.MustCompile(
+		`\.mount\s*\(\s*"([^"]+)"\s*,\s*routes!\s*\[([^\]]*)\]`,
 	)
 	reRocketCatch = regexp.MustCompile(
 		`#\[catch\s*\(\s*(\d+)\s*\)\]`,
@@ -76,15 +83,40 @@ func (e *rocketExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		entities = append(entities, ent)
 	}
 
+	// Build handler-name -> mount prefix from `.mount("/api", routes![a, b])`.
+	// Rocket route macro paths are relative to the mount point, so a handler
+	// listed in routes![] is served under that prefix.
+	mountPrefix := map[string]string{}
+	for _, mm := range reRocketMount.FindAllStringSubmatch(src, -1) {
+		prefix := rustNormalizePath(mm[1])
+		for _, h := range strings.Split(mm[2], ",") {
+			h = strings.TrimSpace(h)
+			// Strip a module path qualifier (routes![api::list] -> list).
+			if idx := strings.LastIndex(h, "::"); idx >= 0 {
+				h = h[idx+2:]
+			}
+			if h != "" {
+				mountPrefix[h] = prefix
+			}
+		}
+	}
+
 	// 1. Route macros -> SCOPE.Operation/endpoint
+	// Params normalised <id> -> {id}; mount prefix composed where the handler
+	// is registered via routes![] on a .mount("/prefix", ...).
 	for _, m := range reRocketRoute.FindAllStringSubmatchIndex(src, -1) {
 		method := strings.ToUpper(src[m[2]:m[3]])
-		path := src[m[4]:m[5]]
+		path := rustNormalizePath(src[m[4]:m[5]])
 		handler := src[m[6]:m[7]]
-		name := method + " " + path
+		prefix := mountPrefix[handler]
+		fullPath := rustJoinPaths(prefix, path)
+		name := method + " " + fullPath
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "rocket", "provenance", "INFERRED_FROM_ROCKET_ROUTE",
-			"http_method", method, "route_pattern", path, "handler_name", handler)
+			"http_method", method, "route_pattern", fullPath, "handler_name", handler)
+		if prefix != "" {
+			setProps(&ent, "mount_prefix", prefix)
+		}
 		add(ent)
 	}
 

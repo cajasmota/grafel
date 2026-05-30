@@ -36,8 +36,8 @@ let app = Route::new()
 	if !containsEntity(ents, "SCOPE.Operation", "GET /users") {
 		t.Error("expected GET /users endpoint")
 	}
-	if !containsEntity(ents, "SCOPE.Operation", "POST /users/:id") {
-		t.Error("expected POST /users/:id endpoint")
+	if !containsEntity(ents, "SCOPE.Operation", "POST /users/{id}") {
+		t.Error("expected POST /users/{id} endpoint (param normalised to {id})")
 	}
 	if !containsEntity(ents, "SCOPE.Function", "list_users") {
 		t.Error("expected list_users handler function")
@@ -140,8 +140,8 @@ app.at("/users/:id").delete(delete_user);
 	if !containsEntity(ents, "SCOPE.Operation", "POST /users") {
 		t.Error("expected POST /users endpoint")
 	}
-	if !containsEntity(ents, "SCOPE.Operation", "DELETE /users/:id") {
-		t.Error("expected DELETE /users/:id endpoint")
+	if !containsEntity(ents, "SCOPE.Operation", "DELETE /users/{id}") {
+		t.Error("expected DELETE /users/{id} endpoint (param normalised to {id})")
 	}
 }
 
@@ -350,5 +350,49 @@ func TestTowerNoMatch(t *testing.T) {
 	ents := extract(t, "custom_rust_tower", fi("lib.rs", "rust", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Deep route-extraction tests for minor frameworks: param normalisation.
+// ---------------------------------------------------------------------------
+
+// warp::path!("users" / u32) — typed segment becomes a {param}.
+func TestWarpTypedParam(t *testing.T) {
+	src := `
+let user = warp::path!("users" / u32)
+    .and(warp::get())
+    .and_then(get_user);
+`
+	ents := extract(t, "custom_rust_warp", fi("routes.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users/{u32}") {
+		t.Error("expected GET /users/{u32} from typed warp segment")
+	}
+}
+
+// poem .at("/users/:id", ...) — colon param normalised to {id}.
+func TestPoemParamNormalised(t *testing.T) {
+	src := `let app = Route::new().at("/users/:id", get(get_user));`
+	ents := extract(t, "custom_rust_poem", fi("routes.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users/{id}") {
+		t.Error("expected GET /users/{id}")
+	}
+}
+
+// gotham route.get("/users/:id") — colon param normalised to {id}.
+func TestGothamParamNormalised(t *testing.T) {
+	src := `route.get("/users/:id").to(get_user);`
+	ents := extract(t, "custom_rust_gotham", fi("router.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Operation", "GET /users/{id}") {
+		t.Error("expected GET /users/{id}")
+	}
+}
+
+// salvo Router::with_path uses <id> rocket-style param -> {id}.
+func TestSalvoParamNormalised(t *testing.T) {
+	src := `let r = Router::with_path("/users").path("/<id>").get(get_user);`
+	ents := extract(t, "custom_rust_salvo", fi("router.rs", "rust", src))
+	if !containsEntity(ents, "SCOPE.Component", "path:/{id}") {
+		t.Error("expected path:/{id} component (salvo <id> normalised)")
 	}
 }
