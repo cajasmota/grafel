@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically. |
-| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local. |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/validation.go` | Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local. |
+| Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/validation.go` | Field-level request validation: refined predicate types (String Refined NonEmpty, Int Refined Positive, MatchesRegex[...], Refined[T,P]) captured as field+constraint; cats Validated/ValidatedNel validators (validator fn + inferred field); accord (validator[T]{ p.field is notEmpty }) per-clause field+predicate; octopus .rule(_.field,...). Each request_validation entity records the specific field + constraint. Refined constraints are field-co-located. Coarse framework directive signal (entity(as[T])/jsonOf[T]/decode[T]) retained. File-local: validators in a separate file from the DTO are not linked. |
 
 ### Middleware
 

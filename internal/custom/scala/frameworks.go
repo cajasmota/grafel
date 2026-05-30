@@ -223,10 +223,6 @@ var (
 // ---------------------------------------------------------------------------
 
 var (
-	// case class fields with type annotations (DTO pattern)
-	reDTOCaseClass = regexp.MustCompile(
-		`(?m)^\s*case\s+class\s+(\w+)\s*\(([^)]+)\)`)
-
 	// request body extraction patterns
 	reAkkaValidation = regexp.MustCompile(
 		`\b(?:entity\s*\(\s*as\[|validate\s*\(|Validator\.)\b`)
@@ -560,13 +556,24 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 
 	// ---------------------------------------------------------------------------
 	// Validation / DTO extraction
+	//
+	// Field-level DTO modeling (fields + types + Option nullability + codec +
+	// wire-name overrides) and field-level request validation (refined / cats
+	// Validated / accord / octopus — specific field + constraint). See
+	// validation.go. Issue #3454.
 	// ---------------------------------------------------------------------------
-	for _, m := range reDTOCaseClass.FindAllStringSubmatchIndex(src, -1) {
-		name := src[m[2]:m[3]]
-		ent := makeEntity(name, "SCOPE.Type", "dto", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", framework, "provenance", "CASE_CLASS_DTO")
+	fm := fileMeta{Path: file.Path, Language: file.Language}
+	for _, ent := range extractScalaDTOFields(src, framework, fm) {
 		add(ent)
 	}
+	for _, ent := range extractScalaValidation(src, framework, fm) {
+		add(ent)
+	}
+
+	// Framework-specific request-body extraction directives (entity(as[T]),
+	// jsonOf[T], params(), decode[T], ...) remain a coarse file-local signal
+	// that a handler reads a request body, complementing the field-level
+	// constraint entities above.
 	valRe := validationReForFramework(framework)
 	if valRe != nil {
 		if valRe.MatchString(src) {

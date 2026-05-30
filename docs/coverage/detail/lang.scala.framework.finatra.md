@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically. |
-| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local. |
+| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/validation.go` | Field-level DTO extraction: case class primary-constructor fields (name+declared type), Option[T] nullability, circe (@JsonCodec/deriveDecoder)/play-json (Json.format[T])/zio-json codec attribution, and @JsonKey/@jsonField/@key wire-name overrides. Emits one SCOPE.Type/dto (fields summary + nullable_fields + wire_overrides + codec) plus one SCOPE.Type/dto_field per field. File-local. |
+| Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/validation.go` | Field-level constraints captured when present: refined types, cats Validated, accord (field+predicate), octopus. Coarse framework directive signal (params()/request.params/@NotEmpty/MessageSerializer) retained. Partial: this stack commonly validates via separate validator objects or JSR-303-style annotations resolved cross-file/at-runtime, which the file-local extractor cannot link to the originating DTO/endpoint. |
 
 ### Middleware
 
