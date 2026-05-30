@@ -11393,34 +11393,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/elixir/ecto.go","internal/extractors/elixir/elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "schema \"table_name\" do blocks extracted as SCOPE.Schema; tree-sitter extractor also emits schema entities; field :name, :type declarations captured"
+            "status": "full",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "notes": "schema \"table_name\" do blocks extracted as SCOPE.Schema; tree-sitter extractor also emits schema entities; field :name, :type declarations captured",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "has_one/has_many/many_to_many association macros extracted as SCOPE.Component with association_type+association_name properties"
+            "notes": "has_one/has_many/many_to_many association macros extracted as SCOPE.Component with association_type+association_name properties",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "belongs_to associations extracted; Ecto implies FK via belongs_to :field, Schema; explicit foreign_key option not yet parsed"
+            "notes": "belongs_to associations extracted; Ecto implies FK via belongs_to :field, Schema; explicit foreign_key option not yet parsed",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
             "status": "not_applicable",
             "notes": "Ecto has no lazy loading; all associations must be explicitly preloaded via Repo.preload/2. Not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Ecto association macros (has_one/has_many/belongs_to/many_to_many) extracted; relationship type preserved in properties"
+            "notes": "Ecto association macros (has_one/has_many/belongs_to/many_to_many) extracted; relationship type preserved in properties",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -11432,9 +11432,10 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked"
+            "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked",
+            "verified_at": "2026-05-30"
           }
         }
       }
@@ -11453,48 +11454,49 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/elixir/ecto.go","internal/extractors/elixir/elixir.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "schema \"table_name\" do blocks extracted as SCOPE.Schema; tree-sitter extractor also emits schema entities; field :name, :type declarations captured"
+            "status": "full",
+            "cites": ["internal/custom/elixir/ecto.go"],
+            "notes": "schema \"table_name\" do blocks extracted as SCOPE.Schema; tree-sitter extractor also emits schema entities; field :name, :type declarations captured",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "has_one/has_many/many_to_many association macros extracted as SCOPE.Component with association_type+association_name properties"
+            "notes": "has_one/has_many/many_to_many association macros extracted as SCOPE.Component with association_type+association_name properties",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "belongs_to associations extracted; Ecto implies FK via belongs_to :field, Schema; explicit foreign_key option not yet parsed"
+            "notes": "belongs_to associations extracted; Ecto implies FK via belongs_to :field, Schema; explicit foreign_key option not yet parsed",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
             "status": "not_applicable",
             "notes": "Ecto has no lazy loading; all associations must be explicitly preloaded via Repo.preload/2. Not_applicable by design."
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Ecto association macros (has_one/has_many/belongs_to/many_to_many) extracted; relationship type preserved in properties"
+            "notes": "Ecto association macros (has_one/has_many/belongs_to/many_to_many) extracted; relationship type preserved in properties",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/custom/elixir/ecto.go","internal/engine/rules/elixir/frameworks/ecto_sqlite3.yaml"],
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/elixir/ecto.go"],
-            "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked"
+            "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked",
+            "verified_at": "2026-05-30"
           }
         }
       }

@@ -60,7 +60,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Ecto](../detail/lang.elixir.orm.ecto.md) | 🟢 7/7 | |
+| [Ecto](../detail/lang.elixir.orm.ecto.md) | ✅ 7/7 | |
 | [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🟢 1/1 | |
 | [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🟢 1/1 | |
 | [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🟢 1/1 | |

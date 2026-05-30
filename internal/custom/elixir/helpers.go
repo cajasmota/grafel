@@ -3,13 +3,66 @@
 package elixir
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+var (
+	// ectoBlockOpenRe matches the block-form `do` keyword (not the inline `do:`).
+	// It matches `do` only when not immediately followed by a colon.
+	ectoBlockOpenRe = regexp.MustCompile(`\bdo\b`)
+	// ectoBlockTokenRe matches a balancing token. `do:` (inline keyword) is
+	// matched as its own alternative FIRST so it is consumed without changing
+	// depth; the bare `do`, `fn`, and `end` words open/close blocks.
+	ectoBlockTokenRe = regexp.MustCompile(`do:|\b(?:do|fn|end)\b`)
+)
+
 func lineOf(source string, offset int) int {
 	return strings.Count(source[:offset], "\n") + 1
+}
+
+// ectoBlockBody returns the source of a `do ... end` block whose opening `do`
+// keyword starts at or after blockStart. It balances nested do/end pairs so that
+// inner constructs (e.g. an `if ... do ... end` inside a changeset) do not
+// terminate the block prematurely. The returned string excludes the trailing
+// `end`. If no `do` is found, an empty string is returned.
+//
+// Tokenisation is line/word based: only standalone `do`/`end`/`fn` words and
+// the `do:` / `, do:` inline form are considered, which is sufficient for the
+// well-formatted Ecto schema, query, and migration blocks this package targets.
+func ectoBlockBody(source string, blockStart int) string {
+	rest := source[blockStart:]
+	// Find the first `do` that opens the block (word-boundary, not `do:`).
+	openRe := ectoBlockOpenRe
+	loc := openRe.FindStringIndex(rest)
+	if loc == nil {
+		return ""
+	}
+	bodyStart := blockStart + loc[1]
+	depth := 1
+	i := bodyStart
+	for i < len(source) {
+		tok := ectoBlockTokenRe.FindStringIndex(source[i:])
+		if tok == nil {
+			break
+		}
+		word := source[i+tok[0] : i+tok[1]]
+		switch word {
+		case "do":
+			depth++
+		case "fn":
+			depth++
+		case "end":
+			depth--
+			if depth == 0 {
+				return source[bodyStart : i+tok[0]]
+			}
+		}
+		i += tok[1]
+	}
+	return source[bodyStart:]
 }
 
 func makeEntity(name, kind, subtype, filePath, language string, lineNum int) types.EntityRecord {
