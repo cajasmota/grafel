@@ -18,7 +18,13 @@
 //	  - Jaeger: require("resty.jaeger")
 //	  - Kong tracing: kong.tracing.start_span / span:set_attribute
 //
-// All cells are partial: import + call-site heuristics, no cross-file dataflow.
+// Name resolution:
+//   - metric_extraction: prometheus:counter("name")/:histogram/:gauge capture the
+//     metric name when it is a string literal in the same call (prop "metric_name").
+//   - trace_extraction: tracer:start_span("name") and kong.tracing.start_span("name")
+//     capture the span name when it is a string literal (prop "span_name").
+//   - log_extraction stays heuristic: level is captured, but the log message and the
+//     logger↔sink binding require cross-file dataflow that this extractor does not do.
 package lua
 
 import (
@@ -64,8 +70,14 @@ var (
 	reLuaPrometheusRequire = regexp.MustCompile(
 		`(?m)\brequire\s*[("']resty\.prometheus["']?\)?`)
 
-	// prometheus:counter / prometheus:histogram / prometheus:gauge
+	// prometheus:counter("name") / prometheus:histogram("name") / prometheus:gauge("name")
+	// Capture group 1 = metric type, group 2 = quoted metric name (string literal).
 	reLuaPrometheusOp = regexp.MustCompile(
+		`(?m)\bprometheus\s*:\s*(counter|histogram|gauge|summary)\s*\(\s*["']([A-Za-z_][A-Za-z0-9_:]*)["']`)
+
+	// Fallback: prometheus:counter(...) where the name is not a plain string literal
+	// (variable / concatenation). Type captured, name unresolved → partial.
+	reLuaPrometheusOpNoName = regexp.MustCompile(
 		`(?m)\bprometheus\s*:\s*(counter|histogram|gauge|summary)\s*\(`)
 
 	// require("resty.statsd") or statsd-related patterns
@@ -82,11 +94,22 @@ var (
 	reLuaOTelRequire = regexp.MustCompile(
 		`(?m)\brequire\s*[("']opentelemetry(?:\.[a-z._]+)?["']?\)?`)
 
-	// OpenTelemetry span operations
+	// OpenTelemetry / generic span start with a quoted span name literal:
+	//   tracer:start_span("name")  /  tracer.start_span("name")
+	// Capture group 1 = span name (string literal).
+	reLuaSpanStartName = regexp.MustCompile(
+		`(?m)\b(?:tracer|span)\s*[.:]\s*start_span\s*\(\s*["']([^"']+)["']`)
+
+	// OpenTelemetry span operations (no resolvable name — set_attribute/end/etc., or
+	// start_span with a non-literal name argument).
 	reLuaOTelSpan = regexp.MustCompile(
 		`(?m)\b(?:tracer|span)\s*[.:]\s*(?:start_span|set_attribute|end_span|record_error|add_event)\s*\(`)
 
-	// Kong tracing: kong.tracing.start_span
+	// Kong tracing with a quoted span name: kong.tracing.start_span("name")
+	reLuaKongSpanName = regexp.MustCompile(
+		`(?m)\bkong\.tracing\s*\.\s*(?:start_span|new_span)\s*\(\s*["']([^"']+)["']`)
+
+	// Kong tracing: kong.tracing.start_span (no resolvable literal name)
 	reLuaKongTracing = regexp.MustCompile(
 		`(?m)\bkong\.tracing\s*\.\s*(?:start_span|new_span)\s*\(`)
 
@@ -147,11 +170,27 @@ func (e *luaObservabilityExtractor) Extract(_ context.Context, file extractor.Fi
 		out = append(out, entity)
 	}
 
+	// Named prometheus metrics: prometheus:counter("requests_total", ...) — name resolved.
+	namedPromOffsets := make(map[int]bool)
 	for _, idx := range reLuaPrometheusOp.FindAllStringSubmatchIndex(src, -1) {
+		metricType := src[idx[2]:idx[3]]
+		metricName := src[idx[4]:idx[5]]
+		namedPromOffsets[idx[0]] = true
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("prometheus_"+metricType+":"+metricName, string(types.EntityKindPattern), "metric_call", file.Path, "lua", ln)
+		setProps(&entity, "signal", "observability", "library", "resty.prometheus", "kind", metricType, "metric_name", metricName)
+		out = append(out, entity)
+	}
+
+	// Unnamed prometheus metrics (variable / concatenated name) — type only, partial.
+	for _, idx := range reLuaPrometheusOpNoName.FindAllStringSubmatchIndex(src, -1) {
+		if namedPromOffsets[idx[0]] {
+			continue
+		}
 		metricType := src[idx[2]:idx[3]]
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("prometheus_"+metricType, string(types.EntityKindPattern), "metric_call", file.Path, "lua", ln)
-		setProps(&entity, "signal", "observability", "library", "resty.prometheus", "kind", metricType)
+		setProps(&entity, "signal", "observability", "library", "resty.prometheus", "kind", metricType, "metric_name", "<unresolved>")
 		out = append(out, entity)
 	}
 
@@ -181,14 +220,39 @@ func (e *luaObservabilityExtractor) Extract(_ context.Context, file extractor.Fi
 		out = append(out, entity)
 	}
 
+	// Named span starts: tracer:start_span("operation") — span name resolved.
+	namedSpanOffsets := make(map[int]bool)
+	for _, idx := range reLuaSpanStartName.FindAllStringSubmatchIndex(src, -1) {
+		spanName := src[idx[2]:idx[3]]
+		namedSpanOffsets[idx[0]] = true
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("otel_span:"+spanName, string(types.EntityKindPattern), "trace_call", file.Path, "lua", ln)
+		setProps(&entity, "signal", "observability", "library", "opentelemetry", "kind", "start_span", "span_name", spanName)
+		out = append(out, entity)
+	}
+
+	// Other span ops (set_attribute/end/etc.) or start_span with a non-literal name.
 	for _, idx := range reLuaOTelSpan.FindAllStringIndex(src, -1) {
+		if namedSpanOffsets[idx[0]] {
+			continue
+		}
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("otel_span_op", string(types.EntityKindPattern), "trace_call", file.Path, "lua", ln)
 		setProps(&entity, "signal", "observability", "library", "opentelemetry", "kind", "span_op")
 		out = append(out, entity)
 	}
 
-	if reLuaKongTracing.MatchString(src) {
+	// Named Kong spans: kong.tracing.start_span("name") — name resolved.
+	for _, idx := range reLuaKongSpanName.FindAllStringSubmatchIndex(src, -1) {
+		spanName := src[idx[2]:idx[3]]
+		ln := lineOf(src, idx[0])
+		entity := makeEntity("kong_span:"+spanName, string(types.EntityKindPattern), "trace_call", file.Path, "lua", ln)
+		setProps(&entity, "signal", "observability", "framework", "kong", "kind", "kong_tracing", "span_name", spanName)
+		out = append(out, entity)
+	}
+
+	// Kong tracing without a resolvable literal span name.
+	if reLuaKongTracing.MatchString(src) && !reLuaKongSpanName.MatchString(src) {
 		idx := reLuaKongTracing.FindStringIndex(src)
 		ln := lineOf(src, idx[0])
 		entity := makeEntity("kong_tracing_span", string(types.EntityKindPattern), "trace_call", file.Path, "lua", ln)

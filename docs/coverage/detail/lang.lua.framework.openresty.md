@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | Regex extractor covering log_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow. |
-| Metric extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | Regex extractor covering metric_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow. |
-| Trace extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | Regex extractor covering trace_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow. |
+| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | ngx.log(ngx.LEVEL, ...) captures the log LEVEL (prop level: ERR/WARN/INFO/DEBUG etc.); resty.logger.socket / print / io.write captured as log call-sites. PARTIAL by design: the log message and the logger->sink binding require cross-file dataflow that this regex extractor does not resolve. |
+| Metric extraction | ✅ `full` | — | — | `internal/custom/lua/observability.go` | prometheus:counter/histogram/gauge("name") capture the metric name from the string literal in-call (prop metric_name); value-asserting tests prove requests_total/request_duration_ms. No cross-file resolution needed. Non-literal names flagged metric_name=<unresolved>. statsd op-types also captured. |
+| Trace extraction | ✅ `full` | — | — | `internal/custom/lua/observability.go` | tracer:start_span("name") and kong.tracing.start_span("name") capture the span name from the string literal in-call (prop span_name); value-asserting test proves handle_request/db.query. No cross-file resolution needed. Non-literal span names fall back to span_op (partial subset). |
 
 ### Data
 

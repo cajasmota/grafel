@@ -267,6 +267,66 @@ local metric_latency = prometheus:histogram("request_duration_ms", "Request late
 	if !hasMetric {
 		t.Error("expected prometheus metric entity")
 	}
+
+	// Value-asserting: the specific metric names must be resolved from the literals.
+	names := map[string]string{}
+	for _, r := range got {
+		if n := r.Properties["metric_name"]; n != "" {
+			names[n] = r.Properties["kind"]
+		}
+	}
+	if names["requests_total"] != "counter" {
+		t.Errorf("expected counter metric_name=requests_total, got names=%v", names)
+	}
+	if names["request_duration_ms"] != "histogram" {
+		t.Errorf("expected histogram metric_name=request_duration_ms, got names=%v", names)
+	}
+}
+
+func TestLuaObservabilityMetricNameUnresolved(t *testing.T) {
+	// Non-literal name (variable) must NOT be falsely resolved.
+	src := `
+local prometheus = require("resty.prometheus")
+local name = "dynamic_metric"
+local m = prometheus:gauge(name)
+`
+	e := &luaObservabilityExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("metrics.lua", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range got {
+		if r.Properties["kind"] == "gauge" {
+			if r.Properties["metric_name"] != "<unresolved>" {
+				t.Errorf("expected unresolved gauge name, got %q", r.Properties["metric_name"])
+			}
+		}
+	}
+}
+
+func TestLuaObservabilityTraceSpanName(t *testing.T) {
+	src := `
+local span = tracer:start_span("handle_request")
+kong.tracing.start_span("db.query")
+span:set_attribute("http.status", 200)
+`
+	e := &luaObservabilityExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("trace.lua", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spanNames := map[string]bool{}
+	for _, r := range got {
+		if n := r.Properties["span_name"]; n != "" {
+			spanNames[n] = true
+		}
+	}
+	if !spanNames["handle_request"] {
+		t.Errorf("expected otel span_name=handle_request, got %v", spanNames)
+	}
+	if !spanNames["db.query"] {
+		t.Errorf("expected kong span_name=db.query, got %v", spanNames)
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -32806,19 +32806,17 @@
             "status": "partial",
             "cites": ["internal/custom/lua/observability.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor covering log_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
+            "notes": "ngx.log(ngx.LEVEL, ...) captures the log LEVEL (prop level); print/io.write captured as Lapis log call-sites. PARTIAL by design: message text and logger-\u003esink binding need cross-file dataflow not resolved here."
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor covering metric_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
+            "notes": "prometheus:counter/histogram/gauge(\"name\") capture the metric name from the string literal in-call (prop metric_name); value-asserting tests prove requests_total/request_duration_ms. No cross-file resolution needed. Non-literal names flagged metric_name=\u003cunresolved\u003e."
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor covering trace_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
+            "notes": "tracer:start_span(\"name\") captures the span name from the string literal in-call (prop span_name); value-asserting test proves the literal. No cross-file resolution needed."
           }
         },
         "Substrate": {
@@ -33033,19 +33031,17 @@
             "status": "partial",
             "cites": ["internal/custom/lua/observability.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor covering log_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
+            "notes": "ngx.log(ngx.LEVEL, ...) captures the log LEVEL (prop level: ERR/WARN/INFO/DEBUG etc.); resty.logger.socket / print / io.write captured as log call-sites. PARTIAL by design: the log message and the logger-\u003esink binding require cross-file dataflow that this regex extractor does not resolve."
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor covering metric_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
+            "notes": "prometheus:counter/histogram/gauge(\"name\") capture the metric name from the string literal in-call (prop metric_name); value-asserting tests prove requests_total/request_duration_ms. No cross-file resolution needed. Non-literal names flagged metric_name=\u003cunresolved\u003e. statsd op-types also captured."
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "full",
             "cites": ["internal/custom/lua/observability.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Regex extractor covering trace_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow."
+            "notes": "tracer:start_span(\"name\") and kong.tracing.start_span(\"name\") capture the span name from the string literal in-call (prop span_name); value-asserting test proves handle_request/db.query. No cross-file resolution needed. Non-literal span names fall back to span_op (partial subset)."
           }
         },
         "Substrate": {

@@ -57,9 +57,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | Regex extractor covering log_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow. |
-| Metric extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | Regex extractor covering metric_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow. |
-| Trace extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | Regex extractor covering trace_extraction: ngx.log/resty.logger (log), resty.prometheus/resty.statsd (metric), opentelemetry/resty.zipkin/kong.tracing (trace). Partial: import+call-site heuristics without cross-file dataflow. |
+| Log extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/lua/observability.go` | ngx.log(ngx.LEVEL, ...) captures the log LEVEL (prop level); print/io.write captured as Lapis log call-sites. PARTIAL by design: message text and logger->sink binding need cross-file dataflow not resolved here. |
+| Metric extraction | ✅ `full` | — | — | `internal/custom/lua/observability.go` | prometheus:counter/histogram/gauge("name") capture the metric name from the string literal in-call (prop metric_name); value-asserting tests prove requests_total/request_duration_ms. No cross-file resolution needed. Non-literal names flagged metric_name=<unresolved>. |
+| Trace extraction | ✅ `full` | — | — | `internal/custom/lua/observability.go` | tracer:start_span("name") captures the span name from the string literal in-call (prop span_name); value-asserting test proves the literal. No cross-file resolution needed. |
 
 ### Data
 
