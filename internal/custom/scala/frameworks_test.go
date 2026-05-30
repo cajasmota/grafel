@@ -5,7 +5,42 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Framework extractor tests
+// Framework routing tests — specific path+method assertions.
+//
+// Each test asserts exact entity names the extractor actually produces for the
+// given fixture.  A vacuous "≥1 http_route exists" check is NOT sufficient to
+// prove the extractor correctly parses the DSL.
+// ---------------------------------------------------------------------------
+
+// containsRouteEntity checks that entities contain an http_route (or lagom_service_call)
+// with the given exact Name.
+func containsRouteEntity(ents []entitySummary, subtype, name string) bool {
+	for _, e := range ents {
+		if e.Subtype == subtype && e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// dumpEntities formats entities for diagnostic failure messages.
+func dumpEntities(ents []entitySummary) string {
+	out := ""
+	for _, e := range ents {
+		out += "\n  {Kind:" + e.Kind + " Subtype:" + e.Subtype + " Name:" + e.Name + "}"
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Akka-HTTP
+//
+// Fixture: pathPrefix("api") { path("users") { get { ... } ~ post { ... } } }
+//
+// The extractor uses positional context (nearest preceding pathPrefix + path)
+// to combine nested directives.  Both methods produce fully combined entities:
+//   GET:/api/users
+//   POST:/api/users
 // ---------------------------------------------------------------------------
 
 func TestFrameworksAkkaHttpRoute(t *testing.T) {
@@ -20,17 +55,27 @@ val route =
   }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("UserRoutes.scala", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "http_route" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "GET:/api/users") {
+		t.Errorf("expected http_route GET:/api/users from akka-http; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one http_route entity from akka-http")
+	if !containsRouteEntity(ents, "http_route", "POST:/api/users") {
+		t.Errorf("expected http_route POST:/api/users from akka-http; got:%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// http4s
+//
+// Fixture: HttpRoutes.of[IO] {
+//   case GET  -> Root / "health" => Ok("ok")
+//   case POST -> Root / "users"  => Ok("created")
+// }
+//
+// The extractor parses method + Root path-segment chain, producing:
+//   route:GET:/health
+//   route:POST:/users
+// ---------------------------------------------------------------------------
 
 func TestFrameworksHttp4sRoute(t *testing.T) {
 	src := `
@@ -42,17 +87,24 @@ val routes = HttpRoutes.of[IO] {
 }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("Routes.scala", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "http_route" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "route:GET:/health") {
+		t.Errorf("expected http_route route:GET:/health from http4s; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one http_route entity from http4s")
+	if !containsRouteEntity(ents, "http_route", "route:POST:/users") {
+		t.Errorf("expected http_route route:POST:/users from http4s; got:%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Scalatra
+//
+// Fixture: get("/users") { ... }  /  post("/users") { ... }
+//
+// The extractor produces method:path combined names:
+//   get:/users
+//   post:/users
+// ---------------------------------------------------------------------------
 
 func TestFrameworksScalatraRoute(t *testing.T) {
 	src := `
@@ -63,17 +115,24 @@ class UserServlet extends ScalatraServlet {
 }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("UserServlet.scala", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "http_route" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "get:/users") {
+		t.Errorf("expected http_route get:/users from scalatra; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one http_route entity from scalatra")
+	if !containsRouteEntity(ents, "http_route", "post:/users") {
+		t.Errorf("expected http_route post:/users from scalatra; got:%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Cask
+//
+// Fixture: @cask.get("/api/users") / @cask.post("/api/users") annotations
+//
+// The extractor reads method + path from annotations:
+//   get:/api/users
+//   post:/api/users
+// ---------------------------------------------------------------------------
 
 func TestFrameworksCaskRoute(t *testing.T) {
 	src := `
@@ -86,17 +145,24 @@ object Main extends cask.MainRoutes {
 }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("Main.scala", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "http_route" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "get:/api/users") {
+		t.Errorf("expected http_route get:/api/users from cask; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one http_route entity from cask")
+	if !containsRouteEntity(ents, "http_route", "post:/api/users") {
+		t.Errorf("expected http_route post:/api/users from cask; got:%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Finatra
+//
+// Fixture: @Get("/api/users") / @Post("/api/users") Java-style annotations
+//
+// The extractor reads the annotation method + path (preserving original case):
+//   Get:/api/users
+//   Post:/api/users
+// ---------------------------------------------------------------------------
 
 func TestFrameworksFinatraRoute(t *testing.T) {
 	src := `
@@ -109,17 +175,24 @@ class UserController extends HttpController {
 }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("UserController.scala", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "http_route" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "Get:/api/users") {
+		t.Errorf("expected http_route Get:/api/users from finatra; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one http_route entity from finatra")
+	if !containsRouteEntity(ents, "http_route", "Post:/api/users") {
+		t.Errorf("expected http_route Post:/api/users from finatra; got:%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Lagom
+//
+// Fixture: pathCall("/api/users/:id", getUser _) / namedCall("/api/users", createUser _)
+//
+// The extractor produces lagom_service_call entities (subtype differs from http_route):
+//   lagom:/api/users/:id
+//   lagom:/api/users
+// ---------------------------------------------------------------------------
 
 func TestFrameworksLagomServiceCall(t *testing.T) {
 	src := `
@@ -136,17 +209,28 @@ trait UserService extends Service {
 }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("UserService.scala", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "lagom_service_call" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "lagom_service_call", "lagom:/api/users/:id") {
+		t.Errorf("expected lagom_service_call lagom:/api/users/:id from lagom; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one lagom_service_call entity")
+	if !containsRouteEntity(ents, "lagom_service_call", "lagom:/api/users") {
+		t.Errorf("expected lagom_service_call lagom:/api/users from lagom; got:%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Play
+//
+// Fixture: standard conf/routes file
+//   GET  /users       controllers.UserController.list
+//   POST /users       controllers.UserController.create
+//   GET  /users/:id   controllers.UserController.get(id: Long)
+//
+// The extractor reads method:path pairs:
+//   GET:/users
+//   POST:/users
+//   GET:/users/:id
+// ---------------------------------------------------------------------------
 
 func TestFrameworksPlayRoute(t *testing.T) {
 	src := `GET     /users                  controllers.UserController.list
@@ -154,17 +238,21 @@ POST    /users                  controllers.UserController.create
 GET     /users/:id              controllers.UserController.get(id: Long)
 `
 	ents := extract(t, "custom_scala_frameworks", fi("routes", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "http_route" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "GET:/users") {
+		t.Errorf("expected http_route GET:/users from play; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one http_route entity from play routes file")
+	if !containsRouteEntity(ents, "http_route", "POST:/users") {
+		t.Errorf("expected http_route POST:/users from play; got:%s", got)
+	}
+	if !containsRouteEntity(ents, "http_route", "GET:/users/:id") {
+		t.Errorf("expected http_route GET:/users/:id from play; got:%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Observability tests (unchanged — not routing)
+// ---------------------------------------------------------------------------
 
 func TestFrameworksObservabilityLogging(t *testing.T) {
 	src := `
@@ -236,6 +324,19 @@ class UserServiceSpec extends AnyFlatSpec {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// ZIO-HTTP
+//
+// Fixture: Http.collect[Request] {
+//   case Method.GET  -> Root / "users" => Response.text("users")
+//   case Method.POST -> Root / "users" => Response.ok
+// }
+//
+// The extractor parses method + Root path-segment chain, producing:
+//   route:GET:/users
+//   route:POST:/users
+// ---------------------------------------------------------------------------
+
 func TestFrameworksZioHttpRoute(t *testing.T) {
 	src := `
 import zio._
@@ -246,15 +347,12 @@ val app = Http.collect[Request] {
 }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("App.scala", "scala", src))
-	found := false
-	for _, e := range ents {
-		if e.Kind == "SCOPE.Operation" && e.Subtype == "http_route" {
-			found = true
-			break
-		}
+	got := dumpEntities(ents)
+	if !containsRouteEntity(ents, "http_route", "route:GET:/users") {
+		t.Errorf("expected http_route route:GET:/users from zio-http; got:%s", got)
 	}
-	if !found {
-		t.Error("expected at least one http_route entity from zio-http")
+	if !containsRouteEntity(ents, "http_route", "route:POST:/users") {
+		t.Errorf("expected http_route route:POST:/users from zio-http; got:%s", got)
 	}
 }
 
