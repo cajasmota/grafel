@@ -31,24 +31,200 @@ var jaxrsDTOFrameworks = map[string]bool{
 }
 
 var (
-	// @Path class declaration — captures class name.
-	jaxrsResourceClassRE = regexp.MustCompile(
-		`(?s)@Path\s*\([^)]*\)\s*(?:(?:@\w+(?:\s*\([^)]*\))?\s*)*)` +
-			`(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+	// jaxrsPathAnchorRE locates an @Path annotation NAME (the argument list is
+	// then consumed string-aware, so a ')' inside the path template string does
+	// not truncate it).
+	jaxrsPathAnchorRE = regexp.MustCompile(`@Path\b`)
 
-	// JAX-RS verb method — captures verb, return type, method name, and param fragment.
-	// The visibility modifier is consumed before the capture group so it does not
-	// leak into the return type.
-	jaxrsVerbMethodRE = regexp.MustCompile(
-		`(?s)@(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b` +
-			`(?:\s*(?:@\w+(?:\s*\([^)]*\))?\s*))*` +
-			`\s*(?:public|protected|private)\s+(?:static\s+)?` +
+	// jaxrsClassDeclRE matches a class declaration head once any annotation block
+	// has been skipped. Captures the class name.
+	jaxrsClassDeclRE = regexp.MustCompile(
+		`^(?:public\s+)?(?:(?:abstract|final)\s+)?class\s+(\w+)`)
+
+	// jaxrsVerbAnchorRE locates a bare JAX-RS verb annotation. Captures the verb.
+	jaxrsVerbAnchorRE = regexp.MustCompile(`@(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b`)
+
+	// jaxrsMethodDeclRE matches a JAX-RS method declaration head once any
+	// intervening annotation block has been skipped string-aware. The visibility
+	// modifier is consumed before the captures so it does not leak into the
+	// return type. Group 1 = return type, group 2 = method name, group 3 = the
+	// parameter fragment up to (and excluding) the closing ')'.
+	jaxrsMethodDeclRE = regexp.MustCompile(
+		`^(?:public|protected|private)\s+(?:static\s+)?` +
 			`(?:<[^>]*>\s*)?([\w<>\[\], ]+?)\s+(\w+)\s*\(([^)]*)`)
 
 	// Response<T> / CompletionStage<T> / Uni<T> / Multi<T> wrapper unwrap.
 	jaxrsResponseWrapRE = regexp.MustCompile(
 		`(?:Response|CompletionStage|Uni|Multi|CompletableFuture)\s*<\s*([\w<>, ]+?)\s*>`)
 )
+
+// jaxrsIsIdentChar reports whether c is valid in a Java identifier.
+func jaxrsIsIdentChar(c byte) bool {
+	return c == '_' || c == '$' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+// jaxrsFindStringEnd walks from `start` (the opening double- or single-quote of
+// a string/char literal) to the matching closing quote of the same kind,
+// honouring backslash escapes. Returns the closing-quote index, or -1 when
+// unterminated.
+func jaxrsFindStringEnd(s string, start int) int {
+	quote := s[start]
+	for i := start + 1; i < len(s); i++ {
+		if s[i] == '\\' {
+			i++
+			continue
+		}
+		if s[i] == quote {
+			return i
+		}
+	}
+	return -1
+}
+
+// jaxrsFindMatchingClose walks from `open` (a '(') to its matching ')',
+// honouring string/char literals so a ')' inside a string does not affect the
+// depth count. Returns the matching-paren index, or -1 when unbalanced.
+func jaxrsFindMatchingClose(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '"', '\'':
+			end := jaxrsFindStringEnd(s, i)
+			if end < 0 {
+				return -1
+			}
+			i = end
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// jaxrsSkipAnnotationsToDecl returns the offset of the first non-whitespace,
+// non-comment, non-annotation token at or after `from`. Annotations (including
+// a balanced, string-aware `(...)` argument list — so a ')' inside an
+// @Operation(summary = "Get (all)") string does not truncate the skip) and
+// whitespace/comments are skipped. Returns -1 if EOF is reached first.
+func jaxrsSkipAnnotationsToDecl(s string, from int) int {
+	i := from
+	for i < len(s) {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+			i++
+		case c == '/' && i+1 < len(s) && s[i+1] == '/':
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			i += 2
+			for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+				i++
+			}
+			i += 2
+		case c == '@':
+			i++
+			for i < len(s) && (jaxrsIsIdentChar(s[i]) || s[i] == '.') {
+				i++
+			}
+			for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+				i++
+			}
+			if i < len(s) && s[i] == '(' {
+				closeAt := jaxrsFindMatchingClose(s, i)
+				if closeAt < 0 {
+					return -1
+				}
+				i = closeAt + 1
+			}
+		default:
+			return i
+		}
+	}
+	return -1
+}
+
+// jaxrsResourceClass is a @Path-annotated resource class.
+type jaxrsResourceClass struct {
+	name   string
+	offset int // offset of the @Path anchor that introduced the class
+}
+
+// jaxrsCollectResourceClasses scans `source` for @Path-annotated resource
+// classes. The @Path argument list and any following annotations are consumed
+// string-aware, so a ')' inside the path-template string (or inside an
+// intervening @Operation/@Tag string) does not truncate the class binding.
+func jaxrsCollectResourceClasses(source string) []jaxrsResourceClass {
+	var out []jaxrsResourceClass
+	for _, loc := range jaxrsPathAnchorRE.FindAllStringIndex(source, -1) {
+		// Skip the annotation block (starting at the @Path anchor) string-aware,
+		// then require a class declaration head at the resulting offset.
+		decl := jaxrsSkipAnnotationsToDecl(source, loc[0])
+		if decl < 0 {
+			continue
+		}
+		if m := jaxrsClassDeclRE.FindStringSubmatch(source[decl:]); m != nil {
+			name := m[1]
+			dup := false
+			for _, c := range out {
+				if c.name == name {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				out = append(out, jaxrsResourceClass{name: name, offset: loc[0]})
+			}
+		}
+	}
+	return out
+}
+
+// jaxrsVerbMethod is a JAX-RS verb method binding recovered string-aware.
+type jaxrsVerbMethod struct {
+	verb       string
+	returnType string
+	methodName string
+	paramFrag  string
+	offset     int // offset of the verb anchor
+}
+
+// jaxrsCollectVerbMethods scans `source` for JAX-RS verb annotations and binds
+// each to its method declaration. The intervening annotation block is skipped
+// string-aware, so a ')' inside an @Operation(summary = "Get (all)") string
+// does not break the verb→method binding (which previously dropped the route /
+// DTO). Returns one entry per verb anchor that resolves to a method head.
+func jaxrsCollectVerbMethods(source string) []jaxrsVerbMethod {
+	var out []jaxrsVerbMethod
+	for _, m := range jaxrsVerbAnchorRE.FindAllStringSubmatchIndex(source, -1) {
+		verb := source[m[2]:m[3]]
+		// Skip from just after the verb annotation, over any intervening
+		// annotations, to the method declaration head.
+		decl := jaxrsSkipAnnotationsToDecl(source, m[1])
+		if decl < 0 {
+			continue
+		}
+		dm := jaxrsMethodDeclRE.FindStringSubmatch(source[decl:])
+		if dm == nil {
+			continue
+		}
+		out = append(out, jaxrsVerbMethod{
+			verb:       verb,
+			returnType: dm[1],
+			methodName: dm[2],
+			paramFrag:  dm[3],
+			offset:     m[0],
+		})
+	}
+	return out
+}
 
 // jaxrsDTOSkipTypes extends srrSkipTypes with JAX-RS-specific noisy types.
 var jaxrsDTOSkipTypes = func() map[string]bool {
@@ -129,34 +305,18 @@ func ExtractJakartaJaxrsDTO(ctx PatternContext) PatternResult {
 	source := ctx.Source
 	fp := ctx.FilePath
 
-	// Quick exit: skip files that have no JAX-RS path annotation.
-	if !jaxrsResourceClassRE.MatchString(source) {
+	// Collect resource class offsets so we can identify the owning class for
+	// each method. The scan is string-aware so a ')' inside a @Path template or
+	// an intervening annotation string does not break the class binding.
+	classes := jaxrsCollectResourceClasses(source)
+
+	// Quick exit: skip files that have no JAX-RS resource class.
+	if len(classes) == 0 {
 		return result
 	}
 
 	seenRefs := make(map[string]bool)
 	seenRels := make(map[relKey]bool)
-
-	// Collect resource class offsets so we can identify the owning class for
-	// each method.
-	type classEntry struct {
-		name   string
-		offset int
-	}
-	var classes []classEntry
-	for _, m := range jaxrsResourceClassRE.FindAllStringSubmatchIndex(source, -1) {
-		name := source[m[2]:m[3]]
-		dup := false
-		for _, c := range classes {
-			if c.name == name {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			classes = append(classes, classEntry{name, m[0]})
-		}
-	}
 
 	findOwner := func(offset int) string {
 		var owner string
@@ -186,14 +346,14 @@ func ExtractJakartaJaxrsDTO(ctx PatternContext) PatternResult {
 		return unwrapReturnType(raw)
 	}
 
-	for _, m := range jaxrsVerbMethodRE.FindAllStringSubmatchIndex(source, -1) {
-		verb := source[m[2]:m[3]]
-		returnTypeRaw := source[m[4]:m[5]]
-		methodName := source[m[6]:m[7]]
-		paramFrag := source[m[8]:m[9]]
-		lineNo := lineOf(source, m[0])
+	for _, vm := range jaxrsCollectVerbMethods(source) {
+		verb := vm.verb
+		returnTypeRaw := vm.returnType
+		methodName := vm.methodName
+		paramFrag := vm.paramFrag
+		lineNo := lineOf(source, vm.offset)
 
-		owner := findOwner(m[0])
+		owner := findOwner(vm.offset)
 		if owner == "" {
 			continue
 		}

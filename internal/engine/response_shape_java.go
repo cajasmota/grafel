@@ -315,16 +315,216 @@ func splitJavaParams(params string) []string {
 // - Java records: `public record X(String id, String name)`
 // - Lombok @Value / @Data classes: all declared fields (any access modifier)
 // - @JsonProperty("alias") annotations: use the alias string as the key name
-var javaFieldRe = regexp.MustCompile(`(?m)^\s*(?:@\w+(?:\([^)]*\))?\s+)*(?:public|private|protected|static|final|\s)+\s*([A-Za-z_][\w<>,.\[\]]*?)\s+([a-zA-Z_]\w*)\s*[;=]`)
+//
+// Field declarations are recovered by the string-aware javaScanClassFields
+// walker (below) rather than a monolithic regex, so a ')' inside an
+// annotation string literal does not truncate the type/name capture.
 
 // javaJsonPropertyRe captures the string value from @JsonProperty("fieldName").
 var javaJsonPropertyRe = regexp.MustCompile(`@JsonProperty\s*\(\s*["']?([A-Za-z_][\w-]*)["']?\s*\)`)
 
-// javaAnyFieldRe matches field declarations with any access modifier (or none),
-// used for Lombok classes where private fields are the serialized shape.
-// The modifier group is optional so package-private and Lombok @Value fields
-// without explicit modifiers are also matched.
-var javaAnyFieldRe = regexp.MustCompile(`(?m)^\s*((?:@\w+(?:\([^)]*\))?\s+)*)(?:(?:public|private|protected|static|final|transient|volatile)\s+)*([A-Za-z_][\w<>,.\[\]]*?)\s+([a-zA-Z_]\w*)\s*[;=]`)
+// javaFieldNoAnnoRe matches a single field declaration once its leading
+// annotations have already been stripped (string-aware) from the line.
+// Group 1 = type, group 2 = field name. Modifiers are consumed before the
+// captures so they do not leak into the type.
+var javaFieldNoAnnoRe = regexp.MustCompile(`^\s*(?:(?:public|private|protected|static|final|transient|volatile)\s+)*([A-Za-z_][\w<>,.\[\]]*?)\s+([a-zA-Z_]\w*)\s*[;=]`)
+
+// javaFieldMatch is one field declaration recovered by javaScanClassFields.
+type javaFieldMatch struct {
+	annotations string // raw leading-annotation text (for @JsonProperty lookup)
+	ftype       string // declared field type
+	fname       string // field name
+	line        string // the line with annotations stripped (for modifier checks)
+}
+
+// javaScanClassFields walks a class/record body statement-by-statement and
+// returns the field declarations. Leading annotations (which may span several
+// lines) are consumed with a string-aware scan so a ')' inside an annotation
+// string literal (e.g. `@Schema(description = "amount in cents (USD)")` above or
+// beside a field) does not truncate the field type/name capture. This is the
+// parens-in-string-immune replacement for the `(?:@\w+(?:\([^)]*\))?\s+)*`
+// annotation prefix that the `javaAnyFieldRe` / `javaFieldRe` FindAll scanners
+// used. Nested blocks (`{...}`) and parenthesised groups (method parameter
+// lists, initialisers) are skipped string-aware so method bodies are not
+// mistaken for fields.
+func javaScanClassFields(body string) []javaFieldMatch {
+	var out []javaFieldMatch
+	i := 0
+	annoStart := -1 // start offset of the current accumulated annotation run
+	for i < len(body) {
+		c := body[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+			i++
+		case c == '/' && i+1 < len(body) && body[i+1] == '/':
+			for i < len(body) && body[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(body) && body[i+1] == '*':
+			i += 2
+			for i+1 < len(body) && !(body[i] == '*' && body[i+1] == '/') {
+				i++
+			}
+			i += 2
+		case c == '@':
+			// Start (or continue) an annotation run. Consume name + optional
+			// string-aware argument list.
+			if annoStart < 0 {
+				annoStart = i
+			}
+			i++
+			for i < len(body) && (isJavaIdentChar(body[i]) || body[i] == '.') {
+				i++
+			}
+			j := i
+			for j < len(body) && (body[j] == ' ' || body[j] == '\t' || body[j] == '\r' || body[j] == '\n') {
+				j++
+			}
+			if j < len(body) && body[j] == '(' {
+				closeAt := javaFindMatchingCloseString(body, j)
+				if closeAt < 0 {
+					i = len(body)
+				} else {
+					i = closeAt + 1
+				}
+			}
+		case c == '{':
+			// Nested block (method body, initialiser, anonymous class). Skip
+			// string-aware to its matching close brace and drop any pending
+			// annotation run.
+			closeAt := javaFindMatchingBrace(body, i)
+			if closeAt < 0 {
+				i = len(body)
+			} else {
+				i = closeAt + 1
+			}
+			annoStart = -1
+		case c == '(':
+			// Parenthesised group at statement level (e.g. a method signature
+			// whose modifiers/return type we just walked, or a record-style
+			// member). Skip it string-aware; it is not a simple field.
+			closeAt := javaFindMatchingCloseString(body, i)
+			if closeAt < 0 {
+				i = len(body)
+			} else {
+				i = closeAt + 1
+			}
+		default:
+			// Statement start. Capture up to the terminating ';' or the first
+			// '=' / '(' / '{' so a field initialiser or a method signature does
+			// not bleed across the field regex.
+			stmtStart := i
+			term := i
+			for term < len(body) && body[term] != ';' && body[term] != '=' && body[term] != '(' && body[term] != '{' {
+				term++
+			}
+			stmt := body[stmtStart:term]
+			// Reconstruct a candidate `<stmt>;` for the field regex so the `[;=]`
+			// terminator anchor is satisfied uniformly.
+			if m := javaFieldNoAnnoRe.FindStringSubmatch(stmt + ";"); m != nil {
+				annotations := ""
+				if annoStart >= 0 {
+					annotations = body[annoStart:stmtStart]
+				}
+				out = append(out, javaFieldMatch{
+					annotations: annotations,
+					ftype:       m[1],
+					fname:       m[2],
+					line:        stmt,
+				})
+			}
+			annoStart = -1
+			// Advance past this statement: to the ';' (consumed) or, when the
+			// terminator was '=' / '(' / '{', skip the remainder of the
+			// statement / block string-aware.
+			i = javaAdvancePastStatement(body, term)
+		}
+	}
+	return out
+}
+
+// javaAdvancePastStatement advances from a terminator offset (a ';', '=', '('
+// or '{') to the offset just past the end of the current statement, skipping
+// balanced brace/paren groups string-aware. A ';' ends the statement directly.
+func javaAdvancePastStatement(body string, term int) int {
+	if term >= len(body) {
+		return len(body)
+	}
+	i := term
+	for i < len(body) {
+		c := body[i]
+		switch c {
+		case ';':
+			return i + 1
+		case '{':
+			closeAt := javaFindMatchingBrace(body, i)
+			if closeAt < 0 {
+				return len(body)
+			}
+			// A '{' may itself terminate a member (e.g. a method body); after
+			// its close the statement is done.
+			return closeAt + 1
+		case '(':
+			closeAt := javaFindMatchingCloseString(body, i)
+			if closeAt < 0 {
+				return len(body)
+			}
+			i = closeAt + 1
+		case '"', '\'':
+			closeAt := javaFindStringEnd(body, i)
+			if closeAt < 0 {
+				return len(body)
+			}
+			i = closeAt + 1
+		default:
+			i++
+		}
+	}
+	return i
+}
+
+// javaFindMatchingBrace walks from `open` (a '{') to its matching '}',
+// honouring string/char literals so a brace inside a string does not affect
+// the depth count. Returns -1 when unbalanced.
+func javaFindMatchingBrace(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '"', '\'':
+			end := javaFindStringEnd(s, i)
+			if end < 0 {
+				return -1
+			}
+			i = end
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// javaFindStringEnd walks from `start` (the opening double- or single-quote of
+// a string/char literal) to the matching closing quote of the same kind,
+// honouring backslash escapes. Returns the closing-quote index, or -1 when
+// unterminated.
+func javaFindStringEnd(s string, start int) int {
+	quote := s[start]
+	for i := start + 1; i < len(s); i++ {
+		if s[i] == '\\' {
+			i++
+			continue
+		}
+		if s[i] == quote {
+			return i
+		}
+	}
+	return -1
+}
 
 func walkJavaClassFields(src, name string) map[string]string {
 	// Record form first: `record X(Type a, Type b)`.
@@ -375,18 +575,18 @@ func walkJavaClassFields(src, name string) map[string]string {
 	body := src[braceIdx+1 : end]
 	out := map[string]string{}
 
+	fields := javaScanClassFields(body)
+
 	if isLombok {
 		// For Lombok classes, walk all declared fields regardless of access modifier.
-		// Use javaAnyFieldRe which accepts any access combination.
-		for _, m := range javaAnyFieldRe.FindAllStringSubmatch(body, -1) {
-			annotations := m[1]
-			ftype := m[2]
-			fname := m[3]
+		for _, f := range fields {
+			fname := f.fname
+			ftype := f.ftype
 			if strings.Contains(ftype, "(") {
 				continue
 			}
 			// Check for @JsonProperty alias.
-			if jp := javaJsonPropertyRe.FindStringSubmatch(annotations); len(jp) >= 2 {
+			if jp := javaJsonPropertyRe.FindStringSubmatch(f.annotations); len(jp) >= 2 {
 				fname = jp[1]
 			}
 			out[fname] = strings.TrimSpace(ftype)
@@ -395,34 +595,29 @@ func walkJavaClassFields(src, name string) map[string]string {
 	}
 
 	// Plain class: walk public/package-visible fields and @JsonProperty-annotated fields.
-	for _, m := range javaAnyFieldRe.FindAllStringSubmatch(body, -1) {
-		annotations := m[1]
-		ftype := m[2]
-		fname := m[3]
+	for _, f := range fields {
+		ftype := f.ftype
 		if strings.Contains(ftype, "(") {
 			continue
 		}
 		// @JsonProperty-annotated field → include regardless of access modifier.
-		if jp := javaJsonPropertyRe.FindStringSubmatch(annotations); len(jp) >= 2 {
+		if jp := javaJsonPropertyRe.FindStringSubmatch(f.annotations); len(jp) >= 2 {
 			out[jp[1]] = strings.TrimSpace(ftype)
 			continue
 		}
 		// Public fields are always included.
-		fieldLine := m[0]
-		if strings.Contains(fieldLine, "public") {
-			out[fname] = strings.TrimSpace(ftype)
+		if strings.Contains(f.line, "public") {
+			out[f.fname] = strings.TrimSpace(ftype)
 		}
 	}
-	// If nothing was found with the new logic, fall back to the original field regex
-	// (for plain public-field DTOs without @JsonProperty).
+	// If nothing was found with the new logic, fall back to including all
+	// scanned fields (for plain public-field DTOs without @JsonProperty).
 	if len(out) == 0 {
-		for _, m := range javaFieldRe.FindAllStringSubmatch(body, -1) {
-			fname := m[2]
-			ftype := m[1]
-			if strings.Contains(ftype, "(") {
+		for _, f := range fields {
+			if strings.Contains(f.ftype, "(") {
 				continue
 			}
-			out[fname] = strings.TrimSpace(ftype)
+			out[f.fname] = strings.TrimSpace(f.ftype)
 		}
 	}
 	return out

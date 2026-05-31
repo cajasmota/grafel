@@ -155,6 +155,68 @@ func TestParenClass_JavaRequestBody_JAXRS_AnnotationParenInString(t *testing.T) 
 }
 
 // ---------------------------------------------------------------------------
+// Deferred site 1 (follow-up to PR #3425) — Java DTO field scanner: a field
+// preceded (same-line OR on the line above) by a @Schema with a ')' inside its
+// description string must still have its type+name captured. The field FindAll
+// scanner's `(?:@\w+(?:\([^)]*\))?\s+)*` annotation prefix stopped at the first
+// ')' inside the string and dropped (or mis-typed) the field.
+// ---------------------------------------------------------------------------
+
+func TestParenDeferred_JavaDtoField_SchemaParenInString_FieldCaptured(t *testing.T) {
+	src := `package com.example;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+public class PaymentDto {
+    @Schema(description = "amount in cents (USD)")
+    public long amount;
+
+    @Schema(description = "the payer's display name (legal)") public String payerName;
+
+    public String currency;
+}
+`
+	fields := walkJavaClassFields(src, "PaymentDto")
+	// The paren-in-string field (above-line annotation) must survive with type.
+	if got := fields["amount"]; got != "long" {
+		t.Errorf("amount: type = %q, want \"long\" (paren in @Schema string must not drop/mistype the field)", got)
+	}
+	// Same-line annotation+field with a paren in the string must also survive.
+	if got := fields["payerName"]; got != "String" {
+		t.Errorf("payerName: type = %q, want \"String\" (same-line @Schema paren-in-string)", got)
+	}
+	// Sibling field without any annotation — proves no undercount.
+	if got := fields["currency"]; got != "String" {
+		t.Errorf("currency: type = %q, want \"String\" (sibling must still be captured)", got)
+	}
+}
+
+// Lombok @Value variant: private fields are the serialized shape; a @Schema with
+// a paren in its string above a private field must not drop it, and a
+// @JsonProperty alias with a string-internal paren earlier in the stack must
+// still resolve the alias.
+func TestParenDeferred_JavaDtoField_LombokSchemaParen_FieldCaptured(t *testing.T) {
+	src := `package com.example;
+import lombok.Value;
+
+@Value
+public class MoneyDto {
+    @Schema(description = "total (gross)")
+    @JsonProperty("total_amount")
+    Long totalAmount;
+
+    String label;
+}
+`
+	fields := walkJavaClassFields(src, "MoneyDto")
+	if got := fields["total_amount"]; got != "Long" {
+		t.Errorf("total_amount alias: type = %q, want \"Long\" (paren-in-@Schema must not drop the @JsonProperty-aliased field)", got)
+	}
+	if got := fields["label"]; got != "String" {
+		t.Errorf("label: type = %q, want \"String\"", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Target 4 (LOW-MED) — Python FastAPI: a route decorator whose path argument
 // contains a regex with a ')' inside the string must still let the
 // response_model be located.
