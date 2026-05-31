@@ -469,6 +469,15 @@ var extensionLanguageMap = map[string]string{
 	".tf":     "terraform",
 	".tfvars": "terraform",
 	".hcl":    "hcl",
+	// OpenTofu (#3553) — the Apache-licensed Terraform fork uses byte-for-byte
+	// identical HCL with .tofu / .tofu.json extensions. Route to the same
+	// "terraform" token so the shared hcl/terraform extractor produces full
+	// resource + dependency parity and every downstream IaC engine pass
+	// (lang=="terraform" gates in iac_sns_edges, event_bus_edges,
+	// http_endpoint_synthesis, dynamic_patterns_terraform) fires unchanged.
+	// .tofu.json is handled as a compound suffix in detectLanguage (filepath.Ext
+	// only sees ".json"), mirroring the .scala.html precedent.
+	".tofu": "terraform",
 	// Azure Bicep — Azure-native IaC DSL (resource/module/param/var/output).
 	// No tree-sitter grammar is vendored; the bicep extractor is regex/line-
 	// based (internal/extractors/bicep) so the tree is nil at dispatch time.
@@ -498,8 +507,8 @@ var extensionLanguageMap = map[string]string{
 	".svelte": "svelte",
 	".astro":  "astro",
 	// HTML / Templates — all route to "html" to match extractor.Register("html", …)
-	".html": "html",
-	".htm":  "html",
+	".html":       "html",
+	".htm":        "html",
 	".erb":        "html",
 	".ejs":        "html",
 	".hbs":        "html",
@@ -625,6 +634,15 @@ func detectLanguage(norm string) string {
 	lower := strings.ToLower(norm)
 	if strings.HasSuffix(lower, ".scala.html") {
 		return "scala"
+	}
+
+	// OpenTofu (#3553) — .tofu.json carries a compound extension; filepath.Ext
+	// only returns ".json", which would otherwise fall through to the Debezium
+	// JSON routing below (or be dropped). Route it to "terraform" — the same
+	// token as .tf/.tofu — for full Terraform extraction parity. Checked before
+	// the generic .json branch so OpenTofu JSON config always wins.
+	if strings.HasSuffix(lower, ".tofu.json") {
+		return "terraform"
 	}
 
 	// Issue #1708 — narrow JSON routing for Debezium / Kafka-Connect

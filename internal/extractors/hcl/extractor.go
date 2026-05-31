@@ -1,7 +1,11 @@
 // Package hcl implements the HCL/Terraform language extractor for archigraph.
 //
 // It extracts infrastructure entities from HCL files (Terraform .tf, .tfvars,
-// and generic .hcl) using the smacker/go-tree-sitter HCL grammar.
+// OpenTofu .tofu / .tofu.json, and generic .hcl) using the smacker/go-tree-sitter
+// HCL grammar. OpenTofu (#3553) is the Apache-licensed Terraform fork with
+// byte-for-byte identical HCL syntax; the classifier routes .tofu to the
+// "terraform" language token, so .tofu files flow through this exact extractor
+// and receive full resource + dependency-edge parity with .tf.
 //
 // Entity mapping:
 //

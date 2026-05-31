@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 25 records · **java**: 1 · **JS/TS**: 1 · **multi**: 23
+**Total**: 26 records · **java**: 1 · **JS/TS**: 1 · **multi**: 24
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -25,6 +25,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.container.kubernetes.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.resource.kubernetes.md) | — | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Kustomize](../detail/infra.container.kustomize.md) | ✅ | — | — | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [OpenTofu (HCL)](../detail/infra.iac.opentofu.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | — | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | ✅ | — | — | ✅ | ✅ | |

@@ -30,23 +30,23 @@ import (
 // subcommand. Field order in this struct controls JSON ordering when
 // serialised with encoding/json + sorted maps. Slices are sorted by ID.
 type DiscoverResult struct {
-	Proposal                 []Candidate              `json:"proposal"`
-	OrphansInRegistry        []Orphan                 `json:"orphans_in_registry"`
-	StatusUpgradeCandidates  []StatusUpgradeCandidate `json:"status_upgrade_candidates"`
-	CiteDrift                []CiteDriftItem          `json:"cite_drift"`
-	Summary                  DiscoverSummary          `json:"summary"`
+	Proposal                []Candidate              `json:"proposal"`
+	OrphansInRegistry       []Orphan                 `json:"orphans_in_registry"`
+	StatusUpgradeCandidates []StatusUpgradeCandidate `json:"status_upgrade_candidates"`
+	CiteDrift               []CiteDriftItem          `json:"cite_drift"`
+	Summary                 DiscoverSummary          `json:"summary"`
 }
 
 // Candidate is a discovered record proposal keyed by stable slug ID.
 type Candidate struct {
-	CandidateID           string                          `json:"candidate_id"`
-	Category              string                          `json:"category"`
-	Language              string                          `json:"language"`
-	Label                 string                          `json:"label"`
-	Evidence              []Evidence                      `json:"evidence"`
-	InferredCapabilities  map[string]InferredCapability   `json:"inferred_capabilities"`
-	AlreadyInRegistry     bool                            `json:"already_in_registry"`
-	RegistryID            string                          `json:"registry_id,omitempty"`
+	CandidateID          string                        `json:"candidate_id"`
+	Category             string                        `json:"category"`
+	Language             string                        `json:"language"`
+	Label                string                        `json:"label"`
+	Evidence             []Evidence                    `json:"evidence"`
+	InferredCapabilities map[string]InferredCapability `json:"inferred_capabilities"`
+	AlreadyInRegistry    bool                          `json:"already_in_registry"`
+	RegistryID           string                        `json:"registry_id,omitempty"`
 }
 
 // Evidence is a single citation: kind of signal + repo-relative path,
@@ -90,22 +90,22 @@ type CiteDriftItem struct {
 
 // DiscoverSummary aggregates counters for the result.
 type DiscoverSummary struct {
-	ProposalTotal        int `json:"proposal_total"`
-	InRegistry           int `json:"in_registry"`
-	NewCandidates        int `json:"new_candidates"`
-	Orphans              int `json:"orphans"`
+	ProposalTotal           int `json:"proposal_total"`
+	InRegistry              int `json:"in_registry"`
+	NewCandidates           int `json:"new_candidates"`
+	Orphans                 int `json:"orphans"`
 	StatusUpgradeCandidates int `json:"status_upgrade_candidates"`
-	CitesDrifted         int `json:"cites_drifted"`
+	CitesDrifted            int `json:"cites_drifted"`
 }
 
 // confidence values are hard-coded per evidence pattern (v1). Future
 // revisions may make these data-driven.
 const (
-	confidenceFull          = 0.95 // YAML + synthesizer + fixture
-	confidenceStrong        = 0.85 // YAML + synthesizer
-	confidenceFixtureBoost  = 0.80 // YAML + fixture
-	confidencePartial       = 0.60 // YAML only
-	confidenceLanguageStrong = 0.90 // extractor + rules dir
+	confidenceFull            = 0.95 // YAML + synthesizer + fixture
+	confidenceStrong          = 0.85 // YAML + synthesizer
+	confidenceFixtureBoost    = 0.80 // YAML + fixture
+	confidencePartial         = 0.60 // YAML only
+	confidenceLanguageStrong  = 0.90 // extractor + rules dir
 	confidenceLanguagePartial = 0.70 // one of (extractor | rules dir)
 )
 
@@ -123,15 +123,15 @@ var languageDirAlias = map[string]string{
 // The key is "<langSlug>.<seg>.<file-derived-slug>", the value is the
 // registry's expected slug for that ID.
 var frameworkSlugAliases = map[string]string{
-	"rust.framework.actix-web":              "actix",
-	"ruby.framework.ruby-on-rails":          "rails",
-	"ruby.orm.rom-rb-ruby-object-mapper":    "rom-rb",
-	"python.orm.django-orm":                 "django",
-	"python.orm.pony-orm":                   "pony",
-	"python.orm.tortoise-orm":               "tortoise",
+	"rust.framework.actix-web":                "actix",
+	"ruby.framework.ruby-on-rails":            "rails",
+	"ruby.orm.rom-rb-ruby-object-mapper":      "rom-rb",
+	"python.orm.django-orm":                   "django",
+	"python.orm.pony-orm":                     "pony",
+	"python.orm.tortoise-orm":                 "tortoise",
 	"ruby.orm.datamapper-hanami-model-legacy": "datamapper",
-	"php.orm.doctrine-orm":                  "doctrine",
-	"php.orm.eloquent-laravel":              "eloquent",
+	"php.orm.doctrine-orm":                    "doctrine",
+	"php.orm.eloquent-laravel":                "eloquent",
 }
 
 // engineNamePrefixes are the file-prefix tokens we treat as framework
@@ -1057,6 +1057,11 @@ func iacWalker(repoRoot string, cands map[string]*Candidate) {
 	if _, err := os.Stat(filepath.Join(repoRoot, hclExtractorRel)); err == nil {
 		c := ensureCandidate(cands, "infra.iac.terraform", "iac", "multi", "Terraform")
 		addEvidence(c, "extractor_source", hclExtractorRel, "")
+		// OpenTofu (#3553) — Apache-licensed Terraform fork, identical HCL with
+		// .tofu / .tofu.json extensions routed to the "terraform" token. Shares
+		// this exact extractor, so cite the same source for the opentofu record.
+		ot := ensureCandidate(cands, "infra.iac.opentofu", "iac", "multi", "OpenTofu")
+		addEvidence(ot, "extractor_source", hclExtractorRel, "")
 	}
 	// serverless-framework + cloudformation: look in engine sources by name.
 	engineRel := func(name string) string {
@@ -1911,10 +1916,10 @@ func MergeWithRegistry(discovered map[string]*Candidate, reg *Registry, repoRoot
 		}
 	}
 	return DiscoverResult{
-		Proposal:                 proposal,
-		OrphansInRegistry:        orphans,
-		StatusUpgradeCandidates:  statusUpgradeCandidates,
-		CiteDrift:                drifts,
+		Proposal:                proposal,
+		OrphansInRegistry:       orphans,
+		StatusUpgradeCandidates: statusUpgradeCandidates,
+		CiteDrift:               drifts,
 		Summary: DiscoverSummary{
 			ProposalTotal:           len(proposal),
 			InRegistry:              inRegistry,

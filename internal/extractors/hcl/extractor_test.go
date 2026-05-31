@@ -539,6 +539,64 @@ func TestNoDependsOn(t *testing.T) {
 }
 
 // ----------------------------------------------------------------
+// OpenTofu (#3553) — .tofu files are byte-for-byte identical HCL and the
+// classifier routes them to the "terraform" token, so they flow through this
+// exact extractor. This value-asserting test proves a .tofu file with two
+// resources, one referencing the other, yields both resource entities AND the
+// DEPENDS_ON edge via the same path as .tf — full parity, not just len>0.
+// ----------------------------------------------------------------
+
+func TestOpenTofuTwoResourcesDependencyEdge(t *testing.T) {
+	src := `
+resource "aws_iam_role" "lambda_role" {
+  name = "lambda-exec"
+}
+
+resource "aws_lambda_function" "fn" {
+  function_name = "processor"
+  role          = aws_iam_role.lambda_role.arn
+  depends_on    = [aws_iam_role.lambda_role]
+}
+`
+	// Extract through the "terraform" key (the classifier's target for .tofu)
+	// using a .tofu path to assert the file-extension travels through unchanged.
+	records, err := extractTerraform(src, "infra/main.tofu")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Both resources must be present.
+	role := findBySubtypeAndName(records, "resource", "lambda_role")
+	if role == nil {
+		t.Fatalf("expected resource 'lambda_role' from .tofu file, got %v", records)
+	}
+	fn := findBySubtypeAndName(records, "resource", "fn")
+	if fn == nil {
+		t.Fatalf("expected resource 'fn' from .tofu file, got %v", records)
+	}
+
+	// The dependency edge fn -> lambda_role must exist, with the canonical
+	// terraform-token ToID, proving the same DEPENDS_ON path as .tf.
+	wantToID := "scope:operation:method:terraform:infra/main.tofu:aws_iam_role.lambda_role"
+	var found bool
+	for _, rel := range fn.Relationships {
+		if rel.Kind == "DEPENDS_ON" && rel.ToID == wantToID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected DEPENDS_ON edge fn -> lambda_role with ToID %q; got relationships %v",
+			wantToID, fn.Relationships)
+	}
+
+	// Language must be the shared "terraform" token for downstream IaC gates.
+	if fn.Language != "terraform" {
+		t.Errorf("expected Language=terraform on .tofu entity, got %s", fn.Language)
+	}
+}
+
+// ----------------------------------------------------------------
 // terraform language key
 // ----------------------------------------------------------------
 

@@ -402,6 +402,7 @@ func TestExtensionCoverage(t *testing.T) {
 		{"foo.lua", "lua"},
 		{"foo.sql", "sql"},
 		{"foo.tf", "terraform"},
+		{"foo.tofu", "terraform"},
 		{"foo.hcl", "hcl"},
 		{"foo.proto", "protobuf"},
 		{"foo.graphql", "graphql"},
@@ -423,6 +424,31 @@ func TestExtensionCoverage(t *testing.T) {
 			}
 			if r.Skip {
 				t.Errorf("file=%q: expected Skip=false, got true reason=%q", tc.file, r.SkipReason)
+			}
+		})
+	}
+}
+
+// TestOpenTofuExtensions verifies OpenTofu config files (#3553) classify to the
+// "terraform" token — both the plain .tofu extension and the .tofu.json compound
+// suffix (which filepath.Ext sees only as ".json") — and are never skipped.
+func TestOpenTofuExtensions(t *testing.T) {
+	c := newTestClassifier(t)
+	ctx := context.Background()
+	cases := []string{
+		"main.tofu",
+		"infra/network.tofu",
+		"main.tofu.json",
+		"infra/prod/main.tofu.json",
+	}
+	for _, f := range cases {
+		t.Run(f, func(t *testing.T) {
+			r := c.Classify(ctx, f)
+			if r.Language != "terraform" {
+				t.Errorf("file=%q: expected Language=terraform, got %q", f, r.Language)
+			}
+			if r.Skip {
+				t.Errorf("file=%q: expected Skip=false, got true reason=%q", f, r.SkipReason)
 			}
 		})
 	}
