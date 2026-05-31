@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | ✅ `full` | `2026-05-30` | — | `internal/engine/kubernetes_edges.go`<br>`internal/extractors/yaml/extractor.go` | — |
-| Resource extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/kubernetes/frameworks/kubernetes_manifests.yaml`<br>`internal/extractors/yaml/extractor.go` | — |
+| Dependency attribution | ✅ `full` | `2026-05-31` | — | `internal/engine/kubernetes_edges.go`<br>`internal/extractors/yaml/extractor.go` | #3551: cross-resource edges are namespace-scoped (selector/ref matching links only within the same metadata.namespace, default-namespaced when omitted). Added NetworkPolicy spec.podSelector, PodDisruptionBudget spec.selector, and Prometheus-Operator ServiceMonitor/PodMonitor selector edges. |
+| Resource extraction | ✅ `full` | `2026-05-31` | — | `internal/engine/rules/kubernetes/frameworks/kubernetes_manifests.yaml`<br>`internal/extractors/yaml/extractor.go` | #3551: CustomResourceDefinition captured as a crd_definition entity (spec.names/group/scope in Properties); known CRD instances (ArgoCD Application/AppProject, Argo Rollouts Rollout, cert-manager Certificate/Issuer, Prometheus ServiceMonitor/PodMonitor) typed meaningfully instead of generic Component; metadata.namespace stamped as k8s_namespace Property. |
 
 ## Provenance
 

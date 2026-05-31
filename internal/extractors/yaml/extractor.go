@@ -24,6 +24,13 @@
 //
 //	Kubernetes:
 //	  metadata.name + kind:  → Kind="SCOPE.Component",  Subtype="k8s_resource"
+//	                           (metadata.namespace stamped as Properties["k8s_namespace"],
+//	                            defaulted to "default" for namespaced kinds)
+//	  CustomResourceDefinition → Kind="SCOPE.Schema", Subtype="crd_definition"
+//	                           (spec.group/scope/names captured as Properties)
+//	  known CRD instances (ArgoCD Application/AppProject, Argo Rollouts Rollout,
+//	    cert-manager Certificate/Issuer, Prometheus ServiceMonitor/PodMonitor)
+//	                           → meaningfully typed Kind+Subtype (#3551)
 //	  containers[].name:     → Kind="SCOPE.Operation",  Subtype="container"
 //
 //	Ansible:
@@ -1087,9 +1094,13 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 		}
 	}
 
-	// Get metadata.name
+	// Get metadata.name + metadata.namespace. The namespace is captured as a
+	// scoping Property on every namespaced resource (#3551); when omitted on a
+	// namespaced resource it defaults to "default". CRDs / cluster-scoped
+	// resources carry no namespace.
 	metadataPairs := getMappingPairsForKey(pairs, "metadata", src)
 	metadataName := findPairValueText(metadataPairs, "name", src)
+	metadataNamespace := findPairValueText(metadataPairs, "namespace", src)
 
 	startLine := 1
 	endLine := bytes.Count(src, []byte("\n")) + 1
@@ -1098,12 +1109,26 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 		endLine = int(doc.EndPoint().Row) + 1
 	}
 
+	// CustomResourceDefinition: capture spec.names + spec.group + spec.scope as
+	// a CRD-definition entity instead of a flat Component (#3551).
+	if kindVal == "CustomResourceDefinition" {
+		return extractK8sCRD(pairs, metadataName, refPrefix, file, src, startLine, endLine)
+	}
+
 	resourceRef := ""
 	if metadataName != "" {
 		// Deployment/Service/StatefulSet/DaemonSet → SCOPE.Service; others → SCOPE.Component.
 		topKind := "SCOPE.Component"
 		if kindVal == "Service" || kindVal == "Deployment" || kindVal == "StatefulSet" || kindVal == "DaemonSet" {
 			topKind = "SCOPE.Service"
+		}
+		// Known CRD instances (ArgoCD, Argo Rollouts, cert-manager, Prometheus
+		// Operator, …) get a meaningful Subtype and Kind instead of a generic
+		// Component, so they surface as first-class typed resources (#3551).
+		subtype := "k8s_resource"
+		if crdKind, crdSubtype := k8sKnownCRDInstanceType(kindVal); crdSubtype != "" {
+			subtype = crdSubtype
+			topKind = crdKind
 		}
 		// Include the K8s Kind in the ref to disambiguate same-name resources
 		// of different kinds in multi-document manifests (e.g. a Deployment
@@ -1115,10 +1140,20 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 		// to be indexed under its Kind ("Deployment", "Service") and the
 		// resolver could never bind ToID = "k8s/<file>#resource/<name>".
 		resEnt := entity(
-			topKind, metadataName, "k8s_resource",
+			topKind, metadataName, subtype,
 			resourceRef,
 			file.Path, "yaml", startLine, endLine,
 		)
+		// Stamp the K8s Kind + namespace as scoping Properties. Namespace is a
+		// disambiguation dimension for cross-resource edge matching (#3551);
+		// namespaced resources default to "default" when metadata.namespace is
+		// omitted.
+		resEnt.Properties = map[string]string{"k8s_kind": kindVal}
+		if metadataNamespace != "" {
+			resEnt.Properties["k8s_namespace"] = metadataNamespace
+		} else if k8sNamespacedKind(kindVal) {
+			resEnt.Properties["k8s_namespace"] = "default"
+		}
 		// CONTAINS: file → resource.
 		resEnt.Relationships = append(resEnt.Relationships,
 			containsRel(file.Path, resourceRef))
@@ -1407,6 +1442,108 @@ func extractK8sService(specPairs []*sitter.Node, svcName, refPrefix string, file
 	}
 
 	return entities
+}
+
+// extractK8sCRD extracts a CustomResourceDefinition into a CRD-definition
+// entity, capturing spec.group, spec.scope, and the spec.names sub-fields
+// (kind/plural/singular/listKind) as Properties so downstream tooling can map
+// instances of the custom resource back to their schema (#3551). The CRD's own
+// metadata.name is conventionally "<plural>.<group>".
+func extractK8sCRD(pairs []*sitter.Node, crdName, refPrefix string, file extractor.FileInput, src []byte, startLine, endLine int) []types.EntityRecord {
+	var entities []types.EntityRecord
+	if crdName == "" {
+		return entities
+	}
+
+	specPairs := getMappingPairsForKey(pairs, "spec", src)
+	group := findPairValueText(specPairs, "group", src)
+	scope := findPairValueText(specPairs, "scope", src)
+
+	namesPairs := getMappingPairsForKey(specPairs, "names", src)
+	crdKind := findPairValueText(namesPairs, "kind", src)
+	plural := findPairValueText(namesPairs, "plural", src)
+	singular := findPairValueText(namesPairs, "singular", src)
+	listKind := findPairValueText(namesPairs, "listKind", src)
+
+	ref := refPrefix + "crd/" + crdName
+	ent := entity(
+		"SCOPE.Schema", crdName, "crd_definition",
+		ref,
+		file.Path, "yaml", startLine, endLine,
+	)
+	ent.Properties = map[string]string{}
+	if group != "" {
+		ent.Properties["crd_group"] = group
+	}
+	if scope != "" {
+		ent.Properties["crd_scope"] = scope
+	}
+	if crdKind != "" {
+		ent.Properties["crd_kind"] = crdKind
+	}
+	if plural != "" {
+		ent.Properties["crd_plural"] = plural
+	}
+	if singular != "" {
+		ent.Properties["crd_singular"] = singular
+	}
+	if listKind != "" {
+		ent.Properties["crd_list_kind"] = listKind
+	}
+	// CONTAINS: file → CRD definition.
+	ent.Relationships = append(ent.Relationships, containsRel(file.Path, ref))
+	entities = append(entities, ent)
+	return entities
+}
+
+// k8sKnownCRDInstanceType maps a recognised CRD instance Kind to a meaningful
+// (archigraph Kind, Subtype) pair so common operator resources are typed
+// instead of landing as a generic Component. Returns ("","") for unknown kinds
+// (caller keeps the default Component/k8s_resource typing). Covers ArgoCD,
+// Argo Rollouts, cert-manager, and Prometheus Operator (#3551).
+func k8sKnownCRDInstanceType(kindVal string) (kind, subtype string) {
+	switch kindVal {
+	// ArgoCD GitOps.
+	case "Application":
+		return "SCOPE.Service", "argocd_application"
+	case "ApplicationSet":
+		return "SCOPE.Service", "argocd_applicationset"
+	case "AppProject":
+		return "SCOPE.Component", "argocd_appproject"
+	// Argo Rollouts — a progressive-delivery workload.
+	case "Rollout":
+		return "SCOPE.Service", "argo_rollout"
+	// cert-manager.
+	case "Certificate":
+		return "SCOPE.Schema", "certmanager_certificate"
+	case "Issuer":
+		return "SCOPE.Component", "certmanager_issuer"
+	case "ClusterIssuer":
+		return "SCOPE.Component", "certmanager_clusterissuer"
+	// Prometheus Operator.
+	case "ServiceMonitor":
+		return "SCOPE.Component", "prometheus_servicemonitor"
+	case "PodMonitor":
+		return "SCOPE.Component", "prometheus_podmonitor"
+	}
+	return "", ""
+}
+
+// k8sNamespacedKind reports whether a Kind is namespace-scoped (so an omitted
+// metadata.namespace defaults to "default"). The set of well-known
+// cluster-scoped kinds is enumerated; everything else is treated as namespaced,
+// which matches Kubernetes' default for custom resources.
+func k8sNamespacedKind(kindVal string) bool {
+	switch kindVal {
+	case "Namespace", "Node", "PersistentVolume", "StorageClass",
+		"ClusterRole", "ClusterRoleBinding", "CustomResourceDefinition",
+		"ClusterIssuer", "PriorityClass", "IngressClass", "APIService",
+		"MutatingWebhookConfiguration", "ValidatingWebhookConfiguration",
+		"CertificateSigningRequest", "ComponentStatus", "PodSecurityPolicy",
+		"RuntimeClass", "VolumeAttachment":
+		return false
+	}
+	return true
 }
 
 // findK8sContainers searches for containers in specPairs, drilling into

@@ -73,8 +73,18 @@ var k8sWorkloadKinds = map[string]bool{
 type k8sDoc struct {
 	kind string
 	name string
-	raw  map[string]interface{}
+	// namespace is metadata.namespace, defaulted to "default" when omitted for
+	// namespaced kinds. It is the scoping dimension for selector/ref matching:
+	// a Service selector links a workload ONLY when both share a namespace, so
+	// two same-named Services in different namespaces no longer cross-link
+	// (#3551, epic #3512).
+	namespace string
+	raw       map[string]interface{}
 }
+
+// k8sDefaultNamespace is the implicit namespace for a namespaced resource whose
+// metadata.namespace is omitted.
+const k8sDefaultNamespace = "default"
 
 // applyKubernetesEdges is the entry point, registered in detector.go after the
 // other IaC passes. Append-only.
@@ -102,11 +112,13 @@ func applyKubernetesEdges(args DetectorPassArgs) DetectorPassResult {
 	}
 
 	// Index workloads by Kind/name and collect their pod-template labels so the
-	// selector-match pass can superset-test against them.
+	// selector-match pass can superset-test against them. Namespace is captured
+	// so selector matching is scoped to the same namespace (#3551).
 	type workload struct {
-		kind   string
-		name   string
-		labels map[string]string
+		kind      string
+		name      string
+		namespace string
+		labels    map[string]string
 	}
 	var workloads []workload
 	for _, d := range docs {
@@ -114,7 +126,7 @@ func applyKubernetesEdges(args DetectorPassArgs) DetectorPassResult {
 			continue
 		}
 		labels := k8sPodTemplateLabels(d.raw)
-		workloads = append(workloads, workload{kind: d.kind, name: d.name, labels: labels})
+		workloads = append(workloads, workload{kind: d.kind, name: d.name, namespace: d.namespace, labels: labels})
 	}
 
 	seenEdge := map[string]bool{}
@@ -142,33 +154,106 @@ func applyKubernetesEdges(args DetectorPassArgs) DetectorPassResult {
 	for _, d := range docs {
 		switch {
 		case d.kind == "Service":
-			// (1) Service.spec.selector → matching workload(s).
+			// (1) Service.spec.selector → matching workload(s) IN THE SAME
+			// NAMESPACE. A Service only load-balances pods in its own namespace,
+			// so two same-named Services in different namespaces each link only
+			// their co-located workload (#3551).
 			sel := k8sStringMap(k8sDig(d.raw, "spec", "selector"))
 			if len(sel) == 0 {
 				continue
 			}
 			from := resourceRef("Service", d.name)
 			for _, w := range workloads {
+				if w.namespace != d.namespace {
+					continue
+				}
 				if k8sLabelsMatch(w.labels, sel) {
 					emit(from, resourceRef(w.kind, w.name), string(types.RelationshipKindRoutesTo), "selector_match")
 				}
 			}
 
 		case d.kind == "Ingress":
-			// (3) Ingress backend → Service.
+			// (3) Ingress backend → Service. An Ingress backend resolves to a
+			// Service in the Ingress's own namespace. Namespace scoping only
+			// disambiguates when same-named Services exist in MULTIPLE namespaces
+			// in the file: if so, link the same-namespace one; otherwise emit
+			// the by-name edge as before (the resolver drops it if unbound).
 			from := resourceRef("Ingress", d.name)
 			for _, svcName := range k8sIngressBackendServices(d.raw) {
+				if k8sCrossNamespaceConflict(docs, "Service", svcName, d.namespace) {
+					continue
+				}
 				emit(from, resourceRef("Service", svcName), string(types.RelationshipKindRoutesTo), "ingress_backend")
 			}
 
 		case d.kind == "HorizontalPodAutoscaler":
-			// (4) HPA scaleTargetRef → workload.
+			// (4) HPA scaleTargetRef → workload (same-namespace scoping).
 			tgtKind, _ := k8sDig(d.raw, "spec", "scaleTargetRef", "kind").(string)
 			tgtName, _ := k8sDig(d.raw, "spec", "scaleTargetRef", "name").(string)
-			if tgtKind != "" && tgtName != "" {
+			if tgtKind != "" && tgtName != "" &&
+				!k8sCrossNamespaceConflict(docs, tgtKind, tgtName, d.namespace) {
 				emit(resourceRef("HorizontalPodAutoscaler", d.name),
 					resourceRef(tgtKind, tgtName),
 					string(types.RelationshipKindDependsOn), "hpa_target")
+			}
+
+		case d.kind == "NetworkPolicy":
+			// (5) NetworkPolicy.spec.podSelector → matched pods/workloads in the
+			// same namespace. A NetworkPolicy applies to pods it selects within
+			// its namespace, so emit DEPENDS_ON NetworkPolicy→workload.
+			sel := k8sLabelSelector(k8sDig(d.raw, "spec", "podSelector"))
+			if len(sel) == 0 {
+				// An empty podSelector selects ALL pods in the namespace; we
+				// only emit concrete edges for an explicit selector to avoid
+				// fan-out noise.
+				continue
+			}
+			from := resourceRef("NetworkPolicy", d.name)
+			for _, w := range workloads {
+				if w.namespace != d.namespace {
+					continue
+				}
+				if k8sLabelsMatch(w.labels, sel) {
+					emit(from, resourceRef(w.kind, w.name),
+						string(types.RelationshipKindDependsOn), "networkpolicy_podselector")
+				}
+			}
+
+		case d.kind == "PodDisruptionBudget":
+			// (6) PDB.spec.selector → workload (same namespace).
+			sel := k8sLabelSelector(k8sDig(d.raw, "spec", "selector"))
+			if len(sel) == 0 {
+				continue
+			}
+			from := resourceRef("PodDisruptionBudget", d.name)
+			for _, w := range workloads {
+				if w.namespace != d.namespace {
+					continue
+				}
+				if k8sLabelsMatch(w.labels, sel) {
+					emit(from, resourceRef(w.kind, w.name),
+						string(types.RelationshipKindDependsOn), "pdb_selector")
+				}
+			}
+
+		case d.kind == "ServiceMonitor", d.kind == "PodMonitor":
+			// (7) Prometheus-Operator ServiceMonitor/PodMonitor selector →
+			// Service (same namespace). spec.selector.matchLabels selects the
+			// Service(s) whose labels it scrapes.
+			sel := k8sLabelSelector(k8sDig(d.raw, "spec", "selector"))
+			if len(sel) == 0 {
+				continue
+			}
+			from := resourceRef(d.kind, d.name)
+			for _, t := range docs {
+				if t.kind != "Service" || t.name == "" || t.namespace != d.namespace {
+					continue
+				}
+				svcLabels := k8sStringMap(k8sDig(t.raw, "metadata", "labels"))
+				if k8sLabelsMatch(svcLabels, sel) {
+					emit(from, resourceRef("Service", t.name),
+						string(types.RelationshipKindDependsOn), "servicemonitor_selector")
+				}
 			}
 
 		case k8sWorkloadKinds[d.kind]:
@@ -385,6 +470,53 @@ func k8sPodTemplateLabels(raw map[string]interface{}) map[string]string {
 	return k8sStringMap(k8sDig(raw, "spec", "jobTemplate", "spec", "template", "metadata", "labels"))
 }
 
+// k8sLabelSelector normalises a Kubernetes LabelSelector value into a flat
+// {k:v} map. It accepts both shapes that appear across the API:
+//
+//	{ matchLabels: {app: web} }   → {app: web}   (Deployment/NetworkPolicy/PDB/ServiceMonitor)
+//	{ app: web }                  → {app: web}   (Service.spec.selector — bare map)
+//
+// matchExpressions are intentionally ignored (set-based selectors are not
+// modelled here); only the matchLabels equality terms participate in matching.
+func k8sLabelSelector(v interface{}) map[string]string {
+	m, ok := v.(map[string]interface{})
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	if ml, ok := m["matchLabels"].(map[string]interface{}); ok {
+		return k8sStringMap(ml)
+	}
+	// Bare map: only treat it as a selector if it has no LabelSelector-specific
+	// structural keys (matchExpressions). A bare equality map is the legacy
+	// Service.spec.selector shape.
+	if _, hasExpr := m["matchExpressions"]; hasExpr {
+		return nil
+	}
+	return k8sStringMap(v)
+}
+
+// k8sCrossNamespaceConflict reports whether a by-name edge to (kind,name) from a
+// resource in `namespace` must be SUPPRESSED for cross-namespace disambiguation.
+// It returns true only when a same-named target of that kind is present in the
+// file in some OTHER namespace but NOT in `namespace` — i.e. the reference would
+// otherwise mis-link across a namespace boundary. When no such target is present
+// at all, the edge is kept (the resolver drops it if it never binds), preserving
+// the original by-name emit behaviour for single-doc manifests.
+func k8sCrossNamespaceConflict(docs []k8sDoc, kind, name, namespace string) bool {
+	sameNS, otherNS := false, false
+	for _, d := range docs {
+		if d.kind != kind || d.name != name {
+			continue
+		}
+		if d.namespace == namespace {
+			sameNS = true
+		} else {
+			otherNS = true
+		}
+	}
+	return otherNS && !sameNS
+}
+
 // k8sLabelsMatch reports whether selector is a (non-empty) subset of labels —
 // the Kubernetes label-selector match semantics: a Service selects a pod when
 // every selector key/value is present in the pod's labels.
@@ -424,10 +556,15 @@ func k8sParseDocs(src []byte) []k8sDoc {
 			continue
 		}
 		name := ""
+		namespace := ""
 		if meta, ok := node["metadata"].(map[string]interface{}); ok {
 			name, _ = meta["name"].(string)
+			namespace, _ = meta["namespace"].(string)
 		}
-		docs = append(docs, k8sDoc{kind: kind, name: name, raw: node})
+		if namespace == "" {
+			namespace = k8sDefaultNamespace
+		}
+		docs = append(docs, k8sDoc{kind: kind, name: name, namespace: namespace, raw: node})
 	}
 	return docs
 }
