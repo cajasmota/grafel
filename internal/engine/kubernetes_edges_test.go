@@ -320,3 +320,258 @@ spec:
 		t.Fatalf("missing CronJob container→ConfigMap USES edge (%s → %s); rels=%+v", from, to, rels)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #3551 — namespace scoping + NetworkPolicy / PDB / ServiceMonitor edges
+// ---------------------------------------------------------------------------
+
+// Two same-named Services (`web`) live in DIFFERENT namespaces (prod / staging),
+// each selecting app=web. Each namespace has a DISTINCTLY-named workload also
+// labelled app=web (web-prod / web-staging). Selector matching must stay WITHIN
+// a namespace: the prod Service links only web-prod, the staging Service only
+// web-staging. No cross-namespace edge may appear. (Distinct workload names give
+// distinct ToID refs so the seenEdge dedup does not mask the scoping.)
+func TestKubernetesEdges_NamespaceScopedSelector(t *testing.T) {
+	const path = "k8s/multi-ns.yaml"
+	src := `
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: prod
+spec:
+  selector:
+    app: web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-prod
+  namespace: prod
+spec:
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:prod
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: staging
+spec:
+  selector:
+    app: web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-staging
+  namespace: staging
+spec:
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:staging
+`
+	rels := k8sRun(path, src)
+	prefix := "k8s/" + path + "#"
+	svcRef := prefix + "resource/Service/web"
+	prodRef := prefix + "resource/Deployment/web-prod"
+	stagingRef := prefix + "resource/Deployment/web-staging"
+
+	// The prod Service must link the prod workload (same namespace).
+	if e := k8sFindEdge(rels, svcRef, prodRef, "ROUTES_TO"); e == nil {
+		t.Fatalf("expected prod Service→web-prod ROUTES_TO edge; rels=%+v", rels)
+	}
+	// The staging Service must link the staging workload (same namespace).
+	if e := k8sFindEdge(rels, svcRef, stagingRef, "ROUTES_TO"); e == nil {
+		t.Fatalf("expected staging Service→web-staging ROUTES_TO edge; rels=%+v", rels)
+	}
+	// EXACTLY two selector_match edges — the within-namespace pairings only. If
+	// namespace scoping were absent, each of the two Services would also match
+	// the OTHER namespace's workload, yielding 4 edges (2 distinct ToIDs × the
+	// collapsed-svcRef × 2 → still 2 distinct after dedup but to BOTH workloads
+	// from each svc). The decisive check below asserts NO third/fourth edge and
+	// that scoping held.
+	selectorEdges := map[string]bool{}
+	for _, r := range rels {
+		if r.Properties["k8s_edge"] == "selector_match" {
+			selectorEdges[r.FromID+"->"+r.ToID] = true
+		}
+	}
+	if len(selectorEdges) != 2 {
+		t.Fatalf("expected exactly 2 distinct selector_match edges (prod, staging), got %d: %v", len(selectorEdges), selectorEdges)
+	}
+}
+
+// A sharper cross-namespace test: the Service is in `prod` selecting app=web,
+// but the ONLY matching Deployment is in `staging`. With namespace scoping there
+// must be NO edge (the prod Service cannot select a staging pod).
+func TestKubernetesEdges_NoCrossNamespaceSelector(t *testing.T) {
+	const path = "k8s/cross-ns.yaml"
+	src := `
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: prod
+spec:
+  selector:
+    app: web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: staging
+spec:
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx
+`
+	rels := k8sRun(path, src)
+	prefix := "k8s/" + path + "#"
+	svcRef := prefix + "resource/Service/web"
+	deployRef := prefix + "resource/Deployment/web"
+	if e := k8sFindEdge(rels, svcRef, deployRef, "ROUTES_TO"); e != nil {
+		t.Fatalf("prod Service must NOT select staging Deployment across namespaces — got spurious edge %+v", e)
+	}
+}
+
+// NetworkPolicy spec.podSelector.matchLabels → DEPENDS_ON edge to the matched
+// workload in the same namespace.
+func TestKubernetesEdges_NetworkPolicyPodSelector(t *testing.T) {
+	const path = "k8s/netpol.yaml"
+	src := `
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-allow
+  namespace: prod
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+    - Ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: prod
+spec:
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx
+`
+	rels := k8sRun(path, src)
+	prefix := "k8s/" + path + "#"
+	from := prefix + "resource/NetworkPolicy/web-allow"
+	to := prefix + "resource/Deployment/web"
+	e := k8sFindEdge(rels, from, to, "DEPENDS_ON")
+	if e == nil {
+		t.Fatalf("missing NetworkPolicy→Deployment DEPENDS_ON edge (%s → %s); rels=%+v", from, to, rels)
+	}
+	if e.Properties["k8s_edge"] != "networkpolicy_podselector" {
+		t.Fatalf("netpol edge wrong tag: %q", e.Properties["k8s_edge"])
+	}
+}
+
+// PodDisruptionBudget spec.selector → DEPENDS_ON workload (same namespace).
+func TestKubernetesEdges_PDBSelector(t *testing.T) {
+	const path = "k8s/pdb.yaml"
+	src := `
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-pdb
+  namespace: prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: prod
+spec:
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx
+`
+	rels := k8sRun(path, src)
+	prefix := "k8s/" + path + "#"
+	from := prefix + "resource/PodDisruptionBudget/web-pdb"
+	to := prefix + "resource/Deployment/web"
+	if e := k8sFindEdge(rels, from, to, "DEPENDS_ON"); e == nil {
+		t.Fatalf("missing PDB→Deployment DEPENDS_ON edge; rels=%+v", rels)
+	} else if e.Properties["k8s_edge"] != "pdb_selector" {
+		t.Fatalf("pdb edge wrong tag: %q", e.Properties["k8s_edge"])
+	}
+}
+
+// ServiceMonitor spec.selector → DEPENDS_ON Service (same namespace).
+func TestKubernetesEdges_ServiceMonitorSelector(t *testing.T) {
+	const path = "k8s/sm.yaml"
+	src := `
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: web-sm
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      team: web
+  endpoints:
+    - port: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: monitoring
+  labels:
+    team: web
+spec:
+  selector:
+    app: web
+`
+	rels := k8sRun(path, src)
+	prefix := "k8s/" + path + "#"
+	from := prefix + "resource/ServiceMonitor/web-sm"
+	to := prefix + "resource/Service/web"
+	if e := k8sFindEdge(rels, from, to, "DEPENDS_ON"); e == nil {
+		t.Fatalf("missing ServiceMonitor→Service DEPENDS_ON edge; rels=%+v", rels)
+	} else if e.Properties["k8s_edge"] != "servicemonitor_selector" {
+		t.Fatalf("servicemonitor edge wrong tag: %q", e.Properties["k8s_edge"])
+	}
+}

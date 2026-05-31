@@ -2274,3 +2274,134 @@ func TestHelm_AllKindsAllowlisted(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #3551 — CRD-schema awareness + namespace scoping
+// ---------------------------------------------------------------------------
+
+// A CustomResourceDefinition must be captured as a crd_definition entity whose
+// Properties carry spec.names (kind/plural/singular/listKind), spec.group, and
+// spec.scope — not a flat generic Component.
+func TestK8sCRD_DefinitionCapturesSpecNames(t *testing.T) {
+	src := []byte(`apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: crontabs.stable.example.com
+spec:
+  group: stable.example.com
+  scope: Namespaced
+  names:
+    kind: CronTab
+    plural: crontabs
+    singular: crontab
+    listKind: CronTabList
+  versions:
+    - name: v1
+      served: true
+      storage: true
+`)
+	entities, err := extractYAML(src, "crd/crontab.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	crds := findEntitiesBySubtype(entities, "crd_definition")
+	if len(crds) != 1 {
+		t.Fatalf("expected exactly 1 crd_definition entity, got %d: %+v", len(crds), entities)
+	}
+	crd := crds[0]
+	if crd.Name != "crontabs.stable.example.com" {
+		t.Errorf("crd name = %q, want crontabs.stable.example.com", crd.Name)
+	}
+	want := map[string]string{
+		"crd_group":     "stable.example.com",
+		"crd_scope":     "Namespaced",
+		"crd_kind":      "CronTab",
+		"crd_plural":    "crontabs",
+		"crd_singular":  "crontab",
+		"crd_list_kind": "CronTabList",
+	}
+	for k, v := range want {
+		if got := crd.Properties[k]; got != v {
+			t.Errorf("crd Property[%q] = %q, want %q", k, got, v)
+		}
+	}
+}
+
+// A recognised CRD instance (ArgoCD Application) must be typed meaningfully
+// (subtype argocd_application, Kind SCOPE.Service) instead of generic Component.
+func TestK8sCRD_KnownInstanceTyped(t *testing.T) {
+	src := []byte(`apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+`)
+	entities, err := extractYAML(src, "apps/guestbook.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	apps := findEntitiesBySubtype(entities, "argocd_application")
+	if len(apps) != 1 {
+		t.Fatalf("expected 1 argocd_application entity, got %d: %+v", len(apps), entities)
+	}
+	if apps[0].Kind != "SCOPE.Service" {
+		t.Errorf("argocd Application Kind = %q, want SCOPE.Service", apps[0].Kind)
+	}
+	if apps[0].Properties["k8s_namespace"] != "argocd" {
+		t.Errorf("argocd Application namespace = %q, want argocd", apps[0].Properties["k8s_namespace"])
+	}
+}
+
+// metadata.namespace is captured as a k8s_namespace Property; when omitted on a
+// namespaced kind it defaults to "default".
+func TestK8sNamespace_CapturedAndDefaulted(t *testing.T) {
+	src := []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: production
+spec:
+  template:
+    spec:
+      containers:
+        - name: web
+          image: nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: api:1
+`)
+	entities, err := extractYAML(src, "k8s/deploys.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	var web, api *types.EntityRecord
+	for i := range entities {
+		if entities[i].Subtype == "k8s_resource" && entities[i].Name == "web" {
+			web = &entities[i]
+		}
+		if entities[i].Subtype == "k8s_resource" && entities[i].Name == "api" {
+			api = &entities[i]
+		}
+	}
+	if web == nil || api == nil {
+		t.Fatalf("missing web/api resource entities: %+v", entities)
+	}
+	if web.Properties["k8s_namespace"] != "production" {
+		t.Errorf("web namespace = %q, want production", web.Properties["k8s_namespace"])
+	}
+	if api.Properties["k8s_namespace"] != "default" {
+		t.Errorf("api namespace (omitted) = %q, want default", api.Properties["k8s_namespace"])
+	}
+}
