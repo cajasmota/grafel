@@ -15,8 +15,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-29` | 3095 | `internal/custom/java/spring_ecosystem.go`<br>`internal/engine/rules/java/orms/spring_data_redis.yaml` | — |
-| Schema extraction | ✅ `full` | `2026-05-29` | 3095 | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_ecosystem.go` | — |
+| Model extraction | 🟢 `partial` | `2026-05-29` | 3095 | `internal/engine/rules/java/orms/spring_data_redis.yaml` | — |
+| Schema extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_ecosystem.go` | — |
 
 ### Relationships
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-29` | 3095 | `internal/custom/java/spring_ecosystem.go`<br>`internal/engine/rules/java/orms/spring_data_redis.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-05-29` | 3095 | `internal/engine/rules/java/orms/spring_data_redis.yaml` | — |
 
 ### Migrations
 

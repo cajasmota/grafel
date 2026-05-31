@@ -29,20 +29,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jakarta_jaxrs_dto.go` | — |
+| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_jaxrs_dto.go` | — |
 | Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_params.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3083) | `internal/custom/java/jaxrs_filters.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/microprofile/MicroProfileFiltersFixture.java` | — |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jaxrs_filters.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/microprofile/MicroProfileFiltersFixture.java` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/junit5.go` | — |
+| Tests linkage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go` | — |
 
 ### Type System
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jakarta_ee_advanced.go` | — |
-| DI injection point | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jakarta_ee_advanced.go` | — |
-| DI scope resolution | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jakarta_ee_advanced.go` | — |
+| DI binding extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go` | — |
+| DI injection point | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go` | — |
+| DI scope resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go` | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3079) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
-| Transaction propagation | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3079) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
-| Transaction rollback rules | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3079) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
+| Transaction propagation | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go`<br>`testdata/fixtures/sources/java/microprofile/OrderService.java` | — |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/cdi_interceptors.go` | MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes "microprofile" (#3175). |
-| Aspect extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/cdi_interceptors.go` | MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes "microprofile" (#3175). |
-| Pointcut resolution | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/cdi_interceptors.go` | MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes "microprofile" (#3175). |
+| Advice attribution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go` | MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes "microprofile" (#3175). |
+| Aspect extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go` | MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes "microprofile" (#3175). |
+| Pointcut resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go` | MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes "microprofile" (#3175). |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Log extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Metric extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Trace extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
 
 ### Data
 

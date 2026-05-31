@@ -132,28 +132,28 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [java](../by-language/java.md) | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [java](../by-language/java.md) | [Apache Struts](../detail/lang.java.framework.struts.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [java](../by-language/java.md) | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 13/13 | |
-| [java](../by-language/java.md) | [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 16/16 | |
-| [java](../by-language/java.md) | [Helidon](../detail/lang.java.framework.helidon.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 13/13 | |
-| [java](../by-language/java.md) | [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | 🟢 16/16 | |
-| [java](../by-language/java.md) | [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 16/16 | |
-| [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
-| [java](../by-language/java.md) | [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | 🟢 16/16 | |
-| [java](../by-language/java.md) | [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 16/16 | |
-| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 18/18 | |
-| [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | 🟢 16/16 | |
-| [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
+| [java](../by-language/java.md) | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟡 2/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
+| [java](../by-language/java.md) | [Apache Struts](../detail/lang.java.framework.struts.md) | 🟡 2/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
+| [java](../by-language/java.md) | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/13 | |
+| [java](../by-language/java.md) | [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 2/16 | |
+| [java](../by-language/java.md) | [Helidon](../detail/lang.java.framework.helidon.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/13 | |
+| [java](../by-language/java.md) | [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/16 | |
+| [java](../by-language/java.md) | [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/16 | |
+| [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | 🟡 2/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
+| [java](../by-language/java.md) | [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/16 | |
+| [java](../by-language/java.md) | [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 4/16 | |
+| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 3/3 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 5/18 | |
+| [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 2/16 | |
+| [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
 | [kotlin](../by-language/kotlin.md) | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟢 1/1 | — | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 3/16 | |
-| [kotlin](../by-language/kotlin.md) | [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [kotlin](../by-language/kotlin.md) | [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🔴 0/3 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟡 5/6 | |
 | [kotlin](../by-language/kotlin.md) | [Koin (Kotlin DI)](../detail/lang.kotlin.framework.koin.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 3/16 | |
 | [kotlin](../by-language/kotlin.md) | [Ktor](../detail/lang.kotlin.framework.ktor.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 12/12 | |
-| [kotlin](../by-language/kotlin.md) | [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 15/15 | |
-| [kotlin](../by-language/kotlin.md) | [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 15/15 | |
+| [kotlin](../by-language/kotlin.md) | [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟡 6/15 | |
+| [kotlin](../by-language/kotlin.md) | [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟡 6/15 | |
 | [kotlin](../by-language/kotlin.md) | [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | 🟡 2/3 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/20 | 🔴 0/16 | |
-| [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 15/15 | |
+| [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟡 3/15 | |
 | [kotlin](../by-language/kotlin.md) | [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 1/16 | |
 | [kotlin](../by-language/kotlin.md) | [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟢 1/1 | — | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
@@ -179,8 +179,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
-| [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🟢 1/1 | 🟢 19/19 | 🟢 3/3 | |
-| [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🟢 1/1 | 🟢 19/19 | 🟢 3/3 | |
+| [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🔴 0/1 | 🟢 19/19 | 🔴 0/3 | |
+| [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🔴 0/1 | 🟢 19/19 | 🔴 0/3 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 17/17 | |
 | [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 21/21 | |
 | [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 17/17 | |
@@ -192,7 +192,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [elixir](../by-language/elixir.md) | [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | 🟢 2/2 | 🟢 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 5/5 | |
-| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | 🟢 2/2 | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 4/4 | |
+| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | 🟡 1/2 | 🟢 2/2 | 🔴 0/1 | 🟡 19/21 | 🟡 1/4 | |
 | [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 11/11 | |
@@ -209,8 +209,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
 | [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🟢 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 9/9 | |
 | [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🟢 2/2 | 🟢 1/1 | 🟢 18/18 | 🟢 4/4 | |
-| [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🟢 2/2 | 🟢 1/1 | 🟢 18/18 | 🟢 8/8 | |
-| [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🟢 2/2 | 🟢 1/1 | 🟢 18/18 | 🟢 8/8 | |
+| [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🟢 2/2 | 🔴 0/1 | 🟢 18/18 | 🔴 0/8 | |
+| [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🟢 2/2 | 🔴 0/1 | 🟢 18/18 | 🔴 0/8 | |
 | [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 13/13 | |
 | [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 10/10 | |
 | [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 10/10 | |
@@ -250,7 +250,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Other capabilities | Notes |
 |---|---|---|---|
-| [java](../by-language/java.md) | [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | 🟢 4/4 | |
+| [java](../by-language/java.md) | [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | 🟡 1/4 | |
 | [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | 🟢 4/4 | |
 | [python](../by-language/python.md) | [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | 🟢 4/4 | |
 

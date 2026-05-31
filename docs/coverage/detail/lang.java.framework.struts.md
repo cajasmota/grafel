@@ -17,32 +17,32 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/apache_struts.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/apache_struts.yaml` | — |
-| Route extraction | 🟢 `partial` | `2026-05-29` | 3089 | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Extracts @Action(value=...) annotations and struts.xml <action> elements; @Namespace prefix composition; HANDLED_BY relationships to action classes |
+| Route extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Extracts @Action(value=...) annotations and struts.xml <action> elements; @Namespace prefix composition; HANDLED_BY relationships to action classes |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-29` | 3089 | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Detects JAAS (LoginContext/Subject) and Spring Security (SecurityContextHolder/@PreAuthorize/@Secured) integration markers; Struts has no built-in auth, so detection is heuristic based on common integration patterns |
+| Auth coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Detects JAAS (LoginContext/Subject) and Spring Security (SecurityContextHolder/@PreAuthorize/@Secured) integration markers; Struts has no built-in auth, so detection is heuristic based on common integration patterns |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-30` | 3191 | `internal/custom/java/struts_dto_test.go`<br>`internal/custom/java/struts_routes.go`<br>`testdata/fixtures/sources/java/struts/StrutsDtoFixture.java` | Detects Struts 1 ActionForm subclasses (incl. Validator/Dyna variants) and Struts 2 action field-binding (ActionSupport/Action/ModelDriven). Emits SCOPE.Schema DTO entities, SCOPE.Field bound fields from public OGNL setters (skipping framework plumbing), BINDS_INPUT relationships, and BINDS_MODEL for ModelDriven<T>. Heuristic regex over setters / extends-clauses, hence partial |
-| Request validation | 🟢 `partial` | — | 3256 | `internal/custom/java/struts_routes.go` | extractStrutsRequestValidation() detects Struts 2 validate() overrides, @Validations/@Validation annotations, field-validator annotations (@RequiredStringValidator etc.), Struts 1 ActionForm.validate() overrides, and validation.xml field/validator elements (#3256) |
+| DTO extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/struts_dto_test.go`<br>`internal/custom/java/struts_routes.go`<br>`testdata/fixtures/sources/java/struts/StrutsDtoFixture.java` | Detects Struts 1 ActionForm subclasses (incl. Validator/Dyna variants) and Struts 2 action field-binding (ActionSupport/Action/ModelDriven). Emits SCOPE.Schema DTO entities, SCOPE.Field bound fields from public OGNL setters (skipping framework plumbing), BINDS_INPUT relationships, and BINDS_MODEL for ModelDriven<T>. Heuristic regex over setters / extends-clauses, hence partial |
+| Request validation | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/struts_routes.go` | extractStrutsRequestValidation() detects Struts 2 validate() overrides, @Validations/@Validation annotations, field-validator annotations (@RequiredStringValidator etc.), Struts 1 ActionForm.validate() overrides, and validation.xml field/validator elements (#3256) |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | 3089 | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Detects Interceptor/AbstractInterceptor implementors and intercept(ActionInvocation) overrides; the Struts interceptor stack is the primary middleware mechanism |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Detects Interceptor/AbstractInterceptor implementors and intercept(ActionInvocation) overrides; the Struts interceptor stack is the primary middleware mechanism |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/java/junit5.go` | struts, struts2, apache-struts keys included in junit5Frameworks map in junit5.go; test-class detection fires for JUnit 5 @Test methods and Struts Test Plugin patterns |
+| Tests linkage | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go` | struts, struts2, apache-struts keys included in junit5Frameworks map in junit5.go; test-class detection fires for JUnit 5 @Test methods and Struts Test Plugin patterns |
 
 ### Type System
 
@@ -81,9 +81,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Log extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Metric extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Trace extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
 
 ### Data
 

@@ -29,7 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/spring_request_response.go` | SCOPE.Schema(kind=dto) entities emitted for @RequestBody parameter types and ResponseEntity<T>/Mono<T>/Flux<T> return types; generic collections (List/Map/Set) skipped via srrSkipTypes |
+| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_request_response.go` | SCOPE.Schema(kind=dto) entities emitted for @RequestBody parameter types and ResponseEntity<T>/Mono<T>/Flux<T> return types; generic collections (List/Map/Set) skipped via srrSkipTypes |
 | Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_params.go` | Bean Validation annotations (@NotNull, @NotBlank, @NotEmpty, @Valid, @Min, @Max, @Size, @Pattern, @Email) captured per handler parameter; required flag set; no field-level constraint recursion |
 
 ### Middleware
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | @Test/@ParameterizedTest/@RepeatedTest methods extracted; @BeforeEach/@AfterEach lifecycle methods captured; @Nested classes emitted; @ExtendWith extensions; OWNS edge from class to test method; @SpringBootTest/@WebMvcTest class-level annotations recognised; value-asserting test TestSpringBoot_TestsLinkage_Issue2991 |
+| Tests linkage | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | @Test/@ParameterizedTest/@RepeatedTest methods extracted; @BeforeEach/@AfterEach lifecycle methods captured; @Nested classes emitted; @ExtendWith extensions; OWNS edge from class to test method; @SpringBootTest/@WebMvcTest class-level annotations recognised; value-asserting test TestSpringBoot_TestsLinkage_Issue2991 |
 
 ### Type System
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/spring_boot.go` | — |
-| DI injection point | 🟢 `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/spring_boot.go` | — |
-| DI scope resolution | 🟢 `partial` | `2026-05-29` | 3081 | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_boot.go` | — |
+| DI binding extraction | 🔴 `missing` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | — |
+| DI injection point | 🔴 `missing` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | — |
+| DI scope resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_boot.go` | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on class/method detected; class-level boundary + method-level SCOPE.Pattern(subtype=transaction_boundary) with declaring_class, framework; OWNS edges from class to method boundaries; Jakarta/JTA TxType positional form handled; value-asserting fixture TestTransactional_Boundary_Propagation_Rollback_Issue3003 |
-| Transaction propagation | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> (Spring) and TxType.<MODE> (JTA) extracted into propagation property; isolation + readOnly also captured; all Spring propagation modes + JTA TxType modes covered; value-asserting test TestTransactional_Boundary_Propagation_Rollback_Issue3003 |
-| Transaction rollback rules | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor X.class single + {A.class,B.class} list captured as rollback_for/no_rollback_for properties; value-asserting test covers single + multi-class rollback + noRollbackFor |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on class/method detected; class-level boundary + method-level SCOPE.Pattern(subtype=transaction_boundary) with declaring_class, framework; OWNS edges from class to method boundaries; Jakarta/JTA TxType positional form handled; value-asserting fixture TestTransactional_Boundary_Propagation_Rollback_Issue3003 |
+| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> (Spring) and TxType.<MODE> (JTA) extracted into propagation property; isolation + readOnly also captured; all Spring propagation modes + JTA TxType modes covered; value-asserting test TestTransactional_Boundary_Propagation_Rollback_Issue3003 |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor X.class single + {A.class,B.class} list captured as rollback_for/no_rollback_for properties; value-asserting test covers single + multi-class rollback + noRollbackFor |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | Spring AOP: @Aspect classes, @Before/@After/@Around/@AfterReturning/@AfterThrowing advice methods extracted as SCOPE.Pattern(subtype=advice) with advice_type+pointcut_expression+aspect properties; OWNS edge from aspect; REFERENCES edge for named pointcuts; all 5 advice types covered; value-asserting tests in TestSpringAOP_AdviceAttribution_Issue3004 |
-| Aspect extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect) with kind=aspect + framework properties; Spring Boot + Spring WebFlux gated; value-asserting tests in TestSpringAOP_Fixture_Issue3004 |
-| Pointcut resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut declarations detected as SCOPE.Pattern(subtype=pointcut) with pointcut_expression; named pointcut references resolved via REFERENCES edges from advice; inline AspectJ execution() excluded from named-reference resolution; value-asserting tests |
+| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | Spring AOP: @Aspect classes, @Before/@After/@Around/@AfterReturning/@AfterThrowing advice methods extracted as SCOPE.Pattern(subtype=advice) with advice_type+pointcut_expression+aspect properties; OWNS edge from aspect; REFERENCES edge for named pointcuts; all 5 advice types covered; value-asserting tests in TestSpringAOP_AdviceAttribution_Issue3004 |
+| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect) with kind=aspect + framework properties; Spring Boot + Spring WebFlux gated; value-asserting tests in TestSpringAOP_Fixture_Issue3004 |
+| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut declarations detected as SCOPE.Pattern(subtype=pointcut) with pointcut_expression; named pointcut references resolved via REFERENCES edges from advice; inline AspectJ execution() excluded from named-reference resolution; value-asserting tests |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | SLF4J @Slf4j logger + LoggerFactory.getLogger, Log4j LogManager.getLogger, JUL Logger.getLogger; log statement calls (log.info/debug/warn/error/trace) per call site; library + framework + log_level properties; value-asserting tests TestObservability_Slf4jLogging_Issue3006 + TestObservability_LoggerFactoryVariants_Issue3006 |
-| Metric extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer Counter/Timer/Gauge/DistributionSummary.builder(), MeterRegistry usage, @Timed annotation; MicroProfile @Counted/@Metered/@Gauge; metric_type + metric_name + library + framework properties; value-asserting tests TestObservability_MicrometerMetrics_Issue3006 + TestObservability_MicroProfileMetrics_Issue3006 |
-| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + tracer.spanBuilder(); Micrometer Tracing @Observed + tracer.nextSpan(); span_kind (annotation/programmatic) + span_name + library + framework; value-asserting tests TestObservability_OtelTracing_Issue3006 + TestObservability_MicrometerTracing_Issue3006 |
+| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | SLF4J @Slf4j logger + LoggerFactory.getLogger, Log4j LogManager.getLogger, JUL Logger.getLogger; log statement calls (log.info/debug/warn/error/trace) per call site; library + framework + log_level properties; value-asserting tests TestObservability_Slf4jLogging_Issue3006 + TestObservability_LoggerFactoryVariants_Issue3006 |
+| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer Counter/Timer/Gauge/DistributionSummary.builder(), MeterRegistry usage, @Timed annotation; MicroProfile @Counted/@Metered/@Gauge; metric_type + metric_name + library + framework properties; value-asserting tests TestObservability_MicrometerMetrics_Issue3006 + TestObservability_MicroProfileMetrics_Issue3006 |
+| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + tracer.spanBuilder(); Micrometer Tracing @Observed + tracer.nextSpan(); span_kind (annotation/programmatic) + span_name + library + framework; value-asserting tests TestObservability_OtelTracing_Issue3006 + TestObservability_MicrometerTracing_Issue3006 |
 
 ### Data
 

@@ -15,34 +15,34 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | 🟢 `partial` | — | 3256 | `internal/custom/java/android.go` | extractAndroidContexts() detects getContext()/requireContext()/getApplicationContext()/getBaseContext()/requireActivity() call sites and Context parameter names as SCOPE.Reference context_site entities (#3256) |
+| Context extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | extractAndroidContexts() detects getContext()/requireContext()/getApplicationContext()/getBaseContext()/requireActivity() call sites and Context parameter names as SCOPE.Reference context_site entities (#3256) |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Deep link extraction | 🟢 `partial` | — | 3256 | `internal/custom/java/android.go` | extractAndroidDeepLinks() detects <intent-filter> blocks in AndroidManifest.xml with <data android:scheme> as SCOPE.Reference deep_link entities with scheme/host/path URI templates (#3256) |
-| Navigation extraction | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adIntentExplicitRE+adFragmentTransactionRE emit navigation edges (#3179) |
-| Screen detection | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adActivityClassRE+adFragmentClassRE detect Activity/Fragment screens (#3179) |
+| Deep link extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | extractAndroidDeepLinks() detects <intent-filter> blocks in AndroidManifest.xml with <data android:scheme> as SCOPE.Reference deep_link entities with scheme/host/path URI templates (#3256) |
+| Navigation extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | adIntentExplicitRE+adFragmentTransactionRE emit navigation edges (#3179) |
+| Screen detection | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | adActivityClassRE+adFragmentClassRE detect Activity/Fragment screens (#3179) |
 
 ### Platform
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Platform branching | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adSdkIntBranchRE detects Build.VERSION.SDK_INT API-level comparisons as platform-branch operations owned by the enclosing class (#3188) |
+| Platform branching | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | adSdkIntBranchRE detects Build.VERSION.SDK_INT API-level comparisons as platform-branch operations owned by the enclosing class (#3188) |
 
 ### Native Bridge
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adUsesPermissionRE+adUsesFeatureRE (manifest android.hardware.*) and adHardwareImportRE (import android.hardware.*) emit native-module references (#3188) |
+| Native module imports | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | adUsesPermissionRE+adUsesFeatureRE (manifest android.hardware.*) and adHardwareImportRE (import android.hardware.*) emit native-module references (#3188) |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🟢 `partial` | `2026-05-30` | — | `internal/custom/java/android.go` | adSdkIntBranchRE detects Build.VERSION.SDK_INT comparisons as platform-branch control-flow sites; same extractor delivers Platform.platform_branching partial (#3188); the branch control-flow site entity mirrors the Data Flow.branch_conditions surface for Android |
-| State management | 🟢 `partial` | — | — | `internal/custom/java/android.go` | adViewModelClassRE+adViewModelProviderRE detect ViewModel/LiveData state (#3179) |
+| Branch conditions | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | adSdkIntBranchRE detects Build.VERSION.SDK_INT comparisons as platform-branch control-flow sites; same extractor delivers Platform.platform_branching partial (#3188); the branch control-flow site entity mirrors the Data Flow.branch_conditions surface for Android |
+| State management | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/android.go` | adViewModelClassRE+adViewModelProviderRE detect ViewModel/LiveData state (#3179) |
 
 ### Type System
 
@@ -62,7 +62,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | — | `internal/custom/java/junit5.go` | android_jetpack added to junit5Frameworks map (#3177) |
+| Tests linkage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go` | android_jetpack added to junit5Frameworks map (#3177) |
 
 ### Substrate
 

@@ -17,32 +17,32 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/vert_x.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/vert_x.yaml` | — |
-| Route extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go`<br>`internal/engine/http_endpoint_synthesis.go` | — |
+| Route extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
+| Auth coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
-| Request validation | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
+| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
+| Request validation | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/vertx_routes.go` | — |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/custom/java/junit5.go`<br>`internal/custom/java/vertx_routes.go` | — |
+| Tests linkage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go`<br>`internal/custom/java/vertx_routes.go` | — |
 
 ### Type System
 
@@ -81,9 +81,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Log extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Metric extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Trace extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
 
 ### Data
 

@@ -17168,51 +17168,51 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "partial",
-            "cites": ["internal/custom/java/akka_http_routes.go","internal/engine/http_endpoint_synthesis.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "3092"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "3092"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/akka_http_routes.go","internal/engine/http_endpoint_synthesis.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "3092"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "3092"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "3092"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "request_validation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "3092"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "3092"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "3092"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Type System": {
@@ -17289,21 +17289,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -17429,54 +17429,60 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
-            "issue": "3256",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "extractAndroidContexts() detects getContext()/requireContext()/getApplicationContext()/getBaseContext()/requireActivity() call sites and Context parameter names as SCOPE.Reference context_site entities (#3256)"
           }
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
-            "issue": "3256",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "extractAndroidDeepLinks() detects \u003cintent-filter\u003e blocks in AndroidManifest.xml with \u003cdata android:scheme\u003e as SCOPE.Reference deep_link entities with scheme/host/path URI templates (#3256)"
           },
           "navigation_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adIntentExplicitRE+adFragmentTransactionRE emit navigation edges (#3179)"
           },
           "screen_detection": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adActivityClassRE+adFragmentClassRE detect Activity/Fragment screens (#3179)"
           }
         },
         "Platform": {
           "platform_branching": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT API-level comparisons as platform-branch operations owned by the enclosing class (#3188)"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adUsesPermissionRE+adUsesFeatureRE (manifest android.hardware.*) and adHardwareImportRE (import android.hardware.*) emit native-module references (#3188)"
           }
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT comparisons as platform-branch control-flow sites; same extractor delivers Platform.platform_branching partial (#3188); the branch control-flow site entity mirrors the Data Flow.branch_conditions surface for Android",
             "verified_at": "2026-05-30"
           },
           "state_management": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adViewModelClassRE+adViewModelProviderRE detect ViewModel/LiveData state (#3179)"
           }
         },
@@ -17506,8 +17512,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "android_jetpack added to junit5Frameworks map (#3177)"
           }
         },
@@ -17628,54 +17635,60 @@
       "capabilities": {
         "Structure": {
           "context_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
-            "issue": "3256",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "extractAndroidContexts() detects getContext()/requireContext()/getApplicationContext()/getBaseContext()/requireActivity() call sites and Context parameter names as SCOPE.Reference context_site entities (#3256)"
           }
         },
         "Navigation": {
           "deep_link_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
-            "issue": "3256",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "extractAndroidDeepLinks() detects \u003cintent-filter\u003e blocks in AndroidManifest.xml with \u003cdata android:scheme\u003e as SCOPE.Reference deep_link entities with scheme/host/path URI templates (#3256)"
           },
           "navigation_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adIntentExplicitRE+adFragmentTransactionRE emit navigation edges (#3179)"
           },
           "screen_detection": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adActivityClassRE+adFragmentClassRE detect Activity/Fragment screens (#3179)"
           }
         },
         "Platform": {
           "platform_branching": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT API-level comparisons as platform-branch operations owned by the enclosing class (#3188)"
           }
         },
         "Native Bridge": {
           "native_module_imports": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adUsesPermissionRE+adUsesFeatureRE (manifest android.hardware.*) and adHardwareImportRE (import android.hardware.*) emit native-module references (#3188)"
           }
         },
         "Data Flow": {
           "branch_conditions": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adSdkIntBranchRE detects Build.VERSION.SDK_INT comparisons as platform-branch control-flow sites; same extractor delivers Platform.platform_branching partial (#3188); the branch control-flow site entity mirrors the Data Flow.branch_conditions surface for Android",
             "verified_at": "2026-05-30"
           },
           "state_management": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/android.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "adViewModelClassRE+adViewModelProviderRE detect ViewModel/LiveData state (#3179)"
           }
         },
@@ -17705,8 +17718,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "android_sdk added to junit5Frameworks map (#3177)"
           }
         },
@@ -17846,35 +17860,35 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/jakarta_jaxrs_dto.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "request_validation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/jakarta_jaxrs_dto.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Type System": {
@@ -17900,36 +17914,36 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3087"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "AOP": {
@@ -17951,21 +17965,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -18105,9 +18119,9 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vaadin_gwt.go"],
-            "issue": "3091"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "context_extraction": {
             "status": "not_applicable",
@@ -18121,9 +18135,9 @@
             "notes": "GWT compiles Java to client-side JS but uses Java idioms with no mobile platform-discriminating branches; branch_conditions is a mobile/platform-conditional UI paradigm that does not apply; state_management and prop_extraction are also not_applicable for GWT"
           },
           "data_fetching": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/gwt_rpc.go"],
-            "issue": "3190",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "GWT RPC + RequestFactory client-side data fetching: @RemoteServiceRelativePath RPC service interfaces, GWT.create(*.class) proxy-creation sites (linked FETCHES_FROM to the service), AsyncCallback\u003cT\u003e completion sites, RequestFactory/RequestContext interfaces, @ProxyFor EntityProxy/ValueProxy beans, and Request.fire(Receiver) sites. Heuristic regex detection, hence partial.",
             "verified_at": "2026-05-30"
           },
@@ -18140,9 +18154,9 @@
         },
         "Navigation": {
           "router_pattern": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vaadin_gwt.go"],
-            "issue": "3091"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Type System": {
@@ -18173,8 +18187,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "gwt, vaadin, android_sdk, android_jetpack added to junit5Frameworks map (#3177)"
           }
         },
@@ -18320,38 +18335,38 @@
         "Auth": {
           "auth_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/jakarta_ee_advanced.go","internal/engine/java_auth_policy.go"],
+            "cites": ["internal/engine/java_auth_policy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3088",
             "verified_at": "2026-05-29"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/jakarta_jaxrs_dto.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/jakarta_jaxrs_dto.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/helidon_filters.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -18378,41 +18393,41 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3088",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -18435,21 +18450,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -18614,9 +18629,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_jaxrs_dto.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "request_validation": {
@@ -18635,9 +18650,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -18664,81 +18679,81 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-28"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-28"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
             "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
             "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
             "verified_at": "2026-05-29"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "aspect_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "pointcut_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -18879,51 +18894,51 @@
         "Routing": {
           "endpoint_synthesis": {
             "status": "partial",
-            "cites": ["internal/custom/java/javalin_routes.go","internal/engine/http_endpoint_synthesis.go"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "3085"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "3085"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/javalin_routes.go","internal/engine/http_endpoint_synthesis.go","testdata/fixtures/sources/java/javalin/App.java"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "3085"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "3085"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "3085"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "request_validation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "3085"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "3085"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/junit5.go"],
-            "issue": "3085"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Type System": {
@@ -19000,21 +19015,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -19193,16 +19208,17 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jaxrs_filters.go","internal/custom/java/jaxrs_filters_test.go","testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "JUnit 5 tests in JAX-RS projects; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestJakartaEE_TestsLinkage_Issue2996 value-asserting (same JUnit 5 extractor gates on jaxrs)",
             "verified_at": "2026-05-30"
           }
@@ -19230,80 +19246,89 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go","internal/custom/java/jaxrs_filters_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go","internal/custom/java/jaxrs_filters_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go","internal/custom/java/jaxrs_filters_test.go","testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Transactional class/method boundaries; jaxrs in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies jaxrs",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "propagation/TxType; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "rollbackFor/noRollbackFor; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/cdi_interceptors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "CDI @Interceptor + @AroundInvoke/@AroundConstruct methods extracted as SCOPE.Pattern(subtype=advice) with advice_type (around_invoke/around_construct) + aspect + framework properties; OWNS edge; value-asserting TestCDI_JAXRS_InterceptorClass_Issue3082",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/cdi_interceptors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Interceptor-annotated classes detected as SCOPE.Pattern(subtype=aspect, kind=cdi_interceptor) with framework=jaxrs; TestCDI_JAXRS_InterceptorClass_Issue3082 value-asserting",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/cdi_interceptors_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@InterceptorBinding annotation type declarations extracted as SCOPE.Pattern(subtype=pointcut, kind=interceptor_binding); REFERENCES edge from advice to binding; value-asserting TestCDI_JAXRS_InterceptorBinding_Issue3082",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Same extractor as spring-boot; jaxrs in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies jaxrs",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Micrometer + @Timed + @Counted/@Metered/@Gauge; jaxrs in obsFrameworks",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); jaxrs in obsFrameworks",
             "verified_at": "2026-05-30"
           }
@@ -19444,22 +19469,25 @@
       "capabilities": {
         "Prompts": {
           "prompt_template_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/langchain4j.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@SystemMessage/@UserMessage annotation extraction: lc4jSystemMessageRE and lc4jUserMessageRE capture annotation-level prompt template strings. Runtime template variable resolution not captured.",
             "verified_at": "2026-05-29"
           }
         },
         "Composition": {
           "chain_composition": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/langchain4j.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@AiService interface extraction plus RAG/ChatMemory component detection: structural composition captured (AiService, EmbeddingStoreContentRetriever, EmbeddingStoreIngestor, ChatMemory fields). Runtime chain wiring not traced.",
             "verified_at": "2026-05-29"
           },
           "tool_use_detection": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/langchain4j.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Tool annotation extraction: lc4jToolMethodRE extracts @Tool-annotated methods, emitting SCOPE.Operation entities with tool_method property. Dynamic tool registration not captured.",
             "verified_at": "2026-05-29"
           }
@@ -19495,7 +19523,7 @@
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/micronaut.go","internal/engine/java_annotation_routes.go"],
+            "cites": ["internal/engine/java_annotation_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
           }
@@ -19510,7 +19538,7 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/micronaut.go","internal/engine/java_annotation_routes.go"],
+            "cites": ["internal/engine/java_annotation_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
           },
@@ -19523,16 +19551,17 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go","testdata/fixtures/sources/java/micronaut/AuthFilter.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3084",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@MicronautTest + JUnit 5; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestMicronaut_TestsLinkage_Issue2995 value-asserting",
             "verified_at": "2026-05-30"
           }
@@ -19560,80 +19589,89 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/micronaut.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-28"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/micronaut.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-28"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/micronaut.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-28"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Transactional class/method boundaries; micronaut in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies micronaut activation",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "propagation/TxType captured; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "rollbackFor/noRollbackFor; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Micronaut AOP: @InterceptorBean binding + intercept() method extracted as SCOPE.Pattern(subtype=advice) with advice_type=around + binding property; OWNS edge from interceptor class; REFERENCES edge to pointcut; value-asserting tests TestMicronautAOP_AdviceAttribution_Issue3084",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Around @interface + MethodInterceptor-implementing classes detected as SCOPE.Pattern(subtype=aspect); TestMicronautAOP_AspectExtraction_Issue3084 proves binding annotation + interceptor class both emitted",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/micronaut_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Around-annotated binding annotation type emitted as SCOPE.Pattern(subtype=pointcut); REFERENCES edge from advice to pointcut; TestMicronautAOP_PointcutResolution_Issue3084 value-asserting",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Same extractor as spring-boot; micronaut in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies micronaut",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Micrometer + @Timed + @Counted/@Metered/@Gauge; micronaut in obsFrameworks",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); micronaut in obsFrameworks",
             "verified_at": "2026-05-30"
           }
@@ -19799,9 +19837,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_jaxrs_dto.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "request_validation": {
@@ -19813,17 +19851,17 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jaxrs_filters.go","internal/custom/java/jaxrs_filters_test.go","testdata/fixtures/sources/java/microprofile/MicroProfileFiltersFixture.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3083",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -19850,84 +19888,84 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/jakarta_ee_advanced.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3079",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3079",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3079",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes \"microprofile\" (#3175).",
             "verified_at": "2026-05-29"
           },
           "aspect_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes \"microprofile\" (#3175).",
             "verified_at": "2026-05-29"
           },
           "pointcut_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "MicroProfile uses CDI interceptors (@Interceptor/@AroundInvoke/@InterceptorBinding) identical to Jakarta EE. cdiFrameworks gate in cdi_interceptors.go now includes \"microprofile\" (#3175).",
             "verified_at": "2026-05-29"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -20099,12 +20137,13 @@
         "Routing": {
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/play_routes.go","internal/engine/http_endpoint_synthesis.go"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "3090"
           },
           "router_pattern": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/play_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "playRoutesLineRE in play_routes.go extracts HTTP verb+path patterns from conf/routes DSL (#3178).",
             "verified_at": "2026-05-29"
           }
@@ -20143,9 +20182,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/play_routes.go"],
-            "issue": "3090"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Substrate": {
@@ -20223,14 +20262,14 @@
             "issue": "3154"
           },
           "request_shape_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/play_routes.go"],
-            "issue": "3090"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "response_shape_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/play_routes.go"],
-            "issue": "3256",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "extractPlayResponseShapes() detects Play Result factory call sites (ok/created/badRequest/notFound/redirect/status/etc.) as SCOPE.Reference response_shape entities with result_factory and controller_class properties (#3256)"
           },
           "sanitizer_recognition": {
@@ -20268,9 +20307,9 @@
         },
         "Uncategorized": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/play_routes.go"],
-            "issue": "3090"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "endpoint_synthesis": {
             "status": "partial",
@@ -20278,14 +20317,14 @@
             "issue": "3090"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/play_routes.go"],
-            "issue": "3090"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/play_routes.go"],
-            "issue": "3090"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         }
       }
@@ -20310,7 +20349,7 @@
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/quarkus.go","internal/engine/java_annotation_routes.go"],
+            "cites": ["internal/engine/java_annotation_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
           }
@@ -20325,7 +20364,7 @@
         "Validation": {
           "dto_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/quarkus.go","internal/engine/java_annotation_routes.go"],
+            "cites": ["internal/engine/java_annotation_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
           },
@@ -20345,9 +20384,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -20374,81 +20413,81 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/quarkus.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/quarkus.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/quarkus.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
             "verified_at": "2026-05-29"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
             "verified_at": "2026-05-29"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3003",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
             "verified_at": "2026-05-29"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "aspect_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "pointcut_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go"],
-            "issue": "3082"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -20614,9 +20653,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_request_response.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "SCOPE.Schema(kind=dto) entities emitted for @RequestBody parameter types and ResponseEntity\u003cT\u003e/Mono\u003cT\u003e/Flux\u003cT\u003e return types; generic collections (List/Map/Set) skipped via srrSkipTypes",
             "verified_at": "2026-05-29"
           },
@@ -20637,8 +20676,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Test/@ParameterizedTest/@RepeatedTest methods extracted; @BeforeEach/@AfterEach lifecycle methods captured; @Nested classes emitted; @ExtendWith extensions; OWNS edge from class to test method; @SpringBootTest/@WebMvcTest class-level annotations recognised; value-asserting test TestSpringBoot_TestsLinkage_Issue2991",
             "verified_at": "2026-05-30"
           }
@@ -20666,80 +20706,89 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_boot.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-28"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_boot.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-28"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_boot.go"],
-            "issue": "3081",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Transactional on class/method detected; class-level boundary + method-level SCOPE.Pattern(subtype=transaction_boundary) with declaring_class, framework; OWNS edges from class to method boundaries; Jakarta/JTA TxType positional form handled; value-asserting fixture TestTransactional_Boundary_Propagation_Rollback_Issue3003",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) extracted into propagation property; isolation + readOnly also captured; all Spring propagation modes + JTA TxType modes covered; value-asserting test TestTransactional_Boundary_Propagation_Rollback_Issue3003",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "rollbackFor/noRollbackFor X.class single + {A.class,B.class} list captured as rollback_for/no_rollback_for properties; value-asserting test covers single + multi-class rollback + noRollbackFor",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Spring AOP: @Aspect classes, @Before/@After/@Around/@AfterReturning/@AfterThrowing advice methods extracted as SCOPE.Pattern(subtype=advice) with advice_type+pointcut_expression+aspect properties; OWNS edge from aspect; REFERENCES edge for named pointcuts; all 5 advice types covered; value-asserting tests in TestSpringAOP_AdviceAttribution_Issue3004",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect) with kind=aspect + framework properties; Spring Boot + Spring WebFlux gated; value-asserting tests in TestSpringAOP_Fixture_Issue3004",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Pointcut declarations detected as SCOPE.Pattern(subtype=pointcut) with pointcut_expression; named pointcut references resolved via REFERENCES edges from advice; inline AspectJ execution() excluded from named-reference resolution; value-asserting tests",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "SLF4J @Slf4j logger + LoggerFactory.getLogger, Log4j LogManager.getLogger, JUL Logger.getLogger; log statement calls (log.info/debug/warn/error/trace) per call site; library + framework + log_level properties; value-asserting tests TestObservability_Slf4jLogging_Issue3006 + TestObservability_LoggerFactoryVariants_Issue3006",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Micrometer Counter/Timer/Gauge/DistributionSummary.builder(), MeterRegistry usage, @Timed annotation; MicroProfile @Counted/@Metered/@Gauge; metric_type + metric_name + library + framework properties; value-asserting tests TestObservability_MicrometerMetrics_Issue3006 + TestObservability_MicroProfileMetrics_Issue3006",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "OTel @WithSpan + tracer.spanBuilder(); Micrometer Tracing @Observed + tracer.nextSpan(); span_kind (annotation/programmatic) + span_name + library + framework; value-asserting tests TestObservability_OtelTracing_Issue3006 + TestObservability_MicrometerTracing_Issue3006",
             "verified_at": "2026-05-30"
           }
@@ -20898,7 +20947,7 @@
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_webflux_routes.go","internal/engine/http_endpoint_synthesis.go","testdata/fixtures/sources/java/spring_webflux/RouterConfig.java"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "3080",
             "verified_at": "2026-05-29"
           }
@@ -20912,9 +20961,9 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_request_response.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "SCOPE.Schema(kind=dto) entities emitted for @RequestBody types and Mono\u003cT\u003e/Flux\u003cT\u003e return types; generic collections (List/Map/Set) skipped via srrSkipTypes",
             "verified_at": "2026-05-29"
           },
@@ -20928,17 +20977,18 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_webflux_routes.go","testdata/fixtures/sources/java/spring_webflux/RouterConfig.java"],
-            "issue": "3080",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "WebFilter implementations detected via 'implements WebFilter' class declaration; Middleware entities emitted with middleware_type=web_filter and filter_class. Multiple WebFilter classes in one file each produce a distinct entity.",
             "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Test/@WebFluxTest; @Test/@ParameterizedTest/@RepeatedTest methods extracted; OWNS edge class-\u003emethod; TestSpringWebFlux_TestsLinkage_Issue2991 value-asserting",
             "verified_at": "2026-05-30"
           }
@@ -20966,83 +21016,92 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_boot.go"],
-            "issue": "#2991",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "spring_webflux shares same DI model as spring_boot; @Autowired field/setter/constructor injection and @Bean method extraction handled by ExtractSpringBoot. No @Qualifier resolution.",
             "verified_at": "2026-05-29"
           },
           "di_injection_point": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_boot.go"],
-            "issue": "#2991",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "spring_webflux uses same @Autowired/@Bean extractor as spring_boot; field, setter, and constructor injection detected. No @Qualifier or @Primary resolution.",
             "verified_at": "2026-05-29"
           },
           "di_scope_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/spring_boot.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "spring_boot.go gate includes spring-webflux (line 13); emits spring_scope property (line 427) for @Scope/@RequestScope/@SessionScope/@ApplicationScope annotations. Registry cite was missing (#3176).",
             "verified_at": "2026-05-29"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "propagation=Propagation.\u003cMODE\u003e and TxType.\u003cMODE\u003e; isolation + readOnly; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "rollbackFor/noRollbackFor single + list; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Spring AOP shares same extractor as spring-boot; all 5 advice types (@Before/@After/@Around/@AfterReturning/@AfterThrowing) with advice_type+pointcut_expression+aspect; OWNS+REFERENCES edges; spring-webflux in aopFrameworks gate; value-asserting tests TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect); spring-webflux is explicitly gated in aopFrameworks; same extraction as spring-boot; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Pointcut declarations extracted; named reference resolution via REFERENCES; spring-webflux in aopFrameworks; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Same extractor as spring-boot; spring-webflux in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies spring-webflux",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Micrometer builders + MeterRegistry + @Timed; MicroProfile @Counted/@Metered/@Gauge; spring-webflux in obsFrameworks",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "OTel @WithSpan + spanBuilder(); Micrometer Tracing @Observed + nextSpan(); spring-webflux in obsFrameworks",
             "verified_at": "2026-05-30"
           }
@@ -21193,51 +21252,51 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
-            "issue": "3089",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Extracts @Action(value=...) annotations and struts.xml \u003caction\u003e elements; @Namespace prefix composition; HANDLED_BY relationships to action classes",
             "verified_at": "2026-05-29"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
-            "issue": "3089",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Detects JAAS (LoginContext/Subject) and Spring Security (SecurityContextHolder/@PreAuthorize/@Secured) integration markers; Struts has no built-in auth, so detection is heuristic based on common integration patterns",
             "verified_at": "2026-05-29"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/struts_dto_test.go","internal/custom/java/struts_routes.go","testdata/fixtures/sources/java/struts/StrutsDtoFixture.java"],
-            "issue": "3191",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Detects Struts 1 ActionForm subclasses (incl. Validator/Dyna variants) and Struts 2 action field-binding (ActionSupport/Action/ModelDriven). Emits SCOPE.Schema DTO entities, SCOPE.Field bound fields from public OGNL setters (skipping framework plumbing), BINDS_INPUT relationships, and BINDS_MODEL for ModelDriven\u003cT\u003e. Heuristic regex over setters / extends-clauses, hence partial",
             "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/struts_routes.go"],
-            "issue": "3256",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "extractStrutsRequestValidation() detects Struts 2 validate() overrides, @Validations/@Validation annotations, field-validator annotations (@RequiredStringValidator etc.), Struts 1 ActionForm.validate() overrides, and validation.xml field/validator elements (#3256)"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
-            "issue": "3089",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Detects Interceptor/AbstractInterceptor implementors and intercept(ActionInvocation) overrides; the Struts interceptor stack is the primary middleware mechanism",
             "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "struts, struts2, apache-struts keys included in junit5Frameworks map in junit5.go; test-class detection fires for JUnit 5 @Test methods and Struts Test Plugin patterns",
             "verified_at": "2026-05-30"
           }
@@ -21325,21 +21384,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -21465,9 +21524,9 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vaadin_gwt.go"],
-            "issue": "3091"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "context_extraction": {
             "status": "not_applicable",
@@ -21481,9 +21540,9 @@
             "notes": "Vaadin is a server-side Java UI framework with no mobile platform-discriminating branches; branch_conditions is a mobile/platform-conditional UI paradigm that does not apply; state_management and prop_extraction are also not_applicable for Vaadin"
           },
           "data_fetching": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vaadin_gwt.go"],
-            "issue": "3091"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           },
           "prop_extraction": {
             "status": "not_applicable",
@@ -21498,9 +21557,9 @@
         },
         "Navigation": {
           "router_pattern": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vaadin_gwt.go"],
-            "issue": "3091"
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
           }
         },
         "Type System": {
@@ -21531,8 +21590,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "vaadin added to junit5Frameworks map (#3177)"
           }
         },
@@ -21667,46 +21727,46 @@
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/vertx_routes.go","internal/engine/http_endpoint_synthesis.go"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3086",
             "verified_at": "2026-05-29"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "request_validation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go","internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -21784,21 +21844,21 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/observability.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3006",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22136,7 +22196,7 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "@Table table_name + @Column(name/nullable/length) attribute depth parsed; full DDL index/sequence introspection not parsed.",
             "verified_at": "2026-05-29"
@@ -22144,29 +22204,29 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed; emits SCOPE.Component/foreign_key entities with column_name and constraint_name properties",
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "FetchType.LAZY and FetchType.EAGER parsed from association annotations; emits SCOPE.Component/fetch_config entities with fetch_type property",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22264,7 +22324,7 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "@Table table_name + @Column(name/nullable/length) attribute depth parsed via hibernate.go shared helper; full DDL introspection not parsed.",
             "verified_at": "2026-05-29"
@@ -22272,29 +22332,29 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed via hibernate.go shared helper; emits SCOPE.Component/foreign_key entities",
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "FetchType.LAZY and FetchType.EAGER parsed; emits SCOPE.Component/fetch_config entities",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22464,7 +22524,7 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "cites": ["internal/extractors/java/panache.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Panache entities use standard JPA @Entity/@Table/@Column annotations parsed by the Hibernate extractor; panache.go synthesizes entity records but does not independently parse field schemas",
             "verified_at": "2026-05-29"
@@ -22473,7 +22533,7 @@
         "Relationships": {
           "association_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "cites": ["internal/extractors/java/panache.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Panache entity classes use JPA @OneToMany/@ManyToOne/@OneToOne/@ManyToMany annotations parsed by the Hibernate extractor; panache.go synthesizes operation entities for CRUD but does not itself parse association annotations",
             "verified_at": "2026-05-29"
@@ -22494,7 +22554,7 @@
           },
           "relationship_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/extractors/java/panache.go","internal/extractors/java/panache_test.go"],
+            "cites": ["internal/extractors/java/panache.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Relationships inferred via JPA annotation parsing in hibernate.go; panache.go synthesizes repository binding edges but no direct FK/join column resolution",
             "verified_at": "2026-05-29"
@@ -22528,14 +22588,14 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
-            "issue": "3095",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22564,7 +22624,7 @@
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           }
@@ -22588,14 +22648,14 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
-            "issue": "3095",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22624,7 +22684,7 @@
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           }
@@ -22653,7 +22713,7 @@
           },
           "schema_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go","internal/custom/java/spring_ecosystem.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "@Column(name/nullable/length) depth parsed via spring_ecosystem.go FK helper; table_name and entity extraction remain via hibernate.go. Full DDL not parsed.",
             "verified_at": "2026-05-29"
@@ -22661,29 +22721,29 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
           "foreign_key_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go","internal/custom/java/spring_ecosystem.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "@JoinColumn(name=) and @ForeignKey(name=) parsed via ExtractJPAFKAndLazy from spring_ecosystem.go; emits SCOPE.Component/foreign_key entities",
             "verified_at": "2026-05-29"
           },
           "lazy_loading_recognition": {
             "status": "partial",
-            "cites": ["internal/custom/java/jpa_fk_lazy.go","internal/custom/java/jpa_fk_lazy_test.go","internal/custom/java/spring_ecosystem.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3097",
             "notes": "FetchType.LAZY and FetchType.EAGER parsed from association annotations; emits SCOPE.Component/fetch_config entities",
             "verified_at": "2026-05-29"
           },
           "relationship_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22713,14 +22773,14 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
-            "issue": "3095",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22749,7 +22809,7 @@
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           }
@@ -22773,14 +22833,14 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_redis.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_redis.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/spring_ecosystem.go"],
-            "issue": "3095",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           }
         },
@@ -22809,7 +22869,7 @@
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/custom/java/spring_ecosystem.go","internal/engine/rules/java/orms/spring_data_redis.yaml"],
+            "cites": ["internal/engine/rules/java/orms/spring_data_redis.yaml"],
             "issue": "3095",
             "verified_at": "2026-05-29"
           }
@@ -22832,16 +22892,16 @@
       "capabilities": {
         "Schema": {
           "nested_model_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/bean_validation.go","internal/custom/java/bean_validation_test.go"],
-            "issue": "3100",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Valid (cascade/nested validation marker) is recognized and lifts the annotated parameter to required; no recursion into the nested type's own fields.",
             "verified_at": "2026-05-29"
           },
           "schema_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/bean_validation.go","internal/custom/java/bean_validation_test.go","testdata/fixtures/sources/java/bean_validation/ValidatedDtoFixture.java"],
-            "issue": "3100",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Parameter-level Bean Validation constraints (@NotNull, @NotBlank, @Size, @Min, @Max, @Email, @Pattern) are captured in the Annotations slice on each handler parameter and drive the Required flag. Field-level recursion into nested DTO classes is not implemented (partial scope). Proven by TestBeanValidation_SchemaExtraction_Issue3002 and TestBeanValidation_MultipleConstraints_Issue3002.",
             "verified_at": "2026-05-29"
           }
@@ -22849,15 +22909,15 @@
         "Constraints": {
           "constraint_extraction": {
             "status": "full",
-            "cites": ["internal/custom/java/bean_validation.go","internal/custom/java/bean_validation_test.go","internal/engine/java_annotation_params.go"],
+            "cites": ["internal/engine/java_annotation_params.go"],
             "issue": "3100",
             "notes": "Bean-Validation annotations (@NotNull/@NotBlank/@NotEmpty/@Size/@Min/@Max/@Pattern/@Email) are collected on each handler parameter and drive the Required flag; captured as annotation strings, not structured constraint records (no value bounds parsed).",
             "verified_at": "2026-05-29"
           },
           "custom_validator_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/bean_validation.go","internal/custom/java/bean_validation_test.go"],
-            "issue": "3100",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Extracting classes that implement ConstraintValidator\u003cA,T\u003e requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002.",
             "verified_at": "2026-05-29"
           }
@@ -22873,9 +22933,9 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/junit5.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Bean Validation integration tests use JUnit 5 with jakarta.validation.Validator. The junit5 extractor (internal/custom/java/junit5.go) captures @Test methods for the junit5 framework tag. Tests for bean-validation handlers are linked via the same JUnit 5 test-method extraction path used by other Java frameworks (e.g. Jakarta EE, Spring Boot — see #2996, #2991).",
             "verified_at": "2026-05-29"
           }
@@ -32319,30 +32379,32 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; Kotlin trailing-lambda route DSL proven by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
           },
           "handler_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; handler attribution proven by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "JavalinJWT, accessManager pattern, JavalinJWT.getTokenPayload — Kotlin Javalin uses identical DSL to Java, same extractor applies"
           }
         },
@@ -32360,8 +32422,9 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "app.before() and app.after() global/path-scoped middleware — Kotlin Javalin trailing lambda matches same regex"
           }
         },
@@ -33568,69 +33631,69 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @Transactional (JTA/Spring) on Kotlin proven by TestKotlinTransactional_Quarkus_Issue3274 (JTA path covers micronaut too)",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; propagation capture via transactional.go txFrameworks[\"micronaut\"]",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; rollbackFor rules parsed by transactional.go txFrameworks[\"micronaut\"]",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/micronaut_aop.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; Micronaut @Around/@InterceptorBean on Kotlin proven by TestKotlinMicronautAOP_Interceptor_Issue3274",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/micronaut_aop.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; Micronaut interceptor/aspect extraction proven by TestKotlinMicronautAOP_Interceptor_Issue3274",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/micronaut_aop.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; proven by TestKotlinMicronautAOP_Interceptor_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; SLF4J/@Slf4j on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274 (obsFrameworks[\"micronaut\"]=true)",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; Micrometer @Timed on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274 (obsFrameworks[\"micronaut\"]=true)",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274",
             "verified_at": "2026-05-30"
           }
@@ -33849,69 +33912,69 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; Jakarta @Transactional on Kotlin quarkus class proven by TestKotlinTransactional_Quarkus_Issue3274",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; txFrameworks[\"quarkus\"]=true in transactional.go",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; txFrameworks[\"quarkus\"]=true in transactional.go",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/kotlin_port_test.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin (cdiFrameworks[\"quarkus\"]=true); @Interceptor/@AroundInvoke on Kotlin proven by TestKotlinCDIInterceptors_Issue3274",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/kotlin_port_test.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; CDI interceptor aspect extraction proven by TestKotlinCDIInterceptors_Issue3274",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/cdi_interceptors.go","internal/custom/java/kotlin_port_test.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; proven by TestKotlinCDIInterceptors_Issue3274",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; obsFrameworks[\"quarkus\"]=true; SLF4J/@Slf4j proven by TestKotlinObservability_Slf4j_Issue3274",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @Timed Micrometer proven by TestKotlinObservability_Micrometer_Issue3274",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @WithSpan OTel proven by TestKotlinObservability_OTel_Issue3274",
             "verified_at": "2026-05-30"
           }
@@ -34329,83 +34392,92 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Kotlin Spring Boot @Service/@Repository/@Component stereotypes + @Bean methods; value-asserted by TestKotlinSpringBoot_DI_BindingNames_3435 (stereotype=service/repository, bean_method=passwordEncoder/config_class=AppConfig)",
             "verified_at": "2026-05-30"
           },
           "di_injection_point": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Kotlin primary-constructor injection (class Foo @Autowired constructor(private val x: Bar)) + @Autowired lateinit var props now captured (new Kotlin-gated regexes in spring_boot.go); injected_type+injection_kind asserted by TestKotlinSpringBoot_DI_ConstructorInjection_3435 and _PrimaryCtorNoAnnotation_3435",
             "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_boot.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@RequestScope/@Scope(\"prototype\") on Kotlin classes; spring_scope value asserted by TestKotlinSpringBoot_DI_ScopeValues_3435 (request, prototype)",
             "verified_at": "2026-05-30"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Transactional on Kotlin fun/class; method/class boundary names asserted by TestKotlinTransactional_Attributes_3435 (getOrders, processPayment, reconcile)",
             "verified_at": "2026-05-30"
           },
           "transaction_propagation": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "propagation=Propagation.REQUIRES_NEW captured + asserted by TestKotlinTransactional_Attributes_3435; readOnly=true also asserted",
             "verified_at": "2026-05-30"
           },
           "transaction_rollback_rules": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Kotlin rollbackFor=[X::class]/noRollbackFor + isolation captured (txClassRefRE now accepts ::class); rollback_for=PaymentException, no_rollback_for=WarnException, isolation=SERIALIZABLE asserted by TestKotlinTransactional_Attributes_3435",
             "verified_at": "2026-05-30"
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Before/@Around advice on Kotlin fun; advice_type (before/around) + method names asserted by TestKotlinSpringAOP_Attributes_3435",
             "verified_at": "2026-05-30"
           },
           "aspect_extraction": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Aspect on Kotlin class; aspect name=LoggingAspect asserted by TestKotlinSpringAOP_Attributes_3435",
             "verified_at": "2026-05-30"
           },
           "pointcut_resolution": {
-            "status": "full",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/spring_aop.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "@Pointcut expression + advice-\u003enamed-pointcut REFERENCES edge asserted by TestKotlinSpringAOP_Attributes_3435 (execution(* com.example.service.*.*(..)))",
             "verified_at": "2026-05-30"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @Slf4j and SLF4J logger on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274",
             "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @Timed Micrometer on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274",
             "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/observability.go"],
-            "issue": "3274",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274",
             "verified_at": "2026-05-30"
           }
@@ -34593,16 +34665,16 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Recording win: hibernate.go ExtractHibernate() accepts ctx.Language==\"kotlin\" — @Entity/@Table on Kotlin data classes matched identically to Java. Partial because Kotlin-specific JPA idioms (constructor-param columns, data class shorthand) may not all be captured."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Recording win: hibernate.go hibAssociationRE matches @OneToMany/@ManyToOne/@OneToOne/@ManyToMany before Kotlin 'var/val' properties. jpa_fk_lazy.go ExtractJPAFKAndLazy also runs on Kotlin (language gate: java or kotlin). Partial because collection types differ from Java generics."
           },
@@ -34622,7 +34694,7 @@
           },
           "relationship_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "3274",
             "notes": "java extractor language-gated to kotlin; @OneToMany/@ManyToOne/@ManyToMany on Kotlin proved by TestKotlinHibernate_Issue3274",
             "verified_at": "2026-05-30"
@@ -34823,16 +34895,16 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "partial",
+            "status": "missing",
             "cites": ["internal/custom/java/hibernate.go"],
-            "issue": "backfill:dictionary-completeness",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "Recording win: hibernate.go accepts kotlin language with spring_data_jpa framework. Spring Data JPA entities use the same @Entity/@Table annotations as Hibernate — regex patterns match Kotlin data class declarations. spring_ecosystem.go is Java-only but the JPA schema layer is shared."
           }
         },
         "Relationships": {
           "association_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Recording win: same as orm.hibernate — hibernate.go hibAssociationRE matches @OneToMany/@ManyToOne on Kotlin Spring Data JPA entities. @JoinColumn / @ForeignKey handled by jpa_fk_lazy.go ExtractJPAFKAndLazy."
           },
@@ -34852,7 +34924,7 @@
           },
           "relationship_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/java/hibernate.go","internal/custom/java/jpa_fk_lazy.go","internal/custom/java/kotlin_port_test.go"],
+            "cites": ["internal/custom/java/jpa_fk_lazy.go"],
             "issue": "3274",
             "notes": "java extractor language-gated to kotlin; @OneToMany/@ManyToOne on Kotlin Spring Data entities covered by hibernate.go hibAssociationRE",
             "verified_at": "2026-05-30"

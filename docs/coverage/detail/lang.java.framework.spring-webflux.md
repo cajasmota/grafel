@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/spring_webflux.yaml`<br>`internal/engine/spring_routes.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/spring_routes.go` | — |
-| Route extraction | 🟢 `partial` | `2026-05-29` | 3080 | `internal/custom/java/spring_webflux_routes.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`testdata/fixtures/sources/java/spring_webflux/RouterConfig.java` | — |
+| Route extraction | 🟢 `partial` | `2026-05-29` | 3080 | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
 
@@ -29,20 +29,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/spring_request_response.go` | SCOPE.Schema(kind=dto) entities emitted for @RequestBody types and Mono<T>/Flux<T> return types; generic collections (List/Map/Set) skipped via srrSkipTypes |
+| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_request_response.go` | SCOPE.Schema(kind=dto) entities emitted for @RequestBody types and Mono<T>/Flux<T> return types; generic collections (List/Map/Set) skipped via srrSkipTypes |
 | Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_params.go` | Bean Validation annotations (@Valid, @NotNull, @NotBlank, @NotEmpty) captured per handler parameter; required flag set; same extractor as spring-boot; no field-level recursion |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | 3080 | `internal/custom/java/spring_webflux_routes.go`<br>`testdata/fixtures/sources/java/spring_webflux/RouterConfig.java` | WebFilter implementations detected via 'implements WebFilter' class declaration; Middleware entities emitted with middleware_type=web_filter and filter_class. Multiple WebFilter classes in one file each produce a distinct entity. |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_webflux_routes.go`<br>`testdata/fixtures/sources/java/spring_webflux/RouterConfig.java` | WebFilter implementations detected via 'implements WebFilter' class declaration; Middleware entities emitted with middleware_type=web_filter and filter_class. Multiple WebFilter classes in one file each produce a distinct entity. |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | @Test/@WebFluxTest; @Test/@ParameterizedTest/@RepeatedTest methods extracted; OWNS edge class->method; TestSpringWebFlux_TestsLinkage_Issue2991 value-asserting |
+| Tests linkage | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | @Test/@WebFluxTest; @Test/@ParameterizedTest/@RepeatedTest methods extracted; OWNS edge class->method; TestSpringWebFlux_TestsLinkage_Issue2991 value-asserting |
 
 ### Type System
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-29` | [link](#2991) | `internal/custom/java/spring_boot.go` | spring_webflux shares same DI model as spring_boot; @Autowired field/setter/constructor injection and @Bean method extraction handled by ExtractSpringBoot. No @Qualifier resolution. |
-| DI injection point | 🟢 `partial` | `2026-05-29` | [link](#2991) | `internal/custom/java/spring_boot.go` | spring_webflux uses same @Autowired/@Bean extractor as spring_boot; field, setter, and constructor injection detected. No @Qualifier or @Primary resolution. |
-| DI scope resolution | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/spring_boot.go` | spring_boot.go gate includes spring-webflux (line 13); emits spring_scope property (line 427) for @Scope/@RequestScope/@SessionScope/@ApplicationScope annotations. Registry cite was missing (#3176). |
+| DI binding extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | spring_webflux shares same DI model as spring_boot; @Autowired field/setter/constructor injection and @Bean method extraction handled by ExtractSpringBoot. No @Qualifier resolution. |
+| DI injection point | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | spring_webflux uses same @Autowired/@Bean extractor as spring_boot; field, setter, and constructor injection detected. No @Qualifier or @Primary resolution. |
+| DI scope resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | spring_boot.go gate includes spring-webflux (line 13); emits spring_scope property (line 427) for @Scope/@RequestScope/@SessionScope/@ApplicationScope annotations. Registry cite was missing (#3176). |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation |
-| Transaction propagation | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> and TxType.<MODE>; isolation + readOnly; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
-| Transaction rollback rules | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor single + list; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation |
+| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> and TxType.<MODE>; isolation + readOnly; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor single + list; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | Spring AOP shares same extractor as spring-boot; all 5 advice types (@Before/@After/@Around/@AfterReturning/@AfterThrowing) with advice_type+pointcut_expression+aspect; OWNS+REFERENCES edges; spring-webflux in aopFrameworks gate; value-asserting tests TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
-| Aspect extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect); spring-webflux is explicitly gated in aopFrameworks; same extraction as spring-boot; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
-| Pointcut resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut declarations extracted; named reference resolution via REFERENCES; spring-webflux in aopFrameworks; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
+| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | Spring AOP shares same extractor as spring-boot; all 5 advice types (@Before/@After/@Around/@AfterReturning/@AfterThrowing) with advice_type+pointcut_expression+aspect; OWNS+REFERENCES edges; spring-webflux in aopFrameworks gate; value-asserting tests TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
+| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect); spring-webflux is explicitly gated in aopFrameworks; same extraction as spring-boot; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
+| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut declarations extracted; named reference resolution via REFERENCES; spring-webflux in aopFrameworks; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Same extractor as spring-boot; spring-webflux in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies spring-webflux |
-| Metric extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer builders + MeterRegistry + @Timed; MicroProfile @Counted/@Metered/@Gauge; spring-webflux in obsFrameworks |
-| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + spanBuilder(); Micrometer Tracing @Observed + nextSpan(); spring-webflux in obsFrameworks |
+| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Same extractor as spring-boot; spring-webflux in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies spring-webflux |
+| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer builders + MeterRegistry + @Timed; MicroProfile @Counted/@Metered/@Gauge; spring-webflux in obsFrameworks |
+| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + spanBuilder(); Micrometer Tracing @Observed + nextSpan(); spring-webflux in obsFrameworks |
 
 ### Data
 

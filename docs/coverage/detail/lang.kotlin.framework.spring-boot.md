@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | Kotlin Spring Boot @Service/@Repository/@Component stereotypes + @Bean methods; value-asserted by TestKotlinSpringBoot_DI_BindingNames_3435 (stereotype=service/repository, bean_method=passwordEncoder/config_class=AppConfig) |
-| DI injection point | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | Kotlin primary-constructor injection (class Foo @Autowired constructor(private val x: Bar)) + @Autowired lateinit var props now captured (new Kotlin-gated regexes in spring_boot.go); injected_type+injection_kind asserted by TestKotlinSpringBoot_DI_ConstructorInjection_3435 and _PrimaryCtorNoAnnotation_3435 |
-| DI scope resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | @RequestScope/@Scope("prototype") on Kotlin classes; spring_scope value asserted by TestKotlinSpringBoot_DI_ScopeValues_3435 (request, prototype) |
+| DI binding extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | Kotlin Spring Boot @Service/@Repository/@Component stereotypes + @Bean methods; value-asserted by TestKotlinSpringBoot_DI_BindingNames_3435 (stereotype=service/repository, bean_method=passwordEncoder/config_class=AppConfig) |
+| DI injection point | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | Kotlin primary-constructor injection (class Foo @Autowired constructor(private val x: Bar)) + @Autowired lateinit var props now captured (new Kotlin-gated regexes in spring_boot.go); injected_type+injection_kind asserted by TestKotlinSpringBoot_DI_ConstructorInjection_3435 and _PrimaryCtorNoAnnotation_3435 |
+| DI scope resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_boot.go` | @RequestScope/@Scope("prototype") on Kotlin classes; spring_scope value asserted by TestKotlinSpringBoot_DI_ScopeValues_3435 (request, prototype) |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on Kotlin fun/class; method/class boundary names asserted by TestKotlinTransactional_Attributes_3435 (getOrders, processPayment, reconcile) |
-| Transaction propagation | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.REQUIRES_NEW captured + asserted by TestKotlinTransactional_Attributes_3435; readOnly=true also asserted |
-| Transaction rollback rules | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | Kotlin rollbackFor=[X::class]/noRollbackFor + isolation captured (txClassRefRE now accepts ::class); rollback_for=PaymentException, no_rollback_for=WarnException, isolation=SERIALIZABLE asserted by TestKotlinTransactional_Attributes_3435 |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on Kotlin fun/class; method/class boundary names asserted by TestKotlinTransactional_Attributes_3435 (getOrders, processPayment, reconcile) |
+| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.REQUIRES_NEW captured + asserted by TestKotlinTransactional_Attributes_3435; readOnly=true also asserted |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | Kotlin rollbackFor=[X::class]/noRollbackFor + isolation captured (txClassRefRE now accepts ::class); rollback_for=PaymentException, no_rollback_for=WarnException, isolation=SERIALIZABLE asserted by TestKotlinTransactional_Attributes_3435 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Before/@Around advice on Kotlin fun; advice_type (before/around) + method names asserted by TestKotlinSpringAOP_Attributes_3435 |
-| Aspect extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect on Kotlin class; aspect name=LoggingAspect asserted by TestKotlinSpringAOP_Attributes_3435 |
-| Pointcut resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut expression + advice->named-pointcut REFERENCES edge asserted by TestKotlinSpringAOP_Attributes_3435 (execution(* com.example.service.*.*(..))) |
+| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Before/@Around advice on Kotlin fun; advice_type (before/around) + method names asserted by TestKotlinSpringAOP_Attributes_3435 |
+| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect on Kotlin class; aspect name=LoggingAspect asserted by TestKotlinSpringAOP_Attributes_3435 |
+| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut expression + advice->named-pointcut REFERENCES edge asserted by TestKotlinSpringAOP_Attributes_3435 (execution(* com.example.service.*.*(..))) |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Slf4j and SLF4J logger on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274 |
-| Metric extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Timed Micrometer on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274 |
-| Trace extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274 |
+| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Slf4j and SLF4J logger on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274 |
+| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Timed Micrometer on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274 |
+| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274 |
 
 ### Data
 

@@ -65,25 +65,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; Jakarta @Transactional on Kotlin quarkus class proven by TestKotlinTransactional_Quarkus_Issue3274 |
-| Transaction propagation | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; txFrameworks["quarkus"]=true in transactional.go |
-| Transaction rollback rules | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; txFrameworks["quarkus"]=true in transactional.go |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; Jakarta @Transactional on Kotlin quarkus class proven by TestKotlinTransactional_Quarkus_Issue3274 |
+| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; txFrameworks["quarkus"]=true in transactional.go |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/transactional.go` | java extractor language-gated to kotlin; txFrameworks["quarkus"]=true in transactional.go |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin (cdiFrameworks["quarkus"]=true); @Interceptor/@AroundInvoke on Kotlin proven by TestKotlinCDIInterceptors_Issue3274 |
-| Aspect extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; CDI interceptor aspect extraction proven by TestKotlinCDIInterceptors_Issue3274 |
-| Pointcut resolution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; proven by TestKotlinCDIInterceptors_Issue3274 |
+| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin (cdiFrameworks["quarkus"]=true); @Interceptor/@AroundInvoke on Kotlin proven by TestKotlinCDIInterceptors_Issue3274 |
+| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; CDI interceptor aspect extraction proven by TestKotlinCDIInterceptors_Issue3274 |
+| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; proven by TestKotlinCDIInterceptors_Issue3274 |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; obsFrameworks["quarkus"]=true; SLF4J/@Slf4j proven by TestKotlinObservability_Slf4j_Issue3274 |
-| Metric extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Timed Micrometer proven by TestKotlinObservability_Micrometer_Issue3274 |
-| Trace extraction | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel proven by TestKotlinObservability_OTel_Issue3274 |
+| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; obsFrameworks["quarkus"]=true; SLF4J/@Slf4j proven by TestKotlinObservability_Slf4j_Issue3274 |
+| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Timed Micrometer proven by TestKotlinObservability_Micrometer_Issue3274 |
+| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel proven by TestKotlinObservability_OTel_Issue3274 |
 
 ### Data
 

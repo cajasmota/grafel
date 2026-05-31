@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/micronaut.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/java_annotation_routes.go` | — |
-| Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/micronaut.go`<br>`internal/engine/java_annotation_routes.go` | — |
+| Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_routes.go` | — |
 
 ### Auth
 
@@ -29,20 +29,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/micronaut.go`<br>`internal/engine/java_annotation_routes.go` | — |
+| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_routes.go` | — |
 | Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_params.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3084) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go`<br>`testdata/fixtures/sources/java/micronaut/AuthFilter.java` | — |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go`<br>`testdata/fixtures/sources/java/micronaut/AuthFilter.java` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | @MicronautTest + JUnit 5; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestMicronaut_TestsLinkage_Issue2995 value-asserting |
+| Tests linkage | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | @MicronautTest + JUnit 5; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestMicronaut_TestsLinkage_Issue2995 value-asserting |
 
 ### Type System
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/micronaut.go` | — |
-| DI injection point | 🟢 `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/micronaut.go` | — |
-| DI scope resolution | 🟢 `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/micronaut.go` | — |
+| DI binding extraction | 🔴 `missing` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/micronaut.go` | — |
+| DI injection point | 🔴 `missing` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/micronaut.go` | — |
+| DI scope resolution | 🔴 `missing` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/micronaut.go` | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; micronaut in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies micronaut activation |
-| Transaction propagation | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation/TxType captured; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
-| Transaction rollback rules | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; micronaut in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies micronaut activation |
+| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation/TxType captured; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor; micronaut in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go` | Micronaut AOP: @InterceptorBean binding + intercept() method extracted as SCOPE.Pattern(subtype=advice) with advice_type=around + binding property; OWNS edge from interceptor class; REFERENCES edge to pointcut; value-asserting tests TestMicronautAOP_AdviceAttribution_Issue3084 |
-| Aspect extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go` | @Around @interface + MethodInterceptor-implementing classes detected as SCOPE.Pattern(subtype=aspect); TestMicronautAOP_AspectExtraction_Issue3084 proves binding annotation + interceptor class both emitted |
-| Pointcut resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go` | @Around-annotated binding annotation type emitted as SCOPE.Pattern(subtype=pointcut); REFERENCES edge from advice to pointcut; TestMicronautAOP_PointcutResolution_Issue3084 value-asserting |
+| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go` | Micronaut AOP: @InterceptorBean binding + intercept() method extracted as SCOPE.Pattern(subtype=advice) with advice_type=around + binding property; OWNS edge from interceptor class; REFERENCES edge to pointcut; value-asserting tests TestMicronautAOP_AdviceAttribution_Issue3084 |
+| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go` | @Around @interface + MethodInterceptor-implementing classes detected as SCOPE.Pattern(subtype=aspect); TestMicronautAOP_AspectExtraction_Issue3084 proves binding annotation + interceptor class both emitted |
+| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/micronaut_aop.go` | @Around-annotated binding annotation type emitted as SCOPE.Pattern(subtype=pointcut); REFERENCES edge from advice to pointcut; TestMicronautAOP_PointcutResolution_Issue3084 value-asserting |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Same extractor as spring-boot; micronaut in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies micronaut |
-| Metric extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer + @Timed + @Counted/@Metered/@Gauge; micronaut in obsFrameworks |
-| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); micronaut in obsFrameworks |
+| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Same extractor as spring-boot; micronaut in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies micronaut |
+| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer + @Timed + @Counted/@Metered/@Gauge; micronaut in obsFrameworks |
+| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); micronaut in obsFrameworks |
 
 ### Data
 

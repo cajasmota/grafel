@@ -29,7 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jakarta_jaxrs_dto.go` | — |
+| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_jaxrs_dto.go` | — |
 | Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_params.go` | — |
 
 ### Middleware
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/junit5.go` | — |
+| Tests linkage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go` | — |
 
 ### Type System
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/jakarta_ee_advanced.go` | — |
-| DI injection point | 🟢 `partial` | `2026-05-28` | backfill:dictionary-completeness | `internal/custom/java/jakarta_ee_advanced.go` | — |
-| DI scope resolution | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jakarta_ee_advanced.go` | — |
+| DI binding extraction | 🔴 `missing` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go` | — |
+| DI injection point | 🔴 `missing` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go` | — |
+| DI scope resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go` | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3003) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface |
-| Transaction propagation | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3003) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> (Spring) and TxType.<MODE> (JTA) captured into propagation property; isolation + readOnly also captured |
-| Transaction rollback rules | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3003) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface |
+| Transaction propagation | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> (Spring) and TxType.<MODE> (JTA) captured into propagation property; isolation + readOnly also captured |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🟢 `partial` | — | 3082 | `internal/custom/java/cdi_interceptors.go` | — |
-| Aspect extraction | 🟢 `partial` | — | 3082 | `internal/custom/java/cdi_interceptors.go` | — |
-| Pointcut resolution | 🟢 `partial` | — | 3082 | `internal/custom/java/cdi_interceptors.go` | — |
+| Advice attribution | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go` | — |
+| Aspect extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go` | — |
+| Pointcut resolution | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go` | — |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Log extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Metric extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Trace extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
 
 ### Data
 

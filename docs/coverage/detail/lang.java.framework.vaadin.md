@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Component extraction | 🟢 `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
+| Component extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vaadin_gwt.go` | — |
 | Context extraction | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; context_extraction is a React/JSX-paradigm capability that does not apply |
 
 ### Data Flow
@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | — `not_applicable` | — | — | — | Vaadin is a server-side Java UI framework with no mobile platform-discriminating branches; branch_conditions is a mobile/platform-conditional UI paradigm that does not apply; state_management and prop_extraction are also not_applicable for Vaadin |
-| Data fetching | 🟢 `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
+| Data fetching | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vaadin_gwt.go` | — |
 | Prop extraction | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; prop_extraction is a React/JSX-paradigm capability that does not apply |
 | State management | — `not_applicable` | — | 3091 | — | Vaadin is a server-side Java UI framework with no React-style concepts; state_management is a React/JSX-paradigm capability that does not apply |
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Router pattern | 🟢 `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
+| Router pattern | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vaadin_gwt.go` | — |
 
 ### Type System
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | — | `internal/custom/java/junit5.go` | vaadin added to junit5Frameworks map (#3177) |
+| Tests linkage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go` | vaadin added to junit5Frameworks map (#3177) |
 
 ### Substrate
 

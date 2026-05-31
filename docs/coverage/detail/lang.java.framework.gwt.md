@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Component extraction | 🟢 `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
+| Component extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vaadin_gwt.go` | — |
 | Context extraction | — `not_applicable` | — | 3091 | — | GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; context_extraction is a React/JSX-paradigm capability that does not apply |
 
 ### Data Flow
@@ -23,7 +23,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | — `not_applicable` | — | — | — | GWT compiles Java to client-side JS but uses Java idioms with no mobile platform-discriminating branches; branch_conditions is a mobile/platform-conditional UI paradigm that does not apply; state_management and prop_extraction are also not_applicable for GWT |
-| Data fetching | 🟢 `partial` | `2026-05-30` | 3190 | `internal/custom/java/gwt_rpc.go` | GWT RPC + RequestFactory client-side data fetching: @RemoteServiceRelativePath RPC service interfaces, GWT.create(*.class) proxy-creation sites (linked FETCHES_FROM to the service), AsyncCallback<T> completion sites, RequestFactory/RequestContext interfaces, @ProxyFor EntityProxy/ValueProxy beans, and Request.fire(Receiver) sites. Heuristic regex detection, hence partial. |
+| Data fetching | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/gwt_rpc.go` | GWT RPC + RequestFactory client-side data fetching: @RemoteServiceRelativePath RPC service interfaces, GWT.create(*.class) proxy-creation sites (linked FETCHES_FROM to the service), AsyncCallback<T> completion sites, RequestFactory/RequestContext interfaces, @ProxyFor EntityProxy/ValueProxy beans, and Request.fire(Receiver) sites. Heuristic regex detection, hence partial. |
 | Prop extraction | — `not_applicable` | — | 3091 | — | GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; prop_extraction is a React/JSX-paradigm capability that does not apply |
 | State management | — `not_applicable` | — | 3091 | — | GWT compiles Java to client-side JS but uses Java idioms with no React-style concepts; state_management is a React/JSX-paradigm capability that does not apply |
 
@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Router pattern | 🟢 `partial` | — | 3091 | `internal/custom/java/vaadin_gwt.go` | — |
+| Router pattern | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vaadin_gwt.go` | — |
 
 ### Type System
 
@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | — | `internal/custom/java/junit5.go` | gwt, vaadin, android_sdk, android_jetpack added to junit5Frameworks map (#3177) |
+| Tests linkage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go` | gwt, vaadin, android_sdk, android_jetpack added to junit5Frameworks map (#3177) |
 
 ### Substrate
 

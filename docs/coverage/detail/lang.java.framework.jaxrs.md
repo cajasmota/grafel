@@ -36,13 +36,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3083) | `internal/custom/java/jaxrs_filters.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java` | — |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jaxrs_filters.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | JUnit 5 tests in JAX-RS projects; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestJakartaEE_TestsLinkage_Issue2996 value-asserting (same JUnit 5 extractor gates on jaxrs) |
+| Tests linkage | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/junit5.go` | JUnit 5 tests in JAX-RS projects; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestJakartaEE_TestsLinkage_Issue2996 value-asserting (same JUnit 5 extractor gates on jaxrs) |
 
 ### Type System
 
@@ -57,33 +57,33 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3083) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go` | — |
-| DI injection point | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3083) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go` | — |
-| DI scope resolution | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3083) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java` | — |
+| DI binding extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go` | — |
+| DI injection point | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go` | — |
+| DI scope resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java` | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; jaxrs in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies jaxrs |
-| Transaction propagation | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation/TxType; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
-| Transaction rollback rules | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; jaxrs in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies jaxrs |
+| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation/TxType; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | CDI @Interceptor + @AroundInvoke/@AroundConstruct methods extracted as SCOPE.Pattern(subtype=advice) with advice_type (around_invoke/around_construct) + aspect + framework properties; OWNS edge; value-asserting TestCDI_JAXRS_InterceptorClass_Issue3082 |
-| Aspect extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | @Interceptor-annotated classes detected as SCOPE.Pattern(subtype=aspect, kind=cdi_interceptor) with framework=jaxrs; TestCDI_JAXRS_InterceptorClass_Issue3082 value-asserting |
-| Pointcut resolution | ✅ `full` | `2026-05-30` | — | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | @InterceptorBinding annotation type declarations extracted as SCOPE.Pattern(subtype=pointcut, kind=interceptor_binding); REFERENCES edge from advice to binding; value-asserting TestCDI_JAXRS_InterceptorBinding_Issue3082 |
+| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | CDI @Interceptor + @AroundInvoke/@AroundConstruct methods extracted as SCOPE.Pattern(subtype=advice) with advice_type (around_invoke/around_construct) + aspect + framework properties; OWNS edge; value-asserting TestCDI_JAXRS_InterceptorClass_Issue3082 |
+| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | @Interceptor-annotated classes detected as SCOPE.Pattern(subtype=aspect, kind=cdi_interceptor) with framework=jaxrs; TestCDI_JAXRS_InterceptorClass_Issue3082 value-asserting |
+| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | @InterceptorBinding annotation type declarations extracted as SCOPE.Pattern(subtype=pointcut, kind=interceptor_binding); REFERENCES edge from advice to binding; value-asserting TestCDI_JAXRS_InterceptorBinding_Issue3082 |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Same extractor as spring-boot; jaxrs in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies jaxrs |
-| Metric extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer + @Timed + @Counted/@Metered/@Gauge; jaxrs in obsFrameworks |
-| Trace extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); jaxrs in obsFrameworks |
+| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Same extractor as spring-boot; jaxrs in obsFrameworks gate; SLF4J/@Slf4j, Log4j, JUL + log statement call surface; TestObservability_FrameworkGating_Issue3006 verifies jaxrs |
+| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | Micrometer + @Timed + @Counted/@Metered/@Gauge; jaxrs in obsFrameworks |
+| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | OTel @WithSpan + spanBuilder(); Micrometer @Observed + nextSpan(); jaxrs in obsFrameworks |
 
 ### Data
 

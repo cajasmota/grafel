@@ -23,26 +23,26 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
+| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
-| Request validation | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
+| DTO extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
+| Request validation | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
+| Middleware coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go`<br>`internal/custom/java/junit5.go` | — |
+| Tests linkage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go`<br>`internal/custom/java/junit5.go` | — |
 
 ### Type System
 
@@ -57,17 +57,17 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
-| DI injection point | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
-| DI scope resolution | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
+| DI binding extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
+| DI injection point | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
+| DI scope resolution | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
-| Transaction propagation | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
-| Transaction rollback rules | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3087) | `internal/custom/java/dropwizard.go` | — |
+| Transaction boundary extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
+| Transaction propagation | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
+| Transaction rollback rules | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
 
 ### AOP
 
@@ -81,9 +81,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Log extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Metric extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Trace extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
 
 ### Data
 

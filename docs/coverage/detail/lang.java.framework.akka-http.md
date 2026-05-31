@@ -15,34 +15,34 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
-| Handler attribution | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
-| Route extraction | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Endpoint synthesis | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |
+| Handler attribution | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Route extraction | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
-| Request validation | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| DTO extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Request validation | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Middleware coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | 3092 | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Tests linkage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
 
 ### Type System
 
@@ -81,9 +81,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Metric extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
-| Trace extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3006) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Log extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Metric extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
+| Trace extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/observability.go` | — |
 
 ### Data
 

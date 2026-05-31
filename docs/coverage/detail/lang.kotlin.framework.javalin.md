@@ -15,15 +15,15 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; Kotlin trailing-lambda route DSL proven by TestKotlinJavalin_Routes_Issue3274 |
-| Handler attribution | 🟢 `partial` | `2026-05-30` | 3274 | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; handler attribution proven by TestKotlinJavalin_Routes_Issue3274 |
-| Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274 |
+| Endpoint synthesis | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; Kotlin trailing-lambda route DSL proven by TestKotlinJavalin_Routes_Issue3274 |
+| Handler attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; handler attribution proven by TestKotlinJavalin_Routes_Issue3274 |
+| Route extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274 |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | — | — | `internal/custom/java/javalin_routes.go` | JavalinJWT, accessManager pattern, JavalinJWT.getTokenPayload — Kotlin Javalin uses identical DSL to Java, same extractor applies |
+| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | JavalinJWT, accessManager pattern, JavalinJWT.getTokenPayload — Kotlin Javalin uses identical DSL to Java, same extractor applies |
 
 ### Validation
 
@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | — | — | `internal/custom/java/javalin_routes.go` | app.before() and app.after() global/path-scoped middleware — Kotlin Javalin trailing lambda matches same regex |
+| Middleware coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | app.before() and app.after() global/path-scoped middleware — Kotlin Javalin trailing lambda matches same regex |
 
 ### Testing
 

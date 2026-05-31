@@ -62,16 +62,16 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟢 3/3 | |
 | [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟢 7/7 | |
 | [java](../by-language/java.md) | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | 🟢 7/7 | |
-| [java](../by-language/java.md) | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | 🟢 7/7 | |
-| [java](../by-language/java.md) | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | 🟢 7/7 | |
+| [java](../by-language/java.md) | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | 🟡 5/7 | |
+| [java](../by-language/java.md) | [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | 🟡 5/7 | |
 | [java](../by-language/java.md) | [MyBatis](../detail/lang.java.orm.mybatis.md) | 🟢 7/7 | |
 | [java](../by-language/java.md) | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | 🟢 5/5 | |
 | [java](../by-language/java.md) | [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | 🟢 7/7 | |
-| [java](../by-language/java.md) | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | 🟢 3/3 | |
-| [java](../by-language/java.md) | [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | 🟢 3/3 | |
-| [java](../by-language/java.md) | [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | 🟢 7/7 | |
-| [java](../by-language/java.md) | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | 🟢 3/3 | |
-| [java](../by-language/java.md) | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | 🟢 3/3 | |
+| [java](../by-language/java.md) | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | 🟡 2/3 | |
+| [java](../by-language/java.md) | [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | 🟡 2/3 | |
+| [java](../by-language/java.md) | [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | 🟡 5/7 | |
+| [java](../by-language/java.md) | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | 🟡 2/3 | |
+| [java](../by-language/java.md) | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | 🟡 2/3 | |
 | [java](../by-language/java.md) | [jOOQ](../detail/lang.java.orm.jooq.md) | 🟢 6/6 | |
 | [JS/TS](../by-language/jsts.md) | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ✅ 1/1 | |
@@ -92,12 +92,12 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [JS/TS](../by-language/jsts.md) | [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [supabase-js](../detail/lang.jsts.driver.supabase.md) | ✅ 1/1 | |
 | [kotlin](../by-language/kotlin.md) | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟢 7/7 | |
-| [kotlin](../by-language/kotlin.md) | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟢 8/8 | |
+| [kotlin](../by-language/kotlin.md) | [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟡 7/8 | |
 | [kotlin](../by-language/kotlin.md) | [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟢 7/7 | |
 | [kotlin](../by-language/kotlin.md) | [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | ✅ 2/2 | |
 | [kotlin](../by-language/kotlin.md) | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟢 7/7 | |
 | [kotlin](../by-language/kotlin.md) | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟢 7/7 | |
-| [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟢 8/8 | |
+| [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 7/8 | |
 | [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟢 1/1 | |
 | [php](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟢 8/8 | |
 | [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ✅ 8/8 | |
