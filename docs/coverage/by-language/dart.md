@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # dart
 
-**Frameworks**: 0 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
+**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -18,6 +18,16 @@ Each group column shows `glyph covered/applicable` — **covered** = capabilitie
 | — | **N/A** | capability does not apply to this framework |
 
 Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 12/20` = 8 not yet extracted. Detail pages use the same palette **per cell** (✅ full · 🟢 heuristic/partial · 🔴 missing · — n/a).
+
+## Frameworks
+
+
+### UI Frontend
+
+| Name | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/21 | 🟡 3/8 | |
+
 
 ## Tools
 

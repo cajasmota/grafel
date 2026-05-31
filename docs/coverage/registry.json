@@ -9515,6 +9515,167 @@
       }
     },
     {
+      "id": "lang.dart.framework.flutter",
+      "category": "http_framework",
+      "subcategory": "ui_frontend",
+      "language": "dart",
+      "label": "Flutter",
+      "capabilities": {
+        "Structure": {
+          "component_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/dart/extractors_test.go","internal/custom/dart/flutter.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3505",
+            "notes": "StatelessWidget/StatefulWidget class declarations -\u003e SCOPE.UIComponent (widget_type stateless/stateful). Regex/heuristic but catches the canonical Flutter widget idiom; value-asserting tests (TestFlutterStatelessWidget/StatefulWidget)."
+          },
+          "context_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data Flow": {
+          "branch_conditions": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "data_fetching": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "prop_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "state_management": {
+            "status": "partial",
+            "cites": ["internal/custom/dart/flutter.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Bloc/Cubit/ChangeNotifier/InheritedWidget classes + StreamBuilder/BlocBuilder/context.read|watch|select\u003cT\u003e detected as SCOPE.Pattern/Component (state_kind). PARTIAL: class/usage detection only — no state-transition or data-flow resolution, no provider-\u003econsumer edges."
+          }
+        },
+        "Navigation": {
+          "router_pattern": {
+            "status": "partial",
+            "cites": ["internal/custom/dart/flutter.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Navigator.pushNamed/pushReplacementNamed + GoRoute(path:) detected as SCOPE.Operation/endpoint with route_path. PARTIAL: routes emitted as standalone entities — no screen-\u003escreen NAVIGATES_TO edges, no route-\u003ewidget/builder resolution."
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Lifecycle": {
+          "state_setter_emission": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.elixir.driver.dynamodb",
       "category": "orm",
       "subcategory": "orm_mapper",
