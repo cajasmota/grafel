@@ -661,6 +661,151 @@ func TestEndpointStats_MigratedTrueWhenNoLegacy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// #3560: per-detector confidence/coverage signal on action=stats
+// ---------------------------------------------------------------------------
+
+// buildConfidenceStatsDoc builds a fixture with one regex-detected framework
+// (nestjs) and one AST-backed framework (spring_mvc) so the by_framework
+// confidence enum can be asserted both ways. The plain totals are deliberately
+// the same shape the existing stats tests assert against (no legacy entities).
+//
+//	d_nest   http_endpoint_definition framework=nestjs     (regex → heuristic)
+//	d_nest2  http_endpoint_definition framework=nestjs     (regex → heuristic)
+//	d_spring http_endpoint_definition framework=spring_mvc (ast   → exact)
+//	c_nest   http_endpoint_call       framework=nestjs     (regex → heuristic)
+func buildConfidenceStatsDoc() *graph.Document {
+	return &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "d_nest", Kind: "http_endpoint_definition", Name: "GET /users",
+				Properties: map[string]string{"verb": "GET", "path": "/users", "framework": "nestjs"}},
+			{ID: "d_nest2", Kind: "http_endpoint_definition", Name: "POST /users",
+				Properties: map[string]string{"verb": "POST", "path": "/users", "framework": "nestjs"}},
+			{ID: "d_spring", Kind: "http_endpoint_definition", Name: "GET /orders",
+				Properties: map[string]string{"verb": "GET", "path": "/orders", "framework": "spring_mvc"}},
+			{ID: "c_nest", Kind: "http_endpoint_call", Name: "fetchUsers",
+				Properties: map[string]string{"verb": "GET", "path": "/users", "framework": "nestjs"}},
+		},
+	}
+}
+
+func TestEndpointStats_ByFrameworkConfidence(t *testing.T) {
+	srv := newTestServer(t, buildConfidenceStatsDoc())
+	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
+
+	// --- existing totals must be UNCHANGED by the additive signal ---
+	totals, ok := res["totals"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing totals in %v", res)
+	}
+	if got := getFloat(t, totals, "definitions"); got != 3 {
+		t.Errorf("totals.definitions: want 3, got %v", got)
+	}
+	if got := getFloat(t, totals, "calls"); got != 1 {
+		t.Errorf("totals.calls: want 1, got %v", got)
+	}
+	if got := getFloat(t, totals, "orphan_calls"); got != 0 {
+		t.Errorf("totals.orphan_calls: want 0, got %v", got)
+	}
+
+	// --- by_framework breakdown with per-detector confidence enum ---
+	bf, ok := res["by_framework"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework in %v", res)
+	}
+
+	nest, ok := bf["nestjs"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework.nestjs in %v", bf)
+	}
+	if got := getFloat(t, nest, "definitions"); got != 2 {
+		t.Errorf("nestjs.definitions: want 2, got %v", got)
+	}
+	if got := getFloat(t, nest, "calls"); got != 1 {
+		t.Errorf("nestjs.calls: want 1, got %v", got)
+	}
+	if got, _ := nest["detector"].(string); got != "regex" {
+		t.Errorf("nestjs.detector: want regex, got %q", got)
+	}
+	if got, _ := nest["confidence"].(string); got != "heuristic" {
+		t.Errorf("nestjs.confidence: want heuristic, got %q", got)
+	}
+
+	spring, ok := bf["spring_mvc"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework.spring_mvc in %v", bf)
+	}
+	if got := getFloat(t, spring, "definitions"); got != 1 {
+		t.Errorf("spring_mvc.definitions: want 1, got %v", got)
+	}
+	if got, _ := spring["detector"].(string); got != "ast" {
+		t.Errorf("spring_mvc.detector: want ast, got %q", got)
+	}
+	if got, _ := spring["confidence"].(string); got != "exact" {
+		t.Errorf("spring_mvc.confidence: want exact, got %q", got)
+	}
+
+	// --- top-level extraction descriptor: heuristic because nestjs is regex ---
+	extraction, ok := res["extraction"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing extraction in %v", res)
+	}
+	if got, _ := extraction["method"].(string); got != "heuristic" {
+		t.Errorf("extraction.method: want heuristic (regex framework present), got %q", got)
+	}
+	if got, _ := extraction["note"].(string); got == "" {
+		t.Error("extraction.note should be non-empty")
+	}
+}
+
+// TestEndpointStats_ExtractionExactWhenAllAST verifies that the top-level
+// extraction.method advertises "exact" only when every framework present is
+// AST-backed — the honest all-clear case.
+func TestEndpointStats_ExtractionExactWhenAllAST(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /a",
+				Properties: map[string]string{"verb": "GET", "path": "/a", "framework": "django"}},
+			{ID: "d2", Kind: "http_endpoint_definition", Name: "GET /b",
+				Properties: map[string]string{"verb": "GET", "path": "/b", "framework": "spring_webflux"}},
+		},
+	}
+	srv := newTestServer(t, doc)
+	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
+	extraction, ok := res["extraction"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing extraction in %v", res)
+	}
+	if got, _ := extraction["method"].(string); got != "exact" {
+		t.Errorf("extraction.method: want exact (all AST), got %q", got)
+	}
+}
+
+// TestEndpointStats_UnknownFrameworkBucket verifies that synthetics with no
+// framework attribution land in the "unknown" bucket and are treated as
+// regex/heuristic (never silently exact).
+func TestEndpointStats_UnknownFrameworkBucket(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /a",
+				Properties: map[string]string{"verb": "GET", "path": "/a"}}, // no framework
+		},
+	}
+	srv := newTestServer(t, doc)
+	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
+	bf, ok := res["by_framework"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework in %v", res)
+	}
+	unknown, ok := bf["unknown"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework.unknown in %v", bf)
+	}
+	if got, _ := unknown["confidence"].(string); got != "heuristic" {
+		t.Errorf("unknown.confidence: want heuristic, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Backward-compatibility: existing tools honour alias expansion
 // ---------------------------------------------------------------------------
 

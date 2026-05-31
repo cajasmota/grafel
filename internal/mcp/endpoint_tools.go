@@ -118,14 +118,14 @@ func isCallKind(kind string) bool {
 // endpointDefItem is the package-level shape for a definition row, used by
 // both handleEndpointDefinitions and renderTerseDefinitions.
 type endpointDefItem struct {
-	EntityID   string            `json:"entity_id"`
-	Name       string            `json:"name,omitempty"`
-	Kind       string            `json:"kind,omitempty"`
-	Repo       string            `json:"repo"`
-	SourceFile string            `json:"source_file,omitempty"`
-	StartLine  int               `json:"start_line,omitempty"`
-	Method     string            `json:"method,omitempty"`
-	Path       string            `json:"path,omitempty"`
+	EntityID   string `json:"entity_id"`
+	Name       string `json:"name,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Repo       string `json:"repo"`
+	SourceFile string `json:"source_file,omitempty"`
+	StartLine  int    `json:"start_line,omitempty"`
+	Method     string `json:"method,omitempty"`
+	Path       string `json:"path,omitempty"`
 	// Effects is the transitive effect closure of this endpoint's handler
 	// (#2811): db_read/db_write/http_out/fs_read/fs_write/mutation/env. Sourced
 	// from the on-disk effects sidecar (written by the effect-propagation pass),
@@ -463,12 +463,12 @@ func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest
 // surfaced via archigraph_endpoints with kind=navigation or
 // include_navigation=true.
 type navigationRouteItem struct {
-	Kind         string `json:"kind"`            // always "navigation"
-	Route        string `json:"route"`           // the route literal (e.g. "/users/[id]")
-	ToID         string `json:"to_id"`           // route stub ID ("route:/users/[id]")
-	CallSites    int    `json:"call_sites"`      // number of NAVIGATES_TO edges pointing here
-	ParamsKeys   string `json:"params_keys"`     // merged sorted JSON array of all observed param keys
-	SampleFromID string `json:"sample_from_id"`  // one prefixed caller ID (for quick locate)
+	Kind         string `json:"kind"`           // always "navigation"
+	Route        string `json:"route"`          // the route literal (e.g. "/users/[id]")
+	ToID         string `json:"to_id"`          // route stub ID ("route:/users/[id]")
+	CallSites    int    `json:"call_sites"`     // number of NAVIGATES_TO edges pointing here
+	ParamsKeys   string `json:"params_keys"`    // merged sorted JSON array of all observed param keys
+	SampleFromID string `json:"sample_from_id"` // one prefixed caller ID (for quick locate)
 	SampleFile   string `json:"sample_file,omitempty"`
 	SampleLine   int    `json:"sample_line,omitempty"`
 	Repo         string `json:"repo,omitempty"`
@@ -481,14 +481,14 @@ type navigationRouteItem struct {
 func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigationRouteItem {
 	// Aggregate per ToID.
 	type agg struct {
-		route       string
-		callSites   int
-		paramKeys   map[string]struct{}
-		sampleRepo  string
-		sampleFrom  string
-		sampleFile  string
-		sampleLine  int
-		sampleSeen  bool
+		route      string
+		callSites  int
+		paramKeys  map[string]struct{}
+		sampleRepo string
+		sampleFrom string
+		sampleFile string
+		sampleLine int
+		sampleSeen bool
 	}
 	byTo := make(map[string]*agg)
 	for _, r := range repos {
@@ -1175,12 +1175,94 @@ func pageSlice[T any](s []T, offset, limit int) []T {
 }
 
 // ---------------------------------------------------------------------------
+// #3560: per-detector confidence/coverage signal
+//
+// Background: every http_endpoint_definition / _call entity is produced by the
+// regex/heuristic synthesis passes in internal/engine/http_endpoint_synthesis.go
+// (the entity itself always carries pattern_type=http_endpoint_synthesis /
+// _client_synthesis — a SYNTHESIS marker, NOT an AST-fidelity marker). The
+// rewrite agent's NestJS-undercount report (ask #4) flagged that `stats`
+// returns a count with no indication it may be partial/heuristic — dangerous
+// for a parity oracle. This block attaches an HONEST, coarse confidence enum
+// derived from how each framework's detector actually works:
+//
+//   - astBackedFrameworks compose endpoints from AST-derived Route entities
+//     (Spring MVC/WebFlux re-use spring_routes.go composition; Django re-uses
+//     the Django AST pass — see synthesizeSpringMVCFromComposed /
+//     synthesizeDjangoFromComposed). These are the most reliable, so they map
+//     to detectorAST / confidence "exact".
+//   - EVERY OTHER framework (NestJS, Express, FastAPI, Flask, gin, …) is a
+//     direct regex scan over file content, so it maps to detectorRegex /
+//     confidence "heuristic" — counts can undercount (dynamic routes, macros,
+//     decorators the regex misses) or overcount (route literals in comments).
+//
+// We deliberately DO NOT fabricate a precise numeric confidence. The enum is
+// exact|heuristic (and "partial" is reserved for a future detector that knows
+// it only covers a subset). This keeps the signal cheap (no new traversal —
+// computed in the existing per-entity loop) and honest.
+// ---------------------------------------------------------------------------
+
+// detectorMethod is the coarse extraction mechanism behind a framework's
+// endpoint detector.
+type detectorMethod string
+
+const (
+	detectorAST   detectorMethod = "ast"   // composed from AST-derived Route entities
+	detectorRegex detectorMethod = "regex" // direct regex scan over file content
+)
+
+// confidenceLevel is the coarse honesty enum attached to a per-framework count.
+// It is intentionally a small enum, NOT a fabricated numeric score.
+type confidenceLevel string
+
+const (
+	confidenceExact     confidenceLevel = "exact"     // AST-backed; counts are reliable
+	confidenceHeuristic confidenceLevel = "heuristic" // regex-based; cross-check if it looks off
+)
+
+// astBackedFrameworks lists the framework property values whose http_endpoint
+// detector composes endpoints from AST-derived Route entities rather than a raw
+// regex scan. Keep in sync with the *FromComposed passes in
+// internal/engine/http_endpoint_synthesis.go. Anything NOT in this set is
+// treated as regex/heuristic — the safe, honest default for a parity oracle.
+var astBackedFrameworks = map[string]bool{
+	"spring_mvc":     true,
+	"spring_webflux": true,
+	"django":         true,
+}
+
+// classifyDetector reports the detector method + confidence for a framework
+// property value (case-insensitive). The empty framework string — present on
+// older/un-attributed synthetics — is treated as regex/heuristic, never exact.
+func classifyDetector(framework string) (detectorMethod, confidenceLevel) {
+	if astBackedFrameworks[strings.ToLower(strings.TrimSpace(framework))] {
+		return detectorAST, confidenceExact
+	}
+	return detectorRegex, confidenceHeuristic
+}
+
+// frameworkStat is the per-framework breakdown row in the stats response.
+// It is keyed by framework name in the by_framework map.
+type frameworkStat struct {
+	Definitions int             `json:"definitions"`
+	Calls       int             `json:"calls"`
+	Detector    detectorMethod  `json:"detector"`
+	Confidence  confidenceLevel `json:"confidence"`
+}
+
+// ---------------------------------------------------------------------------
 // archigraph_endpoint_stats
 // ---------------------------------------------------------------------------
 
 // handleEndpointStats returns a count breakdown of each HTTP-endpoint kind
 // across the group, plus a summary of orphan call-sites (calls with no
 // matching definition).
+//
+// #3560: the response also carries a per-framework breakdown (by_framework)
+// and a top-level extraction descriptor so a consumer (e.g. the rewrite
+// parity oracle) can tell whether a given framework's count is AST-backed
+// (exact) or regex-based (heuristic) and worth cross-checking. The existing
+// totals (definitions/calls/orphan_calls/…) are UNCHANGED — this is additive.
 //
 // Tool name: archigraph_endpoint_stats
 func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -1205,6 +1287,25 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 	var perRepo []repoStats
 	totalDefs, totalCalls, totalLegacy, totalOrphans, totalCross := 0, 0, 0, 0, 0
 
+	// #3560: per-framework breakdown accumulated in the same per-entity loop
+	// below (no extra traversal). byFramework keys on the entity's framework
+	// property; the empty key ("") collects synthetics with no framework
+	// attribution and is rendered as "unknown" in the response.
+	byFramework := map[string]*frameworkStat{}
+	bumpFramework := func(framework string, isDef bool) {
+		fs := byFramework[framework]
+		if fs == nil {
+			det, conf := classifyDetector(framework)
+			fs = &frameworkStat{Detector: det, Confidence: conf}
+			byFramework[framework] = fs
+		}
+		if isDef {
+			fs.Definitions++
+		} else {
+			fs.Calls++
+		}
+	}
+
 	for _, r := range repos {
 		if r.Doc == nil {
 			continue
@@ -1213,18 +1314,23 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
+			fw := e.Properties["framework"]
 			switch classifyEndpointKind(e.Kind) {
 			case endpointKindDefinition:
 				rs.Definitions++
+				bumpFramework(fw, true)
 			case endpointKindCall:
 				rs.Calls++
+				bumpFramework(fw, false)
 			case endpointKindLegacy:
 				// Pre-Sub-A entity; count separately.
 				rs.LegacyKind++
 				if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
 					rs.Calls++ // treat client-synthesis as a call
+					bumpFramework(fw, false)
 				} else {
 					rs.Definitions++ // treat producer as a definition
+					bumpFramework(fw, true)
 				}
 			}
 		}
@@ -1302,6 +1408,30 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		migrationNote = "graph still contains legacy http_endpoint kind — run the indexer after Sub-A (#1217) lands to split into http_endpoint_definition / http_endpoint_call"
 	}
 
+	// #3560: render the per-framework breakdown. The empty-framework bucket is
+	// surfaced as "unknown" so a consumer never sees a blank key. anyHeuristic
+	// drives the coarse top-level extraction.method: if EVERY framework present
+	// is AST-backed we can advertise method="exact", otherwise the group's
+	// counts are at-best heuristic and the note nudges a cross-check.
+	byFrameworkOut := make(map[string]frameworkStat, len(byFramework))
+	anyHeuristic := false
+	for fw, fs := range byFramework {
+		key := fw
+		if key == "" {
+			key = "unknown"
+		}
+		byFrameworkOut[key] = *fs
+		if fs.Confidence != confidenceExact {
+			anyHeuristic = true
+		}
+	}
+	extractionMethod := "exact"
+	extractionNote := "all endpoint counts are AST-backed"
+	if anyHeuristic {
+		extractionMethod = "heuristic"
+		extractionNote = "regex-based detectors in use; cross-check any framework count that looks off (see by_framework.*.confidence)"
+	}
+
 	return jsonResult(map[string]any{
 		"totals": map[string]any{
 			"definitions":         totalDefs,
@@ -1311,7 +1441,12 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			"cross_repo_resolved": totalCross,
 			"cross_repo_links":    len(lg.Links),
 		},
-		"per_repo":       perRepo,
+		"per_repo":     perRepo,
+		"by_framework": byFrameworkOut,
+		"extraction": map[string]any{
+			"method": extractionMethod,
+			"note":   extractionNote,
+		},
 		"migrated":       migrated,
 		"migration_note": migrationNote,
 	}), nil
