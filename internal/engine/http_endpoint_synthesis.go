@@ -101,6 +101,12 @@ func synthesisSupportsLanguage(lang string) bool {
 	// #1483: Elixir Finch / HTTPoison consumer-side extraction.
 	case "elixir":
 		return true
+	// #3554: Scala sttp consumer-side HTTP client extraction. The Scala
+	// producer side (tapir/http4s/akka) is handled by custom_scala_*
+	// extractors, but outbound sttp calls have no YAML rules, so allow Scala
+	// through for the client synthesizer; files without sttp markers are no-ops.
+	case "scala":
+		return true
 	// #3484: Lua Lapis / OpenResty producer-side route synthesis.
 	case "lua":
 		return true
@@ -800,6 +806,11 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Producer side (#3484): OpenResty nginx `location` stanzas (in
 		// lua-classified config-driver files) + lua-resty-router DSL routes.
 		synthesizeOpenResty(string(content), emit)
+	case "scala":
+		// Consumer side (#3554): sttp (basicRequest/quickRequest verb
+		// combinators with uri"..." literals) outbound HTTP client. The Scala
+		// producer side is handled by the custom_scala_* framework extractors.
+		synthesizeScalaClientWithRuntime(string(content), emitClientRuntime)
 	}
 
 	// #722 — response/request shape extraction. Mutates Properties on

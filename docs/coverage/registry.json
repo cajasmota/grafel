@@ -53383,6 +53383,139 @@
       }
     },
     {
+      "id": "lang.scala.framework.scalapb-grpc",
+      "category": "http_framework",
+      "subcategory": "rpc_framework",
+      "language": "scala",
+      "label": "ScalaPB / zio-grpc / fs2-grpc",
+      "capabilities": {
+        "Schema": {
+          "procedure_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/scala/grpc.go","internal/custom/scala/grpc_test.go"],
+            "notes": "custom_scala_grpc: each def \u003crpc\u003e(request: ReqT): Eff[RespT] of a ScalaPB AbstractService / zio-grpc ZGeneratedService / fs2-grpc *Fs2Grpc service trait -\u003e SCOPE.Operation endpoint at /\u003cService\u003e/\u003crpc\u003e, verb=RPC, rpc_protocol=grpc, grpc_service+grpc_method+handler_name stamped. Value-asserting tests pin sayHello/listUsers + service Greeter (Z/Fs2Grpc decorations stripped). File-local.",
+            "verified_at": "2026-05-31"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/grpc.go","internal/custom/scala/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_grpc: request/response message types recovered from the method signature (Request\u003cT\u003e param + last effect type-arg of ZIO/Future/F[_]) and emitted as SCOPE.Schema DTO refs with grpc_message_role request/response. PARTIAL: message FIELD shapes live in ScalaPB-generated case-class companions; names only. Value-asserted (HelloRequest/HelloReply/UserList).",
+            "verified_at": "2026-05-31"
+          }
+        },
+        "Codegen": {
+          "client_codegen": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/grpc.go","internal/custom/scala/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_grpc: \u003cService\u003eGrpc.stub/blockingStub/bindService(Resource) site detected -\u003e SCOPE.Component grpc_stub with companion+accessor. PARTIAL: generated stub/companion code itself is scalapbc-emitted, not statically present; we record the use site. Value-asserted (GreeterGrpc.stub).",
+            "verified_at": "2026-05-31"
+          }
+        },
+        "Transport": {
+          "transport_binding": {
+            "status": "full",
+            "cites": ["internal/custom/scala/grpc.go","internal/custom/scala/grpc_test.go"],
+            "notes": "custom_scala_grpc: RPC endpoint synthesis /\u003cService\u003e/\u003crpc\u003e from the service-trait method set; service trait emitted as SCOPE.Service grpc_service. Value-asserting tests pin the path + grpc_service. Regex, file-local; no .proto/AST.",
+            "verified_at": "2026-05-31"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/grpc.go","internal/custom/scala/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request message type NAME recovered from the RPC param type; field shapes live in ScalaPB-generated message companions (not statically present). Value-asserted (HelloRequest).",
+            "verified_at": "2026-05-31"
+          },
+          "response_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/scala/grpc.go","internal/custom/scala/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Response message type NAME recovered as the last effect type-argument (Future/ZIO/F[_]); generated message field shapes not statically resolvable. Value-asserted (HelloReply).",
+            "verified_at": "2026-05-31"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.scala.framework.scalatra",
       "category": "http_framework",
       "subcategory": "jvm_backend",
@@ -53651,6 +53784,225 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_scala.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.scala.framework.sttp",
+      "category": "http_framework",
+      "subcategory": "jvm_backend",
+      "language": "scala",
+      "label": "sttp (HTTP client)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_scala_client.go","internal/engine/http_endpoint_scala_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "sttp basicRequest/quickRequest/emptyRequest verb combinators (.get/.post/.put/.patch/.delete/.head/.options) with uri\"...\" literals -\u003e one outbound http_endpoint_call (consumer) per call site + FETCHES from the enclosing def; host stripped, $id/${...} interpolation -\u003e {param}. Value-asserted (GET/POST /v1/users, PUT /v1/users/{param}).",
+            "verified_at": "2026-05-31"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_scala_client.go","internal/engine/http_endpoint_scala_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "FETCHES edge attributes each outbound sttp call to the enclosing def (nearest preceding def \u003cname\u003e). Value-asserted via requireFetches in http_endpoint_scala_client_test.go.",
+            "verified_at": "2026-05-31"
+          },
+          "route_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Transactions": {
+          "transaction_boundary_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_rollback_rules": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "AOP": {
+          "advice_attribution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "aspect_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pointcut_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_scala_client.go","internal/engine/http_endpoint_scala_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Each sttp call recorded as an outbound HTTP effect (verb + path) so the cross-repo linker pairs it with a producer-side definition. Value-asserted.",
+            "verified_at": "2026-05-31"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }
