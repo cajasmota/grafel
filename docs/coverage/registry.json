@@ -31615,6 +31615,222 @@
       }
     },
     {
+      "id": "lang.kotlin.framework.dagger-hilt",
+      "category": "http_framework",
+      "subcategory": "jvm_backend",
+      "language": "kotlin",
+      "label": "Dagger / Hilt (Android DI)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "handler_attribution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "route_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/kotlin/dagger_hilt.go","internal/custom/kotlin/dagger_hilt_test.go"],
+            "notes": "Dagger/Hilt @Provides (provider method → return type binding + param deps) and @Binds (interface → impl param) bindings; binding_type, implementation, injected_deps captured. File-local; cross-module binding resolution not linked. Value-asserted in dagger_hilt_test.go."
+          },
+          "di_injection_point": {
+            "status": "full",
+            "cites": ["internal/custom/kotlin/dagger_hilt.go","internal/custom/kotlin/dagger_hilt_test.go"],
+            "notes": "@Inject constructor(...) → one injection point per parameter (constructor_inject); @Inject lateinit var field → field_inject. Field name + injected type + mechanism captured. Value-asserted in dagger_hilt_test.go."
+          },
+          "di_scope_resolution": {
+            "status": "full",
+            "cites": ["internal/custom/kotlin/dagger_hilt.go","internal/custom/kotlin/dagger_hilt_test.go"],
+            "notes": "Scope resolved from @InstallIn(Component::class) (SingletonComponent→singleton, Activity/Fragment/ViewModel/...), method-level @Singleton/@ActivityScoped/... overrides; Hilt entry points @HiltAndroidApp/@AndroidEntryPoint/@HiltViewModel → di_scope_resolution components. Value-asserted in dagger_hilt_test.go."
+          }
+        },
+        "Transactions": {
+          "transaction_boundary_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_rollback_rules": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "AOP": {
+          "advice_attribution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "aspect_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pointcut_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.kotlin.framework.graphql-kotlin",
       "category": "http_framework",
       "subcategory": "jvm_backend",
@@ -33804,6 +34020,225 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_kotlin.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.kotlin.framework.retrofit",
+      "category": "http_framework",
+      "subcategory": "jvm_backend",
+      "language": "kotlin",
+      "label": "Retrofit (HTTP client)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_kotlin_client.go","internal/engine/http_endpoint_kotlin_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Retrofit interface verb annotations (@GET/@POST/@PUT/@DELETE/@PATCH/@HEAD/@OPTIONS) → one outbound http_endpoint (consumer) per annotated method + FETCHES from the method; Retrofit.Builder().baseUrl() composed; {param} paths normalized. Value-asserted in http_endpoint_kotlin_client_test.go."
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_kotlin_client.go","internal/engine/http_endpoint_kotlin_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "FETCHES edge attributes each outbound call to the enclosing Retrofit interface method. Value-asserted in http_endpoint_kotlin_client_test.go."
+          },
+          "route_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_kotlin_client.go","internal/engine/http_endpoint_kotlin_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Retrofit service is a Kotlin interface; each annotated method head (suspend fun / fun) is attributed as the calling reference for its outbound endpoint. Value-asserted in http_endpoint_kotlin_client_test.go."
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Transactions": {
+          "transaction_boundary_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_rollback_rules": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "AOP": {
+          "advice_attribution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "aspect_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pointcut_resolution": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_kotlin_client.go","internal/engine/http_endpoint_kotlin_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "val/const path constants resolved into Retrofit/Ktor URL args via the Kotlin string symbol table; cross-file constants not linked."
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_kotlin_client.go","internal/engine/http_endpoint_kotlin_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Each Retrofit annotated method is recorded as an outbound HTTP effect (verb + path) so the cross-repo linker pairs it with a producer. Value-asserted in http_endpoint_kotlin_client_test.go."
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }
