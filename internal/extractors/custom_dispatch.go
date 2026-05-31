@@ -57,16 +57,24 @@ var customPrefixForLanguage = map[string]string{
 	// than `custom_lua_`. The base "lua" tree-sitter extractor key is shorter
 	// than this prefix, so the `len(k) > len(prefix)` guard in
 	// CustomExtractorsFor excludes it and only the framework extractors match.
-	"lua":    "lua_",
-	"scala":  "custom_scala_",
-	"ruby":   "custom_ruby_",
-	"php":    "custom_php_",
-	"rust":   "custom_rust_",
-	"swift":  "custom_swift_",
-	"dart":   "custom_dart_",
-	"elixir": "custom_elixir_",
-	"csharp": "custom_csharp_",
-	"cpp":    "custom_cpp_",
+	"lua":   "lua_",
+	"scala": "custom_scala_",
+	"ruby":  "custom_ruby_",
+	"php":   "custom_php_",
+	// GraphQL SDL files (.graphql/.gql) are classified as their own "graphql"
+	// language but carry Lighthouse (Laravel) server-side resolver directives
+	// (@all, @paginate, @field, …) parsed by the PHP custom Lighthouse
+	// extractor. Route them to the PHP extractor set; each php-language
+	// extractor gates on language=="php" internally and no-ops, while the
+	// Lighthouse extractor gates on language=="graphql" plus a Lighthouse
+	// directive signal. Mirrors the prisma/sql → JS routing above.
+	"graphql": "custom_php_",
+	"rust":    "custom_rust_",
+	"swift":   "custom_swift_",
+	"dart":    "custom_dart_",
+	"elixir":  "custom_elixir_",
+	"csharp":  "custom_csharp_",
+	"cpp":     "custom_cpp_",
 	// Protocol Buffers IDL files (.proto) are classified as their own
 	// "protobuf" language but carry message/service definitions parsed by the
 	// C/C++ protobuf custom extractor (which path/language-gates internally and
