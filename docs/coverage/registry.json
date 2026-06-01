@@ -8466,8 +8466,8 @@
         "Structure": {
           "context_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/csharp/mobile_platform.go","internal/custom/csharp/mobile_platform_test.go"],
-            "notes": "Application.Current global context, DependencyService.Get\u003cT\u003e() service resolution, and IServiceProvider/MauiAppBuilder usages emitted as SCOPE.Component/context_extraction."
+            "cites": ["internal/custom/csharp/mobile_maui_edges_test.go","internal/custom/csharp/mobile_platform.go","internal/custom/csharp/mobile_platform_test.go"],
+            "notes": "Application.Current global context, DependencyService.Get\u003cT\u003e() resolution, IServiceProvider/MauiAppBuilder usages as SCOPE.Component/context_extraction. MauiProgram.cs DI registrations emit binding edges: builder.Services.AddSingleton/AddScoped\u003cIFoo,Foo\u003e() -\u003e BINDS impl:Foo (interface-\u003eimpl, with lifetime prop); AddSingleton/AddTransient/AddScoped\u003cXViewModel\u003e() -\u003e REGISTERS impl:XViewModel (self-binding). Cross-file impl resolution is partial."
           }
         },
         "Navigation": {
@@ -8478,8 +8478,8 @@
           },
           "navigation_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/csharp/mobile_platform.go","internal/custom/csharp/mobile_platform_test.go"],
-            "notes": "Navigation.PushAsync/PopAsync/PushModalAsync/PopModalAsync stack operations, Shell.GoToAsync route-based navigation, and NavigationPage/TabbedPage/FlyoutPage constructor usages detected."
+            "cites": ["internal/custom/csharp/mobile_maui_edges_test.go","internal/custom/csharp/mobile_platform.go","internal/custom/csharp/mobile_platform_test.go"],
+            "notes": "Navigation.PushAsync/PopAsync/PushModalAsync stack ops, NavigationPage/TabbedPage/FlyoutPage ctors detected. Shell routing emits NAVIGATES_TO edges to synthetic route:\u003cpath\u003e stubs: Routing.RegisterRoute(\"r\", typeof(Page)) and \u003cShellContent Route=\"r\" ContentTemplate=\"{DataTemplate Page}\"/\u003e (route tables, target_page resolved in-file), plus Shell.Current.GoToAsync(\"//r\") and GoToAsync(nameof(Page)) call sites (route normalized). Cross-file route-\u003epage resolution is partial."
           },
           "screen_detection": {
             "status": "partial",
@@ -8509,8 +8509,8 @@
           },
           "state_management": {
             "status": "partial",
-            "cites": ["internal/custom/csharp/blazor_dataflow.go"],
-            "notes": "MAUI BindableProperty.Create/SetValue + INotifyPropertyChanged callbacks detected via reBDFSetValue/reBDFPropertyChanged/reBDFBindableProperty"
+            "cites": ["internal/custom/csharp/blazor_dataflow.go","internal/custom/csharp/mobile_maui_edges_test.go","internal/custom/csharp/mobile_platform.go"],
+            "notes": "MAUI BindableProperty.Create/SetValue + INotifyPropertyChanged callbacks (blazor_dataflow.go). MVVM view\u003c-\u003eviewmodel wiring emits USES edges page-\u003eviewmodel:\u003cVM\u003e: BindingContext = new XViewModel() and DI-injected XViewModel ctor params on a ContentPage. CommunityToolkit.Mvvm [ObservableProperty]/[RelayCommand] mark a class as a ViewModel (viewmodel:\u003cname\u003e marker) and [RelayCommand] methods become command:\u003cname\u003e entities (mobile_platform.go)."
           }
         },
         "Type System": {

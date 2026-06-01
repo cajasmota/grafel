@@ -15,14 +15,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | 🟢 `partial` | — | — | `internal/custom/csharp/mobile_platform.go`<br>`internal/custom/csharp/mobile_platform_test.go` | Application.Current global context, DependencyService.Get<T>() service resolution, and IServiceProvider/MauiAppBuilder usages emitted as SCOPE.Component/context_extraction. |
+| Context extraction | 🟢 `partial` | — | — | `internal/custom/csharp/mobile_maui_edges_test.go`<br>`internal/custom/csharp/mobile_platform.go`<br>`internal/custom/csharp/mobile_platform_test.go` | Application.Current global context, DependencyService.Get<T>() resolution, IServiceProvider/MauiAppBuilder usages as SCOPE.Component/context_extraction. MauiProgram.cs DI registrations emit binding edges: builder.Services.AddSingleton/AddScoped<IFoo,Foo>() -> BINDS impl:Foo (interface->impl, with lifetime prop); AddSingleton/AddTransient/AddScoped<XViewModel>() -> REGISTERS impl:XViewModel (self-binding). Cross-file impl resolution is partial. |
 
 ### Navigation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Deep link extraction | 🟢 `partial` | — | — | `internal/custom/csharp/mobile_platform.go`<br>`internal/custom/csharp/mobile_platform_test.go` | Shell.Current.GoToAsync() deep-link routes, [QueryProperty] shell parameter bindings, and AppLinks.RegisterRoute/AppendAppLink registrations emitted as SCOPE.Pattern/deep_link_extraction. |
-| Navigation extraction | 🟢 `partial` | — | — | `internal/custom/csharp/mobile_platform.go`<br>`internal/custom/csharp/mobile_platform_test.go` | Navigation.PushAsync/PopAsync/PushModalAsync/PopModalAsync stack operations, Shell.GoToAsync route-based navigation, and NavigationPage/TabbedPage/FlyoutPage constructor usages detected. |
+| Navigation extraction | 🟢 `partial` | — | — | `internal/custom/csharp/mobile_maui_edges_test.go`<br>`internal/custom/csharp/mobile_platform.go`<br>`internal/custom/csharp/mobile_platform_test.go` | Navigation.PushAsync/PopAsync/PushModalAsync stack ops, NavigationPage/TabbedPage/FlyoutPage ctors detected. Shell routing emits NAVIGATES_TO edges to synthetic route:<path> stubs: Routing.RegisterRoute("r", typeof(Page)) and <ShellContent Route="r" ContentTemplate="{DataTemplate Page}"/> (route tables, target_page resolved in-file), plus Shell.Current.GoToAsync("//r") and GoToAsync(nameof(Page)) call sites (route normalized). Cross-file route->page resolution is partial. |
 | Screen detection | 🟢 `partial` | — | — | `internal/custom/csharp/mobile_platform.go`<br>`internal/custom/csharp/mobile_platform_test.go` | ContentPage/Shell/TabbedPage/FlyoutPage/NavigationPage/MasterDetailPage subclass declarations emitted as SCOPE.UIComponent/screen_detection. |
 
 ### Platform
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | Device.RuntimePlatform/DeviceInfo.Platform platform conditionals + code if() branches detected via reBDFPlatformBranch/reBDFDeviceInfo/reBDFCodeIf |
-| State management | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go` | MAUI BindableProperty.Create/SetValue + INotifyPropertyChanged callbacks detected via reBDFSetValue/reBDFPropertyChanged/reBDFBindableProperty |
+| State management | 🟢 `partial` | — | — | `internal/custom/csharp/blazor_dataflow.go`<br>`internal/custom/csharp/mobile_maui_edges_test.go`<br>`internal/custom/csharp/mobile_platform.go` | MAUI BindableProperty.Create/SetValue + INotifyPropertyChanged callbacks (blazor_dataflow.go). MVVM view<->viewmodel wiring emits USES edges page->viewmodel:<VM>: BindingContext = new XViewModel() and DI-injected XViewModel ctor params on a ContentPage. CommunityToolkit.Mvvm [ObservableProperty]/[RelayCommand] mark a class as a ViewModel (viewmodel:<name> marker) and [RelayCommand] methods become command:<name> entities (mobile_platform.go). |
 
 ### Type System
 

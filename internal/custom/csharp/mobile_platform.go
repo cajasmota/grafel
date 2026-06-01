@@ -52,6 +52,7 @@ package csharp
 import (
 	"context"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -229,7 +230,86 @@ var (
 	reMPSetProperty = regexp.MustCompile(
 		`SetProperty\s*\(\s*ref\s+\w`,
 	)
+
+	// Navigation/navigation_extraction — Shell routing edges (#3579) -----------
+
+	// Routing.RegisterRoute("details", typeof(DetailsPage)) — route→page mapping
+	reMPRegisterRoute = regexp.MustCompile(
+		`Routing\.RegisterRoute\s*\(\s*["']([^"']+)["']\s*,\s*typeof\s*\(\s*(\w+)\s*\)`,
+	)
+
+	// <ShellContent Route="home" ...> — XAML route declaration. Optionally a
+	// ContentTemplate="{DataTemplate local:HomePage}" naming the target page.
+	reMPShellContentRoute = regexp.MustCompile(
+		`<ShellContent\b[^>]*\bRoute\s*=\s*["']([^"']+)["']`,
+	)
+
+	// ContentTemplate="{DataTemplate local:HomePage}" — page reference within a
+	// ShellContent / Tab / FlyoutItem element.
+	reMPContentTemplatePage = regexp.MustCompile(
+		`ContentTemplate\s*=\s*["']\{\s*DataTemplate\s+(?:[\w:]+:)?(\w+)\s*\}`,
+	)
+
+	// Shell.Current.GoToAsync(nameof(DetailsPage)) — nameof-style route target
+	reMPGoToAsyncNameof = regexp.MustCompile(
+		`(?:Shell(?:\.Current)?)?\.?GoToAsync\s*\(\s*nameof\s*\(\s*(\w+)\s*\)`,
+	)
+
+	// MVVM view↔viewmodel — USES edges (#3579) ---------------------------------
+
+	// BindingContext = new ProductViewModel(...) — explicit VM wiring
+	reMPBindingContextNew = regexp.MustCompile(
+		`BindingContext\s*=\s*new\s+(\w+)\s*\(`,
+	)
+
+	// public MainPage(MainViewModel vm) — DI-injected ViewModel ctor parameter.
+	// Captured against the enclosing ContentPage class (resolved separately).
+	reMPViewModelCtorParam = regexp.MustCompile(
+		`\b(\w+ViewModel)\s+\w+\s*[,)]`,
+	)
+
+	// [ObservableProperty] / [RelayCommand] — CommunityToolkit.Mvvm markers that
+	// identify a class as a ViewModel.
+	reMPObservableProperty = regexp.MustCompile(
+		`\[ObservableProperty\b`,
+	)
+
+	// [RelayCommand] private void/Task Save() — command method declaration
+	reMPRelayCommand = regexp.MustCompile(
+		`(?s)\[RelayCommand[^\]]*\]\s*(?:public|private|protected|internal)?\s*` +
+			`(?:async\s+)?(?:partial\s+)?(?:void|Task|ValueTask|IAsyncRelayCommand|\w+)\s+(\w+)\s*\(`,
+	)
+
+	// DI registration — BINDS edges (#3579) ------------------------------------
+
+	// builder.Services.AddSingleton<IFoo, Foo>() — interface→impl binding
+	reMPDITwoTypeArgs = regexp.MustCompile(
+		`\.Add(Singleton|Transient|Scoped)\s*<\s*(\w+(?:<[^>]+>)?)\s*,\s*(\w+(?:<[^>]+>)?)\s*>\s*\(`,
+	)
+
+	// builder.Services.AddTransient<XViewModel>() — single-type self registration
+	reMPDIOneTypeArg = regexp.MustCompile(
+		`\.Add(Singleton|Transient|Scoped)\s*<\s*(\w+(?:<[^>]+>)?)\s*>\s*\(`,
+	)
+
+	// class XViewModel { ... } — any class declaration (used to name the
+	// CommunityToolkit.Mvvm ViewModel when no ContentPage subclass is present,
+	// e.g. a partial ViewModel-only file).
+	reMPMvvmClass = regexp.MustCompile(
+		`(?m)\bclass\s+(\w+)\b`,
+	)
 )
+
+// normalizeMauiRoute strips Shell's "//" and "/" routing prefixes so that
+// GoToAsync("//details"), GoToAsync("details") and RegisterRoute("details", ...)
+// all resolve to the same synthetic "route:details" stub.
+func normalizeMauiRoute(route string) string {
+	r := route
+	for len(r) > 0 && r[0] == '/' {
+		r = r[1:]
+	}
+	return r
+}
 
 // ---------------------------------------------------------------------------
 // Extract
@@ -528,6 +608,288 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 		add(ent)
 	}
 
+	// -------------------------------------------------------------------------
+	// Navigation/navigation_extraction — Shell routing NAVIGATES_TO edges (#3579)
+	//
+	// Three Shell-routing surfaces become NAVIGATES_TO edges to a synthetic
+	// "route:<path>" stub (mirroring the JS/TS Angular/Expo route convention):
+	//   1. Routing.RegisterRoute("details", typeof(DetailsPage))   [route table]
+	//   2. <ShellContent Route="home" ...>                          [route table]
+	//   3. Shell.Current.GoToAsync("//details") / GoToAsync(nameof(DetailsPage))
+	//      [imperative call site]
+	// Cross-file resolution of the route→page identity is honest-partial: it is
+	// resolved within a file when RegisterRoute / ContentTemplate names the page.
+	// -------------------------------------------------------------------------
+
+	for _, m := range reMPRegisterRoute.FindAllStringSubmatchIndex(src, -1) {
+		route := normalizeMauiRoute(src[m[2]:m[3]])
+		pageType := src[m[4]:m[5]]
+		if route == "" {
+			continue
+		}
+		ent := makeEntity("route_register:"+route, "SCOPE.Operation", "navigation_extraction",
+			file.Path, "csharp", lineOf(src, m[0]))
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_REGISTER_ROUTE",
+			"route", route, "target_page", pageType)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "route:" + route,
+			Kind: string(types.RelationshipKindNavigatesTo),
+			Properties: map[string]string{
+				"route":       route,
+				"via":         "register_route",
+				"target_page": pageType,
+				"framework":   "maui",
+				"line":        itoa(lineOf(src, m[0])),
+			},
+		})
+		add(ent)
+	}
+
+	// <ShellContent Route="home" ContentTemplate="{DataTemplate local:HomePage}">
+	// Pair each Route= with the nearest following ContentTemplate page (if any).
+	contentTemplates := reMPContentTemplatePage.FindAllStringSubmatchIndex(src, -1)
+	for _, m := range reMPShellContentRoute.FindAllStringSubmatchIndex(src, -1) {
+		route := normalizeMauiRoute(src[m[2]:m[3]])
+		if route == "" {
+			continue
+		}
+		targetPage := ""
+		for _, cm := range contentTemplates {
+			// The ContentTemplate belongs to the same element when it appears
+			// shortly after the Route= attribute on the opening tag.
+			if cm[0] >= m[0] && cm[0]-m[1] < 200 {
+				targetPage = src[cm[2]:cm[3]]
+				break
+			}
+		}
+		ent := makeEntity("shell_content:"+route, "SCOPE.Operation", "navigation_extraction",
+			file.Path, "csharp", lineOf(src, m[0]))
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_SHELL_CONTENT",
+			"route", route)
+		props := map[string]string{
+			"route":     route,
+			"via":       "shell_content",
+			"framework": "maui",
+			"line":      itoa(lineOf(src, m[0])),
+		}
+		if targetPage != "" {
+			setProps(&ent, "target_page", targetPage)
+			props["target_page"] = targetPage
+		}
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID:       "route:" + route,
+			Kind:       string(types.RelationshipKindNavigatesTo),
+			Properties: props,
+		})
+		add(ent)
+	}
+
+	// Shell.Current.GoToAsync("//details") — string-literal imperative nav.
+	for _, m := range reMPShellGoToAsync.FindAllStringSubmatchIndex(src, -1) {
+		route := normalizeMauiRoute(src[m[2]:m[3]])
+		if route == "" {
+			continue
+		}
+		ent := makeEntity("goto:"+route+":"+file.Path+":"+itoa(lineOf(src, m[0])),
+			"SCOPE.Operation", "navigation_extraction", file.Path, "csharp", lineOf(src, m[0]))
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_GO_TO_ASYNC",
+			"route", route)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "route:" + route,
+			Kind: string(types.RelationshipKindNavigatesTo),
+			Properties: map[string]string{
+				"route":     route,
+				"via":       "goto_async",
+				"framework": "maui",
+				"line":      itoa(lineOf(src, m[0])),
+			},
+		})
+		add(ent)
+	}
+
+	// Shell.Current.GoToAsync(nameof(DetailsPage)) — nameof target == page == route.
+	for _, m := range reMPGoToAsyncNameof.FindAllStringSubmatchIndex(src, -1) {
+		page := src[m[2]:m[3]]
+		ent := makeEntity("goto:nameof:"+page+":"+file.Path+":"+itoa(lineOf(src, m[0])),
+			"SCOPE.Operation", "navigation_extraction", file.Path, "csharp", lineOf(src, m[0]))
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_GO_TO_ASYNC_NAMEOF",
+			"route", page, "target_page", page)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "route:" + page,
+			Kind: string(types.RelationshipKindNavigatesTo),
+			Properties: map[string]string{
+				"route":       page,
+				"via":         "goto_nameof",
+				"target_page": page,
+				"framework":   "maui",
+				"line":        itoa(lineOf(src, m[0])),
+			},
+		})
+		add(ent)
+	}
+
+	// -------------------------------------------------------------------------
+	// Data Flow/state_management — MVVM view↔viewmodel USES edges (#3579)
+	//
+	// A ContentPage that wires a ViewModel — via BindingContext = new XViewModel()
+	// or a DI-injected XViewModel ctor parameter — emits a USES edge
+	// page→"viewmodel:XViewModel". [ObservableProperty]/[RelayCommand] mark the
+	// class as a ViewModel; [RelayCommand] methods become command entities.
+	// -------------------------------------------------------------------------
+
+	// Resolve the enclosing page/class name (first ContentPage-style subclass in
+	// the file) so the USES edge has a meaningful caller property.
+	enclosingPage := ""
+	if pm := reMPContentPage.FindStringSubmatchIndex(src); pm != nil {
+		enclosingPage = src[pm[2]:pm[3]]
+	}
+
+	emitViewModelUses := func(vm string, via string, line int) {
+		if vm == "" {
+			return
+		}
+		ent := makeEntity("view_binds:"+enclosingPage+":"+vm, "SCOPE.UIComponent", "state_management",
+			file.Path, "csharp", line)
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_MVVM_BINDING",
+			"view", enclosingPage, "viewmodel", vm, "binding", via)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "viewmodel:" + vm,
+			Kind: string(types.RelationshipKindUses),
+			Properties: map[string]string{
+				"viewmodel": vm,
+				"view":      enclosingPage,
+				"via":       via,
+				"framework": "maui",
+				"line":      itoa(line),
+			},
+		})
+		add(ent)
+	}
+
+	for _, m := range reMPBindingContextNew.FindAllStringSubmatchIndex(src, -1) {
+		emitViewModelUses(src[m[2]:m[3]], "binding_context_new", lineOf(src, m[0]))
+	}
+	// DI-injected ViewModel ctor param: only meaningful inside a page class.
+	if enclosingPage != "" {
+		for _, m := range reMPViewModelCtorParam.FindAllStringSubmatchIndex(src, -1) {
+			emitViewModelUses(src[m[2]:m[3]], "ctor_injection", lineOf(src, m[0]))
+		}
+	}
+
+	// CommunityToolkit.Mvvm ViewModel marker: [ObservableProperty]/[RelayCommand].
+	if reMPObservableProperty.MatchString(src) || reMPRelayCommand.MatchString(src) {
+		// Tag the enclosing class as a ViewModel so the "viewmodel:<name>" stub
+		// emitted by USES edges has a concrete endpoint within the same file.
+		vmName := enclosingPage
+		if vm := reMPMvvmClass.FindStringSubmatchIndex(src); vm != nil {
+			vmName = src[vm[2]:vm[3]]
+		}
+		if vmName != "" {
+			ent := makeEntity("viewmodel:"+vmName, "SCOPE.Component", "state_management",
+				file.Path, "csharp", 1)
+			setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_MVVM_TOOLKIT",
+				"viewmodel", vmName)
+			add(ent)
+		}
+	}
+
+	// [RelayCommand] methods → command entities (cheap; aids USES targeting).
+	for _, m := range reMPRelayCommand.FindAllStringSubmatchIndex(src, -1) {
+		method := src[m[2]:m[3]]
+		ent := makeEntity("command:"+method, "SCOPE.Operation", "state_management",
+			file.Path, "csharp", lineOf(src, m[0]))
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_RELAY_COMMAND",
+			"command", method)
+		add(ent)
+	}
+
+	// -------------------------------------------------------------------------
+	// Structure/context_extraction — DI registration BINDS edges (#3579)
+	//
+	// MauiProgram.cs service registrations:
+	//   builder.Services.AddSingleton<IFoo, Foo>()  → BINDS  iface:IFoo → impl:Foo
+	//   builder.Services.AddTransient<XViewModel>() → REGISTERS self-binding
+	// Mirrors how DI bindings are modeled elsewhere (interface→impl edge).
+	// -------------------------------------------------------------------------
+
+	for _, m := range reMPDITwoTypeArgs.FindAllStringSubmatchIndex(src, -1) {
+		lifetime := src[m[2]:m[3]]
+		iface := src[m[4]:m[5]]
+		impl := src[m[6]:m[7]]
+		ent := makeEntity("di:"+iface+"->"+impl, "SCOPE.Component", "context_extraction",
+			file.Path, "csharp", lineOf(src, m[0]))
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_DI_REGISTRATION",
+			"interface", iface, "implementation", impl, "lifetime", lifetime)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "impl:" + impl,
+			Kind: string(types.RelationshipKindBinds),
+			Properties: map[string]string{
+				"interface":      iface,
+				"implementation": impl,
+				"lifetime":       lifetime,
+				"framework":      "maui",
+				"line":           itoa(lineOf(src, m[0])),
+			},
+		})
+		add(ent)
+	}
+
+	// Single-type-arg registrations (self-binding); skip those already captured
+	// as the two-arg form (the one-arg regex also matches "<IFoo, Foo>" prefix).
+	for _, m := range reMPDIOneTypeArg.FindAllStringSubmatchIndex(src, -1) {
+		// Guard: the two-type-arg regex is a superset; re-check there is no comma
+		// between the angle brackets for this match to avoid double emission.
+		seg := src[m[0]:m[1]]
+		if commaInTypeArgs(seg) {
+			continue
+		}
+		lifetime := src[m[2]:m[3]]
+		svc := src[m[4]:m[5]]
+		ent := makeEntity("di:self:"+svc, "SCOPE.Component", "context_extraction",
+			file.Path, "csharp", lineOf(src, m[0]))
+		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_DI_SELF_REGISTRATION",
+			"service", svc, "lifetime", lifetime)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "impl:" + svc,
+			Kind: string(types.RelationshipKindRegisters),
+			Properties: map[string]string{
+				"service":   svc,
+				"lifetime":  lifetime,
+				"framework": "maui",
+				"line":      itoa(lineOf(src, m[0])),
+			},
+		})
+		add(ent)
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
+}
+
+// commaInTypeArgs reports whether the matched Add{Singleton,…}<...>( segment
+// contains a top-level comma between its angle brackets — i.e. it is the
+// two-type-arg interface→impl form, which the dedicated two-arg pass already
+// handles. Used to keep the one-arg self-registration pass from double-emitting.
+func commaInTypeArgs(seg string) bool {
+	open := strings.IndexByte(seg, '<')
+	if open < 0 {
+		return false
+	}
+	depth := 0
+	for i := open; i < len(seg); i++ {
+		switch seg[i] {
+		case '<':
+			depth++
+		case '>':
+			depth--
+			if depth == 0 {
+				return false
+			}
+		case ',':
+			if depth == 1 {
+				return true
+			}
+		}
+	}
+	return false
 }
