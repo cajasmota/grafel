@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 26 records · **elixir**: 1 · **JS/TS**: 1 · **multi**: 20 · **python**: 3 · **ruby**: 1
+**Total**: 28 records · **elixir**: 1 · **JS/TS**: 1 · **multi**: 20 · **python**: 3 · **ruby**: 1 · **rust**: 2
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -33,3 +33,5 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [python](../by-language/python.md) | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | ✅ | ✅ | — | ✅ | |
 | [ruby](../by-language/ruby.md) | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🔴 | 🔴 | — | 🔴 | |
+| [rust](../by-language/rust.md) | [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [rust](../by-language/rust.md) | [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |

@@ -697,3 +697,93 @@ class ConsumePaymentsSettled {
 		t.Errorf("expected SCOPE.Operation:ConsumePaymentsSettled.handle → kafka:payments.settled edge, got %v", subs)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Rust — rdkafka (#3558)
+// ---------------------------------------------------------------------------
+
+// TestKafka_Rust_FutureRecordProducer covers the rdkafka FutureProducer
+// idiom: producer.send(FutureRecord::to("topic")...). Producer side:
+// PUBLISHES_TO, attributed to the enclosing fn.
+func TestKafka_Rust_FutureRecordProducer(t *testing.T) {
+	src := `use rdkafka::producer::{FutureProducer, FutureRecord};
+
+async fn publish_inspection(producer: &FutureProducer, payload: &str) {
+    producer
+        .send(
+            FutureRecord::to("inspections").payload(payload).key("k"),
+            std::time::Duration::from_secs(0),
+        )
+        .await
+        .unwrap();
+}
+`
+	ents, rels := runKafkaDetect(t, "rust", "src/producer.rs", src)
+	if topicByName(ents, "inspections") == nil {
+		t.Fatalf("expected MessageTopic for inspections, got %v", ents)
+	}
+	pub := edgesOfKind(rels, publishesToEdgeKind)
+	if len(pub) == 0 {
+		t.Fatalf("expected PUBLISHES_TO edge, got none")
+	}
+	if !strings.Contains(pub[0].ToID, "kafka:inspections") {
+		t.Fatalf("PUBLISHES_TO ToID = %q, want suffix kafka:inspections", pub[0].ToID)
+	}
+	if !strings.Contains(pub[0].FromID, "publish_inspection") {
+		t.Fatalf("PUBLISHES_TO FromID = %q, want enclosing fn publish_inspection", pub[0].FromID)
+	}
+}
+
+// TestKafka_Rust_StreamConsumerSubscribe covers rdkafka StreamConsumer
+// subscribe with a literal topic slice. Consumer side: SUBSCRIBES_TO with
+// the exact topic literals.
+func TestKafka_Rust_StreamConsumerSubscribe(t *testing.T) {
+	src := `use rdkafka::consumer::StreamConsumer;
+
+fn start_consumer(consumer: &StreamConsumer) {
+    consumer.subscribe(&["events", "audit.log"]).expect("subscribe");
+}
+`
+	ents, rels := runKafkaDetect(t, "rust", "src/consumer.rs", src)
+	if topicByName(ents, "events") == nil {
+		t.Fatalf("expected MessageTopic for events, got %v", ents)
+	}
+	if topicByName(ents, "audit.log") == nil {
+		t.Fatalf("expected MessageTopic for audit.log, got %v", ents)
+	}
+	subs := edgesOfKind(rels, subscribesToEdgeKind)
+	if len(subs) < 2 {
+		t.Fatalf("expected 2 SUBSCRIBES_TO edges, got %d", len(subs))
+	}
+	var sawEvents bool
+	for _, s := range subs {
+		if strings.Contains(s.ToID, "kafka:events") {
+			sawEvents = true
+			if !strings.Contains(s.FromID, "start_consumer") {
+				t.Fatalf("SUBSCRIBES_TO FromID = %q, want enclosing fn start_consumer", s.FromID)
+			}
+		}
+	}
+	if !sawEvents {
+		t.Fatalf("expected a SUBSCRIBES_TO edge to kafka:events, got %v", subs)
+	}
+}
+
+// TestKafka_Rust_BaseRecordProducer covers the ThreadedProducer BaseRecord
+// idiom: producer.send(BaseRecord::to("metrics")...).
+func TestKafka_Rust_BaseRecordProducer(t *testing.T) {
+	src := `use rdkafka::producer::{BaseProducer, BaseRecord};
+
+fn emit_metric(producer: &BaseProducer) {
+    producer.send(BaseRecord::to("metrics").payload("v").key("k")).unwrap();
+}
+`
+	ents, rels := runKafkaDetect(t, "rust", "src/metrics.rs", src)
+	if topicByName(ents, "metrics") == nil {
+		t.Fatalf("expected MessageTopic for metrics, got %v", ents)
+	}
+	pub := edgesOfKind(rels, publishesToEdgeKind)
+	if len(pub) == 0 || !strings.Contains(pub[0].ToID, "kafka:metrics") {
+		t.Fatalf("expected PUBLISHES_TO to kafka:metrics, got %v", pub)
+	}
+}

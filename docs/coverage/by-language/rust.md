@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # rust
 
-**Frameworks**: 14 · **Tools**: 6 · **ORMs**: 14 · **Other**: 1
+**Frameworks**: 14 · **Tools**: 6 · **ORMs**: 15 · **Other**: 3
 
 Back to [summary](../summary.md).
 
@@ -69,6 +69,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟢 7/7 | |
 | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟢 4/4 | |
 | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟢 8/8 | |
+| [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/8 | |
 | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟢 1/1 | |
 | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟢 1/1 | |
 | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟢 1/1 | |
@@ -84,6 +85,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Other
 
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+| [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
 
 ### Validation
 

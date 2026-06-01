@@ -58,7 +58,7 @@ const transformsEdgeKind = "TRANSFORMS"
 // and Go — the languages with non-trivial Kafka adoption in the corpora.
 func kafkaSynthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "java", "kotlin", "javascript", "typescript", "python", "go", "php":
+	case "java", "kotlin", "javascript", "typescript", "python", "go", "php", "rust":
 		return true
 	default:
 		return false
@@ -180,6 +180,8 @@ func applyKafkaEdges(args DetectorPassArgs) DetectorPassResult {
 		synthesizeGoKafka(src, emitTopic, emitEdge)
 	case "php":
 		synthesizePHPRdKafka(src, emitTopic, emitEdge)
+	case "rust":
+		synthesizeRustRdKafka(src, emitTopic, emitEdge)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -1149,4 +1151,128 @@ func findEnclosingPHPName(src string, offset int, className string) string {
 		return className + "." + methodName
 	}
 	return methodName
+}
+
+// ---------------------------------------------------------------------------
+// Rust — rdkafka (FutureProducer + StreamConsumer)  #3558
+// ---------------------------------------------------------------------------
+//
+// Covers the two dominant rdkafka idioms:
+//
+//   Producer (FutureProducer / ThreadedProducer):
+//     producer.send(FutureRecord::to("inspections").payload(&p), ...)
+//     producer.send_result(FutureRecord::to("events"))
+//
+//   Consumer (StreamConsumer / BaseConsumer):
+//     consumer.subscribe(&["events", "audit.log"])
+//
+// Caller attribution: the Rust core extractor emits SCOPE.Operation
+// (subtype="function") entities keyed by the bare `fn` name, so we attribute
+// each edge to the nearest enclosing `fn` declaration and emit the FromID as
+// `SCOPE.Operation:<fn-name>`, which the intra-repo resolver joins to that
+// function entity (same strategy as the gRPC / async-graphql Rust records).
+
+// rustRdKafkaProduceRe captures `FutureRecord::to("topic")` — the canonical
+// rdkafka producer record builder. Group 1 = topic literal. This is the
+// direction-unambiguous producer signal (only producers build FutureRecord).
+var rustRdKafkaProduceRe = regexp.MustCompile(
+	`FutureRecord::to\s*\(\s*"([^"\n\r]+)"\s*\)`,
+)
+
+// rustRdKafkaBaseRecordRe captures `BaseRecord::to("topic")` — the
+// ThreadedProducer / BaseProducer record builder. Group 1 = topic literal.
+var rustRdKafkaBaseRecordRe = regexp.MustCompile(
+	`BaseRecord::to\s*\(\s*"([^"\n\r]+)"\s*\)`,
+)
+
+// rustRdKafkaSubscribeRe captures `consumer.subscribe(&["a", "b"])`. The
+// `&[ ... ]` slice body is group 1 and is split on commas. rdkafka's
+// `subscribe` always takes a `&[&str]` topic slice, so this is the
+// direction-unambiguous consumer signal.
+var rustRdKafkaSubscribeRe = regexp.MustCompile(
+	`\.subscribe\s*\(\s*&\s*\[([^\]]+)\]`,
+)
+
+// rustFnRe matches a Rust function declaration: `fn name(`, `pub fn name(`,
+// `pub async fn name(`, etc. Group 1 = function name.
+var rustFnRe = regexp.MustCompile(`(?m)\bfn\s+(\w+)\s*[<(]`)
+
+func synthesizeRustRdKafka(
+	src string,
+	emitTopic func(topicID, topicName, broker string, dynamic bool, props map[string]string),
+	emitEdge func(callerKind, callerName, topicID, edgeKind string, props map[string]string),
+) {
+	if !strings.Contains(src, "rdkafka") && !strings.Contains(src, "FutureRecord") &&
+		!strings.Contains(src, "FutureProducer") && !strings.Contains(src, "StreamConsumer") &&
+		!strings.Contains(src, "BaseRecord") {
+		return
+	}
+	enclosing := func(offset int) string {
+		return findEnclosingRustFnName(src, offset)
+	}
+
+	// Producer: FutureRecord::to("topic")
+	for _, m := range rustRdKafkaProduceRe.FindAllStringSubmatchIndex(src, -1) {
+		topic := src[m[2]:m[3]]
+		emitRustKafkaTopic(topic, "rdkafka", enclosing(m[0]), publishesToEdgeKind, emitTopic, emitEdge)
+	}
+	// Producer: BaseRecord::to("topic")
+	for _, m := range rustRdKafkaBaseRecordRe.FindAllStringSubmatchIndex(src, -1) {
+		topic := src[m[2]:m[3]]
+		emitRustKafkaTopic(topic, "rdkafka", enclosing(m[0]), publishesToEdgeKind, emitTopic, emitEdge)
+	}
+	// Consumer: consumer.subscribe(&["a", "b"])
+	for _, m := range rustRdKafkaSubscribeRe.FindAllStringSubmatchIndex(src, -1) {
+		caller := enclosing(m[0])
+		for _, tok := range strings.Split(src[m[2]:m[3]], ",") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				continue
+			}
+			topic, ok := unquote(tok)
+			if !ok {
+				// Non-literal (const / variable) — keep as a dynamic channel.
+				topic = tok
+			}
+			if ok {
+				emitRustKafkaTopic(topic, "rdkafka", caller, subscribesToEdgeKind, emitTopic, emitEdge)
+			}
+		}
+	}
+}
+
+// emitRustKafkaTopic emits a MessageTopic + the given producer/consumer edge
+// for a Rust rdkafka call site, attributing the caller as a SCOPE.Operation.
+func emitRustKafkaTopic(
+	rawTopic, layer, caller, edgeKind string,
+	emitTopic func(topicID, topicName, broker string, dynamic bool, props map[string]string),
+	emitEdge func(callerKind, callerName, topicID, edgeKind string, props map[string]string),
+) {
+	topic, dynamic := rawTopic, false
+	id := kafkaTopicID(topic)
+	if !looksLikeKafkaTopic(topic) {
+		id = "kafka:channel:" + topic
+		dynamic = true
+	}
+	emitTopic(id, topic, "kafka", dynamic, map[string]string{
+		"messaging_layer": layer,
+	})
+	emitEdge("SCOPE.Operation", caller, id, edgeKind, map[string]string{
+		"messaging_layer": layer,
+	})
+}
+
+// findEnclosingRustFnName walks backward from `offset` to the nearest `fn`
+// declaration. Returns "module" when none is found within ~4KB.
+func findEnclosingRustFnName(src string, offset int) string {
+	start := offset - 4000
+	if start < 0 {
+		start = 0
+	}
+	window := src[start:offset]
+	matches := rustFnRe.FindAllStringSubmatch(window, -1)
+	if len(matches) == 0 {
+		return "module"
+	}
+	return matches[len(matches)-1][1]
 }

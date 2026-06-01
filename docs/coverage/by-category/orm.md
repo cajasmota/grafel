@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 151 records · **C/C++**: 7 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 14 · **JS/TS**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 14 · **scala**: 6
+**Total**: 152 records · **C/C++**: 7 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 14 · **JS/TS**: 18 · **kotlin**: 7 · **php**: 14 · **python**: 17 · **ruby**: 13 · **rust**: 15 · **scala**: 6
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -145,6 +145,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟢 7/7 | |
 | [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟢 4/4 | |
 | [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟢 8/8 | |
+| [rust](../by-language/rust.md) | [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/8 | |
 | [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟢 1/1 | |
 | [rust](../by-language/rust.md) | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟢 1/1 | |

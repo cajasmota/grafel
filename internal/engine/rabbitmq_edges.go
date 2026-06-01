@@ -43,7 +43,7 @@ const queueEntityKind = "SCOPE.Queue"
 // can emit synthetics for `lang`.
 func rabbitmqSynthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "java", "kotlin", "javascript", "typescript", "python", "go":
+	case "java", "kotlin", "javascript", "typescript", "python", "go", "rust":
 		return true
 	default:
 		return false
@@ -144,6 +144,8 @@ func applyRabbitMQEdges(args DetectorPassArgs) DetectorPassResult {
 		synthesizeJavaRabbitMQ(src, emitQueue, emitEdge)
 	case "go":
 		synthesizeGoRabbitMQ(src, emitQueue, emitEdge)
+	case "rust":
+		synthesizeRustLapin(src, emitQueue, emitEdge)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -832,6 +834,109 @@ func synthesizeGoRabbitMQ(
 
 	// ch.QueueDeclare(name, ...)
 	for _, m := range goAmqpQueueDeclareRe.FindAllStringSubmatchIndex(src, -1) {
+		queueName := src[m[2]:m[3]]
+		if !looksLikeQueueName(queueName) {
+			continue
+		}
+		qID := rabbitmqQueueID(queueName)
+		emitQueue(qID, queueName, "", "", map[string]string{"declared": "true"})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Rust — lapin (async AMQP / RabbitMQ client)  #3558
+// ---------------------------------------------------------------------------
+//
+// lapin's Channel API is positional:
+//
+//   Publish:
+//     channel.basic_publish(
+//         "exchange",        // exchange
+//         "routing_key",     // routing key
+//         BasicPublishOptions::default(),
+//         payload,
+//         BasicProperties::default(),
+//     )
+//
+//   Consume:
+//     channel.basic_consume(
+//         "queue",           // queue name
+//         "consumer_tag",
+//         BasicConsumeOptions::default(),
+//         FieldTable::default(),
+//     )
+//
+//   Declare (records the queue node even without pub/sub at this site):
+//     channel.queue_declare("queue", QueueDeclareOptions::default(), FieldTable::default())
+//
+// Caller attribution mirrors the rdkafka Rust pass: SCOPE.Operation:<fn-name>
+// for the nearest enclosing `fn`. findEnclosingRustFnName lives in kafka_edges.go.
+
+// rustLapinPublishRe captures lapin `basic_publish("exchange", "routing_key", ...)`.
+// Group 1 = exchange (may be empty for the default exchange), group 2 = routing key.
+var rustLapinPublishRe = regexp.MustCompile(
+	`\.basic_publish\s*\(\s*"([^"\n\r]*)"\s*,\s*"([^"\n\r]+)"`,
+)
+
+// rustLapinConsumeRe captures lapin `basic_consume("queue", ...)`.
+// Group 1 = queue name.
+var rustLapinConsumeRe = regexp.MustCompile(
+	`\.basic_consume\s*\(\s*"([^"\n\r]+)"`,
+)
+
+// rustLapinQueueDeclareRe captures lapin `queue_declare("queue", ...)`.
+// Group 1 = queue name.
+var rustLapinQueueDeclareRe = regexp.MustCompile(
+	`\.queue_declare\s*\(\s*"([^"\n\r]+)"`,
+)
+
+func synthesizeRustLapin(
+	src string,
+	emitQueue func(queueID, queueName, exchange, routingKey string, props map[string]string),
+	emitEdge func(callerKind, callerName, queueID, edgeKind string, props map[string]string),
+) {
+	if !strings.Contains(src, "lapin") && !strings.Contains(src, "basic_publish") &&
+		!strings.Contains(src, "basic_consume") {
+		return
+	}
+	enclosing := func(offset int) string {
+		return findEnclosingRustFnName(src, offset)
+	}
+
+	// Publish: basic_publish("exchange", "routing_key", ...).
+	// The routing key is the queue-routing identity used by the cross-repo
+	// linker (matches the amqp091-go convention in synthesizeGoRabbitMQ).
+	for _, m := range rustLapinPublishRe.FindAllStringSubmatchIndex(src, -1) {
+		exchange := src[m[2]:m[3]]
+		routingKey := src[m[4]:m[5]]
+		if !looksLikeQueueName(routingKey) {
+			continue
+		}
+		qID := rabbitmqQueueID(routingKey)
+		emitQueue(qID, routingKey, exchange, routingKey, nil)
+		emitEdge("SCOPE.Operation", enclosing(m[0]), qID, publishesToEdgeKind, map[string]string{
+			"messaging_layer": "lapin",
+			"exchange":        exchange,
+			"routing_key":     routingKey,
+		})
+	}
+
+	// Consume: basic_consume("queue", ...).
+	for _, m := range rustLapinConsumeRe.FindAllStringSubmatchIndex(src, -1) {
+		queueName := src[m[2]:m[3]]
+		if !looksLikeQueueName(queueName) {
+			continue
+		}
+		qID := rabbitmqQueueID(queueName)
+		emitQueue(qID, queueName, "", "", nil)
+		emitEdge("SCOPE.Operation", enclosing(m[0]), qID, subscribesToEdgeKind, map[string]string{
+			"messaging_layer": "lapin",
+		})
+	}
+
+	// Declare: queue_declare("queue", ...) — record the node even when no
+	// pub/sub call site is present in this file.
+	for _, m := range rustLapinQueueDeclareRe.FindAllStringSubmatchIndex(src, -1) {
 		queueName := src[m[2]:m[3]]
 		if !looksLikeQueueName(queueName) {
 			continue

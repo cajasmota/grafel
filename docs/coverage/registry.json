@@ -49388,6 +49388,35 @@
       }
     },
     {
+      "id": "lang.rust.framework.lapin",
+      "category": "message_broker",
+      "language": "rust",
+      "label": "lapin (AMQP/RabbitMQ)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/rabbitmq_edges.go","internal/engine/rabbitmq_edges_test.go"],
+          "issue": "3558",
+          "notes": "lapin channel.basic_publish(\"exchange\",\"routing_key\",...) -\u003e PUBLISHES_TO (routing_key as queue identity, exchange recorded as edge prop) and basic_consume(\"queue\",...) -\u003e SUBSCRIBES_TO, plus queue_declare(\"queue\",...) node; SCOPE.Queue keyed rabbitmq:\u003cname\u003e joins cross-repo, attributed to the enclosing fn. Partial: only literal exchange/queue/routing-key string args are resolved; dynamic/expression args and cross-file fn attribution are not modelled.",
+          "verified_at": "2026-05-31"
+        },
+        "producer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/rabbitmq_edges.go","internal/engine/rabbitmq_edges_test.go"],
+          "issue": "3558",
+          "notes": "lapin channel.basic_publish(\"exchange\",\"routing_key\",...) -\u003e PUBLISHES_TO (routing_key as queue identity, exchange recorded as edge prop) and basic_consume(\"queue\",...) -\u003e SUBSCRIBES_TO, plus queue_declare(\"queue\",...) node; SCOPE.Queue keyed rabbitmq:\u003cname\u003e joins cross-repo, attributed to the enclosing fn. Partial: only literal exchange/queue/routing-key string args are resolved; dynamic/expression args and cross-file fn attribution are not modelled.",
+          "verified_at": "2026-05-31"
+        },
+        "topic_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/rabbitmq_edges.go","internal/engine/rabbitmq_edges_test.go"],
+          "issue": "3558",
+          "notes": "lapin channel.basic_publish(\"exchange\",\"routing_key\",...) -\u003e PUBLISHES_TO (routing_key as queue identity, exchange recorded as edge prop) and basic_consume(\"queue\",...) -\u003e SUBSCRIBES_TO, plus queue_declare(\"queue\",...) node; SCOPE.Queue keyed rabbitmq:\u003cname\u003e joins cross-repo, attributed to the enclosing fn. Partial: only literal exchange/queue/routing-key string args are resolved; dynamic/expression args and cross-file fn attribution are not modelled.",
+          "verified_at": "2026-05-31"
+        }
+      }
+    },
+    {
       "id": "lang.rust.framework.poem",
       "category": "http_framework",
       "subcategory": "http_backend",
@@ -49603,6 +49632,35 @@
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_rust.go"],
             "verified_at": "2026-05-28"
           }
+        }
+      }
+    },
+    {
+      "id": "lang.rust.framework.rdkafka",
+      "category": "message_broker",
+      "language": "rust",
+      "label": "rdkafka (Kafka)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/kafka_edges.go","internal/engine/kafka_edges_test.go"],
+          "issue": "3558",
+          "notes": "rdkafka FutureRecord::to(\"topic\")/BaseRecord::to(\"topic\") -\u003e PUBLISHES_TO and StreamConsumer .subscribe(\u0026[\"a\",\"b\"]) -\u003e SUBSCRIBES_TO, attributed to the enclosing fn (SCOPE.Operation); MessageTopic keyed kafka:\u003ctopic\u003e joins cross-repo. Partial: only literal topic names are resolved (const/variable topics fall back to dynamic kafka:channel), and caller attribution is same-file nearest-fn.",
+          "verified_at": "2026-05-31"
+        },
+        "producer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/kafka_edges.go","internal/engine/kafka_edges_test.go"],
+          "issue": "3558",
+          "notes": "rdkafka FutureRecord::to(\"topic\")/BaseRecord::to(\"topic\") -\u003e PUBLISHES_TO and StreamConsumer .subscribe(\u0026[\"a\",\"b\"]) -\u003e SUBSCRIBES_TO, attributed to the enclosing fn (SCOPE.Operation); MessageTopic keyed kafka:\u003ctopic\u003e joins cross-repo. Partial: only literal topic names are resolved (const/variable topics fall back to dynamic kafka:channel), and caller attribution is same-file nearest-fn.",
+          "verified_at": "2026-05-31"
+        },
+        "topic_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/kafka_edges.go","internal/engine/kafka_edges_test.go"],
+          "issue": "3558",
+          "notes": "rdkafka FutureRecord::to(\"topic\")/BaseRecord::to(\"topic\") -\u003e PUBLISHES_TO and StreamConsumer .subscribe(\u0026[\"a\",\"b\"]) -\u003e SUBSCRIBES_TO, attributed to the enclosing fn (SCOPE.Operation); MessageTopic keyed kafka:\u003ctopic\u003e joins cross-repo. Partial: only literal topic names are resolved (const/variable topics fall back to dynamic kafka:channel), and caller attribution is same-file nearest-fn.",
+          "verified_at": "2026-05-31"
         }
       }
     },
@@ -50038,6 +50096,64 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_rust.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.rust.framework.sea-query",
+      "category": "orm",
+      "subcategory": "orm_mapper",
+      "language": "rust",
+      "label": "SeaQuery",
+      "capabilities": {
+        "Models": {
+          "model_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/sea_query.go","internal/custom/rust/sea_query_test.go"],
+            "issue": "3558",
+            "notes": "#[derive(Iden)] enum declarations emitted as SCOPE.Component(orm_model) recording the Iden enum as the logical table identity. Partial: the physical table name from an #[iden=\"...\"] / impl Iden rename is not resolved (enum name used as table identity).",
+            "verified_at": "2026-05-31"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/sea_query.go","internal/custom/rust/sea_query_test.go"],
+            "issue": "3558",
+            "notes": ".columns([Table::Col,...]) and .column(Table::Col) projections emitted as SCOPE.Component(schema_column) with the literal table+column Iden names. Partial: only columns referenced as Iden paths in the statement window are captured; dynamically-built column lists are not resolved.",
+            "verified_at": "2026-05-31"
+          }
+        },
+        "Relationships": {
+          "association_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "foreign_key_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "lazy_loading_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "relationship_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Queries": {
+          "query_attribution": {
+            "status": "partial",
+            "cites": ["internal/custom/rust/sea_query.go","internal/custom/rust/sea_query_test.go"],
+            "issue": "3558",
+            "notes": "Query::select()/insert()/update()/delete() statements emitted as SCOPE.Pattern(query) carrying statement_kind + the literal target table Iden (from(T)/into_table(T)/table(T)/from_table(T)). Partial: the captured table is the in-code Iden enum identifier, not the resolved physical SQL table string; statements whose table is built dynamically or in a helper are not attributed.",
+            "verified_at": "2026-05-31"
+          }
+        },
+        "Migrations": {
+          "migration_parsing": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }

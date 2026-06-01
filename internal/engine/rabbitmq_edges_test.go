@@ -390,3 +390,106 @@ async def consume(connection):
 		t.Fatalf("expected aio-pika SUBSCRIBES_TO to %q, got %v", qID, subs)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Rust — lapin (#3558)
+// ---------------------------------------------------------------------------
+
+// TestRabbitMQ_Rust_LapinPublish covers lapin
+// channel.basic_publish("exchange", "routing_key", ...). Producer side:
+// PUBLISHES_TO keyed on the routing key, attributed to the enclosing fn.
+func TestRabbitMQ_Rust_LapinPublish(t *testing.T) {
+	src := `use lapin::{Channel, BasicProperties, options::BasicPublishOptions};
+
+async fn send_event(channel: &Channel, payload: &[u8]) {
+    channel
+        .basic_publish(
+            "events-exchange",
+            "events.created",
+            BasicPublishOptions::default(),
+            payload,
+            BasicProperties::default(),
+        )
+        .await
+        .unwrap();
+}
+`
+	ents, rels := runRabbitMQDetect(t, "rust", "src/publisher.rs", src)
+	qID := rabbitmqQueueID("events.created")
+	q := queueByName(ents, qID)
+	if q == nil {
+		t.Fatalf("expected SCOPE.Queue for events.created, got %v", ents)
+	}
+	if q.props["exchange"] != "events-exchange" {
+		t.Errorf("expected exchange=events-exchange, got %q", q.props["exchange"])
+	}
+	pubs := relsByKind(rels, publishesToEdgeKind)
+	if len(pubs) == 0 {
+		t.Fatalf("expected PUBLISHES_TO edge, got none")
+	}
+	if !strings.Contains(pubs[0].to, qID) {
+		t.Fatalf("PUBLISHES_TO ToID = %q, want to contain %q", pubs[0].to, qID)
+	}
+	if pubs[0].props["routing_key"] != "events.created" {
+		t.Errorf("expected routing_key=events.created, got %q", pubs[0].props["routing_key"])
+	}
+	if !strings.Contains(pubs[0].from, "send_event") {
+		t.Errorf("PUBLISHES_TO FromID = %q, want enclosing fn send_event", pubs[0].from)
+	}
+}
+
+// TestRabbitMQ_Rust_LapinConsume covers lapin
+// channel.basic_consume("queue", ...). Consumer side: SUBSCRIBES_TO.
+func TestRabbitMQ_Rust_LapinConsume(t *testing.T) {
+	src := `use lapin::{Channel, options::BasicConsumeOptions, types::FieldTable};
+
+async fn consume_jobs(channel: &Channel) {
+    let _consumer = channel
+        .basic_consume(
+            "jobs.pending",
+            "worker-1",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await
+        .unwrap();
+}
+`
+	ents, rels := runRabbitMQDetect(t, "rust", "src/worker.rs", src)
+	qID := rabbitmqQueueID("jobs.pending")
+	if queueByName(ents, qID) == nil {
+		t.Fatalf("expected SCOPE.Queue for jobs.pending, got %v", ents)
+	}
+	subs := relsByKind(rels, subscribesToEdgeKind)
+	if len(subs) == 0 {
+		t.Fatalf("expected SUBSCRIBES_TO edge, got none")
+	}
+	if !strings.Contains(subs[0].to, qID) {
+		t.Fatalf("SUBSCRIBES_TO ToID = %q, want to contain %q", subs[0].to, qID)
+	}
+	if !strings.Contains(subs[0].from, "consume_jobs") {
+		t.Errorf("SUBSCRIBES_TO FromID = %q, want enclosing fn consume_jobs", subs[0].from)
+	}
+}
+
+// TestRabbitMQ_Rust_LapinQueueDeclare covers lapin queue_declare("queue", ...)
+// — records the queue node even without a pub/sub call in the same file.
+func TestRabbitMQ_Rust_LapinQueueDeclare(t *testing.T) {
+	src := `use lapin::{Channel, options::QueueDeclareOptions, types::FieldTable};
+
+async fn setup(channel: &Channel) {
+    channel
+        .queue_declare("notifications", QueueDeclareOptions::default(), FieldTable::default())
+        .await
+        .unwrap();
+}
+`
+	ents, _ := runRabbitMQDetect(t, "rust", "src/setup.rs", src)
+	q := queueByName(ents, rabbitmqQueueID("notifications"))
+	if q == nil {
+		t.Fatalf("expected SCOPE.Queue for notifications, got %v", ents)
+	}
+	if q.props["declared"] != "true" {
+		t.Errorf("expected declared=true, got %q", q.props["declared"])
+	}
+}
