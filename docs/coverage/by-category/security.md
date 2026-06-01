@@ -1,12 +1,13 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # security
 
-**Total**: 11 records · **java**: 1 · **multi**: 10
+**Total**: 12 records · **elixir**: 1 · **java**: 1 · **multi**: 10
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Auth policy | Secret detection | SQL injection | Status | Notes |
 |---|---|---|---|---|---|---|
+| [elixir](../by-language/elixir.md) | [Ueberauth (Elixir OAuth)](../detail/lang.elixir.framework.ueberauth.md) | 🟢 | 🔴 | — | 🔴 | |
 | [java](../by-language/java.md) | [Auth policy resolver (Java/Kotlin — Phase 1 of #1942)](../detail/security.auth-java.md) | ✅ | — | — | ✅ | |
 | [multi](../by-language/multi.md) | [Auth policy resolver (Python / NestJS / Go / Ruby / ASP.NET — Phases 2-4 of #1942)](../detail/security.auth-other.md) | 🔴 | — | — | 🔴 | |
 | [multi](../by-language/multi.md) | [CSRF heuristic detector](../detail/security.csrf.md) | ✅ | — | — | ✅ | |

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # elixir
 
-**Frameworks**: 13 · **Tools**: 5 · **ORMs**: 10 · **Other**: 0
+**Frameworks**: 14 · **Tools**: 5 · **ORMs**: 10 · **Other**: 2
 
 Back to [summary](../summary.md).
 
@@ -47,6 +47,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | 🟢 2/2 | 🟢 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 5/5 | |
 
 
+### RPC Framework
+
+| Name | Substrate | Other capabilities | Notes |
+|---|---|---|---|
+| [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | 🟡 3/21 | 🟡 3/4 | |
+
+
 ## Tools
 
 | Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
@@ -74,3 +81,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | 🟢 7/7 | |
 | [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | 🟢 1/1 | |
 | [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | 🟢 1/1 | |
+
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+| [Ueberauth (Elixir OAuth)](../detail/lang.elixir.framework.ueberauth.md) | [security](../by-category/security.md) | 🔴 | |

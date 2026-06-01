@@ -1,12 +1,13 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 25 records · **JS/TS**: 1 · **multi**: 20 · **python**: 3 · **ruby**: 1
+**Total**: 26 records · **elixir**: 1 · **JS/TS**: 1 · **multi**: 20 · **python**: 3 · **ruby**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Consumer extraction | Producer extraction | Topic attribution | Status | Notes |
 |---|---|---|---|---|---|---|
+| [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [AMQP (generic)](../detail/msg.broker.amqp.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS EventBridge](../detail/msg.broker.eventbridge.md) | 🟢 | 🟢 | 🟢 | 🟢 | |

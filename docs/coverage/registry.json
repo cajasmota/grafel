@@ -10594,6 +10594,32 @@
       }
     },
     {
+      "id": "lang.elixir.framework.broadway",
+      "category": "message_broker",
+      "language": "elixir",
+      "label": "Broadway (Elixir data pipelines)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/custom/elixir/broadway.go","internal/custom/elixir/broadway_test.go"],
+          "notes": "handle_message/3 and handle_batch/4 pipeline stages emitted as SCOPE.Operation/handler flow roots bound to the use Broadway module.",
+          "verified_at": "2026-05-31"
+        },
+        "producer_extraction": {
+          "status": "partial",
+          "cites": ["internal/custom/elixir/broadway.go","internal/custom/elixir/broadway_test.go"],
+          "notes": "Broadway producer module (BroadwayKafka/BroadwaySQS/OffBroadway...) parsed from producer: [module: {Mod, opts}]; broker normalised (kafka|sqs|rabbitmq|gcp-pubsub|kinesis).",
+          "verified_at": "2026-05-31"
+        },
+        "topic_attribution": {
+          "status": "partial",
+          "cites": ["internal/custom/elixir/broadway.go","internal/custom/elixir/broadway_test.go"],
+          "notes": "Ingress topics/queues parsed from producer topics:/topic:/queue:/queue_url: options emitted as SCOPE.MessageTopic with broker + ingress=true + owning pipeline.",
+          "verified_at": "2026-05-31"
+        }
+      }
+    },
+    {
       "id": "lang.elixir.framework.cowboy",
       "category": "http_framework",
       "subcategory": "http_backend",
@@ -10964,6 +10990,141 @@
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.elixir.framework.grpc",
+      "category": "http_framework",
+      "subcategory": "rpc_framework",
+      "language": "elixir",
+      "label": "elixir-grpc",
+      "capabilities": {
+        "Schema": {
+          "procedure_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/elixir/grpc.go","internal/custom/elixir/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "rpc :Method, Req, Resp declarations in use GRPC.Service modules emitted as SCOPE.GrpcMethod (grpc:\u003cservice\u003e/\u003cmethod\u003e) with method + request/response message names.",
+            "verified_at": "2026-05-31"
+          },
+          "schema_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/elixir/grpc.go","internal/custom/elixir/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Request/response protobuf message names captured per rpc; stream() wrappers stripped and classified into streaming mode.",
+            "verified_at": "2026-05-31"
+          }
+        },
+        "Codegen": {
+          "client_codegen": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Transport": {
+          "transport_binding": {
+            "status": "partial",
+            "cites": ["internal/custom/elixir/grpc.go","internal/custom/elixir/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "use GRPC.Server / GRPC.Service / GRPC.Stub modules emitted as SCOPE.GrpcService with grpc_role server|definition|client; service name resolved from name:/service: option.",
+            "verified_at": "2026-05-31"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "import_resolution_quality": {
+            "status": "partial",
+            "cites": ["internal/custom/elixir/grpc.go","internal/custom/elixir/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Cross-repo identity grpc:\u003cservice\u003e/\u003cmethod\u003e matches the shared #725 linker convention so client stub and server impl join across repos.",
+            "verified_at": "2026-05-31"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/elixir/grpc.go","internal/custom/elixir/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "rpc request message type recorded as request_message on each SCOPE.GrpcMethod.",
+            "verified_at": "2026-05-31"
+          },
+          "response_shape_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/elixir/grpc.go","internal/custom/elixir/grpc_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "rpc response message type recorded as response_message on each SCOPE.GrpcMethod.",
+            "verified_at": "2026-05-31"
           },
           "sanitizer_recognition": {
             "status": "missing",
@@ -12601,6 +12762,26 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           }
+        }
+      }
+    },
+    {
+      "id": "lang.elixir.framework.ueberauth",
+      "category": "security",
+      "language": "elixir",
+      "label": "Ueberauth (Elixir OAuth)",
+      "capabilities": {
+        "auth_policy": {
+          "status": "partial",
+          "cites": ["internal/custom/elixir/ueberauth.go","internal/custom/elixir/ueberauth_test.go"],
+          "notes": "plug Ueberauth entrypoint + configured Ueberauth.Strategy.* OAuth providers + handle_request!/handle_callback! handlers emitted as auth entities (auth=true, auth_provider=\u003cprovider\u003e, auth_method=oauth2) consumed by archigraph_auth_coverage.",
+          "verified_at": "2026-05-31"
+        },
+        "secret_detection": {
+          "status": "missing"
+        },
+        "sql_injection": {
+          "status": "not_applicable"
         }
       }
     },
