@@ -17623,9 +17623,9 @@
             "issue": "3092"
           },
           "handler_attribution": {
-            "status": "missing",
-            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "verified_at": "2026-06-01"
           },
           "route_extraction": {
             "status": "partial",
@@ -17642,14 +17642,14 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "verified_at": "2026-06-01"
           },
           "request_validation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/custom/java/akka_http_routes.go"],
+            "verified_at": "2026-06-01"
           }
         },
         "Middleware": {
@@ -19349,9 +19349,9 @@
             "issue": "3085"
           },
           "handler_attribution": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "verified_at": "2026-06-01"
           },
           "route_extraction": {
             "status": "partial",
@@ -19368,14 +19368,14 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "verified_at": "2026-06-01"
           },
           "request_validation": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "verified_at": "2026-06-01"
           }
         },
         "Middleware": {
@@ -20768,9 +20768,9 @@
             "issue": "3090"
           },
           "handler_attribution": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/play_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "verified_at": "2026-06-01"
           },
           "middleware_coverage": {
             "status": "missing",
@@ -21104,11 +21104,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/spring_request_response.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "SCOPE.Schema(kind=dto) entities emitted for @RequestBody parameter types and ResponseEntity\u003cT\u003e/Mono\u003cT\u003e/Flux\u003cT\u003e return types; generic collections (List/Map/Set) skipped via srrSkipTypes",
-            "verified_at": "2026-05-29"
+            "verified_at": "2026-06-01"
           },
           "request_validation": {
             "status": "partial",
@@ -21412,11 +21411,10 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/spring_request_response.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "SCOPE.Schema(kind=dto) entities emitted for @RequestBody types and Mono\u003cT\u003e/Flux\u003cT\u003e return types; generic collections (List/Map/Set) skipped via srrSkipTypes",
-            "verified_at": "2026-05-29"
+            "verified_at": "2026-06-01"
           },
           "request_validation": {
             "status": "partial",
@@ -21703,11 +21701,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
+            "status": "full",
+            "cites": ["internal/custom/java/struts_routes.go"],
             "notes": "Extracts @Action(value=...) annotations and struts.xml \u003caction\u003e elements; @Namespace prefix composition; HANDLED_BY relationships to action classes",
-            "verified_at": "2026-05-29"
+            "verified_at": "2026-06-01"
           }
         },
         "Auth": {
@@ -21721,17 +21718,16 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/struts_dto_test.go","internal/custom/java/struts_routes.go","testdata/fixtures/sources/java/struts/StrutsDtoFixture.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
+            "status": "full",
+            "cites": ["internal/custom/java/struts_routes.go"],
             "notes": "Detects Struts 1 ActionForm subclasses (incl. Validator/Dyna variants) and Struts 2 action field-binding (ActionSupport/Action/ModelDriven). Emits SCOPE.Schema DTO entities, SCOPE.Field bound fields from public OGNL setters (skipping framework plumbing), BINDS_INPUT relationships, and BINDS_MODEL for ModelDriven\u003cT\u003e. Heuristic regex over setters / extends-clauses, hence partial",
-            "verified_at": "2026-05-30"
+            "verified_at": "2026-06-01"
           },
           "request_validation": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/struts_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "extractStrutsRequestValidation() detects Struts 2 validate() overrides, @Validations/@Validation annotations, field-validator annotations (@RequiredStringValidator etc.), Struts 1 ActionForm.validate() overrides, and validation.xml field/validator elements (#3256)"
+            "notes": "extractStrutsRequestValidation() detects Struts 2 validate() overrides, @Validations/@Validation annotations, field-validator annotations (@RequiredStringValidator etc.), Struts 1 ActionForm.validate() overrides, and validation.xml field/validator elements (#3256)",
+            "verified_at": "2026-06-01"
           }
         },
         "Middleware": {
@@ -22193,16 +22189,14 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "verified_at": "2026-06-01"
           },
           "request_validation": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "verified_at": "2026-06-01"
           }
         },
         "Middleware": {
