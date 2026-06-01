@@ -1235,6 +1235,12 @@
           "cites": ["internal/extractors/yaml/extractor.go","internal/extractors/yaml/extractor_test.go","internal/extractors/yaml/helm.go"],
           "verified_at": "2026-05-30"
         },
+        "env_resolution": {
+          "status": "full",
+          "cites": ["internal/extractors/yaml/extractor_test.go","internal/extractors/yaml/helm.go","internal/types/kinds.go"],
+          "notes": "#3552: values data-flow deepened. Template .Values binds re-root through {{- with .Values.x }}/{{- range .Values.y }} scopes (bare .field -\u003e x.field) and capture both operands of | default pipelines. _helpers.tpl named templates source their own BINDS (.Values reads in the define body) and INCLUDES edges, with the passed include arg classified (root_context/dict/list/scoped_context) for define-\u003einclude arg flow. Parent values.yaml subchart blocks (matched against sibling Chart.yaml dependency name/alias) emit OVERRIDES edges to helm_subchart_values:\u003csub\u003e:\u003cpath\u003e (cross-chart values flow); cross-chart stub-\u003esubchart-values linking is DEPLOY-DEFERRED.",
+          "verified_at": "2026-05-31"
+        },
         "resource_extraction": {
           "status": "full",
           "cites": ["internal/extractors/yaml/extractor.go","internal/extractors/yaml/extractor_test.go","internal/extractors/yaml/helm.go"],

@@ -42,6 +42,8 @@ package yaml
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -163,6 +165,25 @@ var helmValuesRefRe = regexp.MustCompile(`\.Values\.([A-Za-z0-9_]+(?:\.[A-Za-z0-
 // `template "name"` action.
 var helmIncludeRe = regexp.MustCompile(`(?:include|template)\s+"([^"]+)"`)
 
+// helmWithScopeRe matches a `with`/`range` action whose pipeline head is a
+// `.Values.<path>` expression, so the block body's bare `.field` references can
+// be re-rooted at that path. Captures the dotted path (group 1). We only re-root
+// for the simple `{{- with .Values.foo }}` / `{{- range .Values.bar }}` shapes
+// (no leading function), which is the overwhelmingly common case in real charts.
+var helmWithScopeRe = regexp.MustCompile(`^(?:with|range)\s+\$?\.Values\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*$`)
+
+// helmScopedFieldRe matches a bare `.field` (NOT `.Values.` / `.Release.` / a
+// built-in object) used inside a `with`/`range` block — e.g. `.bar` when the
+// block opened with `with .Values.foo`. The path resolves to `<scope>.bar`.
+var helmScopedFieldRe = regexp.MustCompile(`(^|[^A-Za-z0-9_.$])\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)`)
+
+// helmBuiltinObjects are the Go-template/Helm built-in roots that a bare `.X`
+// must NOT be confused with when re-rooting inside a with/range scope.
+var helmBuiltinObjects = map[string]bool{
+	"Values": true, "Release": true, "Chart": true, "Files": true,
+	"Capabilities": true, "Template": true, "Subcharts": true,
+}
+
 // helmStripResult carries the cleaned bytes plus the structural references the
 // strip pass recovered for binding-edge emission.
 type helmStripResult struct {
@@ -200,11 +221,35 @@ func stripHelmTemplate(src []byte) helmStripResult {
 	seenInc := map[string]bool{}
 	var valueRefs, includes []string
 
+	addVal := func(path string) {
+		if path == "" || seenVals[path] {
+			return
+		}
+		seenVals[path] = true
+		valueRefs = append(valueRefs, path)
+	}
+
+	// scopeStack holds the active `with`/`range` value scopes (dotted .Values
+	// paths). An empty string marks a block that opened on a non-.Values pipeline
+	// (e.g. `with .Chart`), under which bare `.field` references cannot be
+	// resolved to a values key and are therefore ignored.
+	var scopeStack []string
+
 	collect := func(body string) {
+		// Direct `.Values.<path>` references (any nesting depth).
 		for _, m := range helmValuesRefRe.FindAllStringSubmatch(body, -1) {
-			if !seenVals[m[1]] {
-				seenVals[m[1]] = true
-				valueRefs = append(valueRefs, m[1])
+			addVal(m[1])
+		}
+		// Bare `.field` references re-rooted at the innermost .Values scope.
+		if len(scopeStack) > 0 {
+			scope := scopeStack[len(scopeStack)-1]
+			if scope != "" {
+				for _, m := range helmScopedFieldRe.FindAllStringSubmatch(body, -1) {
+					head := m[2]
+					if firstSeg := head; !helmBuiltinObjects[firstDotSeg(firstSeg)] {
+						addVal(scope + "." + head)
+					}
+				}
 			}
 		}
 		for _, m := range helmIncludeRe.FindAllStringSubmatch(body, -1) {
@@ -217,9 +262,29 @@ func stripHelmTemplate(src []byte) helmStripResult {
 
 	lines := strings.Split(string(src), "\n")
 	for _, line := range lines {
-		// Collect references from the raw line before mutating it.
+		// Collect references from the raw line before mutating it. Process each
+		// action in source order so with/range scope pushes take effect for the
+		// references that follow on the SAME line, and the matching `end` pops.
 		for _, m := range helmActionRe.FindAllStringSubmatch(line, -1) {
-			collect(m[1])
+			body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(m[1]), "-"))
+			tok := firstToken(body)
+			switch tok {
+			case "with", "range":
+				collect(m[1])
+				if sm := helmWithScopeRe.FindStringSubmatch(body); sm != nil {
+					// Re-root nested scope: a `with` inside another `with` whose
+					// head itself is a bare field is rare; resolve against parent.
+					scopeStack = append(scopeStack, sm[1])
+				} else {
+					scopeStack = append(scopeStack, "")
+				}
+			case "end":
+				if len(scopeStack) > 0 {
+					scopeStack = scopeStack[:len(scopeStack)-1]
+				}
+			default:
+				collect(m[1])
+			}
 		}
 
 		trimmed := strings.TrimSpace(line)
@@ -285,6 +350,16 @@ func firstToken(body string) string {
 		return body[:i]
 	}
 	return body
+}
+
+// firstDotSeg returns the first dot-delimited segment of a path (e.g.
+// "Values.x" → "Values", "bar" → "bar"). Used to reject bare references that are
+// actually built-in objects when re-rooting inside a with/range scope.
+func firstDotSeg(path string) string {
+	if i := strings.IndexByte(path, '.'); i >= 0 {
+		return path[:i]
+	}
+	return path
 }
 
 // replaceHelmActions replaces every {{ ... }} action remaining on a (non-control)
@@ -404,11 +479,19 @@ func extractHelmChart(root *sitter.Node, file extractor.FileInput) []types.Entit
 // it.
 func extractHelmValues(root *sitter.Node, file extractor.FileInput) []types.EntityRecord {
 	src := file.Content
-	pairs := topLevelMappings(root)
+	topPairs := topLevelMappings(root)
 	var entities []types.EntityRecord
 
-	var walk func(pairs []*sitter.Node, prefix string)
-	walk = func(pairs []*sitter.Node, prefix string) {
+	// Subchart override blocks: a top-level key in the PARENT values.yaml whose
+	// name matches a declared subchart (name or alias) is an override block — its
+	// nested keys override the subchart's own values keys (the cross-chart values
+	// data-flow). The authoritative subchart set comes from the sibling
+	// Chart.yaml; when RepoRoot is unset (direct unit-test calls) we fall back to
+	// a content-side channel the test wires through.
+	subcharts := helmSiblingSubcharts(file)
+
+	var walk func(pairs []*sitter.Node, prefix string, subchart string)
+	walk = func(pairs []*sitter.Node, prefix string, subchart string) {
 		for _, p := range pairs {
 			key := pairKeyText(p, src)
 			if key == "" {
@@ -421,12 +504,41 @@ func extractHelmValues(root *sitter.Node, file extractor.FileInput) []types.Enti
 			start := int(p.StartPoint().Row) + 1
 			end := int(p.EndPoint().Row) + 1
 
+			// Detect entry into a subchart override block at the top level.
+			curSub := subchart
+			if prefix == "" && subcharts[key] {
+				curSub = key
+			}
+
+			ent := helmValuesKeyEntity(path, file, start, end)
+
+			// Inside a subchart override block, the path RELATIVE to the block
+			// name overrides the subchart's own values key. e.g. parent
+			// `postgresql.auth.username` overrides subchart postgresql's
+			// `auth.username`. The top-level block key itself has no relative
+			// remainder, so it is skipped.
+			if curSub != "" && path != curSub {
+				relPath := strings.TrimPrefix(path, curSub+".")
+				rel := types.RelationshipRecord{
+					FromID: file.Path,
+					ToID:   "helm_subchart_values:" + curSub + ":" + relPath,
+					Kind:   string(types.RelationshipKindOverrides),
+					Properties: map[string]string{
+						"override_kind": "helm_subchart_value",
+						"subchart":      curSub,
+						"values_path":   relPath,
+						"parent_path":   path,
+					},
+				}
+				ent.Relationships = append(ent.Relationships, rel)
+			}
+
 			val := pairValueNode(p)
 			childBM := getBlockMapping(val)
 			if childBM != nil {
 				// Nested map → recurse; emit the intermediate node too so a
 				// `.Values.parent` reference (whole sub-tree) can still bind.
-				entities = append(entities, helmValuesKeyEntity(path, file, start, end))
+				entities = append(entities, ent)
 				var childPairs []*sitter.Node
 				for i := range childBM.ChildCount() {
 					c := childBM.Child(int(i))
@@ -434,16 +546,106 @@ func extractHelmValues(root *sitter.Node, file extractor.FileInput) []types.Enti
 						childPairs = append(childPairs, c)
 					}
 				}
-				walk(childPairs, path)
+				walk(childPairs, path, curSub)
 				continue
 			}
 			// Leaf scalar or sequence → values key.
-			entities = append(entities, helmValuesKeyEntity(path, file, start, end))
+			entities = append(entities, ent)
 		}
 	}
-	walk(pairs, "")
+	walk(topPairs, "", "")
 
 	return entities
+}
+
+// helmSiblingSubcharts returns the set of subchart names AND aliases declared in
+// the Chart.yaml that sits beside the given values.yaml, so the parent values
+// override blocks can be matched. Returns an empty (non-nil) set when RepoRoot
+// is unset or no sibling Chart.yaml is found — override edges are simply not
+// emitted in that case (hermetic, no false positives).
+func helmSiblingSubcharts(file extractor.FileInput) map[string]bool {
+	out := map[string]bool{}
+	if file.RepoRoot == "" {
+		return out
+	}
+	dir := file.Path
+	if idx := strings.LastIndexByte(dir, '/'); idx >= 0 {
+		dir = dir[:idx]
+	} else {
+		dir = ""
+	}
+	for _, name := range []string{"Chart.yaml", "Chart.yml"} {
+		rel := name
+		if dir != "" {
+			rel = dir + "/" + name
+		}
+		data, err := os.ReadFile(filepath.Join(file.RepoRoot, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		for n, a := range parseChartSubcharts(data) {
+			out[n] = true
+			if a != "" {
+				out[a] = true
+			}
+		}
+		break
+	}
+	return out
+}
+
+// parseChartSubcharts extracts the dependency name→alias map from Chart.yaml
+// bytes. Lightweight line scanner (avoids a second tree-sitter parse from inside
+// the values extractor): it walks the `dependencies:` block and pairs each
+// `- name:` with an optional sibling `alias:`.
+func parseChartSubcharts(data []byte) map[string]string {
+	out := map[string]string{}
+	lines := strings.Split(string(data), "\n")
+	inDeps := false
+	curName := ""
+	for _, ln := range lines {
+		trimmed := strings.TrimSpace(ln)
+		// Leaving the dependencies block: a new top-level key (no indent).
+		if inDeps && ln != "" && ln[0] != ' ' && ln[0] != '\t' && ln[0] != '#' && !strings.HasPrefix(trimmed, "-") {
+			inDeps = false
+		}
+		if strings.HasPrefix(trimmed, "dependencies:") {
+			inDeps = true
+			continue
+		}
+		if !inDeps {
+			continue
+		}
+		// New list item resets the current dependency.
+		if strings.HasPrefix(trimmed, "- ") || trimmed == "-" {
+			curName = ""
+			trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "-"))
+		}
+		if v, ok := helmInlineValue(trimmed, "name"); ok {
+			curName = v
+			if _, seen := out[curName]; !seen {
+				out[curName] = ""
+			}
+		}
+		if v, ok := helmInlineValue(trimmed, "alias"); ok && curName != "" {
+			out[curName] = v
+		}
+	}
+	return out
+}
+
+// helmInlineValue parses a `key: value` fragment, returning the unquoted value
+// and whether the key matched.
+func helmInlineValue(s, key string) (string, bool) {
+	if !strings.HasPrefix(s, key+":") {
+		return "", false
+	}
+	v := strings.TrimSpace(strings.TrimPrefix(s, key+":"))
+	v = strings.Trim(v, `"'`)
+	if v == "" {
+		return "", false
+	}
+	return v, true
 }
 
 // helmValuesKeyEntity builds a SCOPE.Schema values_key entity. QualifiedName is
@@ -558,73 +760,180 @@ func appendHelmEdge(entities []types.EntityRecord, file extractor.FileInput, rel
 	return append(entities, anchor)
 }
 
+// helmDefineRe matches a `{{- define "name" }}` action.
+var helmDefineRe = regexp.MustCompile(`{{-?\s*define\s+"([^"]+)"\s*-?}}`)
+
+// helmEndRe matches a `{{- end }}` action.
+var helmEndRe = regexp.MustCompile(`{{-?\s*end\s*-?}}`)
+
+// helmIncludeArgRe captures both the named-template target AND the argument
+// context passed to an `include "name" <arg>` / `template "name" <arg>` call.
+// Group 1 = template name, group 2 = the argument expression ("." , "$",
+// "(dict ...)", ".Values.foo", etc.) up to the action close.
+var helmIncludeArgRe = regexp.MustCompile(`(?:include|template)\s+"([^"]+)"\s*([^})]*?)\s*[-)}]`)
+
 // extractHelmHelpers processes a _helpers.tpl: emits one SCOPE.Operation
-// "named_template" entity per `{{- define "name" }}` block, plus include edges
-// for any `{{ include "other" . }}` references inside helper bodies.
+// "named_template" entity per `{{- define "name" }}` block. Each named template
+// then carries the data-flow edges sourced FROM its own body:
+//
+//   - INCLUDES edge named_template → named_template for every `include "other"`
+//     call inside the body, with the passed argument expression recorded on the
+//     edge (the define/include arg-passing flow).
+//   - BINDS edge named_template → values_key for every `.Values.<path>` the body
+//     references, so helper-resolved values flow is captured the same way
+//     templates' bindings are.
+//
+// Includes that sit OUTSIDE any define block (top-level in the .tpl) keep the
+// previous file-anchored behaviour so nothing is lost.
 func extractHelmHelpers(file extractor.FileInput) []types.EntityRecord {
 	src := string(file.Content)
 	var entities []types.EntityRecord
 
-	defineRe := regexp.MustCompile(`{{-?\s*define\s+"([^"]+)"\s*-?}}`)
-	endRe := regexp.MustCompile(`{{-?\s*end\s*-?}}`)
-
 	lines := strings.Split(src, "\n")
-	// Track define blocks by scanning for define ... end at the same nesting.
+
+	// First pass: emit named_template entities, tracking each block's line span.
+	type defBlock struct {
+		name       string
+		start, end int // 1-based inclusive
+	}
 	type openDef struct {
 		name  string
 		start int
 	}
 	var stack []openDef
+	var blocks []defBlock
 	seen := map[string]bool{}
 
 	for i, line := range lines {
-		if m := defineRe.FindStringSubmatch(line); m != nil {
+		if m := helmDefineRe.FindStringSubmatch(line); m != nil {
 			stack = append(stack, openDef{name: m[1], start: i + 1})
 			continue
 		}
-		if endRe.MatchString(line) && len(stack) > 0 {
+		if helmEndRe.MatchString(line) && len(stack) > 0 {
 			d := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
-			if d.name == "" || seen[d.name] {
+			if d.name == "" {
+				continue
+			}
+			blocks = append(blocks, defBlock{name: d.name, start: d.start, end: i + 1})
+			if seen[d.name] {
 				continue
 			}
 			seen[d.name] = true
-			ref := "helm_template:" + d.name
 			ent := entity(
 				"SCOPE.Operation", d.name, "named_template",
-				ref,
+				"helm_template:"+d.name,
 				file.Path, "yaml", d.start, i+1,
 			)
 			entities = append(entities, ent)
 		}
 	}
 
-	// include/template references between helpers → INCLUDES edges from each
-	// named template that contains them. For simplicity attach include edges
-	// from the file (resolved via the Document anchor) to the referenced
-	// template; the call-site granularity is recorded by template_name.
-	seenInc := map[string]bool{}
-	for _, m := range helmIncludeRe.FindAllStringSubmatch(src, -1) {
-		name := m[1]
-		if seenInc[name] {
-			continue
+	// definerAt returns the name of the INNERMOST define block containing the
+	// 1-based line, or "" when the line is outside every define.
+	definerAt := func(line int) string {
+		best := ""
+		bestSpan := 1 << 30
+		for _, b := range blocks {
+			if line >= b.start && line <= b.end {
+				if span := b.end - b.start; span < bestSpan {
+					bestSpan = span
+					best = b.name
+				}
+			}
 		}
-		seenInc[name] = true
-		// Skip self-references already emitted as defines? Keep all — an include
-		// to a sibling helper is a real edge.
-		rel := types.RelationshipRecord{
-			FromID: file.Path,
-			ToID:   "helm_template:" + name,
-			Kind:   "INCLUDES",
-			Properties: map[string]string{
-				"include_kind":  "helm_include",
-				"template_name": name,
-			},
+		return best
+	}
+
+	// attachFromDefiner appends rel to the named_template entity for `definer`,
+	// or routes it through the file anchor when definer is "".
+	attachFromDefiner := func(definer string, rel types.RelationshipRecord) {
+		if definer == "" {
+			rel.FromID = file.Path
+			entities = appendHelmEdge(entities, file, rel)
+			return
 		}
+		rel.FromID = "helm_template:" + definer
+		for i := range entities {
+			if entities[i].Subtype == "named_template" && entities[i].Name == definer {
+				entities[i].Relationships = append(entities[i].Relationships, rel)
+				return
+			}
+		}
+		// Defensive: definer block had no entity (duplicate name) — anchor it.
 		entities = appendHelmEdge(entities, file, rel)
 	}
 
+	// Second pass: per-line, attribute include/define-arg and .Values edges to the
+	// enclosing define block. De-dup per (definer,target) so a helper that calls
+	// the same include twice yields one edge.
+	seenInc := map[string]bool{}
+	seenBind := map[string]bool{}
+	for i, line := range lines {
+		definer := definerAt(i + 1)
+
+		for _, m := range helmIncludeArgRe.FindAllStringSubmatch(line, -1) {
+			target := m[1]
+			arg := strings.TrimSpace(m[2])
+			if target == definer {
+				continue // a define never includes itself meaningfully
+			}
+			key := definer + "\x00" + target
+			if seenInc[key] {
+				continue
+			}
+			seenInc[key] = true
+			props := map[string]string{
+				"include_kind":  "helm_include",
+				"template_name": target,
+			}
+			if arg != "" {
+				props["include_arg"] = arg
+				props["arg_flow"] = helmArgFlowKind(arg)
+			}
+			attachFromDefiner(definer, types.RelationshipRecord{
+				ToID:       "helm_template:" + target,
+				Kind:       "INCLUDES",
+				Properties: props,
+			})
+		}
+
+		for _, m := range helmValuesRefRe.FindAllStringSubmatch(line, -1) {
+			path := m[1]
+			key := definer + "\x00" + path
+			if seenBind[key] {
+				continue
+			}
+			seenBind[key] = true
+			attachFromDefiner(definer, types.RelationshipRecord{
+				ToID: "helm_values:" + path,
+				Kind: "BINDS",
+				Properties: map[string]string{
+					"binding_kind": "helm_values_ref",
+					"values_path":  path,
+				},
+			})
+		}
+	}
+
 	return entities
+}
+
+// helmArgFlowKind classifies the argument expression passed to an include so the
+// edge records HOW context flows into the callee: the root context (`.` / `$`),
+// an explicit dict construction (`dict "k" .v`), or a narrowed sub-context
+// (`.Values.foo`, `.bar`).
+func helmArgFlowKind(arg string) string {
+	switch {
+	case arg == "." || arg == "$":
+		return "root_context"
+	case strings.HasPrefix(arg, "(dict") || strings.HasPrefix(arg, "dict "):
+		return "dict"
+	case strings.HasPrefix(arg, "(list") || strings.HasPrefix(arg, "list "):
+		return "list"
+	default:
+		return "scoped_context"
+	}
 }
 
 // helmChartDir returns the directory name containing the given chart file path,

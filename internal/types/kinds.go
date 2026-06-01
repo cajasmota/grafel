@@ -596,6 +596,20 @@ const (
 	// Both are append-only — they never modify existing entities or edges.
 	RelationshipKindBinds    RelationshipKind = "BINDS"
 	RelationshipKindIncludes RelationshipKind = "INCLUDES"
+
+	// #3552: Helm parent-chart values override edge. Emitted by the YAML
+	// extractor's Helm values flavor when a parent chart's values.yaml carries a
+	// top-level block whose key matches a declared subchart (name or alias) in the
+	// sibling Chart.yaml. Each nested key under that block overrides the
+	// subchart's own values key — the cross-chart values data-flow. The edge goes
+	// from the parent values.yaml entity → a synthetic subchart-values stub
+	// "helm_subchart_values:<subchart>:<dotted.path>". Properties:
+	//   "override_kind" : "helm_subchart_value"
+	//   "subchart"      : the subchart name (or alias) the block targets
+	//   "values_path"   : the dotted path under the subchart's values root
+	//   "parent_path"   : the dotted path in the parent values tree
+	// Append-only — never modifies existing entities or edges.
+	RelationshipKindOverrides RelationshipKind = "OVERRIDES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -702,6 +716,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #3526 Helm chart edges:
 		RelationshipKindBinds,
 		RelationshipKindIncludes,
+		// #3552 Helm parent-chart values override edge:
+		RelationshipKindOverrides,
 	}
 }
 

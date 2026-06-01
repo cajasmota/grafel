@@ -2203,11 +2203,17 @@ func TestHelm_Helpers_IncludeEdge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
-	// myapp.fullname and myapp.labels both `include "myapp.name"`.
+	// myapp.fullname and myapp.labels both `include "myapp.name"`. #3552 deepens
+	// this: the INCLUDES edge is now sourced FROM the enclosing named template
+	// (define/include arg-passing flow), not the file anchor.
 	includes := findRels(entities, "INCLUDES")
-	if !relExists(includes, ref, "helm_template:myapp.name") {
-		t.Errorf("missing INCLUDES edge %s -> helm_template:myapp.name; got %+v", ref, includes)
+	if !relExists(includes, "helm_template:myapp.fullname", "helm_template:myapp.name") {
+		t.Errorf("missing define-scoped INCLUDES edge myapp.fullname -> myapp.name; got %+v", includes)
 	}
+	if !relExists(includes, "helm_template:myapp.labels", "helm_template:myapp.name") {
+		t.Errorf("missing define-scoped INCLUDES edge myapp.labels -> myapp.name; got %+v", includes)
+	}
+	_ = ref
 }
 
 // --- detection guards ---
@@ -2270,6 +2276,292 @@ func TestHelm_AllKindsAllowlisted(t *testing.T) {
 		for _, e := range entities {
 			if !allowedKinds[e.Kind] {
 				t.Errorf("entity %q has non-allowlisted kind %q (file: %s)", e.Name, e.Kind, f.path)
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #3552 — Helm values data-flow deepening
+// ---------------------------------------------------------------------------
+
+// extractYAMLWithRoot runs the extractor with a RepoRoot set so sibling-file
+// resolution (parent values.yaml → Chart.yaml subchart names) engages.
+func extractYAMLWithRoot(src []byte, path, repoRoot string) ([]types.EntityRecord, error) {
+	tree := parseYAML(src)
+	ext, ok := extractor.Get("yaml")
+	if !ok {
+		panic("yaml extractor not registered")
+	}
+	return ext.Extract(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  src,
+		Language: "yaml",
+		Tree:     tree,
+		RepoRoot: repoRoot,
+	})
+}
+
+// helmScopedTemplateFixture exercises with/range scope re-rooting and the
+// `| default` pipeline: inside `{{- with .Values.ingress }}` a bare `.host` must
+// bind to `ingress.host`, and `{{- range .Values.extraPorts }}` a bare `.port`
+// to `extraPorts.port`. `{{ .Values.image.tag | default .Values.defaultTag }}`
+// must bind BOTH image.tag and defaultTag.
+var helmScopedTemplateFixture = []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cfg
+data:
+  tag: {{ .Values.image.tag | default .Values.defaultTag }}
+  {{- with .Values.ingress }}
+  host: {{ .host }}
+  class: {{ .className }}
+  {{- end }}
+  ports: |
+    {{- range .Values.extraPorts }}
+    - {{ .port }}
+    {{- end }}
+`)
+
+// TestHelm_Template_DefaultPipelineBinds asserts a `| default` pipeline binds
+// both operands as values keys.
+func TestHelm_Template_DefaultPipelineBinds(t *testing.T) {
+	const tplRef = "charts/myapp/templates/cm.yaml"
+	entities, err := extractYAML(helmScopedTemplateFixture, tplRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	binds := findRels(entities, "BINDS")
+	for _, want := range []string{"helm_values:image.tag", "helm_values:defaultTag"} {
+		if !relExists(binds, tplRef, want) {
+			t.Errorf("missing BINDS edge %s -> %s (| default flow); got %+v", tplRef, want, binds)
+		}
+	}
+}
+
+// TestHelm_Template_WithRangeScopeRerooting asserts bare `.field` references
+// inside with/range blocks bind to the re-rooted nested values key.
+func TestHelm_Template_WithRangeScopeRerooting(t *testing.T) {
+	const tplRef = "charts/myapp/templates/cm.yaml"
+	entities, err := extractYAML(helmScopedTemplateFixture, tplRef)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	binds := findRels(entities, "BINDS")
+	for _, want := range []string{
+		"helm_values:ingress.host",      // with .Values.ingress → .host
+		"helm_values:ingress.className", // with .Values.ingress → .className
+		"helm_values:extraPorts.port",   // range .Values.extraPorts → .port
+	} {
+		if !relExists(binds, tplRef, want) {
+			t.Errorf("missing re-rooted BINDS edge %s -> %s; got %+v", tplRef, want, binds)
+		}
+	}
+	// The scope heads themselves must also bind.
+	for _, want := range []string{"helm_values:ingress", "helm_values:extraPorts"} {
+		if !relExists(binds, tplRef, want) {
+			t.Errorf("missing scope-head BINDS edge %s -> %s", tplRef, want)
+		}
+	}
+}
+
+// helmParentChartFixture / helmParentValuesFixture model a parent chart with a
+// `postgresql` subchart (aliased `db`) plus a `redis` subchart, whose parent
+// values.yaml carries override blocks for both.
+var helmParentChartFixture = []byte(`apiVersion: v2
+name: umbrella
+version: 1.0.0
+dependencies:
+  - name: postgresql
+    version: 12.1.0
+    repository: https://charts.bitnami.com/bitnami
+    alias: db
+  - name: redis
+    version: 17.0.0
+    repository: https://charts.bitnami.com/bitnami
+`)
+
+var helmParentValuesFixture = []byte(`replicaCount: 2
+image:
+  repository: nginx
+postgresql:
+  auth:
+    username: app
+    database: appdb
+  primary:
+    persistence:
+      size: 8Gi
+redis:
+  architecture: standalone
+`)
+
+// TestHelm_ParentValues_SubchartOverrides asserts a parent values.yaml block
+// matching a declared subchart emits OVERRIDES edges to that subchart's values
+// keys (the cross-chart values flow), and does NOT over-emit for the parent's
+// own (non-subchart) config blocks.
+func TestHelm_ParentValues_SubchartOverrides(t *testing.T) {
+	dir := t.TempDir()
+	chartDir := filepath.Join(dir, "charts", "umbrella")
+	if err := os.MkdirAll(chartDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), helmParentChartFixture, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const valuesRef = "charts/umbrella/values.yaml"
+	entities, err := extractYAMLWithRoot(helmParentValuesFixture, valuesRef, dir)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	overrides := findRels(entities, "OVERRIDES")
+	for _, want := range []string{
+		"helm_subchart_values:postgresql:auth.username",
+		"helm_subchart_values:postgresql:auth.database",
+		"helm_subchart_values:postgresql:primary.persistence.size",
+		"helm_subchart_values:redis:architecture",
+	} {
+		if !relExists(overrides, valuesRef, want) {
+			t.Errorf("missing OVERRIDES edge %s -> %s; got %+v", valuesRef, want, overrides)
+		}
+	}
+	// The parent's own image.repository must NOT produce an override edge.
+	for _, r := range overrides {
+		if strings.Contains(r.ToID, ":image.") || r.ToID == "helm_subchart_values:image:repository" {
+			t.Errorf("over-emitted override edge for parent-own config: %s", r.ToID)
+		}
+	}
+	// Provenance: the auth.username override edge records the subchart + path.
+	var checked bool
+	for _, r := range overrides {
+		if r.ToID == "helm_subchart_values:postgresql:auth.username" {
+			checked = true
+			if r.Properties["subchart"] != "postgresql" {
+				t.Errorf("override subchart prop=%q, want postgresql", r.Properties["subchart"])
+			}
+			if r.Properties["values_path"] != "auth.username" {
+				t.Errorf("override values_path=%q, want auth.username", r.Properties["values_path"])
+			}
+		}
+	}
+	if !checked {
+		t.Fatal("postgresql auth.username override edge not found for provenance check")
+	}
+}
+
+// TestHelm_ParentValues_NoOverridesWithoutChart asserts that without a sibling
+// Chart.yaml (no RepoRoot), no override edges are fabricated — hermetic safety.
+func TestHelm_ParentValues_NoOverridesWithoutChart(t *testing.T) {
+	entities, err := extractYAML(helmParentValuesFixture, "charts/umbrella/values.yaml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if got := findRels(entities, "OVERRIDES"); len(got) != 0 {
+		t.Errorf("fabricated %d OVERRIDES edges without a sibling Chart.yaml: %+v", len(got), got)
+	}
+}
+
+// helmHelpersArgFlowFixture exercises define/include arg-passing and helper
+// .Values binds: myapp.fullname includes myapp.name passing root `.`;
+// myapp.serviceaccount includes myapp.labels passing a `(dict ...)`; and a
+// helper body reads `.Values.global.imageRegistry`.
+var helmHelpersArgFlowFixture = []byte(`{{- define "myapp.name" -}}
+{{- default .Chart.Name .Values.nameOverride -}}
+{{- end -}}
+
+{{- define "myapp.fullname" -}}
+{{- printf "%s-%s" .Release.Name (include "myapp.name" .) -}}
+{{- end -}}
+
+{{- define "myapp.image" -}}
+{{- .Values.global.imageRegistry -}}/{{- .Values.image.repository -}}
+{{- end -}}
+
+{{- define "myapp.serviceaccount" -}}
+{{ include "myapp.labels" (dict "ctx" $) }}
+{{- end -}}
+`)
+
+// TestHelm_Helpers_DefineIncludeArgFlow asserts include edges are sourced from
+// the enclosing define and record the passed argument's flow kind.
+func TestHelm_Helpers_DefineIncludeArgFlow(t *testing.T) {
+	const ref = "charts/myapp/templates/_helpers.tpl"
+	entities, err := extractYAML(helmHelpersArgFlowFixture, ref)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	includes := findRels(entities, "INCLUDES")
+
+	// myapp.fullname → myapp.name, root-context arg.
+	var fullnameEdge *types.RelationshipRecord
+	for i := range includes {
+		if includes[i].FromID == "helm_template:myapp.fullname" && includes[i].ToID == "helm_template:myapp.name" {
+			fullnameEdge = &includes[i]
+		}
+	}
+	if fullnameEdge == nil {
+		t.Fatalf("missing INCLUDES myapp.fullname -> myapp.name; got %+v", includes)
+	}
+	if fullnameEdge.Properties["arg_flow"] != "root_context" {
+		t.Errorf("fullname include arg_flow=%q, want root_context", fullnameEdge.Properties["arg_flow"])
+	}
+
+	// myapp.serviceaccount → myapp.labels, dict arg.
+	var saEdge *types.RelationshipRecord
+	for i := range includes {
+		if includes[i].FromID == "helm_template:myapp.serviceaccount" && includes[i].ToID == "helm_template:myapp.labels" {
+			saEdge = &includes[i]
+		}
+	}
+	if saEdge == nil {
+		t.Fatalf("missing INCLUDES myapp.serviceaccount -> myapp.labels; got %+v", includes)
+	}
+	if saEdge.Properties["arg_flow"] != "dict" {
+		t.Errorf("serviceaccount include arg_flow=%q, want dict (arg=%q)", saEdge.Properties["arg_flow"], saEdge.Properties["include_arg"])
+	}
+}
+
+// TestHelm_Helpers_ValuesBindsFromDefine asserts a named template's body that
+// reads `.Values.<path>` yields BINDS edges sourced from that named template.
+func TestHelm_Helpers_ValuesBindsFromDefine(t *testing.T) {
+	const ref = "charts/myapp/templates/_helpers.tpl"
+	entities, err := extractYAML(helmHelpersArgFlowFixture, ref)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	binds := findRels(entities, "BINDS")
+	// myapp.image reads global.imageRegistry and image.repository.
+	for _, want := range []string{
+		"helm_values:global.imageRegistry",
+		"helm_values:image.repository",
+	} {
+		if !relExists(binds, "helm_template:myapp.image", want) {
+			t.Errorf("missing BINDS edge helm_template:myapp.image -> %s; got %+v", want, binds)
+		}
+	}
+	// myapp.name reads nameOverride.
+	if !relExists(binds, "helm_template:myapp.name", "helm_values:nameOverride") {
+		t.Errorf("missing BINDS edge helm_template:myapp.name -> helm_values:nameOverride; got %+v", binds)
+	}
+}
+
+// TestHelm_DeepValues_AllKindsAllowlisted guards the new fixtures' entity kinds.
+func TestHelm_DeepValues_AllKindsAllowlisted(t *testing.T) {
+	fixtures := []struct {
+		src  []byte
+		path string
+	}{
+		{helmScopedTemplateFixture, "charts/myapp/templates/cm.yaml"},
+		{helmParentValuesFixture, "charts/umbrella/values.yaml"},
+		{helmHelpersArgFlowFixture, "charts/myapp/templates/_helpers.tpl"},
+	}
+	for _, f := range fixtures {
+		entities, err := extractYAML(f.src, f.path)
+		if err != nil {
+			t.Fatalf("extract %s: %v", f.path, err)
+		}
+		for _, e := range entities {
+			if !allowedKinds[e.Kind] {
+				t.Errorf("entity %q non-allowlisted kind %q (file: %s)", e.Name, e.Kind, f.path)
 			}
 		}
 	}
