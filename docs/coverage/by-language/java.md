@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # java
 
-**Frameworks**: 22 · **Tools**: 10 · **ORMs**: 14 · **Other**: 3
+**Frameworks**: 22 · **Tools**: 10 · **ORMs**: 14 · **Other**: 4
 
 Back to [summary](../summary.md).
 
@@ -118,6 +118,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 |---|---|---|---|
 | [.properties (application.properties)](../detail/config.properties.md) | [platform](../by-category/platform.md) | ✅ | |
 | [Auth policy resolver (Java/Kotlin — Phase 1 of #1942)](../detail/security.auth-java.md) | [security](../by-category/security.md) | ✅ | |
+| [Spring StateMachine (FSM topology)](../detail/infra.state-machine.spring-statemachine.md) | [platform](../by-category/platform.md) | 🟢 | |
 
 ### Validation
 

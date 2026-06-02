@@ -1844,6 +1844,94 @@
       }
     },
     {
+      "id": "infra.state-machine.aasm",
+      "category": "platform",
+      "language": "ruby",
+      "label": "Ruby AASM (FSM topology)",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): each `event :activate do transitions from: :pending, to: :active end` emits TRANSITIONS_TO pending-\u003eactive with event=activate. `from:` may be a single symbol or an array (`from: [:active, :idle]`) which fans out to one edge per source. Value-asserting tests pin pending --activate--\u003e active and the array fan-out. Honest-partial: guard/:if-gated transitions are still emitted (the guard is not modeled); dynamic from/to expressions not resolved.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): applyStateMachineEdges parses the `aasm do ... end` block. Each `state :name` declares a SCOPE.State entity keyed state:aasm:aasm:\u003cstate\u003e; `state :pending, initial: true` stamps initial=true. Honest-partial: dynamically/metaprogrammed state declarations not resolved.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "infra.state-machine.python-transitions",
+      "category": "platform",
+      "language": "python",
+      "label": "Python transitions (FSM topology)",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): each dict-form transition `{'trigger':'go','source':'A','dest':'B'}` emits TRANSITIONS_TO A-\u003eB with event=go. `source` may be a list (`'source':['solid','liquid']`) which fans out to one edge per source. Value-asserting tests pin A --go--\u003e B, B --back--\u003e A and the list fan-out solid/liquid --heat--\u003e gas. Honest-partial: list-form transitions (['trigger','src','dst']) and wildcard sources ('*') are not resolved.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): applyStateMachineEdges parses `Machine(states=[...], transitions=[...], initial=...)` (gated on Machine( / from transitions). Each string in `states=['A','B']` becomes a SCOPE.State entity keyed state:python-transitions:transitions:\u003cstate\u003e; `initial='A'` stamps initial=true. Honest-partial: dict-form state objects ({'name':'A','on_enter':...}) capture the name only; class-based / dynamically-generated states not resolved.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "infra.state-machine.spring-statemachine",
+      "category": "platform",
+      "language": "java",
+      "label": "Spring StateMachine (FSM topology)",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): each `.withExternal()/.withInternal()/.withLocal()` transition chain emits TRANSITIONS_TO from `.source(X)` to `.target(Y)` with `.event(E)` as the event property (final dotted segment). Value-asserting test pins IDLE --START--\u003e RUNNING and RUNNING --FINISH--\u003e DONE across an `.and()`-chained config. Honest-partial: anonymous/timer transitions (no .event) emit an event-less edge; guard/action wiring is not modeled.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): applyStateMachineEdges parses the Spring StateMachine fluent config (gated on StateMachineConfigurerAdapter / .withStates()). `.initial(States.IDLE)`, `.state(States.RUNNING)`, `.end(States.DONE)` each declare a SCOPE.State entity keyed state:spring-statemachine:spring:\u003cstate\u003e (final dotted segment, so States.IDLE -\u003e IDLE); initial(...) stamps initial=true. Honest-partial: states introduced only as a transition source/target without a withStates() declaration still materialize via the edge auto-declare.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "infra.state-machine.xstate",
+      "category": "platform",
+      "language": "javascript",
+      "label": "XState (FSM topology)",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): the `on: { EVENT: target }` map inside each state emits TRANSITIONS_TO source-state-\u003etarget-state with the event name as the `event` property. Both string targets (`idle: { on: { FETCH: 'loading' } }` -\u003e idle --FETCH--\u003e loading) and object targets (`{ FAILURE: { target: 'idle' } }` -\u003e loading --FAILURE--\u003e idle) are resolved. Value-asserting tests pin exact (source,event,target) triples and assert a `type:'final'` state has a SCOPE.State entity but no outgoing transition. Honest-partial: guarded transition arrays (target as an array of cond/target objects) and computed/template targets are NOT resolved.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/detector.go","internal/engine/state_machine_edges.go"],
+          "issue": "3704",
+          "notes": "#3704 (epic #3628 area #20): applyStateMachineEdges (engine pass, registered in detector.go after applyWorkflowDAGEdges) extracts the XState finite-state-machine topology. Each key in the `states: { ... }` map of `createMachine({ id:'fetch', states:{ idle:{...}, loading:{...} } })` becomes a SCOPE.State entity keyed state:xstate:\u003cmachine\u003e:\u003cstate\u003e (machine from the `id:` field). The `initial:` state is stamped initial=true. Honest-partial: dynamically-named states / nested compound+parallel state hierarchies are flattened to their top-level names only.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
       "id": "lang.assembly.toolchain.armasm",
       "category": "language",
       "language": "assembly",

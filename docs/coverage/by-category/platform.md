@@ -1,13 +1,15 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 31 records · **java**: 1 · **JS/TS**: 1 · **multi**: 29
+**Total**: 35 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 29 · **python**: 1 · **ruby**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Dependency attribution | Env resolution | File parsing | Resource extraction | Status | Notes |
 |---|---|---|---|---|---|---|---|
 | [java](../by-language/java.md) | [.properties (application.properties)](../detail/config.properties.md) | — | — | ✅ | — | ✅ | |
+| [java](../by-language/java.md) | [Spring StateMachine (FSM topology)](../detail/infra.state-machine.spring-statemachine.md) | 🟢 | — | — | 🟢 | 🟢 | |
+| [javascript](../by-language/javascript.md) | [XState (FSM topology)](../detail/infra.state-machine.xstate.md) | 🟢 | — | — | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [tsconfig.json](../detail/config.tsconfig.md) | — | — | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [.env (names-only — values stripped at extraction boundary)](../detail/config.dotenv.md) | — | ✅ | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [.ini / setup.cfg / flake8 / mypy / pytest.ini](../detail/config.ini.md) | — | — | 🟢 | — | 🟢 | |
@@ -38,3 +40,5 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Terraform / OpenTofu / Vault / Nomad / Packer / Waypoint](../detail/infra.resource.terraform.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [docker-compose.yml](../detail/config.docker-compose.md) | — | — | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [docker-compose.yml](../detail/infra.container.docker-compose.md) | ✅ | — | — | ✅ | ✅ | |
+| [python](../by-language/python.md) | [Python transitions (FSM topology)](../detail/infra.state-machine.python-transitions.md) | 🟢 | — | — | 🟢 | 🟢 | |
+| [ruby](../by-language/ruby.md) | [Ruby AASM (FSM topology)](../detail/infra.state-machine.aasm.md) | 🟢 | — | — | 🟢 | 🟢 | |

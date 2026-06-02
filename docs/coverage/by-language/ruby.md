@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # ruby
 
-**Frameworks**: 8 · **Tools**: 6 · **ORMs**: 13 · **Other**: 1
+**Frameworks**: 8 · **Tools**: 6 · **ORMs**: 13 · **Other**: 2
 
 Back to [summary](../summary.md).
 
@@ -73,4 +73,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
+| [Ruby AASM (FSM topology)](../detail/infra.state-machine.aasm.md) | [platform](../by-category/platform.md) | 🟢 | |
 | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |

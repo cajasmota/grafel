@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # python
 
-**Frameworks**: 21 · **Tools**: 15 · **ORMs**: 17 · **Other**: 6
+**Frameworks**: 21 · **Tools**: 15 · **ORMs**: 17 · **Other**: 7
 
 Back to [summary](../summary.md).
 
@@ -114,6 +114,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Celery (Python task queue)](../detail/msg.celery.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
+| [Python transitions (FSM topology)](../detail/infra.state-machine.python-transitions.md) | [platform](../by-category/platform.md) | 🟢 | |
 
 ### Validation
 

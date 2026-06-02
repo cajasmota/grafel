@@ -1,15 +1,15 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 217 · **ORMs**: 152 · **Tools**: 111 · **Other**: 135
+**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 217 · **ORMs**: 152 · **Tools**: 111 · **Other**: 139
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
 | [JS/TS](by-language/jsts.md) | 30 | 21 | 18 | 2 |
-| [java](by-language/java.md) | 22 | 10 | 14 | 3 |
-| [python](by-language/python.md) | 21 | 15 | 17 | 6 |
+| [java](by-language/java.md) | 22 | 10 | 14 | 4 |
+| [python](by-language/python.md) | 21 | 15 | 17 | 7 |
 | [C/C++](by-language/c-cpp.md) | 19 | 16 | 7 | 4 |
 | [go](by-language/go.md) | 18 | 8 | 17 | 0 |
 | [kotlin](by-language/kotlin.md) | 17 | 0 | 7 | 0 |
@@ -18,13 +18,14 @@
 | [elixir](by-language/elixir.md) | 14 | 5 | 10 | 3 |
 | [rust](by-language/rust.md) | 14 | 6 | 15 | 3 |
 | [scala](by-language/scala.md) | 14 | 3 | 6 | 0 |
-| [ruby](by-language/ruby.md) | 8 | 6 | 13 | 1 |
+| [ruby](by-language/ruby.md) | 8 | 6 | 13 | 2 |
 | [lua](by-language/lua.md) | 4 | 0 | 0 | 0 |
 | [swift](by-language/swift.md) | 4 | 1 | 0 | 0 |
 | [dart](by-language/dart.md) | 1 | 1 | 0 | 0 |
 | [assembly](by-language/assembly.md) | 0 | 0 | 0 | 4 |
 | [COBOL](by-language/cobol.md) | 0 | 0 | 0 | 4 |
 | [groovy](by-language/groovy.md) | 0 | 1 | 0 | 0 |
+| [javascript](by-language/javascript.md) | 0 | 0 | 0 | 1 |
 | [JCL](by-language/jcl.md) | 0 | 0 | 0 | 1 |
 
 ## Cross-cutting infrastructure
@@ -67,4 +68,4 @@
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 217 frameworks · 111 tools · 152 ORMs · 135 other
+Total: 217 frameworks · 111 tools · 152 ORMs · 139 other
