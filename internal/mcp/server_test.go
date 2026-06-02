@@ -549,6 +549,7 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_find_paths",
 		// #1281 consolidated HTTP endpoint tools (was 3 tools)
 		"archigraph_endpoints",
+		"archigraph_effective_contract",
 		// #1252 flow-aware traversal tools
 		"archigraph_find_callers",
 		"archigraph_find_callees",
@@ -685,8 +686,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +4 archigraph_pure_functions/_import_cycles/_def_use/_template_patterns (#2774/#2775 Phase 3 misc).
 	// +1 archigraph_feedback_event (#3204 agent-experience feedback, internal test harness).
 	// +1 archigraph_data_flows (#3867 request-input→sink DATA_FLOWS_TO projection).
-	if got := len(allRegisteredTools); got != 55 {
-		t.Errorf("expected 55 registered tools, got %d — update this count if tools are added/removed (added archigraph_data_flows #3867)", got)
+	// +1 archigraph_effective_contract (#3836 per-verb ViewSet effective contract).
+	if got := len(allRegisteredTools); got != 56 {
+		t.Errorf("expected 56 registered tools, got %d — update this count if tools are added/removed (added archigraph_effective_contract #3836)", got)
 	}
 }
 
@@ -3151,6 +3153,7 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_subgraph":             {"group": "g", "entity_id": "r1::a1"},
 		"archigraph_find_paths":           {"group": "g", "from": "r1::a1", "to": "r1::a4"},
 		"archigraph_endpoints":            {"group": "g", "action": "definitions"},
+		"archigraph_effective_contract":   {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_find_callers":         {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_find_callees":         {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_impact_radius":        {"group": "g", "entity_id": "r1::a2"},
@@ -3242,8 +3245,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 55 {
-		t.Errorf("expected 55 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_data_flows #3867)", len(tools))
+	if len(tools) != 56 {
+		t.Errorf("expected 56 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_effective_contract #3836)", len(tools))
 	}
 
 	for _, st := range tools {

@@ -132,6 +132,7 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_subgraph`](#archigraph_subgraph) | Nodes+edges (format=raw) or Markdown summary (format=markdown) within N hops. |
 | [`archigraph_find_paths`](#archigraph_find_paths) | Shortest path between two entities. |
 | [`archigraph_endpoints`](#archigraph_endpoints) | HTTP endpoint surface (action: definitions\|calls\|stats). |
+| [`archigraph_effective_contract`](#archigraph_effective_contract) | Per-verb effective contract of a ViewSet/controller (kind, status, error_statuses, serializer, pagination, permissions). |
 | `archigraph_neighbors` | Graph neighbors of `entity_id` (`direction=in\|out\|both`, default `both`). **Unifies `find_callers` + `find_callees` (#1753).** |
 | [`archigraph_find_callers`](#archigraph_find_callers) | **Deprecated alias** of `archigraph_neighbors(direction=in)`. Removed next release. |
 | [`archigraph_find_callees`](#archigraph_find_callees) | **Deprecated alias** of `archigraph_neighbors(direction=out)`. Removed next release. |
@@ -1221,6 +1222,76 @@ When `migrated: false`, `note` contains a migration reminder.
 
 When `token_budget` is exceeded the response carries a `truncation_note` explaining
 how many items were omitted and how to get more. Use `limit=N` for simple pagination.
+
+---
+
+### `archigraph_effective_contract`
+
+> Added in #3836 (epic #3829, MRO T6). Per-verb **effective contract** of a
+> ViewSet / controller. Thin serving/grouping layer over the T5 (#3964)
+> computation — the `effective_*` properties the DRF expansion pass stamps onto
+> every router-expanded route, lifted into a structured per-verb record.
+
+Given a ViewSet/controller entity (or a single route/endpoint), returns that
+ViewSet's router-expanded routes' per-verb effective contracts, grouped by the
+owning ViewSet. This is the single artifact that answers "what is the full
+contract of every verb on this ViewSet?" in one call — preventing the #278
+defect class (an **inherited** `create` surfacing `kind:inherited`,
+`source_class:CreateModelMixin`, `default_status:201`, `error_statuses:[400]`
+even though the ViewSet body is empty).
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `entity_id` | string | yes | — | ViewSet/controller entity ID, qualified name, or label — or a single route/endpoint, which resolves to its owning ViewSet. |
+| `qualified_name` | string | no | — | Alternative to `entity_id`. |
+| `repo_filter` | string[] | no | `[]` | Common arg. |
+| `group`, `cwd`, `ref` | string | no | — | Common args. |
+
+**Resolution.** The target is resolved by (1) a router-expanded route → its
+owning ViewSet; (2) a class/component entity → its leaf name; (3) no entity
+match → the raw string's leaf, so a bare ViewSet name still works when only the
+routes carry it.
+
+**Output** — JSON object:
+
+```json
+{
+  "target": "RoleViewSet",
+  "groups": [
+    {
+      "class": "RoleViewSet",
+      "framework": "django",
+      "repo": "backend",
+      "handlers": [
+        { "verb": "POST", "path": "/api/v1/roles", "handler": "RoleViewSet.create",
+          "kind": "inherited", "source_class": "CreateModelMixin",
+          "default_status": 201, "error_statuses": [400],
+          "serializer": "RoleSerializer", "permissions": ["IsAuthenticated"],
+          "auth_required": true },
+        { "verb": "GET", "path": "/api/v1/roles", "handler": "RoleViewSet.list",
+          "kind": "explicit", "source_class": "RoleViewSet",
+          "default_status": 200, "pagination": true, "serializer": "RoleSerializer" },
+        { "verb": "POST", "path": "/api/v1/roles/{pk}/approve", "handler": "RoleViewSet.approve",
+          "kind": "action", "source_class": "RoleViewSet", "serializer": "RoleSerializer" }
+      ]
+    }
+  ]
+}
+```
+
+**Handler fields** (per verb): `verb`, `path`, `handler`, `kind`
+(`explicit` \| `inherited` \| `action`), `source_class`, `default_status`,
+`error_statuses`, `serializer`, `pagination`, `permissions`, `auth_required`,
+`behaviour`.
+
+**Honest-partial.** A verb whose backing route carries no resolvable contract
+field simply omits that field (`default_status` 0, empty `error_statuses`) — it
+is never fabricated. A ViewSet with no router-expanded routes returns an empty
+`groups` list with a `note` (the contract is stamped by the T5 #3964 DRF
+expansion pass — an index predating that stamping requires a **reindex** to
+populate it).
 
 ---
 

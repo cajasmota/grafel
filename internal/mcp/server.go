@@ -792,6 +792,24 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
+	// archigraph_effective_contract — per-verb EFFECTIVE CONTRACT of a ViewSet /
+	// controller (epic #3829, T6 #3836). Given a ViewSet/controller (or a single
+	// route/endpoint), returns its router-expanded routes' per-verb contracts
+	// grouped by the owning ViewSet: {verb, path, kind (explicit|inherited|
+	// action), source_class, default_status, error_statuses, serializer,
+	// pagination, permissions, auth_required, behaviour}. Thin serving/grouping
+	// layer over T5's projectEffectiveContract (#3964). Prevents the #278 defect
+	// class (inherited create surfacing 201 + [400] though the body is empty).
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_effective_contract",
+		mcpapi.WithDescription("Per-verb effective contract of a ViewSet/controller (or route)."),
+		mcpapi.WithString("entity_id", mcpapi.Required()),
+		mcpapi.WithAny("qualified_name"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
+	), s.wrap("archigraph_effective_contract", s.handleEffectiveContract))
+
 	// archigraph_neighbors — folds find_callers + find_callees into one tool
 	// (#1753, #1742). direction=in returns callers, out returns callees, both
 	// returns the union. find_callers / find_callees stay as deprecated aliases.
