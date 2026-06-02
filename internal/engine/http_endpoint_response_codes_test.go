@@ -217,3 +217,188 @@ app.get('/plain', (req, res) => {
 		t.Fatalf("response_codes=%q want absent (no literal)", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Go — gin / echo / fiber / net-http (#3920)
+//
+// Go route registration and handler are separate functions; the resolver
+// locates the handler via source_handler and scans its real body. Assert the
+// SPECIFIC code set on the SPECIFIC endpoint.
+// ---------------------------------------------------------------------------
+
+func TestResponseCodes_Go_Gin_JSONStatusConstants(t *testing.T) {
+	src := `
+package main
+
+import (
+	"net/http"
+	"github.com/gin-gonic/gin"
+)
+
+func CreateUser(c *gin.Context) {
+	var payload map[string]any
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": 1})
+}
+
+func main() {
+	r := gin.Default()
+	r.POST("/users", CreateUser)
+	r.Run()
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "POST /users")
+	if got := e.Properties["response_codes"]; got != "201,400" {
+		t.Fatalf("response_codes=%q want 201,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+	if got := e.Properties["response_codes_source"]; got != "status call" {
+		t.Fatalf("response_codes_source=%q want 'status call'", got)
+	}
+}
+
+func TestResponseCodes_Go_Gin_NumericAndAbort(t *testing.T) {
+	src := `
+package main
+
+import "github.com/gin-gonic/gin"
+
+func DeleteUser(c *gin.Context) {
+	if !ok(c) {
+		c.AbortWithStatus(403)
+		return
+	}
+	c.Status(204)
+}
+
+func reg() {
+	r := gin.Default()
+	r.DELETE("/users/:id", DeleteUser)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "DELETE /users/{id}")
+	if got := e.Properties["response_codes"]; got != "204,403" {
+		t.Fatalf("response_codes=%q want 204,403 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "204" {
+		t.Fatalf("success_code=%q want 204", got)
+	}
+}
+
+func TestResponseCodes_Go_Echo_NewHTTPError(t *testing.T) {
+	src := `
+package main
+
+import (
+	"net/http"
+	"github.com/labstack/echo/v4"
+)
+
+func GetUser(c echo.Context) error {
+	if missing(c) {
+		return echo.NewHTTPError(http.StatusNotFound, "no user")
+	}
+	return c.JSON(http.StatusOK, user{})
+}
+
+func reg(e *echo.Echo) {
+	e.GET("/users/:id", GetUser)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /users/{id}")
+	if got := e.Properties["response_codes"]; got != "200,404" {
+		t.Fatalf("response_codes=%q want 200,404 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "200" {
+		t.Fatalf("success_code=%q want 200", got)
+	}
+}
+
+func TestResponseCodes_Go_Fiber_StatusAndNewError(t *testing.T) {
+	src := `
+package main
+
+import (
+	"github.com/gofiber/fiber/v2"
+)
+
+func ListItems(c *fiber.Ctx) error {
+	if broken(c) {
+		return fiber.NewError(fiber.StatusInternalServerError, "boom")
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"items": nil})
+}
+
+func reg(app *fiber.App) {
+	app.Get("/items", ListItems)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if got := e.Properties["response_codes"]; got != "200,500" {
+		t.Fatalf("response_codes=%q want 200,500 (props: %v)", got, e.Properties)
+	}
+}
+
+func TestResponseCodes_Go_NetHTTP_WriteHeaderAndError(t *testing.T) {
+	src := `
+package main
+
+import "net/http"
+
+func createThing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "bad", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /things", createThing)
+	http.ListenAndServe(":8080", mux)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "POST /things")
+	if got := e.Properties["response_codes"]; got != "201,400" {
+		t.Fatalf("response_codes=%q want 201,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+}
+
+// Negative: a Go handler with NO explicit status literal leaves response_codes
+// absent — the framework default 200 is not fabricated. (Honest-partial.)
+func TestResponseCodes_Go_NoLiteralLeavesAbsent(t *testing.T) {
+	src := `
+package main
+
+import "github.com/gin-gonic/gin"
+
+func health(c *gin.Context) {
+	code := pick()
+	c.JSON(code, gin.H{"ok": true})
+}
+
+func reg() {
+	r := gin.Default()
+	r.GET("/health", health)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /health")
+	if got := e.Properties["response_codes"]; got != "" {
+		t.Fatalf("response_codes=%q want absent (dynamic status var, no literal)", got)
+	}
+}

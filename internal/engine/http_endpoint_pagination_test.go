@@ -274,3 +274,182 @@ app.post('/orders', (req, res) => {
 		t.Fatalf("non-list endpoint stamped paginated, want absent (props: %v)", e.Properties)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Go — gin / echo / chi / net-http query-param reads (#3920)
+//
+// Route registration and handler are separate funcs; the resolver locates the
+// handler via source_handler and scans its body for query-param reads. Assert
+// the SPECIFIC style + params on the SPECIFIC endpoint.
+// ---------------------------------------------------------------------------
+
+func TestPagination_Go_Gin_LimitOffset(t *testing.T) {
+	src := `
+package main
+
+import "github.com/gin-gonic/gin"
+
+func ListUsers(c *gin.Context) {
+	limit := c.DefaultQuery("limit", "20")
+	offset := c.Query("offset")
+	_ = limit
+	_ = offset
+	c.JSON(200, gin.H{})
+}
+
+func reg() {
+	r := gin.Default()
+	r.GET("/users", ListUsers)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /users")
+	if got := e.Properties["paginated"]; got != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_style"]; got != "offset" {
+		t.Fatalf("pagination_style=%q want offset", got)
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+func TestPagination_Go_Echo_PageParam(t *testing.T) {
+	src := `
+package main
+
+import "github.com/labstack/echo/v4"
+
+func ListPosts(c echo.Context) error {
+	page := c.QueryParam("page")
+	size := c.QueryParam("per_page")
+	_ = page
+	_ = size
+	return c.JSON(200, nil)
+}
+
+func reg(e *echo.Echo) {
+	e.GET("/posts", ListPosts)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /posts")
+	if got := e.Properties["pagination_style"]; got != "page" {
+		t.Fatalf("pagination_style=%q want page (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_params"]; got != "page,per_page" {
+		t.Fatalf("pagination_params=%q want page,per_page", got)
+	}
+}
+
+func TestPagination_Go_Chi_CursorQuery(t *testing.T) {
+	src := `
+package main
+
+import (
+	"net/http"
+	"github.com/go-chi/chi/v5"
+)
+
+func ListEvents(w http.ResponseWriter, r *http.Request) {
+	cursor := r.URL.Query().Get("cursor")
+	limit := r.URL.Query().Get("limit")
+	_ = cursor
+	_ = limit
+	w.WriteHeader(http.StatusOK)
+}
+
+func routes() {
+	r := chi.NewRouter()
+	r.GET("/events", ListEvents)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /events")
+	if got := e.Properties["pagination_style"]; got != "cursor" {
+		t.Fatalf("pagination_style=%q want cursor (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_params"]; got != "cursor,limit" {
+		t.Fatalf("pagination_params=%q want cursor,limit", got)
+	}
+}
+
+func TestPagination_Go_NetHTTP_PageQuery(t *testing.T) {
+	src := `
+package main
+
+import "net/http"
+
+func listThings(w http.ResponseWriter, r *http.Request) {
+	page := r.URL.Query().Get("page")
+	_ = page
+	w.WriteHeader(http.StatusOK)
+}
+
+func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /things", listThings)
+	http.ListenAndServe(":8080", mux)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /things")
+	if got := e.Properties["pagination_style"]; got != "page" {
+		t.Fatalf("pagination_style=%q want page (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_params"]; got != "page" {
+		t.Fatalf("pagination_params=%q want page", got)
+	}
+}
+
+// Negative: a lone limit query read is ambiguous (could be a business cap) and
+// is NOT stamped as pagination. (Honest-partial.)
+func TestPagination_Go_LoneLimitNotPaginated(t *testing.T) {
+	src := `
+package main
+
+import "github.com/gin-gonic/gin"
+
+func search(c *gin.Context) {
+	limit := c.Query("limit")
+	_ = limit
+	c.JSON(200, gin.H{})
+}
+
+func reg() {
+	r := gin.Default()
+	r.GET("/search", search)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /search")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (lone limit is ambiguous)", got)
+	}
+}
+
+// Negative: a handler that reads no pagination params is not stamped.
+func TestPagination_Go_NoParamsNotPaginated(t *testing.T) {
+	src := `
+package main
+
+import "github.com/gin-gonic/gin"
+
+func getUser(c *gin.Context) {
+	id := c.Param("id")
+	_ = id
+	c.JSON(200, gin.H{})
+}
+
+func reg() {
+	r := gin.Default()
+	r.GET("/users/:id", getUser)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /users/{id}")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (no pagination params)", got)
+	}
+}

@@ -22,18 +22,26 @@ import (
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
 )
 
-// goRouteRe matches the canonical Gin / Echo / Chi route registration:
+// goRouteRe matches the canonical Gin / Echo / Chi / Fiber route registration,
+// in BOTH the upper-case (gin/echo) and idiomatic title-case (chi/fiber/echo)
+// method-name spellings:
 //
-//	r.GET("/path", handlerFunc)
+//	r.GET("/path", handlerFunc)        // gin / echo
 //	router.POST("/users/:id", h.Create)
-//	app.DELETE("/users/:id", deleteUser)
+//	r.Get("/users", h.List)            // chi / fiber (idiomatic title-case)
+//	app.Delete("/users/:id", deleteUser)
 //
 // Group 1 is the verb, group 2 is the path, group 3 is the handler
 // identifier (may be qualified, e.g. `h.Create`). The handler is the
 // bare or last-component name so the shape extractor can locate its
 // definition in the same file.
+//
+// The title-case spelling is matched here (it was previously only matched by
+// the ROUTES_TO-edge pass in go_routes.go) so that idiomatic chi/fiber/echo
+// handlers receive an http_endpoint_definition entity — which the
+// response-codes / pagination enrichment passes (#3920) then stamp.
 var goRouteRe = regexp.MustCompile(
-	`\b\w+\s*\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*` +
+	`\b\w+\s*\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*` +
 		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]+)["` + "`" + `]` + "`" + `?\s*,\s*([\w.]+)`,
 )
 
@@ -47,10 +55,23 @@ func goFrameworkFromImports(content string) string {
 		return "echo"
 	case strings.Contains(content, "github.com/go-chi/chi"):
 		return "chi"
+	case strings.Contains(content, "github.com/gofiber/fiber"):
+		return "fiber"
 	case strings.Contains(content, "github.com/gin-gonic/gin"):
 		return "gin"
 	}
 	return "gin"
+}
+
+// goFileImportsHTTPRouter reports whether the file imports one of the supported
+// Go HTTP router libraries whose registration DSL uses title-case verb methods
+// (chi / fiber / echo / gin). Used to gate the title-case `.Get(`/`.Post(` route
+// match so it does not fire on unrelated `.Get(` calls (maps, caches, etc.).
+func goFileImportsHTTPRouter(content string) bool {
+	return strings.Contains(content, "github.com/labstack/echo") ||
+		strings.Contains(content, "github.com/go-chi/chi") ||
+		strings.Contains(content, "github.com/gofiber/fiber") ||
+		strings.Contains(content, "github.com/gin-gonic/gin")
 }
 
 // synthesizeGoRouters scans a Go file for HTTP route registrations
@@ -61,15 +82,33 @@ func synthesizeGoRouters(content string, emit emitFn) {
 	if !strings.Contains(content, ".GET(") && !strings.Contains(content, ".POST(") &&
 		!strings.Contains(content, ".PUT(") && !strings.Contains(content, ".PATCH(") &&
 		!strings.Contains(content, ".DELETE(") && !strings.Contains(content, ".HEAD(") &&
-		!strings.Contains(content, ".OPTIONS(") {
+		!strings.Contains(content, ".OPTIONS(") &&
+		!strings.Contains(content, ".Get(") && !strings.Contains(content, ".Post(") &&
+		!strings.Contains(content, ".Put(") && !strings.Contains(content, ".Patch(") &&
+		!strings.Contains(content, ".Delete(") && !strings.Contains(content, ".Head(") &&
+		!strings.Contains(content, ".Options(") {
 		return
 	}
 	framework := goFrameworkFromImports(content)
+	// Title-case verb spellings (`.Get(`, `.Post(`, …) are common on non-router
+	// receivers too (a map/cache `.Get("k", v)`), so they only count as routes
+	// when the file actually imports a known Go HTTP router. Upper-case spellings
+	// (`.GET(`) are router-specific and need no such gate. This keeps the
+	// false-positive rate near zero while unlocking idiomatic chi/fiber/echo.
+	hasRouterImport := goFileImportsHTTPRouter(content)
 	for _, m := range goRouteRe.FindAllStringSubmatch(content, -1) {
 		if len(m) < 4 {
 			continue
 		}
-		verb := m[1]
+		rawVerb := m[1]
+		// Normalise the verb to upper-case so the endpoint key is canonical
+		// regardless of the title-case (chi/fiber) vs upper-case (gin/echo)
+		// method-name spelling at the call site.
+		verb := strings.ToUpper(rawVerb)
+		// Title-case spelling without a router import → not a route (gate).
+		if rawVerb != verb && !hasRouterImport {
+			continue
+		}
 		raw := m[2]
 		handler := m[3]
 		// Use the last `.`-separated component so a `h.Create` style

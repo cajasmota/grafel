@@ -39,6 +39,7 @@
 package engine
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
@@ -155,6 +156,14 @@ func resolveEndpointPagination(lang, content string, e *types.EntityRecord) (pag
 		}
 	case "javascript":
 		if v, ok := jsPaginationVerdict(region, body); ok {
+			return v, true
+		}
+	case "go":
+		// Go route registration and handler are SEPARATE functions, so the
+		// StartLine-anchored body window above does not reach the handler. Locate
+		// the handler func by its source_handler reference and scan its real body
+		// for query-param reads (mirrors response_shape_go.go).
+		if v, ok := goPaginationVerdict(content, e); ok {
 			return v, true
 		}
 	}
@@ -555,6 +564,66 @@ func jsQueryParams(src string) map[string]bool {
 		}
 	}
 	return present
+}
+
+// ---------------------------------------------------------------------------
+// Go — gin / echo / chi / fiber / net-http query-param reads
+// ---------------------------------------------------------------------------
+//
+// Pagination params are read from the request query string. The read idiom
+// differs by framework but always names the param as a string literal:
+//
+//   - gin:      c.Query("limit") / c.DefaultQuery("offset","0") / c.GetQuery("cursor")
+//   - echo:     c.QueryParam("limit")
+//   - fiber:    c.Query("limit") / c.Query("offset","0") / c.QueryInt("page")
+//   - net/http / chi (stdlib): r.URL.Query().Get("limit") /
+//     r.FormValue("offset") / r.URL.Query()["page"]
+//
+// The collected names feed the shared classifyParamShape: a lone limit is
+// ambiguous (NOT stamped); limit+offset → offset, page → page, cursor → cursor.
+// HONEST-PARTIAL: a param read into a variable but named only dynamically
+// (`c.Query(name)`) does not match and is skipped.
+
+// goQueryReadRe matches a query-param read whose key is a string literal:
+//
+//	c.Query("limit") / c.DefaultQuery("limit", "10") / c.GetQuery("cursor")
+//	c.QueryParam("limit") / c.QueryInt("page") / c.Queries() handled separately
+//	r.URL.Query().Get("limit") / r.FormValue("offset")
+//
+// Group 1 is the param name.
+var goQueryReadRe = regexp.MustCompile(
+	`\.\s*(?:Query|DefaultQuery|GetQuery|QueryParam|QueryArray|QueryInt|QueryBool|DefaultQueryInt|Get|FormValue|PostFormValue|URLParam)\s*\(\s*["` + "`" + `]([A-Za-z_][\w-]*)["` + "`" + `]`,
+)
+
+// goQueryBracketRe matches `r.URL.Query()["limit"]` bracket-index reads.
+var goQueryBracketRe = regexp.MustCompile(
+	`\.\s*Query\s*\(\s*\)\s*\[\s*["` + "`" + `]([A-Za-z_][\w-]*)["` + "`" + `]`,
+)
+
+// goPaginationVerdict resolves param-based pagination from query-param reads in
+// the Go handler body, located via the endpoint's source_handler reference.
+func goPaginationVerdict(content string, e *types.EntityRecord) (paginationVerdict, bool) {
+	handler := e.Properties["source_handler"]
+	if idx := strings.Index(handler, ":"); idx >= 0 {
+		handler = handler[idx+1:]
+	}
+	if handler == "" {
+		return paginationVerdict{}, false
+	}
+	body := findGoHandlerBody(content, handler)
+	if body == "" {
+		return paginationVerdict{}, false
+	}
+	present := map[string]bool{}
+	for _, re := range []*regexp.Regexp{goQueryReadRe, goQueryBracketRe} {
+		for _, m := range re.FindAllStringSubmatch(body, -1) {
+			name := strings.ToLower(strings.ReplaceAll(m[1], "-", "_"))
+			if isPaginationParam(name) {
+				present[name] = true
+			}
+		}
+	}
+	return classifyParamShape(present, "query params")
 }
 
 // ---------------------------------------------------------------------------

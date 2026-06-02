@@ -192,6 +192,12 @@ func resolveEndpointResponseCodes(lang, content string, e *types.EntityRecord) r
 		v.merge(reactiveResponseCodes(region+"\n"+sig, body))
 	case "javascript":
 		v.merge(jsResponseCodes(region, body))
+	case "go":
+		// Go route registration and handler are SEPARATE functions, so the
+		// StartLine-anchored decorator/body windows above do not reach the
+		// handler body. Locate the handler func by its `source_handler`
+		// reference and scan its real body (mirrors response_shape_go.go).
+		v.merge(goResponseCodes(content, e))
 	}
 	return v
 }
@@ -526,4 +532,152 @@ func jsResponseCodes(region, body string) responseCodesVerdict {
 	}
 
 	return v
+}
+
+// ---------------------------------------------------------------------------
+// Go — gin / echo / chi / fiber / net-http / gorilla / huma
+// ---------------------------------------------------------------------------
+//
+// The status idioms differ by framework but all resolve to a literal int or a
+// well-known package constant suffix (http.StatusXxx / fiber.StatusXxx). The
+// constant suffix → code mapping is shared with response_shape_go.go's
+// goHTTPStatusFromName, extended here with the full set of codes endpoints
+// commonly return.
+//
+//   - gin / echo: c.JSON(http.StatusCreated, x) / c.JSON(201, x);
+//     c.Status(http.StatusNoContent); c.AbortWithStatus(403);
+//     c.AbortWithStatusJSON(400, ...); ctx.NoContent(http.StatusNoContent).
+//   - echo error:  echo.NewHTTPError(http.StatusNotFound, ...) /
+//     echo.NewHTTPError(404).
+//   - net/http / chi (stdlib): w.WriteHeader(http.StatusCreated);
+//     http.Error(w, msg, http.StatusBadRequest) (2nd/3rd arg is the code).
+//   - fiber:       c.Status(fiber.StatusOK).JSON(x); c.SendStatus(204);
+//     fiber.NewError(fiber.StatusNotFound, ...).
+//
+// HONEST-PARTIAL: a status expressed through a variable (`c.JSON(code, x)`,
+// `w.WriteHeader(myStatus)`) is not a literal and is skipped — we still record
+// the literals found alongside. If no literal resolves, response_codes is left
+// absent (the framework default 200 is NOT fabricated).
+
+// goStatusCallRe matches the call shapes whose FIRST argument is the HTTP
+// status: c.JSON / c.IndentedJSON / c.PureJSON / c.XML / c.Status / c.String /
+// c.Data / c.AbortWithStatus / c.AbortWithStatusJSON / c.SendStatus /
+// w.WriteHeader / ctx.NoContent / echo.NewHTTPError / fiber.NewError.
+var goStatusFirstArgRe = regexp.MustCompile(
+	`\b\w+\s*\.\s*(?:JSON|IndentedJSON|PureJSON|SecureJSON|AsciiJSON|XML|YAML|ProtoBuf|Status|String|Data|HTML|Render|AbortWithStatus|AbortWithStatusJSON|SendStatus|WriteHeader|NoContent|NewHTTPError|NewError)\s*\(\s*(\d{3}|http\.Status[A-Z][A-Za-z]+|fiber\.Status[A-Z][A-Za-z]+|echo\.[A-Z][A-Za-z]+)`,
+)
+
+// goHTTPErrorRe matches `http.Error(w, msg, http.StatusBadRequest)` /
+// `http.Error(w, msg, 400)` where the status is the THIRD argument.
+var goHTTPErrorRe = regexp.MustCompile(
+	`\bhttp\.Error\s*\(\s*[^,]+,\s*[^,]+,\s*(\d{3}|http\.Status[A-Z][A-Za-z]+)\s*\)`,
+)
+
+// goStatusTokenRe parses a single resolved status token into either a numeric
+// literal (group 1) or a constant suffix (group 2), accepting the http.Status*
+// and fiber.Status* constant families (which share the stdlib code values).
+var goStatusTokenRe = regexp.MustCompile(`^(?:(\d{3})|(?:http|fiber)\.Status([A-Z][A-Za-z]+))$`)
+
+// goResponseCodes resolves the literal status-code set returned by a Go
+// handler. The handler body is located via the endpoint's source_handler
+// reference (route registration and handler are separate funcs in Go).
+func goResponseCodes(content string, e *types.EntityRecord) responseCodesVerdict {
+	var v responseCodesVerdict
+	handler := e.Properties["source_handler"]
+	if idx := strings.Index(handler, ":"); idx >= 0 {
+		handler = handler[idx+1:]
+	}
+	if handler == "" {
+		return v
+	}
+	body := findGoHandlerBody(content, handler)
+	if body == "" {
+		return v
+	}
+
+	for _, m := range goStatusFirstArgRe.FindAllStringSubmatch(body, -1) {
+		if c, ok := goResolveStatusToken(m[1]); ok {
+			v.add(c)
+			if v.source == "" {
+				v.source = "status call"
+			}
+		}
+	}
+	for _, m := range goHTTPErrorRe.FindAllStringSubmatch(body, -1) {
+		if c, ok := goResolveStatusToken(m[1]); ok {
+			v.add(c)
+			if v.source == "" {
+				v.source = "http.Error"
+			}
+		}
+	}
+	return v
+}
+
+// goResolveStatusToken resolves a status token (a 3-digit literal or an
+// http.Status*/fiber.Status* constant) to its numeric code. An `echo.X`
+// constant is a non-status echo symbol and is rejected (returns false).
+func goResolveStatusToken(tok string) (int, bool) {
+	tok = strings.TrimSpace(tok)
+	m := goStatusTokenRe.FindStringSubmatch(tok)
+	if m == nil {
+		return 0, false
+	}
+	if m[1] != "" {
+		if n, err := strconv.Atoi(m[1]); err == nil {
+			return n, true
+		}
+		return 0, false
+	}
+	if c := goStatusConstCode(m[2]); c > 0 {
+		return c, true
+	}
+	return 0, false
+}
+
+// goStatusConstCode maps the net/http (and fiber, which mirrors it) status
+// constant suffix to its numeric code. Superset of response_shape_go.go's
+// goHTTPStatusFromName, covering the codes endpoints commonly return.
+func goStatusConstCode(name string) int {
+	if c, ok := goStatusConstCodes[name]; ok {
+		return c
+	}
+	return 0
+}
+
+var goStatusConstCodes = map[string]int{
+	"Continue":              100,
+	"OK":                    200,
+	"Created":               201,
+	"Accepted":              202,
+	"NonAuthoritativeInfo":  203,
+	"NoContent":             204,
+	"ResetContent":          205,
+	"PartialContent":        206,
+	"MovedPermanently":      301,
+	"Found":                 302,
+	"SeeOther":              303,
+	"NotModified":           304,
+	"TemporaryRedirect":     307,
+	"PermanentRedirect":     308,
+	"BadRequest":            400,
+	"Unauthorized":          401,
+	"PaymentRequired":       402,
+	"Forbidden":             403,
+	"NotFound":              404,
+	"MethodNotAllowed":      405,
+	"NotAcceptable":         406,
+	"RequestTimeout":        408,
+	"Conflict":              409,
+	"Gone":                  410,
+	"PreconditionFailed":    412,
+	"RequestEntityTooLarge": 413,
+	"UnsupportedMediaType":  415,
+	"UnprocessableEntity":   422,
+	"TooManyRequests":       429,
+	"InternalServerError":   500,
+	"NotImplemented":        501,
+	"BadGateway":            502,
+	"ServiceUnavailable":    503,
+	"GatewayTimeout":        504,
 }
