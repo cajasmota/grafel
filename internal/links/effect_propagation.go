@@ -221,6 +221,20 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 	// endpoint annotation apart from a function's own direct/transitive set.
 	endpointDerived := propagateEndpointEffects(graphs, effects)
 
+	// #3934 — propagate the task BODY's FULLY-PROPAGATED effect closure onto its
+	// SCOPE.ScheduledJob wrapper node. #3869 bound the wrapper under its handler
+	// name so it inherits the body's DIRECT sinks (sniffer attributes a sink to
+	// the bare function name → stamped on every matching entity, incl. the
+	// wrapper). But a task that DELEGATES its write to a helper it CALLS has the
+	// db_write resolved transitively on the BODY Function node via the CALLS
+	// fixed-point — and the wrapper has NO outgoing CALLS edges (CALLS attach to
+	// the body Function entity, a separate node), so `no_outgoing_edges` leaves
+	// the wrapper `pure`. We close that dual-node gap by unioning the body's
+	// already-resolved (post-fixed-point) set onto the wrapper. Honest: we only
+	// inherit effects genuinely present on the body — a pure body/callee chain
+	// yields nothing.
+	propagateScheduledJobEffects(graphs, effects)
+
 	// Stamp results back onto entity.Properties so MCP/dashboard can read
 	// them without re-running the pass.
 	stamped := 0
@@ -316,6 +330,90 @@ func propagateEndpointEffects(graphs []repoGraph, effects map[string]*substrate.
 		}
 	}
 	return derived
+}
+
+// propagateScheduledJobEffects unions each SCOPE.ScheduledJob wrapper's task
+// BODY effect closure onto the wrapper itself (#3934). The wrapper is a
+// synthetic decorator node keyed on a framework job ID (e.g.
+// `celery:<path>:<fn>`); its backing task-body function name lives in the
+// `handler` property (#3869). The body Function entity — same (repo, file),
+// name == handler, a genuine function-like kind (NOT a scheduled-job wrapper) —
+// owns the outgoing CALLS edges, so the fixed-point above has already resolved
+// the body's FULL transitive effect set (direct sinks ∪ helper sinks reached
+// through CALLS). The wrapper carries no CALLS of its own, so without this pass
+// it only inherits the body's DIRECT sinks (via the #3869 name binding) and
+// misses anything the body delegates to a helper.
+//
+// We resolve the body via the (file, handler-name) join — the same lexical
+// pairing the binder uses — restricted to the wrapper's own file so a same-name
+// function in an unrelated file can't bleed in. The wrapper inherits the union
+// of every matching body's resolved set. Idempotent and delta-aware: derived
+// purely from the current in-memory entity set + the resolved `effects` map,
+// with no persisted state. Mutates `effects` in place. Honest: a wrapper whose
+// body (and all its callees) is genuinely pure receives nothing — we never
+// invent a sink.
+//
+// General pattern note: this wrapper/body dual-node effect-inheritance gap
+// recurs for ALL decorator-wrapped entities whose synthetic node is distinct
+// from the function body that owns the CALLS edges (scheduled jobs, signal
+// handlers, message consumers, …). The same body-closure inheritance applies;
+// the only per-kind variable is how the wrapper names its body (here, the
+// `handler` property).
+func propagateScheduledJobEffects(graphs []repoGraph, effects map[string]*substrate.EffectSet) {
+	for _, g := range graphs {
+		// bodyByFileName[file][name] = []bodyEntityID, restricted to genuine
+		// function-like bodies (NOT scheduled-job wrapper kinds) so a wrapper
+		// never inherits from another wrapper sharing the same handler name.
+		bodyByFileName := map[string]map[string][]string{}
+		for _, e := range g.Entities {
+			if e.SourceFile == "" || e.Name == "" {
+				continue
+			}
+			if isScheduledJobKind(e.Kind) || !isFunctionLikeKind(e.Kind) {
+				continue
+			}
+			fileIdx := bodyByFileName[e.SourceFile]
+			if fileIdx == nil {
+				fileIdx = map[string][]string{}
+				bodyByFileName[e.SourceFile] = fileIdx
+			}
+			fileIdx[e.Name] = append(fileIdx[e.Name], e.ID)
+		}
+
+		for _, e := range g.Entities {
+			if !isScheduledJobKind(e.Kind) {
+				continue
+			}
+			handler := e.Properties["handler"]
+			if handler == "" {
+				continue
+			}
+			bodies := bodyByFileName[e.SourceFile][handler]
+			if len(bodies) == 0 {
+				continue
+			}
+			var merged substrate.EffectSet
+			got := false
+			for _, bID := range bodies {
+				bs := effects[entityKey(g.Repo, bID)]
+				if bs == nil || bs.IsEmpty() {
+					continue
+				}
+				merged.Union(*bs)
+				got = true
+			}
+			if !got {
+				continue
+			}
+			jobKey := entityKey(g.Repo, e.ID)
+			if existing := effects[jobKey]; existing != nil {
+				existing.Union(merged)
+			} else {
+				cp := merged
+				effects[jobKey] = &cp
+			}
+		}
+	}
 }
 
 // stampEffectProperties writes the effect annotation onto props using the
