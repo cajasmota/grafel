@@ -61759,8 +61759,9 @@
       "capabilities": {
         "consumer_extraction": {
           "status": "full",
-          "cites": ["internal/engine/websocket_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/http_endpoint_ws_client.go","internal/engine/websocket_edges.go"],
+          "notes": "(epic #3628 realtime cross-link): in addition to the connection-level WS_CONNECTS edge (ws:\u003cchannel\u003e identity), the socket.io CLIENT side now ALSO emits event-level consumer-side http_endpoint_call entities keyed BYTE-IDENTICALLY to the realtime producer endpoint shape http:WS:/\u003ccanonical event\u003e — socket.emit('chat:message') and socket.on('notify') run through the SAME canonicalizeRealtimePath('websocket',...) as the producer so 'chat:message' collapses to http:WS:/chat{message} on both sides and the Name-based cross-repo HTTP linker joins client emit/subscribe to the server socket.on handler with no new linker code. ws_role (emit|subscribe) folded into the framework label; source_caller drives the FETCHES edge. Honest-partial: dynamic event names, native ws.send (no event), and SERVER files are skipped.",
+          "verified_at": "2026-06-02"
         },
         "producer_extraction": {
           "status": "full",

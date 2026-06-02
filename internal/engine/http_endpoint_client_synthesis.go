@@ -1279,6 +1279,17 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 		synthesizeGraphQLClientCalls(content, funcsGQL, emit)
 	}
 
+	// WebSocket / Socket.IO client operations (socket.emit / socket.on on a
+	// socket.io-client connection) emit event-level http_endpoint_call entities
+	// keyed to the server endpoint shape http:WS:/<canonical event> (realtime
+	// cross-link, epic #3628). Runs before the REST early-exit guard since a WS
+	// client file may contain none of the fetch/axios markers.
+	if strings.Contains(content, "io(") || strings.Contains(content, "io.connect(") ||
+		strings.Contains(content, "socket.io-client") {
+		funcsWS := indexJSEnclosingFunctions(content)
+		synthesizeWSClientCalls(content, funcsWS, emit)
+	}
+
 	if !strings.Contains(content, "fetch(") &&
 		!strings.Contains(content, "axios.") &&
 		!strings.Contains(content, "axios(") &&
