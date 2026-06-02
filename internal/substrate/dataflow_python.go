@@ -7,8 +7,12 @@
 //
 // Sources recognised (static key only):
 //   - request.data['x'] / request.data.get('x')        (DRF body)
-//   - request.GET.get('x') / request.POST.get('x')      (Django)
+//   - request.GET['x'] / request.GET.get('x')           (Django query)
+//   - request.POST['x'] / request.POST.get('x')         (Django form)
 //   - request.json['x'] / request.json.get('x')         (Flask/generic)
+//   - request.form['x'] / request.form.get('x')         (Flask form)
+//   - request.args.get('x') / request.args['x']         (Flask query)
+//   - request.values.get('x') / request.values['x']     (Flask combined)
 //   - serializer.validated_data['x'] / .get('x')        (DRF)
 //
 // Sinks recognised:
@@ -33,8 +37,8 @@ func sniffDataFlowPython(content string) []DataFlow { return sniffDataFlowPython
 // key. Group 1/2/3/4 hold the key depending on the access form. Dynamic
 // keys (`request.data[k]`) do not match (honest-partial).
 var dfPySourceFieldRe = regexp.MustCompile(
-	`\brequest\s*\.\s*(?:data|json)\s*\[\s*['"]([A-Za-z_][\w]*)['"]\s*\]` +
-		`|\brequest\s*\.\s*(?:data|json|GET|POST)\s*\.\s*get\s*\(\s*['"]([A-Za-z_][\w]*)['"]` +
+	`\brequest\s*\.\s*(?:data|json|form|args|values|GET|POST)\s*\[\s*['"]([A-Za-z_][\w]*)['"]\s*\]` +
+		`|\brequest\s*\.\s*(?:data|json|form|args|values|GET|POST)\s*\.\s*get\s*\(\s*['"]([A-Za-z_][\w]*)['"]` +
 		`|\bserializer\s*\.\s*validated_data\s*\[\s*['"]([A-Za-z_][\w]*)['"]\s*\]` +
 		`|\bserializer\s*\.\s*validated_data\s*\.\s*get\s*\(\s*['"]([A-Za-z_][\w]*)['"]`,
 )
@@ -42,7 +46,7 @@ var dfPySourceFieldRe = regexp.MustCompile(
 // dfPySourceAnyRe matches a source receiver without requiring a static
 // key, for whole-object pass-through (`return Response(request.data)`).
 var dfPySourceAnyRe = regexp.MustCompile(
-	`\brequest\s*\.\s*(?:data|json|GET|POST)\b|\bserializer\s*\.\s*validated_data\b`,
+	`\brequest\s*\.\s*(?:data|json|form|args|values|GET|POST)\b|\bserializer\s*\.\s*validated_data\b`,
 )
 
 // dfPyDBWriteRe matches an ORM write. Group 1 = the callee text.

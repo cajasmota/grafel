@@ -7,8 +7,11 @@
 //
 // Sources recognised:
 //   - req.body.X / req.query.X / req.params.X         (Express / generic)
-//   - request.body.X / request.query.X                (Hono / generic)
-//   - ctx.request.body.X                              (Koa)
+//   - request.body.X / request.query.X / request.params.X
+//     (Fastify / Hono / generic)
+//   - request.payload.X                               (Hapi)
+//   - ctx.request.body.X / ctx.request.query.X        (Koa)
+//   - ctx.query.X / ctx.params.X                      (Koa)
 //   - @Body()/@Query()/@Param()/@Headers()/@Req()/@Request() decorated
 //     controller-method parameters                    (NestJS, #3902)
 //
@@ -44,14 +47,30 @@ func sniffDataFlowJSTS(content string) []DataFlow { return sniffDataFlowJSTSEx(c
 // name. Group 1 = field. Anchored on the canonical receivers. Dynamic
 // access (`req.body[k]`) is intentionally NOT matched (honest-partial).
 var dfJstsSourceFieldRe = regexp.MustCompile(
-	`\b(?:req|request)\s*\.\s*(?:body|query|params)\s*\.\s*([A-Za-z_$][\w$]*)\b` +
-		`|\bctx\s*\.\s*request\s*\.\s*body\s*\.\s*([A-Za-z_$][\w$]*)\b`,
+	`\b(?:req|request)\s*\.\s*(?:body|query|params|payload)\s*\.\s*([A-Za-z_$][\w$]*)\b` +
+		`|\bctx\s*\.\s*request\s*\.\s*(?:body|query)\s*\.\s*([A-Za-z_$][\w$]*)\b` +
+		`|\bctx\s*\.\s*(?:query|params)\s*\.\s*([A-Za-z_$][\w$]*)\b`,
 )
+
+// dfJstsFirstGroup returns the first non-empty capture group of a
+// dfJstsSourceFieldRe submatch (the recognised receiver alternatives each use
+// a distinct group, so exactly one is non-empty for a match). Returns "" when
+// none captured a static field (whole-object source).
+func dfJstsFirstGroup(m []string) string {
+	for _, g := range m[1:] {
+		if g != "" {
+			return g
+		}
+	}
+	return ""
+}
 
 // dfJstsSourceAnyRe matches the source receiver prefix without requiring a
 // field, used to detect whole-object pass-through (`res.json(req.body)`).
 var dfJstsSourceAnyRe = regexp.MustCompile(
-	`\b(?:req|request)\s*\.\s*(?:body|query|params)\b|\bctx\s*\.\s*request\s*\.\s*body\b`,
+	`\b(?:req|request)\s*\.\s*(?:body|query|params|payload)\b` +
+		`|\bctx\s*\.\s*request\s*\.\s*(?:body|query)\b` +
+		`|\bctx\s*\.\s*(?:query|params)\b`,
 )
 
 // dfJstsNestJSParamRe matches a NestJS controller-method parameter injected
@@ -503,10 +522,7 @@ func jstsTaintedField(expr, name string, info taintInfo) string {
 // (possibly ""), preserving provenance across the assignment.
 func jstsRHSSourceField(rhs string, tainted map[string]taintInfo) (string, bool) {
 	if m := dfJstsSourceFieldRe.FindStringSubmatch(rhs); m != nil {
-		if m[1] != "" {
-			return m[1], true
-		}
-		return m[2], true
+		return dfJstsFirstGroup(m), true
 	}
 	if dfJstsSourceAnyRe.MatchString(rhs) {
 		return "", true
@@ -536,10 +552,7 @@ func jstsArgsTainted(args string, tainted map[string]taintInfo) (string, bool) {
 // or a tainted variable, returning the field name when known.
 func jstsExprTainted(expr string, tainted map[string]taintInfo) (string, bool) {
 	if m := dfJstsSourceFieldRe.FindStringSubmatch(expr); m != nil {
-		if m[1] != "" {
-			return m[1], true
-		}
-		return m[2], true
+		return dfJstsFirstGroup(m), true
 	}
 	if dfJstsSourceAnyRe.MatchString(expr) {
 		return "", true
@@ -561,10 +574,7 @@ func jstsArgBareTaint(argExpr string, tainted map[string]taintInfo) (string, boo
 	e := strings.TrimSpace(argExpr)
 	if jstsWholeExprIsSource(e) {
 		if m := dfJstsSourceFieldRe.FindStringSubmatch(e); m != nil {
-			if m[1] != "" {
-				return m[1], true
-			}
-			return m[2], true
+			return dfJstsFirstGroup(m), true
 		}
 		return "", true
 	}
