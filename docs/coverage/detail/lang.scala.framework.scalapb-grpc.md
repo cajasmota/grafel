@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** RPC Framework
-- **Capability cells:** 29
+- **Capability cells:** 30
 
 ## Capabilities
 
@@ -18,6 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Federation extraction | — `not_applicable` | — | 3623 | — | Apollo GraphQL Federation directives (@key/@external/@requires/@provides/extend type) do not exist in this RPC framework; not applicable. |
 | Procedure extraction | ✅ `full` | `2026-05-31` | — | `internal/custom/scala/grpc.go`<br>`internal/custom/scala/grpc_test.go` | custom_scala_grpc: each def <rpc>(request: ReqT): Eff[RespT] of a ScalaPB AbstractService / zio-grpc ZGeneratedService / fs2-grpc *Fs2Grpc service trait -> SCOPE.Operation endpoint at /<Service>/<rpc>, verb=RPC, rpc_protocol=grpc, grpc_service+grpc_method+handler_name stamped. Value-asserting tests pin sayHello/listUsers + service Greeter (Z/Fs2Grpc decorations stripped). File-local. |
 | Schema extraction | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/scala/grpc.go`<br>`internal/custom/scala/grpc_test.go` | custom_scala_grpc: request/response message types recovered from the method signature (Request<T> param + last effect type-arg of ZIO/Future/F[_]) and emitted as SCOPE.Schema DTO refs with grpc_message_role request/response. PARTIAL: message FIELD shapes live in ScalaPB-generated case-class companions; names only. Value-asserted (HelloRequest/HelloReply/UserList). |
+| Type graph extraction | — `not_applicable` | — | 3804 | — | GraphQL schema type→type graph (object-typed field -> referenced object type with list/nullable cardinality) is a GraphQL-SDL concept; gRPC/protobuf/tRPC message schemas are modelled separately and have no GraphQL object-type relationship graph. |
 
 ### Codegen
 

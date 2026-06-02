@@ -136,6 +136,11 @@ func extractGraphQL(src, filePath string) []types.EntityRecord {
 	var entities []types.EntityRecord
 	seen := make(map[string]bool)
 
+	// First pass: index every named definition so the type-graph pass can
+	// resolve a field's base type to a real object-type node (and exclude
+	// scalars/enums). #3628 — schema type→type graph.
+	schema := collectSchemaTypes(src)
+
 	// File-level container entity. Inserted at index 0 so subsequent CONTAINS
 	// edges for top-level definitions can be appended to entities[0].
 	entities = append(entities, types.EntityRecord{
@@ -205,6 +210,18 @@ func extractGraphQL(src, filePath string) []types.EntityRecord {
 			bodyStart >= 0 && bodyEnd > bodyStart {
 			body := src[bodyStart:bodyEnd]
 			fields := collectFields(body)
+
+			// #3628 — schema type→type graph: object-typed fields become
+			// GRAPH_RELATES edges between the existing type nodes (this node
+			// and the referenced type node), carrying list/nullable
+			// cardinality. Only object/interface targets; scalars/enums skip.
+			// Interface targets are valid; input objects are not relationship
+			// roots in the entity-graph sense, so we skip them as owners.
+			if subtype == "type" || subtype == "interface" {
+				ent.Relationships = append(ent.Relationships,
+					typeGraphEdges(name, filePath, fields, schema)...)
+			}
+
 			fieldSeen := make(map[string]bool)
 			for _, f := range fields {
 				if fieldSeen[f.name] {
@@ -439,11 +456,25 @@ func scanFederation(headerLine, src string, bodyStart, bodyEnd int) fedInfo {
 // fieldHit is one captured field declaration inside a type/interface/input body.
 type fieldHit struct {
 	name       string
-	lineOffset int // 0-based line offset within the body
+	typeExpr   string // the raw GraphQL type expression, e.g. "[Order!]!"
+	lineOffset int    // 0-based line offset within the body
 }
+
+// fieldDeclRE re-parses a field line to split the leading name from the type
+// expression after the colon (and any args). collectFields uses the index form
+// of fieldRE for offsets; this captures the type expression for the type-graph.
+//
+//	name: [Order!]!   → name="name", typeExpr="[Order!]!"
+//	posts(first: Int): [Post!]!   → name="posts", typeExpr="[Post!]!"
+var fieldDeclRE = regexp.MustCompile(
+	`^[ \t]*([A-Za-z_]\w*)\s*(?:\([^)]*\))?\s*:\s*([^\n#@]+)`,
+)
 
 // collectFields scans a type/interface/input body for field declarations.
 // Field names are returned in declaration order; deduping is the caller's job.
+// The field's type expression (everything after the colon, before any trailing
+// directive/comment) is captured so the type-graph pass can resolve object-type
+// references and their list/nullable cardinality.
 func collectFields(body string) []fieldHit {
 	var out []fieldHit
 	for _, m := range fieldRE.FindAllStringSubmatchIndex(body, -1) {
@@ -453,7 +484,13 @@ func collectFields(body string) []fieldHit {
 			continue
 		}
 		offset := strings.Count(body[:m[0]], "\n")
-		out = append(out, fieldHit{name: name, lineOffset: offset})
+		// Re-parse the matched line to recover the type expression. The full
+		// match span [m[0],m[1]) is the field line.
+		var typeExpr string
+		if mm := fieldDeclRE.FindStringSubmatch(body[m[0]:m[1]]); mm != nil {
+			typeExpr = strings.TrimSpace(mm[2])
+		}
+		out = append(out, fieldHit{name: name, typeExpr: typeExpr, lineOffset: offset})
 	}
 	return out
 }

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** RPC Framework
-- **Capability cells:** 30
+- **Capability cells:** 31
 
 ## Capabilities
 
@@ -18,6 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Federation extraction | 🟢 `partial` | `2026-06-02` | 3623 | `internal/extractors/graphql/federation_test.go`<br>`internal/extractors/graphql/graphql.go`<br>`internal/types/kinds.go` | Apollo Federation SDL: type Foo @key(fields:"id") -> entity Properties {federated:true, federation:apollo, key_fields:id} (+shareable:true on @shareable); extend type Foo @key(...) { f @external/@requires/@provides } -> FEDERATES edge to owning entity Foo carrying key_fields + external_fields/requires_fields/provides_fields buckets (legacy IMPORTS edge preserved). Value-asserting tests assert exact key_fields and FEDERATES ToID=owning type. PARTIAL: regex SDL only — no @link/@composeDirective import resolution, no interfaceObject, no cross-file/cross-repo subgraph entity merge (gateway-level concern for the downstream linker). |
 | Procedure extraction | ✅ `full` | `2026-05-28` | 2932 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/graphql/frameworks/apollo_server.yaml`<br>`internal/engine/rules/graphql/frameworks/graphql_yoga.yaml`<br>`internal/extractors/graphql/graphql.go` | — |
 | Schema extraction | ✅ `full` | `2026-05-28` | 2932 | `internal/engine/rules/graphql/frameworks/graphql_schema.yaml`<br>`internal/extractors/graphql/graphql.go` | — |
+| Type graph extraction | ✅ `full` | `2026-06-02` | 3804 | `internal/extractors/graphql/graphql.go`<br>`internal/extractors/graphql/type_graph.go`<br>`internal/extractors/graphql/type_graph_test.go`<br>`internal/types/kinds.go` | SDL schema type→type graph: an object-typed field (type User { orders: [Order!]! }) emits a GRAPH_RELATES edge between the EXISTING SCOPE.Schema type nodes (User node -> Order node, addressed via BuildOperationStructuralRef — node reuse, no duplicate), carrying cardinality props {list, nullable, item_nullable, cardinality: to_one|to_many, field_name, self_ref}. Object + interface targets only; scalar/enum/input/custom-scalar and unresolved type names make NO edge. Union-typed fields expand to one edge per concrete member declared in-file (via_union prop). Value-asserting tests assert exact FromID+ToID+cardinality. Reuses the ORM GRAPH_RELATES vocabulary (#3611/#3747). Code-first lanes (TypeGraphQL/Nexus/Strawberry/graphene/Pothos/gqlgen) tracked separately for type-graph backfill. |
 
 ### Codegen
 

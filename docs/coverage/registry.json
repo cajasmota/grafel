@@ -4005,6 +4005,11 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "req/resp messages emitted as SCOPE.Schema DTO refs (names only)",
             "verified_at": "2026-05-30"
+          },
+          "type_graph_extraction": {
+            "status": "not_applicable",
+            "issue": "3804",
+            "notes": "GraphQL schema type→type graph (object-typed field -\u003e referenced object type with list/nullable cardinality) is a GraphQL-SDL concept; gRPC/protobuf/tRPC message schemas are modelled separately and have no GraphQL object-type relationship graph."
           }
         },
         "Codegen": {
@@ -5857,6 +5862,11 @@
             "cites": ["internal/custom/cpp/grpc_protobuf_test.go","internal/custom/cpp/protobuf.go"],
             "notes": ".proto messages+fields fully parsed (name/type/number/label); generated .pb.h message classes recovered by name",
             "verified_at": "2026-05-30"
+          },
+          "type_graph_extraction": {
+            "status": "not_applicable",
+            "issue": "3804",
+            "notes": "GraphQL schema type→type graph (object-typed field -\u003e referenced object type with list/nullable cardinality) is a GraphQL-SDL concept; gRPC/protobuf/tRPC message schemas are modelled separately and have no GraphQL object-type relationship graph."
           }
         },
         "Codegen": {
@@ -9670,6 +9680,11 @@
             "status": "partial",
             "cites": ["internal/custom/csharp/grpc_net.go","internal/custom/csharp/grpc_net_test.go"],
             "notes": "Proto message declarations, [DataContract] C# classes, and XxxService:XxxServiceBase generated implementation classes emitted as SCOPE.Schema/schema_extraction."
+          },
+          "type_graph_extraction": {
+            "status": "not_applicable",
+            "issue": "3804",
+            "notes": "GraphQL schema type→type graph (object-typed field -\u003e referenced object type with list/nullable cardinality) is a GraphQL-SDL concept; gRPC/protobuf/tRPC message schemas are modelled separately and have no GraphQL object-type relationship graph."
           }
         },
         "Codegen": {
@@ -13697,6 +13712,11 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "Request/response protobuf message names captured per rpc; stream() wrappers stripped and classified into streaming mode.",
             "verified_at": "2026-05-31"
+          },
+          "type_graph_extraction": {
+            "status": "not_applicable",
+            "issue": "3804",
+            "notes": "GraphQL schema type→type graph (object-typed field -\u003e referenced object type with list/nullable cardinality) is a GraphQL-SDL concept; gRPC/protobuf/tRPC message schemas are modelled separately and have no GraphQL object-type relationship graph."
           }
         },
         "Codegen": {
@@ -32717,6 +32737,13 @@
             "cites": ["internal/engine/rules/graphql/frameworks/graphql_schema.yaml","internal/extractors/graphql/graphql.go"],
             "issue": "2932",
             "verified_at": "2026-05-28"
+          },
+          "type_graph_extraction": {
+            "status": "full",
+            "cites": ["internal/extractors/graphql/graphql.go","internal/extractors/graphql/type_graph.go","internal/extractors/graphql/type_graph_test.go","internal/types/kinds.go"],
+            "issue": "3804",
+            "notes": "SDL schema type→type graph: an object-typed field (type User { orders: [Order!]! }) emits a GRAPH_RELATES edge between the EXISTING SCOPE.Schema type nodes (User node -\u003e Order node, addressed via BuildOperationStructuralRef — node reuse, no duplicate), carrying cardinality props {list, nullable, item_nullable, cardinality: to_one|to_many, field_name, self_ref}. Object + interface targets only; scalar/enum/input/custom-scalar and unresolved type names make NO edge. Union-typed fields expand to one edge per concrete member declared in-file (via_union prop). Value-asserting tests assert exact FromID+ToID+cardinality. Reuses the ORM GRAPH_RELATES vocabulary (#3611/#3747). Code-first lanes (TypeGraphQL/Nexus/Strawberry/graphene/Pothos/gqlgen) tracked separately for type-graph backfill.",
+            "verified_at": "2026-06-02"
           }
         },
         "Codegen": {
@@ -37989,6 +38016,11 @@
             "cites": ["internal/engine/http_endpoint_trpc.go","internal/engine/http_endpoint_trpc_schema.go","internal/engine/http_endpoint_trpc_schema_test.go","testdata/fixtures/typescript/trpc_input_schema.ts"],
             "issue": "2865",
             "verified_at": "2026-05-28"
+          },
+          "type_graph_extraction": {
+            "status": "not_applicable",
+            "issue": "3804",
+            "notes": "GraphQL schema type→type graph (object-typed field -\u003e referenced object type with list/nullable cardinality) is a GraphQL-SDL concept; gRPC/protobuf/tRPC message schemas are modelled separately and have no GraphQL object-type relationship graph."
           }
         },
         "Codegen": {
@@ -68106,6 +68138,11 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "custom_scala_grpc: request/response message types recovered from the method signature (Request\u003cT\u003e param + last effect type-arg of ZIO/Future/F[_]) and emitted as SCOPE.Schema DTO refs with grpc_message_role request/response. PARTIAL: message FIELD shapes live in ScalaPB-generated case-class companions; names only. Value-asserted (HelloRequest/HelloReply/UserList).",
             "verified_at": "2026-05-31"
+          },
+          "type_graph_extraction": {
+            "status": "not_applicable",
+            "issue": "3804",
+            "notes": "GraphQL schema type→type graph (object-typed field -\u003e referenced object type with list/nullable cardinality) is a GraphQL-SDL concept; gRPC/protobuf/tRPC message schemas are modelled separately and have no GraphQL object-type relationship graph."
           }
         },
         "Codegen": {

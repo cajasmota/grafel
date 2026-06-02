@@ -469,6 +469,7 @@ subcategories:
       - procedure_extraction
       - schema_extraction
       - federation_extraction
+      - type_graph_extraction
       - client_codegen
       - transport_binding
       - constant_propagation
@@ -497,7 +498,7 @@ subcategories:
       - template_pattern_catalog
     groups:
       - name: Schema
-        keys: [schema_extraction, procedure_extraction, federation_extraction]
+        keys: [schema_extraction, procedure_extraction, federation_extraction, type_graph_extraction]
       - name: Codegen
         keys: [client_codegen]
       - name: Transport
